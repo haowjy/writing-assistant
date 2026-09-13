@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "creative-writing-agent"
+version = "0.1.0"
+description = "Reproducible experiments for conversational creative-writing agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+data = ["cryptography>=44,<48"]
+metrics = ["rouge-score==0.1.2"]
+inference = ["transformers>=5,<6", "torch>=2.6,<3", "accelerate>=1,<2", "peft>=0.17,<1", "bitsandbytes>=0.46,<1"]
+models = ["transformers>=5,<6", "torch>=2.6,<3", "bert-score>=0.3.13,<0.4"]
+
+[project.scripts]
+cwa = "writing_agent.cli:main"
+
+[dependency-groups]
+dev = ["ruff>=0.11,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/writing_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

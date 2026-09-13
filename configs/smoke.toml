@@ -1,0 +1,11 @@
+# Paths resolve relative to this file, independent of the caller's working directory.
+tasks = "../data/fixtures/tasks.jsonl"
+output_dir = "../runs"
+
+[backend]
+kind = "scripted"
+responses = "../data/fixtures/responses.json"
+
+[agent]
+max_steps = 8
+max_tool_calls = 16

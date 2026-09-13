@@ -1,0 +1,116 @@
+[
+  {
+    "packet": {
+      "version": 1,
+      "rubric_version": 1,
+      "brief": "Write two sentences showing hesitation without naming the emotion.",
+      "followups": [],
+      "source_files": {},
+      "rubrics": {
+        "Q2": {
+          "range": [
+            1,
+            5
+          ],
+          "description": "Literary effectiveness: 1 fails, 3 usable, 5 effective; assess concreteness and restraint."
+        }
+      },
+      "checks": [],
+      "knowledge_labels": [],
+      "output": "Her hand stopped above the latch. Behind the door, someone set down a cup.",
+      "after": {},
+      "selected_prose": [
+        {
+          "id": "scene",
+          "text": "Her hand stopped above the latch. Behind the door, someone set down a cup."
+        }
+      ]
+    },
+    "record": {
+      "status": "ok",
+      "judge": "gpt-6-astra",
+      "packet_hash": "6b933076e4afe860c8003a330709aff9c6f94eead902652a0e24897602123ac3",
+      "judgment": {
+        "assessments": [
+          {
+            "metric": "Q2",
+            "value": 5,
+            "evidence": [
+              "Her hand stopped above the latch.",
+              "Behind the door, someone set down a cup."
+            ],
+            "rationale": "The arrested hand makes hesitation concrete without naming the emotion. The ordinary sound beyond the door gives the pause an immediate context while leaving its cause unstated. Both sentences are spare and work together effectively.",
+            "uncertainty": "The pause could suggest caution, apprehension, or reluctance; its precise cause remains open, but that ambiguity supports the brief.",
+            "dimensions": [
+              {
+                "name": "concreteness",
+                "value": 5,
+                "reason": "The hand, latch, door, and cup ground the moment in observable action."
+              },
+              {
+                "name": "restraint",
+                "value": 5,
+                "reason": "The prose conveys the pause without emotional labels or explanatory backstory."
+              }
+            ]
+          }
+        ],
+        "checks": []
+      },
+      "human_review": "pending",
+      "validation": "offline validation of saved live response; no new grader call",
+      "raw_path": "runs/grader-integration/ec2d479199157d9b377eb9bafa3965ff9ed1d0b53c8ab9799ab236b0555b0386/raw.json"
+    }
+  },
+  {
+    "packet": {
+      "version": 1,
+      "rubric_version": 1,
+      "brief": "Write two sentences showing hesitation without naming the emotion.",
+      "followups": [],
+      "source_files": {},
+      "rubrics": {
+        "Q2": {
+          "range": [
+            1,
+            5
+          ],
+          "description": "Literary effectiveness: 1 fails, 3 usable, 5 effective; assess concreteness and restraint."
+        }
+      },
+      "checks": [],
+      "knowledge_labels": [],
+      "output": "Her hand stopped above the latch. Behind the door, someone set down a cup.",
+      "after": {},
+      "selected_prose": [
+        {
+          "id": "scene",
+          "text": "Her hand stopped above the latch. Behind the door, someone set down a cup."
+        }
+      ]
+    },
+    "record": {
+      "status": "ok",
+      "judge": "gpt-6-astra",
+      "packet_hash": "6b933076e4afe860c8003a330709aff9c6f94eead902652a0e24897602123ac3",
+      "judgment": {
+        "assessments": [
+          {
+            "metric": "Q2",
+            "value": 5,
+            "evidence": [
+              "Her hand stopped above the latch.",
+              "Behind the door, someone set down a cup."
+            ],
+            "rationale": "The arrested hand concretely shows hesitation without naming it. The ordinary sound beyond the door gives the pause interpersonal tension while leaving its cause unstated. Both sentences are spare and effective.",
+            "uncertainty": "The pause could also suggest alertness or surprise; that ambiguity does not undermine the plausible reading of hesitation."
+          }
+        ],
+        "checks": []
+      },
+      "human_review": "pending",
+      "validation": "offline validation of saved live response; no new grader call",
+      "raw_path": "runs/grader-integration/ae1e7d89e899677681ff21c1521ecbda99f4992d77e2c970d619e1e848c964f2/raw.json"
+    }
+  }
+]

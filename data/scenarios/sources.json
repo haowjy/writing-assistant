@@ -1,0 +1,1482 @@
+[
+  {
+    "id": "world-tidal_archive",
+    "work_id": "world-tidal_archive",
+    "role": "development",
+    "text": "Mara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "5fc485662dfc1bb4731a90a1331194db95a799e2c67bbf34e8ee925124a7bf11",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "64301d2e97824da2e115bb5e9af961947f2356483c4616b2e1d2184580de0ac0",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-tidal_archive-literary_fiction",
+    "work_id": "world-tidal_archive",
+    "role": "development",
+    "text": "Mara has been considering leaving a tidal archive. Ilan has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "a3d0434757f37113778596ff1b3d7dd5a3faac4d802d57fe7e1e3eeb9102dc77",
+    "provenance": "synthetic",
+    "parents": [
+      "world-tidal_archive"
+    ],
+    "revision": "e55895ab9ca5addd56d876120020cd81c66d8351aa0060be3c344ddeba02a5b5",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "literary_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-tidal_archive-fantasy",
+    "work_id": "world-tidal_archive",
+    "role": "development",
+    "text": "In this region, places can remember promises spoken inside them. a tidal archive has begun repeating a fragment of an old vow after dark. Mara and Ilan do not know whose promise it was or whether it concerns them.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "3de6ca5797d1d1659c0645e4fa2118bc217ea0585916d601fb45d466ec5fe853",
+    "provenance": "synthetic",
+    "parents": [
+      "world-tidal_archive"
+    ],
+    "revision": "38bf1b99c184c7d3ceccf88619affca787134d78e2f02373319e0c3fa7795df0",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "fantasy"
+      }
+    ]
+  },
+  {
+    "id": "world-tidal_archive-romance",
+    "work_id": "world-tidal_archive",
+    "role": "development",
+    "text": "Mara has received a letter from an old love who wants to meet again. Ilan knows about the invitation but has not read the letter. A possible reunion complicates Mara's feelings about remaining at a tidal archive; no decision has been made.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "c6d5df0fbf0694b8c57bfb6821fb63a9fa07dfdb562dd82d419038564dfb360a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-tidal_archive"
+    ],
+    "revision": "8cf91fafabdfbf89e8c36ccb793612deb357311213b170b804884aad8f90cd13",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "romance"
+      }
+    ]
+  },
+  {
+    "id": "world-tidal_archive-historical_fiction",
+    "work_id": "world-tidal_archive",
+    "role": "development",
+    "text": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "3095b24379b272b5110d969a350798717ac9a01cde75420e3b363649e2c814a5",
+    "provenance": "synthetic",
+    "parents": [
+      "world-tidal_archive"
+    ],
+    "revision": "6183c172aea897d3b7b32dd534cf5ea049604e39ad839fea8c1bc35e1a61fc6f",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "historical_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-tidal_archive-adventure",
+    "work_id": "world-tidal_archive",
+    "role": "development",
+    "text": "A route beyond a tidal archive is opening for the first time in years. Mara and Ilan have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "887f7a7f5e271b9f7da3780276b429ae842ef4885dc3410f91e1c202d091f22a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-tidal_archive"
+    ],
+    "revision": "0030e3f57bf7fc27c0ef4b9513ed5db75b484955b098815f7299aff5e9c75266",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "adventure"
+      }
+    ]
+  },
+  {
+    "id": "world-glass_orchard",
+    "work_id": "world-glass_orchard",
+    "role": "development",
+    "text": "Suri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.",
+    "sha256": "4aeef5be5fca4d609f8b247845068c42be602f259a7c53a5e34f177d51dcf9b3",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "85944979a13574f6334e51fff76e3e011b64d6856c5902744164f1f0f18cf22e",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-glass_orchard-mystery",
+    "work_id": "world-glass_orchard",
+    "role": "development",
+    "text": "An anonymous note has arrived at a glass orchard, referring to an earlier disappearance. Suri and Aven have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.",
+    "sha256": "0773d112975b47ffdcd05b1af313e231de7654089814648c60d84defec8f135a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-glass_orchard"
+    ],
+    "revision": "53078fa8b1a5dbb78125e875b2d675cf8c181ea1af96ac6aabe1f9533dfa817f",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "mystery"
+      }
+    ]
+  },
+  {
+    "id": "world-glass_orchard-science_fiction",
+    "work_id": "world-glass_orchard",
+    "role": "development",
+    "text": "a glass orchard is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Suri and Aven have not established whether this affects the events described below.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.",
+    "sha256": "37141c090e355e08944ccfb2c5bf12628c4509ec4cd0647406da94e4de8f4843",
+    "provenance": "synthetic",
+    "parents": [
+      "world-glass_orchard"
+    ],
+    "revision": "094eb7360db3d1b9a1c0a0eec22e3aafaf8a3e0c4c626e331341c025c03b38d4",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "science_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-glass_orchard-horror",
+    "work_id": "world-glass_orchard",
+    "role": "development",
+    "text": "For three nights, people near a glass orchard have heard their own voices answering from empty rooms. Suri heard it once and has told Aven, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.",
+    "sha256": "bf70b6c23f8883cff8c9e180e6b9fcb73ae950226962448a5f3f71a4322d080d",
+    "provenance": "synthetic",
+    "parents": [
+      "world-glass_orchard"
+    ],
+    "revision": "dc3c8fa4ba5e2226d6f2d4e3dcbbf294da1d3c156fbabf902f33767313743254",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "horror"
+      }
+    ]
+  },
+  {
+    "id": "world-glass_orchard-comedy",
+    "work_id": "world-glass_orchard",
+    "role": "development",
+    "text": "A visiting committee has mistaken Suri for the person in charge of a glass orchard. Aven knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.",
+    "sha256": "f05e40a7202b6095167864cb2cdd6316f02b433107199bd4aa6a31f7076adf8a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-glass_orchard"
+    ],
+    "revision": "49b1b889064c07d5a19d37b206c6684110562df250affaf63c9138b652acc9e6",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "comedy"
+      }
+    ]
+  },
+  {
+    "id": "world-glass_orchard-thriller",
+    "work_id": "world-glass_orchard",
+    "role": "development",
+    "text": "Someone has warned Suri that a stranger will arrive at a glass orchard before morning asking for information. Aven has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.",
+    "sha256": "8aafb00aecdbdbd2f1dd65cb09a306b1375c91f7b85ad04bc55693229bd8530f",
+    "provenance": "synthetic",
+    "parents": [
+      "world-glass_orchard"
+    ],
+    "revision": "70d0a33ce887c27c45590dd8638908f0eb193381c64c4db8a677be0f553913ec",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "thriller"
+      }
+    ]
+  },
+  {
+    "id": "world-night_ferry",
+    "work_id": "world-night_ferry",
+    "role": "development",
+    "text": "Oren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "062f5583e8da5cfe590d4bef87582ae78b4856f1b44b3650fe0c86cf20701761",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "ff786ae02225bfdfd731529da38b8a2fd6bc0f93464dfae94d2fa79383f37658",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-night_ferry-fantasy",
+    "work_id": "world-night_ferry",
+    "role": "development",
+    "text": "In this region, places can remember promises spoken inside them. a night ferry has begun repeating a fragment of an old vow after dark. Oren and Leda do not know whose promise it was or whether it concerns them.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "0d94d46d55b89d824204b814646f7f484679c06fff11c9edd3e466f6e616ada2",
+    "provenance": "synthetic",
+    "parents": [
+      "world-night_ferry"
+    ],
+    "revision": "ad03a5a1be49f65e28564f15286e90703fffa8e653f7f448c521bc79b7d46648",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "fantasy"
+      }
+    ]
+  },
+  {
+    "id": "world-night_ferry-romance",
+    "work_id": "world-night_ferry",
+    "role": "development",
+    "text": "Oren has received a letter from an old love who wants to meet again. Leda knows about the invitation but has not read the letter. A possible reunion complicates Oren's feelings about remaining at a night ferry; no decision has been made.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "36039941af0a6c87d9dca327bba618c354def9f63865aa5959fefda29f84f6c0",
+    "provenance": "synthetic",
+    "parents": [
+      "world-night_ferry"
+    ],
+    "revision": "60f9dc5d410e171304ab992fbeb9d37fc6bb1e65e23ff43e415d0c004ab22821",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "romance"
+      }
+    ]
+  },
+  {
+    "id": "world-night_ferry-historical_fiction",
+    "work_id": "world-night_ferry",
+    "role": "development",
+    "text": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "88ddcf56260a00b34789e1a837453ed869f6543c55ec900cff07f96c857c0822",
+    "provenance": "synthetic",
+    "parents": [
+      "world-night_ferry"
+    ],
+    "revision": "8e959cdf6ae5fdc55a56caea75cd327a28cb6d38bb1dec47fe13595bf1a2e8a3",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "historical_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-night_ferry-adventure",
+    "work_id": "world-night_ferry",
+    "role": "development",
+    "text": "A route beyond a night ferry is opening for the first time in years. Oren and Leda have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "7c3af859679f48da7bda13bcd087be08337b03e2cc84fc09419ba00fee29a3b5",
+    "provenance": "synthetic",
+    "parents": [
+      "world-night_ferry"
+    ],
+    "revision": "6d885f390077fc2cf1e462423a196cc72dec1c0ec4de26a9cd104bbaa948825d",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "adventure"
+      }
+    ]
+  },
+  {
+    "id": "world-night_ferry-literary_fiction",
+    "work_id": "world-night_ferry",
+    "role": "development",
+    "text": "Oren has been considering leaving a night ferry. Leda has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "234741e90dbfc1a80093a04d31cd6b0b81c01f006e9fc1ab0a82114e13f8d3b9",
+    "provenance": "synthetic",
+    "parents": [
+      "world-night_ferry"
+    ],
+    "revision": "3a89012537a056b29635ea1f21a87af3a73c713f0d4a6b2e5d0ec15352fdd37a",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "literary_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-winter_radio",
+    "work_id": "world-winter_radio",
+    "role": "development",
+    "text": "Nessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.",
+    "sha256": "ebdddff1aec9e34051f667c24be33e0a11b9a50a97158dd3fe63006a1d712cbc",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "4ad44eb070ebba291cc3bd455504ab3ea9ecc8b89a4e052d31e40c7879b4d16b",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-winter_radio-science_fiction",
+    "work_id": "world-winter_radio",
+    "role": "development",
+    "text": "an isolated radio station is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Nessa and Tomas have not established whether this affects the events described below.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.",
+    "sha256": "c416520ea23df8c28a86bfd02a6dfa8e6612bb0af7b8bd6e23c65caac1509d45",
+    "provenance": "synthetic",
+    "parents": [
+      "world-winter_radio"
+    ],
+    "revision": "5ac8f289c377b25c4fda993f89c6447f8adfe001468503b3e77667f5e2e243d2",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "science_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-winter_radio-horror",
+    "work_id": "world-winter_radio",
+    "role": "development",
+    "text": "For three nights, people near an isolated radio station have heard their own voices answering from empty rooms. Nessa heard it once and has told Tomas, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.",
+    "sha256": "4bc40e85592a0bce312146887099a5a7af0647b8a61ea8bda0998ade563d0b16",
+    "provenance": "synthetic",
+    "parents": [
+      "world-winter_radio"
+    ],
+    "revision": "c56c33c1d25bba9e565078669886f14580c49dfd06b8d1230493ffaced57c1dd",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "horror"
+      }
+    ]
+  },
+  {
+    "id": "world-winter_radio-comedy",
+    "work_id": "world-winter_radio",
+    "role": "development",
+    "text": "A visiting committee has mistaken Nessa for the person in charge of an isolated radio station. Tomas knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.",
+    "sha256": "71e85c5e9458d2d4df79277bb305727af69230716413e3216026e437ae498730",
+    "provenance": "synthetic",
+    "parents": [
+      "world-winter_radio"
+    ],
+    "revision": "98a9fdca703111c21c94f3868b14dd648c0672b5c423d5a9800a3d1d4513f478",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "comedy"
+      }
+    ]
+  },
+  {
+    "id": "world-winter_radio-thriller",
+    "work_id": "world-winter_radio",
+    "role": "development",
+    "text": "Someone has warned Nessa that a stranger will arrive at an isolated radio station before morning asking for information. Tomas has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.",
+    "sha256": "aa698a62af979c6b7d20ab176139615b2546936d2791722a8e103ef4d5c1a4ff",
+    "provenance": "synthetic",
+    "parents": [
+      "world-winter_radio"
+    ],
+    "revision": "25551e8f7e9f69c6cbe2e68bd643a8347f3d8f859a008eff90d8f7f225600e8b",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "thriller"
+      }
+    ]
+  },
+  {
+    "id": "world-winter_radio-mystery",
+    "work_id": "world-winter_radio",
+    "role": "development",
+    "text": "An anonymous note has arrived at an isolated radio station, referring to an earlier disappearance. Nessa and Tomas have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.",
+    "sha256": "745f7716722d306a3ab798a6347dd30229c8c60a93a113cfcc2b94a6fc991e3b",
+    "provenance": "synthetic",
+    "parents": [
+      "world-winter_radio"
+    ],
+    "revision": "cdbc99a9e1cf9e493267050b44c9125f7526c0bb74f372f78ced8c366ee60fff",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "mystery"
+      }
+    ]
+  },
+  {
+    "id": "world-copper_trial",
+    "work_id": "world-copper_trial",
+    "role": "development",
+    "text": "Dara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "22428b875217c74edae25a602d29f5b542363ef3c26331e7f5ab76deb50fb255",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "bd50068aa86235072b943abae70110375ec2dbd616fe47c674a0217b915dd3af",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-copper_trial-romance",
+    "work_id": "world-copper_trial",
+    "role": "development",
+    "text": "Dara has received a letter from an old love who wants to meet again. Sen knows about the invitation but has not read the letter. A possible reunion complicates Dara's feelings about remaining at a provincial courthouse; no decision has been made.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "6aa94faa9dee4725f8215438b66dd1cd06ad0cdb625078a028d19ad51819785a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-copper_trial"
+    ],
+    "revision": "00081b9b10bfcd6e2ce08c9937499a09dddafdb8cd9d8f8067ce5e5498e4cd1e",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "romance"
+      }
+    ]
+  },
+  {
+    "id": "world-copper_trial-historical_fiction",
+    "work_id": "world-copper_trial",
+    "role": "development",
+    "text": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "002243a2ee168482c167648d55e20eb0995aa04c4b09f42210fd82df5c286e08",
+    "provenance": "synthetic",
+    "parents": [
+      "world-copper_trial"
+    ],
+    "revision": "af4d67388983181d1a8dd15db14669a44fc69cc84f0709b59d0e4c49de5c604f",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "historical_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-copper_trial-adventure",
+    "work_id": "world-copper_trial",
+    "role": "development",
+    "text": "A route beyond a provincial courthouse is opening for the first time in years. Dara and Sen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "672d0695ef915381ec10f3ec964b5d7b529a379c747e2facb329ee74f5ff1bae",
+    "provenance": "synthetic",
+    "parents": [
+      "world-copper_trial"
+    ],
+    "revision": "36800d447c23ac4488163f8e302a6312f6cca78cfef4d05190e41c04089e550f",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "adventure"
+      }
+    ]
+  },
+  {
+    "id": "world-copper_trial-literary_fiction",
+    "work_id": "world-copper_trial",
+    "role": "development",
+    "text": "Dara has been considering leaving a provincial courthouse. Sen has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "3398145e303b321bf0bfc73dfc8d7ec700e39287800cd724c1cd593131a22ec5",
+    "provenance": "synthetic",
+    "parents": [
+      "world-copper_trial"
+    ],
+    "revision": "062ce6ee0d7cc9a44a6ee9c7bbe1c253bd9265a59ee45e34f796629234a8bd03",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "literary_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-copper_trial-fantasy",
+    "work_id": "world-copper_trial",
+    "role": "development",
+    "text": "In this region, places can remember promises spoken inside them. a provincial courthouse has begun repeating a fragment of an old vow after dark. Dara and Sen do not know whose promise it was or whether it concerns them.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "4df985f8b56c24055df2122129093ca741dbc25cea56d220409af234519ba9e0",
+    "provenance": "synthetic",
+    "parents": [
+      "world-copper_trial"
+    ],
+    "revision": "e5e1868055e6c783dc8b5d0ce8904e2580648582f6dadf2de37344fac2a93acc",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "fantasy"
+      }
+    ]
+  },
+  {
+    "id": "world-last_cinema",
+    "work_id": "world-last_cinema",
+    "role": "development",
+    "text": "Emil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.",
+    "sha256": "0ced029fa788b8f963da7b8bd1516c5c3db55211546a16231dcbc1741bb1e570",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "9655455fa5a3498f920a635c1004d8a157c1b127bee8010c6f2a7f27e1073ad6",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-last_cinema-horror",
+    "work_id": "world-last_cinema",
+    "role": "development",
+    "text": "For three nights, people near a closing neighborhood cinema have heard their own voices answering from empty rooms. Emil heard it once and has told Ruth, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.",
+    "sha256": "f1807a10ee6ca60bc9ab15e3006ace5ae5d4feff43666a4e6deee5305c1bcb28",
+    "provenance": "synthetic",
+    "parents": [
+      "world-last_cinema"
+    ],
+    "revision": "3d4579f0ac15d826ac7ce520446bbf06d2ddf5dfa358384457ba1cb332e335c7",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "horror"
+      }
+    ]
+  },
+  {
+    "id": "world-last_cinema-comedy",
+    "work_id": "world-last_cinema",
+    "role": "development",
+    "text": "A visiting committee has mistaken Emil for the person in charge of a closing neighborhood cinema. Ruth knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.",
+    "sha256": "a6453b328de69672891596a99eac470851dace5b095600550ae3cba78502564a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-last_cinema"
+    ],
+    "revision": "65d847ebfb8ea20fedb5dbba190b5e0649bfea6e72d8d454fa1adf38c6f2e7f3",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "comedy"
+      }
+    ]
+  },
+  {
+    "id": "world-last_cinema-thriller",
+    "work_id": "world-last_cinema",
+    "role": "development",
+    "text": "Someone has warned Emil that a stranger will arrive at a closing neighborhood cinema before morning asking for information. Ruth has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.",
+    "sha256": "7c4fba5f373f206543e1159ae53a80a255f3eee1e61cdbd3dfc0ca80e40c2b57",
+    "provenance": "synthetic",
+    "parents": [
+      "world-last_cinema"
+    ],
+    "revision": "08dd2e3d626a4c061e7fb49bb0f623b2c3af54cfaa04c6270a3b6db48ed2e532",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "thriller"
+      }
+    ]
+  },
+  {
+    "id": "world-last_cinema-mystery",
+    "work_id": "world-last_cinema",
+    "role": "development",
+    "text": "An anonymous note has arrived at a closing neighborhood cinema, referring to an earlier disappearance. Emil and Ruth have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.",
+    "sha256": "1f1ba4b0dd3ee62b2649e6cc45205f7e0c44fa74760a533ca7a4ea5ae97843d0",
+    "provenance": "synthetic",
+    "parents": [
+      "world-last_cinema"
+    ],
+    "revision": "c3bb7ca3aa4e26eb9f10709eeb6ee20f9bb50bcf97223270e0477aa60aab5387",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "mystery"
+      }
+    ]
+  },
+  {
+    "id": "world-last_cinema-science_fiction",
+    "work_id": "world-last_cinema",
+    "role": "development",
+    "text": "a closing neighborhood cinema is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Emil and Ruth have not established whether this affects the events described below.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.",
+    "sha256": "c78281af5da26fadd1d33b59c43f9126847cd256270fa6a596df2118c8156a43",
+    "provenance": "synthetic",
+    "parents": [
+      "world-last_cinema"
+    ],
+    "revision": "da68da1af08cd4570c21fff229177a7b927600c719c35d17db0cfd5ceb653584",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "science_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-salt_garden",
+    "work_id": "world-salt_garden",
+    "role": "development",
+    "text": "Yara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "3a546ae0f8766ee6145d6c8284e0f76c82ff97eee939401c4ef4d02839476143",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "bb23ed70ba572026c1bb37d66d93b0a6908f709133f3f12742dcf3466934c1bd",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-salt_garden-historical_fiction",
+    "work_id": "world-salt_garden",
+    "role": "development",
+    "text": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "a6f831115362463a8d6ddc6e854a7219de72e8a91e432fe1c8b0e7ae42c428ca",
+    "provenance": "synthetic",
+    "parents": [
+      "world-salt_garden"
+    ],
+    "revision": "d69c216e4b4f03d9b689a4cb4597d443b9d1a1dc96da11035462675dcc47bc7c",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "historical_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-salt_garden-adventure",
+    "work_id": "world-salt_garden",
+    "role": "development",
+    "text": "A route beyond a drought-struck communal garden is opening for the first time in years. Yara and Belen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "a1e814fb0fc40571779a2fa170dd84af2da9ef5d4e8737770e1dabd80fa979b7",
+    "provenance": "synthetic",
+    "parents": [
+      "world-salt_garden"
+    ],
+    "revision": "ba45cd0559177134d3f9fb4479fb50cb429419f722960b8405add95c8eb98241",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "adventure"
+      }
+    ]
+  },
+  {
+    "id": "world-salt_garden-literary_fiction",
+    "work_id": "world-salt_garden",
+    "role": "development",
+    "text": "Yara has been considering leaving a drought-struck communal garden. Belen has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "f9251243e67b42c2747f3b0fcec3ddd6fe89b3aa1faf6688e2143e375520bb6e",
+    "provenance": "synthetic",
+    "parents": [
+      "world-salt_garden"
+    ],
+    "revision": "f4d796b87d24d12c649e1a20c3b7b7a7fbfdbf4988738d820f9c61c7038a9ba6",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "literary_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-salt_garden-fantasy",
+    "work_id": "world-salt_garden",
+    "role": "development",
+    "text": "In this region, places can remember promises spoken inside them. a drought-struck communal garden has begun repeating a fragment of an old vow after dark. Yara and Belen do not know whose promise it was or whether it concerns them.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "24c0a5f4928be7ae2e0f9f06b0e983a883b0ba47d2757ee0742da2f8b0f88f09",
+    "provenance": "synthetic",
+    "parents": [
+      "world-salt_garden"
+    ],
+    "revision": "d1bceaa4381fe3cb838ea7b1b52f73e83067c9adbf90410a6d6951d3af6a6d08",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "fantasy"
+      }
+    ]
+  },
+  {
+    "id": "world-salt_garden-romance",
+    "work_id": "world-salt_garden",
+    "role": "development",
+    "text": "Yara has received a letter from an old love who wants to meet again. Belen knows about the invitation but has not read the letter. A possible reunion complicates Yara's feelings about remaining at a drought-struck communal garden; no decision has been made.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "61d8a58a67f4426175da65eeaff5662d6deb7386448abf680bd8971ca6b6e532",
+    "provenance": "synthetic",
+    "parents": [
+      "world-salt_garden"
+    ],
+    "revision": "969e62fa68bc845c1bbcde707fd26f357423e98effe22658ba50e423a26389be",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "romance"
+      }
+    ]
+  },
+  {
+    "id": "world-paper_border",
+    "work_id": "world-paper_border",
+    "role": "development",
+    "text": "Kavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.",
+    "sha256": "5081dff8c53e6a857a64efda4b5b7829025ae853815c8d3f8b9b9fc9349bfd4f",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "c1a6519a35e1136fddf150636438e1b676eaa04aea5dce78651281a30f929eba",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-paper_border-comedy",
+    "work_id": "world-paper_border",
+    "role": "development",
+    "text": "A visiting committee has mistaken Kavi for the person in charge of a border map office. Noor knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.",
+    "sha256": "3fac2e18c1357993d8709ee3e767c7755431164ef636a144f8b45c338ed0411e",
+    "provenance": "synthetic",
+    "parents": [
+      "world-paper_border"
+    ],
+    "revision": "c3a3cab1f0936bb80c6c199e2b8a33be0cf09d1a649d768ca8f07bb210c1d187",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "comedy"
+      }
+    ]
+  },
+  {
+    "id": "world-paper_border-thriller",
+    "work_id": "world-paper_border",
+    "role": "development",
+    "text": "Someone has warned Kavi that a stranger will arrive at a border map office before morning asking for information. Noor has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.",
+    "sha256": "d06957ed8fc5e20a9a5b42ccf923dd243ca294d3c606595f7a3a31c16deadb2f",
+    "provenance": "synthetic",
+    "parents": [
+      "world-paper_border"
+    ],
+    "revision": "e5b7823138a11968388deb9dc0b58fbc30734c52aaef360cbd3139871b6cb6f0",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "thriller"
+      }
+    ]
+  },
+  {
+    "id": "world-paper_border-mystery",
+    "work_id": "world-paper_border",
+    "role": "development",
+    "text": "An anonymous note has arrived at a border map office, referring to an earlier disappearance. Kavi and Noor have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.",
+    "sha256": "9dcc7f795466a67826cf57171d581c788707f5da900a4592067a18463cf46b66",
+    "provenance": "synthetic",
+    "parents": [
+      "world-paper_border"
+    ],
+    "revision": "51164780db355d4423a4033cd9b739856712c0325b835574fc29dac28d0d51b3",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "mystery"
+      }
+    ]
+  },
+  {
+    "id": "world-paper_border-science_fiction",
+    "work_id": "world-paper_border",
+    "role": "development",
+    "text": "a border map office is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Kavi and Noor have not established whether this affects the events described below.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.",
+    "sha256": "3ea9e283c4f30df8dbf7a0516dd9c14d47b1ccd24abdddc4ea0296e648c73308",
+    "provenance": "synthetic",
+    "parents": [
+      "world-paper_border"
+    ],
+    "revision": "ba2fb72470031e64c1550d81d07abaeafd20faa2d298b766e2803702866289f5",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "science_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-paper_border-horror",
+    "work_id": "world-paper_border",
+    "role": "development",
+    "text": "For three nights, people near a border map office have heard their own voices answering from empty rooms. Kavi heard it once and has told Noor, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.",
+    "sha256": "7b74dde434b1ab852f020a414386cc052a97d7f3641baf5dad924bffbeda5bb2",
+    "provenance": "synthetic",
+    "parents": [
+      "world-paper_border"
+    ],
+    "revision": "fc22bca2b3793df3dff22d309dea173f7eeea6e43e1a101a0c995f6a8513ab7d",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "horror"
+      }
+    ]
+  },
+  {
+    "id": "world-hollow_clock",
+    "work_id": "world-hollow_clock",
+    "role": "development",
+    "text": "Pia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "97b741c001dfad8e18c1612ecd1804e73dfb9d370959ef9d83475c7cfd1c6a2e",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "b8207c9091d9d8125c58e44e1810446d1bbaffc42bc07660555cee8da92c0802",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-hollow_clock-adventure",
+    "work_id": "world-hollow_clock",
+    "role": "development",
+    "text": "A route beyond a clockmaker's workshop is opening for the first time in years. Pia and Ren have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "07db75b8f42aeed59eb10551dd12c42a5ab58359e1ae2043d1152f34962a132f",
+    "provenance": "synthetic",
+    "parents": [
+      "world-hollow_clock"
+    ],
+    "revision": "14e7d8ac37fed35ad5337f77fad9162d2535c5939864c50d71473a4f12f5d532",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "adventure"
+      }
+    ]
+  },
+  {
+    "id": "world-hollow_clock-literary_fiction",
+    "work_id": "world-hollow_clock",
+    "role": "development",
+    "text": "Pia has been considering leaving a clockmaker's workshop. Ren has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "dea56b1f8839d9ce43d201b021a637141984c28d3f0c7d6bb3034c2242034342",
+    "provenance": "synthetic",
+    "parents": [
+      "world-hollow_clock"
+    ],
+    "revision": "df0a375d26c818caef18f68ec7b07868a1eb6f4b6d42fc148f1807e17a513ac2",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "literary_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-hollow_clock-fantasy",
+    "work_id": "world-hollow_clock",
+    "role": "development",
+    "text": "In this region, places can remember promises spoken inside them. a clockmaker's workshop has begun repeating a fragment of an old vow after dark. Pia and Ren do not know whose promise it was or whether it concerns them.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "ae188086dd410c724cfba891ba0492768e24e807efb86ef8b79f36006b971fe8",
+    "provenance": "synthetic",
+    "parents": [
+      "world-hollow_clock"
+    ],
+    "revision": "e3e995db6b99a55d5461ceee3ab32f3d916f797dccebfe6af38a222b1a42522a",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "fantasy"
+      }
+    ]
+  },
+  {
+    "id": "world-hollow_clock-romance",
+    "work_id": "world-hollow_clock",
+    "role": "development",
+    "text": "Pia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter. A possible reunion complicates Pia's feelings about remaining at a clockmaker's workshop; no decision has been made.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "f4bfc29c2a64da92c8a4c3cc4c7c606ae137c67d3483e344f986014f5a5966be",
+    "provenance": "synthetic",
+    "parents": [
+      "world-hollow_clock"
+    ],
+    "revision": "399b8a7dcda58148c09451d76eaf1aa9314af9914ba886195d9e53765ef45674",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "romance"
+      }
+    ]
+  },
+  {
+    "id": "world-hollow_clock-historical_fiction",
+    "work_id": "world-hollow_clock",
+    "role": "development",
+    "text": "The year is 1936. News reaches a clockmaker's workshop through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Pia and Ren are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "be7927cb285bed49b6da93899edec0fe3b57e9c14d0d9ee953ba2efdc0720154",
+    "provenance": "synthetic",
+    "parents": [
+      "world-hollow_clock"
+    ],
+    "revision": "d869613b77022e2c64b763a547c182d216545f6a38735443f3c9d7739cff062e",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "historical_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-blue_kitchen",
+    "work_id": "world-blue_kitchen",
+    "role": "development",
+    "text": "Ada and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.",
+    "sha256": "a1141a8fde853a36a6f23e33b3e79186174f36535ff61b205a0bce4a7eee7d14",
+    "provenance": "synthetic",
+    "parents": [],
+    "revision": "eb599b5e5b3ccbf8c97e334e2e5439ef0c8d4c1bc77c2cfd3782c03b433edb12",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending"
+  },
+  {
+    "id": "world-blue_kitchen-thriller",
+    "work_id": "world-blue_kitchen",
+    "role": "development",
+    "text": "Someone has warned Ada that a stranger will arrive at a family restaurant after closing before morning asking for information. Milo has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.",
+    "sha256": "cf5c4ee599bc7229b33866d6194ec419de68ffaa5eb74f623b5aa777a5f893ee",
+    "provenance": "synthetic",
+    "parents": [
+      "world-blue_kitchen"
+    ],
+    "revision": "7fa2beda02feb3dcb3d3c7e7ea465733a876ea67fa19a2c7cab56c23b5682c1d",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "thriller"
+      }
+    ]
+  },
+  {
+    "id": "world-blue_kitchen-mystery",
+    "work_id": "world-blue_kitchen",
+    "role": "development",
+    "text": "An anonymous note has arrived at a family restaurant after closing, referring to an earlier disappearance. Ada and Milo have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.",
+    "sha256": "693d178fd4767bbef50ec4d9dbf5552b52a577a66b43061c1ebe6ecfb1cfc224",
+    "provenance": "synthetic",
+    "parents": [
+      "world-blue_kitchen"
+    ],
+    "revision": "2b83fa56068d5b3dd59a1f8cb2c4a28124b1204c72776d0686bc324b0de5f09e",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "mystery"
+      }
+    ]
+  },
+  {
+    "id": "world-blue_kitchen-science_fiction",
+    "work_id": "world-blue_kitchen",
+    "role": "development",
+    "text": "a family restaurant after closing is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Ada and Milo have not established whether this affects the events described below.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.",
+    "sha256": "981f93a37593bb4c556f21e4e24df6b7f363e5cb6a8766f3c8f41fed47506029",
+    "provenance": "synthetic",
+    "parents": [
+      "world-blue_kitchen"
+    ],
+    "revision": "8e3f65bdca5e78650e96d283f981664582becf9a4adf4f9036a63c35b39bc882",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "science_fiction"
+      }
+    ]
+  },
+  {
+    "id": "world-blue_kitchen-horror",
+    "work_id": "world-blue_kitchen",
+    "role": "development",
+    "text": "For three nights, people near a family restaurant after closing have heard their own voices answering from empty rooms. Ada heard it once and has told Milo, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.",
+    "sha256": "68c52fcd4415e4360d3857075ad7c5e156796106896111e5a938df4aeca58e6a",
+    "provenance": "synthetic",
+    "parents": [
+      "world-blue_kitchen"
+    ],
+    "revision": "3b2672f13df66aee7d2650504f1cadd0f05a49d7227d0a0f3705af0ae217a7c3",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "horror"
+      }
+    ]
+  },
+  {
+    "id": "world-blue_kitchen-comedy",
+    "work_id": "world-blue_kitchen",
+    "role": "development",
+    "text": "A visiting committee has mistaken Ada for the person in charge of a family restaurant after closing. Milo knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.",
+    "sha256": "de27b24768256052023953e60e0514bd185de92ff204fd51a2100fb18dd1356b",
+    "provenance": "synthetic",
+    "parents": [
+      "world-blue_kitchen"
+    ],
+    "revision": "a19d0a78fc8a4bdd332524cd1fb866265d5a6f2a73916de1b6f6c8efd51c979d",
+    "generator": "Codex authored development fixture",
+    "terms": {
+      "origin": "project-generated",
+      "evaluation": "allowed",
+      "training": "excluded: development world"
+    },
+    "upstream_split": "development",
+    "review_status": "pending",
+    "transformations": [
+      {
+        "kind": "authored_genre_context",
+        "genre": "comedy"
+      }
+    ]
+  }
+]

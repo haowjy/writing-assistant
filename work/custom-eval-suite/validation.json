@@ -1,0 +1,38 @@
+{
+  "scripted_attempts": 5,
+  "candidate_generations": 3,
+  "scripted_execution_statuses": {
+    "completed": 5
+  },
+  "report_path": "/home/jimyao/gitrepos/research/writing-assistant/runs/validation/research-script/reports/report.json",
+  "note": "Short fixture prose intentionally fails word-count checks; semantic scores remain pending.",
+  "offline_tests_passed": 42,
+  "ruff": "passed",
+  "markdown_links": "passed",
+  "live_astra_responses": 2,
+  "codex_process_attempts": 3,
+  "review_regressions": [
+    "completion invariants through judgment merging",
+    "canonical imported text in overlap/profile consumers",
+    "separate builder attribution across resumed identical KBs"
+  ],
+  "full_benchmark_attempts": 0,
+  "inference_validation": "inference-validation.json",
+  "instruction_specificity_counts": {
+    "explicit": 25,
+    "loose": 25
+  },
+  "genre_counts": {
+    "literary_fiction": 5,
+    "fantasy": 5,
+    "romance": 5,
+    "historical_fiction": 5,
+    "adventure": 5,
+    "mystery": 5,
+    "science_fiction": 5,
+    "horror": 5,
+    "comedy": 5,
+    "thriller": 5
+  },
+  "local_protocol": "writing-tools-v2"
+}

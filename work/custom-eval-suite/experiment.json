@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "status": "proposed_not_executed",
+  "models": [
+    {
+      "id": "google/gemma-4-12B",
+      "revision": "023679ed352de9bb66cc873c9009ce3482585c08",
+      "variant": "base",
+      "kind": "transformers",
+      "protocol": "writing-tools-v2",
+      "prompt_format": "transcript",
+      "loader": "multimodal_lm",
+      "device": "cuda:0",
+      "dtype": "bfloat16",
+      "attention": "sdpa",
+      "context_tokens": 8192,
+      "top_p": 0.95,
+      "runtime_verified": false,
+      "quantization": "nf4",
+      "temperature": 0.7,
+      "seed": 42,
+      "max_tokens": 2048
+    },
+    {
+      "id": "google/gemma-4-12B-it",
+      "revision": "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7",
+      "variant": "it",
+      "kind": "transformers",
+      "protocol": "writing-tools-v2",
+      "prompt_format": "chat",
+      "loader": "multimodal_lm",
+      "device": "cuda:0",
+      "dtype": "bfloat16",
+      "attention": "sdpa",
+      "context_tokens": 8192,
+      "top_p": 0.95,
+      "runtime_verified": false,
+      "quantization": "nf4",
+      "temperature": 0.7,
+      "seed": 42,
+      "max_tokens": 2048
+    },
+    {
+      "id": "google/gemma-4-E4B",
+      "revision": "411aa17b749aa952df1359d2dcea73917a544d9a",
+      "variant": "base",
+      "kind": "transformers",
+      "protocol": "writing-tools-v2",
+      "prompt_format": "transcript",
+      "loader": "causal_lm",
+      "device": "cuda:0",
+      "dtype": "bfloat16",
+      "attention": "sdpa",
+      "context_tokens": 8192,
+      "top_p": 0.95,
+      "runtime_verified": false,
+      "quantization": "nf4",
+      "temperature": 0.7,
+      "seed": 42,
+      "max_tokens": 2048
+    },
+    {
+      "id": "google/gemma-4-E4B-it",
+      "revision": "ee0ef6023621cff504d758262d4e04895a5af4a2",
+      "variant": "it",
+      "kind": "transformers",
+      "protocol": "writing-tools-v2",
+      "prompt_format": "chat",
+      "loader": "causal_lm",
+      "device": "cuda:0",
+      "dtype": "bfloat16",
+      "attention": "sdpa",
+      "context_tokens": 8192,
+      "top_p": 0.95,
+      "runtime_verified": false,
+      "quantization": "nf4",
+      "temperature": 0.7,
+      "seed": 42,
+      "max_tokens": 2048
+    }
+  ],
+  "scenarios": 50,
+  "core_attempts": 200,
+  "source_selections": [
+    "tell_me_a_story",
+    "hanna",
+    "ifeval",
+    "gutenberg"
+  ],
+  "provenance_filters": [
+    "half_synthetic",
+    "human",
+    "synthetic",
+    "synthetic_fanfic",
+    "unknown"
+  ],
+  "features": {
+    "tokenizer": "google/gemma-4-12B",
+    "tokenizer_revision": "023679ed352de9bb66cc873c9009ce3482585c08",
+    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+    "embedding_revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "chunk_tokens": 256,
+    "version": 1
+  },
+  "variability": {
+    "scenario_ids": [
+      "F1-01",
+      "F1-04",
+      "F1-07",
+      "F1-10"
+    ],
+    "samples_per_prompt_per_model": 3,
+    "additional_attempts": 48,
+    "approved": false
+  },
+  "navigation": {
+    "builder_cases": 10,
+    "probes_per_builder": 2,
+    "reader_attempts": 80,
+    "reader_model": "google/gemma-4-12B-it",
+    "read_budget_tokens": 2000,
+    "approved": false
+  },
+  "external": [
+    {
+      "name": "IFEval",
+      "cases": 541,
+      "attempts": 2164,
+      "approved": false,
+      "protocol": "official strict/loose instruction/prompt scores"
+    },
+    {
+      "name": "HumanEval+",
+      "cases": 32,
+      "attempts": 128,
+      "approved": false,
+      "subset": "HumanEval/0 through HumanEval/31",
+      "protocol": "diagnostic subset; isolated execution required"
+    }
+  ],
+  "cost_estimate": {
+    "measured": false,
+    "generated_tokens_per_attempt": [
+      3000,
+      8000
+    ],
+    "hypothetical_tokens_per_second": [
+      20,
+      50
+    ],
+    "decode_hours_at_3000_tokens": [
+      3.3333333333333335,
+      8.333333333333334
+    ],
+    "decode_hours_at_8000_tokens": [
+      8.88888888888889,
+      22.22222222222222
+    ],
+    "excluded": [
+      "prefill",
+      "model loading",
+      "reader probes",
+      "repeated generations",
+      "grading",
+      "external benchmarks"
+    ],
+    "dollars": null,
+    "grading": "subscription allowance; quota unmeasured"
+  },
+  "approval": "Candidate generation and full benchmarks require explicit approval"
+}

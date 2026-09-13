@@ -1,0 +1,13 @@
+# FUTURE — deferred work
+
+Work to revisit after the immediate [TODO list](TODO.md). Move an item there when
+it becomes near-term work. Detailed acceptance criteria stay in the linked plans.
+
+- [ ] **Final data-generation coverage review:** use the [current coverage table](custom-eval-suite/coverage.md) to set and audit representation of genre, tone/style, narrative form, naming, cast/relationships, setting, story situations, instruction specificity, knowledge complexity, context length, and KB organization. Review labels against actual content, address the repeated narrative structure, and record remaining gaps. The current table includes the small genre-context mix; broader data generation remains deferred.
+- [ ] **Mixed evaluation collection:** incorporate suitable acquired-source examples alongside authored cases, retaining provenance, upstream splits, transformations, and source grouping. Separate development, grader calibration, and held-out final evaluation before deriving variants. See the [data plan](custom-eval-suite/data.md).
+- [ ] **Original benchmarks and grader validation:** integrate original benchmark protocols for separately reported final runs; use applicable original human ratings to assess grader agreement. Adapted cases cannot inherit ratings for different responses. Audit overlap with the mixed collection. See the [source inventory](custom-eval-suite/inventory.json) and [scorecard](custom-eval-suite/metrics.md).
+- [ ] **Larger KB and authorship data:** construct and review substantial KBs, maintenance histories, longer sources, and alternate-story/fanfiction branches. Include matched representation controls where useful. See [coverage gaps](custom-eval-suite/coverage.md) and [branching authorship](research-plan/branching-authorship.md).
+- [ ] **Clarification-dependent conversations:** design responsive user follow-ups and grading for material missing information, sensible assumptions, and unnecessary questioning. See [instruction specificity](custom-eval-suite/design.md).
+- [ ] **Training-checkpoint evaluation:** connect the existing inference interface to a future trainer, choose a development cadence and budget, and preserve held-out final evaluation. See [checkpoint execution](../docs/local-inference.md).
+
+These entries are deferred directions, not scheduled runs or generation jobs.

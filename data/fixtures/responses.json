@@ -1,0 +1,88 @@
+{
+  "no_tool": [
+    {
+      "role": "assistant",
+      "content": "Mara, Iris"
+    }
+  ],
+  "retrieve": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_read_file",
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "arguments": "{\"path\": \"canon/characters.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "Mara keeps the North Light."
+    }
+  ],
+  "local_edit": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_read_file",
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "arguments": "{\"path\": \"drafts/scene.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_patch_file",
+          "type": "function",
+          "function": {
+            "name": "patch_file",
+            "arguments": "{\"path\": \"drafts/scene.md\", \"old\": \"red\", \"new\": \"blue\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "Changed red to blue; the rest is unchanged."
+    }
+  ],
+  "stale_state": [
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_read_file",
+          "type": "function",
+          "function": {
+            "name": "read_file",
+            "arguments": "{\"path\": \"notes/plan.md\"}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": "The keeper is named Iris."
+    }
+  ],
+  "draft_not_canon": [
+    {
+      "role": "assistant",
+      "content": "Under the last stair, Mara found a brass key cold with salt."
+    }
+  ]
+}
