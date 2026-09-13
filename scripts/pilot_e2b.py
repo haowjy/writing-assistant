@@ -108,9 +108,9 @@ def review_results(scenarios, results, config):
             "",
             "## Tool context",
             "",
-            "The trace records these available tools. The local backend appends their schemas",
-            "and tool-call instructions before applying the model chat template. The conversation",
-            "below is the harness history before that rendering, not the full model prompt.",
+            "The trace records these available tools. Rendering depends on the recorded protocol.",
+            "The conversation below is harness history before rendering. New native runs also",
+            "save exact model inputs and raw outputs, linked below when available.",
             "",
             _fenced(
                 json.dumps(
@@ -121,6 +121,16 @@ def review_results(scenarios, results, config):
             "## Conversation",
             "",
         ]
+        captured = [
+            e for e in result.get("trace", []) if e["type"] in {"model_input", "model_output"}
+        ]
+        if captured:
+            review += ["### Captured model input/output", ""]
+            for i, event in enumerate(captured, 1):
+                name = f"{event['type']}-{i:03d}.txt"
+                (path / name).write_text(event.get("prompt", event.get("text", "")))
+                review.append(f"- [{name}]({name})")
+            review.append("")
         for message in result.get("messages", []):
             review += [
                 f"### {message['role']}",

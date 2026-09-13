@@ -14,13 +14,7 @@ from writing_agent.backends import Completion
 from writing_agent.catalog import fingerprint
 from writing_agent.suite import run_selected
 
-PROTOCOL = "writing-tools-v2"
-TOOL_INSTRUCTION = """Reply to the user in ordinary text, never in a JSON response wrapper.
-Only when calling tools, return exactly one JSON object:
-{"tool_calls": [{"name": "tool_name", "arguments": {"parameter": "value"}}]}
-Do not wrap tool calls in Markdown or mix them with a conversational reply.
-Tool results appear in subsequent messages. After using tools, reply in ordinary text.
-Available tools: """
+PROTOCOL = "gemma-native-v1"
 
 
 def checkpoint_identity(source: str, revision: str | None = None) -> dict:
@@ -42,86 +36,46 @@ def checkpoint_identity(source: str, revision: str | None = None) -> dict:
     return {"id": source, "revision": revision}
 
 
-def render_messages(messages: list[dict], tools: list[dict]) -> list[dict]:
-    """Represent calls/results as ordinary text for the versioned JSON protocol."""
+def render_messages(messages: list[dict]) -> list[dict]:
+    """Convert harness history to Gemma's native assistant tool-response structure."""
     rendered = []
-    for message in messages:
-        role = message["role"]
-        if message.get("tool_calls"):
-            content = json.dumps(
-                {
-                    "tool_calls": [
-                        {
-                            "name": c["function"]["name"],
-                            "arguments": (
-                                json.loads(c["function"]["arguments"])
-                                if isinstance(c["function"]["arguments"], str)
-                                else c["function"]["arguments"]
-                            ),
-                        }
-                        for c in message["tool_calls"]
-                    ]
-                },
-                ensure_ascii=False,
+    for original in messages:
+        message = copy.deepcopy(original)
+        if message["role"] == "tool":
+            if not rendered or not rendered[-1].get("tool_calls"):
+                raise ValueError("Tool response has no preceding calls")
+            owner = rendered[-1]
+            call = next(
+                (c for c in owner["tool_calls"] if c["id"] == message["tool_call_id"]), None
             )
-        elif role == "tool":
-            role = "user"
-            content = "Tool result " + message.get("tool_call_id", "") + ": " + message["content"]
-        else:
-            content = message.get("content", "")
-        if tools and message["role"] == "system":
-            content += "\n\n" + TOOL_INSTRUCTION + json.dumps(tools, ensure_ascii=False)
-        # Some model templates require strictly alternating user/assistant roles.
-        if rendered and rendered[-1]["role"] == role:
-            rendered[-1]["content"] += "\n\n" + content
-        else:
-            rendered.append({"role": role, "content": content})
-    if tools and not any(m["role"] == "system" for m in rendered):
-        rendered.insert(0, {"role": "system", "content": TOOL_INSTRUCTION + json.dumps(tools)})
+            if call is None:
+                raise ValueError("Unknown tool response ID")
+            owner.setdefault("tool_responses", []).append(
+                {
+                    "name": call["function"]["name"],
+                    "response": json.loads(message["content"]),
+                }
+            )
+            continue
+        for call in message.get("tool_calls", []):
+            arguments = call["function"]["arguments"]
+            if isinstance(arguments, str):
+                call["function"]["arguments"] = json.loads(arguments)
+        rendered.append(message)
     return rendered
 
 
-def parse_response(text: str, *, tools: bool) -> dict:
-    reply = {"role": "assistant", "content": text}
-    if not tools or not text.lstrip().startswith("{"):
-        return reply
-    try:
-        value = json.loads(text)
-    except ValueError as exc:
-        if '"tool_calls"' in text:
-            raise ValueError(f"Invalid {PROTOCOL} tool call: {text}") from exc
-        return reply
-    if not isinstance(value, dict) or "tool_calls" not in value:
-        return reply
-    try:
-        calls = value.get("tool_calls")
-        if set(value) != {"tool_calls"} or not isinstance(calls, list) or not calls:
-            raise ValueError("Expected nonempty tool_calls")
-        for call in calls:
-            if (
-                not isinstance(call, dict)
-                or set(call) != {"name", "arguments"}
-                or not isinstance(call["name"], str)
-                or not isinstance(call["arguments"], dict)
-            ):
-                raise ValueError("Each call requires a name and argument object")
-        return {
-            "role": "assistant",
-            "tool_calls": [
-                {
-                    "id": f"call_{i}",
-                    "type": "function",
-                    "function": {
-                        "name": call["name"],
-                        "arguments": json.dumps(call["arguments"], ensure_ascii=False),
-                    },
-                }
-                for i, call in enumerate(calls)
-            ],
-        }
-    except (ValueError, TypeError) as exc:
-        # Preserve malformed output in the attempt error for protocol diagnostics.
-        raise ValueError(f"Invalid {PROTOCOL} response: {text}") from exc
+def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
+    """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
+    message = tokenizer.parse_response(text, prefix=prefix)
+    calls = message.get("tool_calls", [])
+    if text.count("<|tool_call>") != len(calls):
+        raise ValueError("Native tool-call output was not completely parsed")
+    for i, call in enumerate(calls):
+        call["id"] = f"call_{i}"
+        if not isinstance(call["function"]["arguments"], dict):
+            raise ValueError("Native tool arguments must be an object")
+    return message
 
 
 class TransformersBackend:
@@ -140,20 +94,39 @@ class TransformersBackend:
         self.config = copy.deepcopy(config)
         self.calls = 0
 
-    def complete(self, messages: list[dict], tools: list[dict]) -> Completion:
+    def complete(
+        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
+    ) -> Completion:
         import torch
 
-        rendered = render_messages(messages, tools)
+        rendered = render_messages(messages)
         if self.config["prompt_format"] == "chat":
             prompt = self.tokenizer.apply_chat_template(
-                rendered, tokenize=False, add_generation_prompt=True, enable_thinking=False
+                rendered,
+                tools=tools or None,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
             )
             inputs = self.tokenizer(prompt, add_special_tokens=False, return_tensors="pt")
         else:
+            if tools:
+                raise ValueError(
+                    "Native tools require a verified chat template; base tool runs are unsupported"
+                )
             prompt = "\n\n".join(f"{m['role'].upper()}:\n{m['content']}" for m in rendered)
-            inputs = self.tokenizer(prompt + "\n\nASSISTANT:\n", return_tensors="pt")
+            prompt += "\n\nASSISTANT:\n"
+            inputs = self.tokenizer(prompt, return_tensors="pt")
         inputs = inputs.to(self.model.device)
         input_tokens = inputs["input_ids"].shape[-1]
+        emit(
+            {
+                "type": "model_input",
+                "prompt": prompt,
+                "input_ids": inputs["input_ids"][0].tolist(),
+                "protocol": PROTOCOL,
+            }
+        )
         limit = self.config["max_tokens"]
         if input_tokens + limit > self.config["context_tokens"]:
             raise ValueError("Context budget exceeded; history was not truncated")
@@ -189,11 +162,19 @@ class TransformersBackend:
                 module.training = training
         eos = self.model.generation_config.eos_token_id
         eos = eos if isinstance(eos, list) else [eos]
-        text = self.tokenizer.decode(output, skip_special_tokens=True)
+        text = self.tokenizer.decode(output, skip_special_tokens=False)
+        emit({"type": "model_output", "text": text, "output_ids": output.tolist()})
         if len(output) >= limit and int(output[-1]) not in eos:
             raise ValueError(f"Generation token limit reached; incomplete output: {text}")
         return Completion(
-            parse_response(text, tools=bool(tools)),
+            (
+                parse_response(self.tokenizer, text, prefix=prompt)
+                if self.config["prompt_format"] == "chat"
+                else {
+                    "role": "assistant",
+                    "content": self.tokenizer.decode(output, skip_special_tokens=True),
+                }
+            ),
             {
                 "prompt_tokens": input_tokens,
                 "completion_tokens": len(output),
@@ -226,6 +207,7 @@ def load_checkpoint(config: dict, *, allow_download: bool = False):
         tokenizer_identity["id"], **tokenizer_kwargs
     )
     record["chat_template_hash"] = fingerprint(tokenizer.chat_template)
+    record["response_template_hash"] = fingerprint(tokenizer.response_template)
     device = config["device"]
     if device.startswith("cuda") and not torch.cuda.is_available():
         raise RuntimeError("CUDA is unavailable; check the NVIDIA driver before loading weights")

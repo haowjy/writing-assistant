@@ -12,7 +12,8 @@ retains its smoke-evaluation and training-format workflows.
   [workspace.py](../writing_agent/workspace.py) owns file operations and storage limits.
 - [backends.py](../writing_agent/backends.py) defines the model interface and HTTP transport.
   [inference.py](../writing_agent/inference.py) loads local Transformers/PEFT weights,
-  formats the versioned JSON tool protocol, and adapts generation to that interface.
+  renders native Gemma tools, parses responses with the pinned tokenizer, and adapts
+  generation to that interface.
   Inputs contain messages and permitted tools, never evaluator labels.
 - [catalog.py](../writing_agent/catalog.py) owns source identity, lineage, imports,
   atomic JSON artifacts, and overlap inspection. [acquisition.py](../writing_agent/acquisition.py)
@@ -109,9 +110,12 @@ checks for unstated length, viewpoint, idea count, and ending requirements. The
 current loose cases remain actionable; conditional clarification dialogues require
 a separate runner/user-response contract.
 
-Conversational replies remain ordinary text, including after tool use. Only tool
-calls use the reserved JSON envelope in `writing-tools-v2`; assistant history must
-not wrap prose in JSON. Earlier protocol results retain their original identity.
+Conversational replies remain ordinary text. `gemma-native-v1` passes schemas to
+the chat template and parses raw generated tokens through the tokenizer's response
+template. Tool results are associated with calls and rendered as native responses.
+The backend receives the trace emitter and records actual model inputs before
+generation and outputs before parsing. Base transcript conditions cannot use tools.
+Earlier custom-protocol results retain their identities and remain historical.
 
 Genre is separate from prose style and is carried into results and grouping.
 Authored genre contexts create derivative sources linked to the original world;

@@ -76,7 +76,7 @@ def run_agent(
     try:
         for step in range(max_steps):
             before = time.perf_counter()
-            completion = backend.complete(history, schemas)
+            completion = backend.complete(history, schemas, emit=emit)
             message = completion.message
             emit(
                 {

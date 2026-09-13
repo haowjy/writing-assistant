@@ -458,7 +458,7 @@ class ResearchTests(unittest.TestCase):
         observed = []
 
         class Reader:
-            def complete(self, messages, tools):
+            def complete(self, messages, tools, *, emit=lambda event: None):
                 from writing_agent.backends import Completion
 
                 observed.extend(messages)

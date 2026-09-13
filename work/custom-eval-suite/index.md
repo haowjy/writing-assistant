@@ -5,11 +5,13 @@ Python-first implementation and execution approval boundary. This work item spec
 with five task families and two external regression checks. The implementation
 provides a Python research script, source catalog, 50 proposed development cases,
 artifact scoring, and bounded Astra grading. Labels are not human-calibrated, and
-no Gemma baseline results exist. See [delivery evidence](delivery.md).
+only a small E2B-IT pilot has run. See [delivery evidence](delivery.md).
 
 Task queues: [TODO — now](../TODO.md) and [FUTURE](../FUTURE.md).
 
-Latest run: [E2B-IT five-case pilot](pilot-e2b.md), with saved artifacts and observed failures.
+Native harness validation: [read/write smoke and limitations](native-inference.md).
+
+Five-case run: [E2B-IT five-case pilot](pilot-e2b.md), with saved artifacts and observed failures.
 
 ## Read this work item
 

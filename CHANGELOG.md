@@ -6,8 +6,12 @@
   constrained agent workspace, artifact extraction, scoring, and saved-run reports.
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.
-- Keep conversational replies as ordinary text and encode only tool calls as JSON.
+- Keep conversational replies as ordinary text and use Gemma native tool calls for local instruction-tuned inference.
 - Run and preserve a five-case Gemma E2B-IT pilot, with per-case review pages,
   mechanical scores, and a versioned results summary.
 - Show trace-recorded tool schemas in pilot reviews and distinguish harness history
   from the fully rendered model prompt.
+- Render native Gemma tool declarations and responses with the checkpoint template,
+  parse its native output grammar, and capture actual model inputs and raw outputs.
+- Verify an E2B-IT native read/write round trip; preserve its trailing-newline
+  copying error separately from successful tool execution.

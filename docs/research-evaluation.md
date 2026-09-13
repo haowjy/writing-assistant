@@ -94,7 +94,7 @@ briefs and private draft labels. Semantic scores are unvalidated until reviewed.
 The script requires both explicit run authorization and a model configuration
 marked runtime-verified. The default backend runs Transformers/PyTorch locally.
 See [local inference](local-inference.md) for installation, checkpoint and PEFT
-loading, the JSON tool protocol, and evaluation during future training. Before
+loading, the native tool protocol, and evaluation during future training. Before
 marking a configuration verified, check its exact revision, quantization, context
 budget, prompt formatting, and tool behavior on the remote machine.
 No Gemma benchmark comparison has been run.

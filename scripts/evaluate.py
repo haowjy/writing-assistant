@@ -173,7 +173,7 @@ def generate(model: dict, *, approved=False, scenario_ids=None):
         raise ValueError("Candidate generation requires explicit approval")
     if not model["runtime_verified"]:
         raise ValueError(
-            "Verify checkpoint loading, prompt formatting and JSON tool protocol before running"
+            "Verify checkpoint loading, prompt formatting and native tool protocol before running"
         )
     scenarios = [s for s in load_scenarios(RELEASE, scenario_ids) if s["provenance"] in PROVENANCE]
     return evaluate_checkpoint(

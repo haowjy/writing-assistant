@@ -1,7 +1,6 @@
 """Contracts for local inference without downloading candidate checkpoints."""
 
 import importlib.util
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,7 +22,7 @@ CONFIG = {
     "revision": "a" * 40,
     "kind": "transformers",
     "protocol": PROTOCOL,
-    "prompt_format": "transcript",
+    "prompt_format": "chat",
     "max_tokens": 8,
     "context_tokens": 256,
     "temperature": 0.7,
@@ -33,46 +32,69 @@ CONFIG = {
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_protocol_keeps_prose_and_tool_arguments_separate(self):
-        prose = '{"a story": "with braces"}'
-        self.assertEqual(parse_response(prose, tools=False)["content"], prose)
-        call = parse_response(
-            json.dumps(
-                {
-                    "tool_calls": [
-                        {"name": "write_file", "arguments": {"path": "draft.md", "content": prose}}
-                    ]
-                }
-            ),
-            tools=True,
-        )
-        transcript = render_messages(
-            [
-                {"role": "system", "content": "Write."},
-                call,
-                {"role": "tool", "tool_call_id": "call_0", "content": "saved"},
-                {"role": "tool", "tool_call_id": "call_1", "content": "second result"},
-            ],
-            [{"name": "write_file"}],
-        )
-        self.assertIn("Available tools", transcript[0]["content"])
-        self.assertIn("second result", transcript[-1]["content"])
+    def test_native_history_keeps_tool_results_and_conversation_distinct(self):
+        history = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "a",
+                        "function": {"name": "read_file", "arguments": '{"path":"notes.md"}'},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "a", "content": '{"ok":true,"result":"Notes"}'},
+            {"role": "assistant", "content": "Here is the scene."},
+        ]
+        rendered = render_messages(history)
         self.assertEqual(
-            json.loads(transcript[1]["content"])["tool_calls"][0]["arguments"]["content"], prose
+            rendered[0]["tool_calls"][0]["function"]["arguments"], {"path": "notes.md"}
         )
         self.assertEqual(
-            parse_response("Saved the draft.", tools=True)["content"], "Saved the draft."
+            rendered[0]["tool_responses"],
+            [{"name": "read_file", "response": {"ok": True, "result": "Notes"}}],
         )
-        self.assertEqual(parse_response(prose, tools=True)["content"], prose)
-        reply = {"role": "assistant", "content": "Saved the draft."}
-        self.assertEqual(render_messages([reply], [{"name": "write_file"}])[-1], reply)
-        for invalid in (
-            '{"tool_calls": []}',
-            '{"tool_calls":',
-            '{"tool_calls": [{"name": "write_file", "arguments": "bad"}]}',
-        ):
-            with self.assertRaisesRegex(ValueError, "Invalid writing-tools"):
-                parse_response(invalid, tools=True)
+        self.assertEqual(rendered[1], history[2])
+        self.assertIsInstance(history[0]["tool_calls"][0]["function"]["arguments"], str)
+
+    @unittest.skipUnless(importlib.util.find_spec("transformers"), "optional tokenizer dependency")
+    def test_pinned_native_parser_and_template(self):
+        from transformers import AutoTokenizer
+
+        from writing_agent.workspace import TOOL_SCHEMAS
+
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                "google/gemma-4-E2B-it",
+                revision="3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+                local_files_only=True,
+            )
+        except OSError:
+            self.skipTest("Pinned tokenizer is not cached; no downloads in tests")
+        text = (
+            '<|tool_call>call:write_file{path:<|"|>draft.md<|"|>,'
+            'content:<|"|>Hello, {world}!\nA "quote" and café.<|"|>}<tool_call|><|tool_response>'
+        )
+        call = parse_response(tokenizer, text, prefix="")
+        self.assertEqual(
+            call["tool_calls"][0]["function"]["arguments"]["content"],
+            'Hello, {world}!\nA "quote" and café.',
+        )
+        history = [
+            {"role": "user", "content": "Write a file."},
+            call,
+            {"role": "tool", "tool_call_id": "call_0", "content": '{"ok":true}'},
+        ]
+        prompt = tokenizer.apply_chat_template(
+            render_messages(history), tools=TOOL_SCHEMAS, tokenize=False, add_generation_prompt=True
+        )
+        self.assertIn("<|tool>declaration:write_file", prompt)
+        self.assertIn("<|tool_response>response:write_file{ok:true}", prompt)
+        self.assertEqual(
+            parse_response(tokenizer, "Saved.<turn|>", prefix=prompt)["content"], "Saved."
+        )
+        with self.assertRaises(ValueError):
+            parse_response(tokenizer, "<|tool_call>call:write_file{path:", prefix="")
 
     def test_local_checkpoint_contents_change_identity(self):
         with tempfile.TemporaryDirectory() as root:
@@ -113,7 +135,15 @@ class GenerationTests(unittest.TestCase):
                 return str(messages)
 
             def decode(self, output, **kwargs):
-                return self.replies.pop(0)
+                self.current = self.replies.pop(0)
+                return "<|tool_call>" if isinstance(self.current, dict) else self.current
+
+            def parse_response(self, text, *, prefix):
+                return (
+                    self.current
+                    if isinstance(self.current, dict)
+                    else {"role": "assistant", "content": self.current}
+                )
 
         class Model(torch.nn.Module):
             device = torch.device("cpu")
@@ -130,16 +160,17 @@ class GenerationTests(unittest.TestCase):
 
     def test_tool_loop_writes_actual_file_and_restores_training_rng(self):
         self.tokenizer.replies = [
-            json.dumps(
-                {
-                    "tool_calls": [
-                        {
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "function": {
                             "name": "write_file",
                             "arguments": {"path": "draft.md", "content": "The rain stopped."},
                         }
-                    ]
-                }
-            ),
+                    }
+                ],
+            },
             "Saved.",
         ]
         before = self.torch.random.get_rng_state().clone()

@@ -15,7 +15,11 @@ class Completion:
 
 
 class Backend(Protocol):
-    def complete(self, messages: list[dict], tools: list[dict]) -> Completion: ...
+    """Completion clients may emit transport/model diagnostics before returning."""
+
+    def complete(
+        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
+    ) -> Completion: ...
 
 
 class ScriptedBackend:
@@ -24,7 +28,9 @@ class ScriptedBackend:
     def __init__(self, responses: list[dict]):
         self.responses = iter(copy.deepcopy(responses))
 
-    def complete(self, messages: list[dict], tools: list[dict]) -> Completion:
+    def complete(
+        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
+    ) -> Completion:
         try:
             return Completion(next(self.responses))
         except StopIteration as exc:
@@ -37,7 +43,9 @@ class ChatServerBackend:
     def __init__(self, config: dict):
         self.config = config
 
-    def complete(self, messages: list[dict], tools: list[dict]) -> Completion:
+    def complete(
+        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
+    ) -> Completion:
         payload = {
             "model": self.config["model"],
             "messages": messages,

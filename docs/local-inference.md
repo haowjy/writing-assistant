@@ -61,27 +61,37 @@ The harness owns tool execution. The model sees public instructions, permitted
 tool schemas, conversation history, and tool results. It never receives the
 private grading labels. Calls operate through the existing constrained workspace.
 
-The protocol is `writing-tools-v2`. Conversational replies are ordinary text.
-Only tool calls use a JSON object containing `tool_calls`; the backend converts
-those calls into the shared harness representation. The harness validates and
-executes them, then supplies their results for the next step. Conversation history
-retains plain-text assistant replies without JSON wrappers. Malformed tool-call
-objects fail explicitly; ordinary replies are accepted whether tools are enabled
-or disabled. Objects without the reserved `tool_calls` key are ordinary content.
+The current protocol is `gemma-native-v1`. Schemas are passed through the pinned
+Gemma chat template's `tools` argument. The template produces native declarations;
+we do not insert a custom JSON instruction. Generated text retains special tokens
+until the tokenizer's response parser separates tool calls, thinking, and content.
+The adapter assigns call IDs, while the shared harness validates and executes tools.
+Tool results are rendered as native tool responses on the associated assistant turn.
+Conversational replies remain ordinary text.
 
-The earlier `writing-json-v1` smoke results remain historical evidence. That
-protocol incorrectly required JSON for final replies; its failures are not results
-for the current protocol. Protocol identity changes prevent cache reuse across the
-two conditions.
+Every local generation records its rendered prompt and input token IDs before
+execution, then its raw output and generated token IDs before parsing. These events
+are in `trace.jsonl`; the pilot review links captured prompts when available. This
+makes input-format and parsing failures inspectable without reconstructing them.
+The tokenizer chat-template and response-template hashes are recorded with results.
 
-Instruction-tuned checkpoints use their tokenizer's chat template with thinking
-disabled. Base checkpoints use explicit role-labelled text. This is a declared
-prompting difference, not a claim that pretrained models have native chat ability.
-The tool JSON protocol is our prompted tool condition, not Gemma's native function-call
-format. Native function calling would need its own parser and separately labelled
-condition; do not pool its results with this condition. Base transcript models can
-also continue into another role instead of stopping, which is part of the observed
-protocol-following behavior. Token-limit exhaustion is an execution failure.
+Instruction-tuned checkpoints use their native chat template with thinking disabled.
+Base text-only conditions retain explicit role-labelled transcripts. Native tool
+execution requires a verified chat template: base transcript conditions reject tool
+use until a separate base-model formatting decision is implemented and verified.
+A generation token limit remains an execution failure; history is never silently
+truncated to make it fit.
+
+The earlier `writing-json-v1` and `writing-tools-v2` outputs remain historical
+artifacts. The five-case E2B pilot used v2, with schemas embedded as ordinary text.
+It has not been rerun under native formatting. New protocol identities prevent
+those outputs from being reused as native results.
+
+The native integration follows Google's
+[Gemma function-calling guide](https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4)
+and the checkpoint's pinned templates. The installed Transformers parser handles
+nested values and multiline strings; we do not use the guide's demonstration regex
+as a general file-content parser.
 
 ## Evaluation during future training
 
