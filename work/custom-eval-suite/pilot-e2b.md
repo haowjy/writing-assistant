@@ -28,3 +28,12 @@ Next: review the saved outputs and inputs, then investigate why tool availabilit
 was not acted on before expanding the experiment. The relevant software is
 [the pilot script](../../scripts/pilot_e2b.py); its default is inspection. The
 `review_results` function rebuilds the review from saved results without generation.
+
+Prompt inspection on 2026-09-13 found all five read/write tool schemas in the
+reconstructed F4-08 first prompt (689 tokens). The original review displayed only
+the pre-render conversation history, omitting backend-added tool instructions.
+Review pages now show trace-recorded schemas and explain that distinction. The
+[reconstructed first prompt](../../runs/pilot-e2b-it-2026-09-12/attempts/dc1827a2827f3e9341c53af6e668d8b418bbaf98869a0034202eb87e81a8f498/attempt-0001-6f1fc038/reconstructed-first-prompt.txt)
+is a reconstruction from saved inputs and the pinned tokenizer, not a prompt
+captured during execution. Native tool formatting and full prompt capture remain
+follow-up work. No model generation was needed for this inspection.

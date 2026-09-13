@@ -106,6 +106,18 @@ def review_results(scenarios, results, config):
             "",
             "[Result](result.json) · [Raw trace](trace.jsonl) · [Scorecard](scorecard.json)",
             "",
+            "## Tool context",
+            "",
+            "The trace records these available tools. The local backend appends their schemas",
+            "and tool-call instructions before applying the model chat template. The conversation",
+            "below is the harness history before that rendering, not the full model prompt.",
+            "",
+            _fenced(
+                json.dumps(
+                    next((e["tools"] for e in result.get("trace", []) if e["type"] == "input"), []),
+                    indent=2,
+                )
+            ),
             "## Conversation",
             "",
         ]

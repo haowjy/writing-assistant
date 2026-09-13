@@ -9,3 +9,5 @@
 - Keep conversational replies as ordinary text and encode only tool calls as JSON.
 - Run and preserve a five-case Gemma E2B-IT pilot, with per-case review pages,
   mechanical scores, and a versioned results summary.
+- Show trace-recorded tool schemas in pilot reviews and distinguish harness history
+  from the fully rendered model prompt.
