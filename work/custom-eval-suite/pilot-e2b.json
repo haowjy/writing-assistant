@@ -1,0 +1,134 @@
+{
+  "checkpoint_commit": "802df4a6652c54901b9504b4fe0c086af69d8613",
+  "model": {
+    "id": "google/gemma-4-E2B-it",
+    "revision": "3e22461f65e89153144f8adb70e3b8c2cc9845a7",
+    "variant": "it",
+    "kind": "transformers",
+    "protocol": "writing-tools-v2",
+    "prompt_format": "chat",
+    "loader": "causal_lm",
+    "device": "cuda:0",
+    "dtype": "bfloat16",
+    "attention": "sdpa",
+    "context_tokens": 8192,
+    "quantization": "nf4",
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "seed": 42,
+    "max_tokens": 2048,
+    "purpose": "user-authorized five-case development pilot",
+    "code_checkpoint": "802df4a6652c54901b9504b4fe0c086af69d8613"
+  },
+  "attempts": 5,
+  "model_responses": 7,
+  "tool_calls": 0,
+  "generation_loop_seconds": 70.35091097699478,
+  "astra_calls": 0,
+  "automatic_retries": 0,
+  "artifacts": "runs/pilot-e2b-it-2026-09-12/review.md",
+  "cases": [
+    {
+      "id": "F1-01",
+      "execution_status": "completed",
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "tool_calls": 0,
+      "changed_files": [],
+      "failed_checks": [
+        "word-budget"
+      ],
+      "usage": {
+        "prompt_tokens": 310,
+        "completion_tokens": 283
+      },
+      "seconds": 13.937935292953625
+    },
+    {
+      "id": "F2-06",
+      "execution_status": "completed",
+      "task_completion": {
+        "value": 0,
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null,
+        "denominator": 1
+      },
+      "tool_calls": 0,
+      "changed_files": [],
+      "failed_checks": [
+        "saved-scene"
+      ],
+      "usage": {
+        "prompt_tokens": 677,
+        "completion_tokens": 38
+      },
+      "seconds": 1.8011200230102986
+    },
+    {
+      "id": "F3-03",
+      "execution_status": "completed",
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "tool_calls": 0,
+      "changed_files": [],
+      "failed_checks": [],
+      "usage": {
+        "prompt_tokens": 305,
+        "completion_tokens": 541
+      },
+      "seconds": 24.61471453309059
+    },
+    {
+      "id": "F4-08",
+      "execution_status": "completed",
+      "task_completion": {
+        "value": 0,
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null,
+        "denominator": 1
+      },
+      "tool_calls": 0,
+      "changed_files": [],
+      "failed_checks": [
+        "wiki-index"
+      ],
+      "usage": {
+        "prompt_tokens": 2473,
+        "completion_tokens": 208
+      },
+      "seconds": 9.640108571853489
+    },
+    {
+      "id": "F5-05",
+      "execution_status": "completed",
+      "task_completion": {
+        "value": 0,
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null,
+        "denominator": 1
+      },
+      "tool_calls": 0,
+      "changed_files": [],
+      "failed_checks": [
+        "retrieve-state",
+        "retrieve-belief"
+      ],
+      "usage": {
+        "prompt_tokens": 724,
+        "completion_tokens": 439
+      },
+      "seconds": 20.35703255608678
+    }
+  ]
+}

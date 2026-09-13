@@ -9,6 +9,8 @@ no Gemma baseline results exist. See [delivery evidence](delivery.md).
 
 Task queues: [TODO — now](../TODO.md) and [FUTURE](../FUTURE.md).
 
+Latest run: [E2B-IT five-case pilot](pilot-e2b.md), with saved artifacts and observed failures.
+
 ## Read this work item
 
 - [Inference and checkpoint evaluation](../../docs/local-inference.md): direct Python runtime, harness protocol, and future training integration.
