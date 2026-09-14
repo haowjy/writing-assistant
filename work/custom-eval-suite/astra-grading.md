@@ -38,15 +38,15 @@ neither prevented grading.
 
 ## Artifacts and status
 
-The batch is running under `runs/custom50-e2b-it-2026-09-14/astra-graded/`:
+All 50 cases are graded and published under `runs/custom50-e2b-it-2026-09-14/astra-graded/`:
 
 - `status.json` and `review.md`: progress and per-case assessment links.
 - `<case>/scorecard.json` and `<case>/review.md`: combined metrics and readable evidence.
 - `judgments/<hash>/`: exact packet, custom instructions, launch arguments, CLI events,
   raw response, and validated judgment or failure.
 
-After all 50 judgments validate, `publish()` updates the original review entry
-points and scorecards. It preserves their prior versions as `*.pre-astra.*`.
+`publish()` updated the original review entry points and scorecards after all
+50 judgments validated. Their prior versions are preserved as `*.pre-astra.*`.
 Human review and grader calibration remain pending after this automatic pass.
 
 The instruction override and instruction-loading settings are documented in the
@@ -58,3 +58,31 @@ markers. Extraction version 2 distinguishes that missing delivery from ambiguous
 multiple spans. Publishing reapplies cached judgments to the corrected extraction
 metadata; it does not change prose text or request another judgment. The original
 scorecards remain archived for comparison.
+
+## Completed pass
+
+All 50 calls returned validated judgments. The audit records 50 unique session IDs,
+one custom-instruction hash, and zero tool calls. Source code was checkpointed at
+`176c200`; exact packets and launch arguments accompany each cached judgment.
+
+| Task family | Required task conditions passed | Failed | Prose ratings | Mean prose score /5 |
+|---|---:|---:|---:|---:|
+| Direct prose | 4/10 | 6 | 10 | 2.20 |
+| File authoring/revision | 6/10 | 4 | 6 | 2.00 |
+| Brainstorming/planning | 9/10 | 1 | Not prose | — |
+| KB construction | 4/10 | 6 | Not prose | — |
+| Writing from KB | 6/10 | 4 | 9 | 2.33 |
+
+Overall required-task completion is 29/50. No task-completion verdict remains
+pending. This binary result is not a prose-quality score: an optional style check
+can fail even when required task conditions pass.
+
+All requested semantic checks were scored. Remaining pending metric aggregates
+are Q10 for ten unexecuted fresh-reader probes and Q1 for five cases without valid
+delivered prose for word-count measurement. Those five tasks have failed completion;
+the absent measurements are not unfinished Astra calls. Prerequisite-dependent
+numerical metrics retain their previous unavailable/not-applicable statuses.
+
+`summary.json` records the family results, `isolation-audit.json` records session and
+token accounting, and `review.md` links every assessment. Human calibration remains
+unvalidated; these development fixtures and judgments are not a final benchmark.

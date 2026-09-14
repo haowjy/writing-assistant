@@ -16,3 +16,5 @@ retain the execution boundary in the [suite plan](custom-eval-suite/plan.md).
 - [ ] Prepare and run the primary external prose benchmark: [Creative Writing v3 scope and cost](creative-writing-v3/cost-plan.md). Approved: 32 outputs, first variant per prompt, $2 grading cap; queued after custom50. WritingBench remains deferred.
 
 - [ ] Complete the [automatic external checks](external-benchmarks/plan.md): IFEval and the 32-task HumanEval+ diagnostic are queued on E2B-IT. These follow the approved 32-output prose baseline.
+
+- [ ] Review the [completed Astra custom50 judgments](custom-eval-suite/astra-grading.md), especially ambiguous interpretations and optional checks. Human calibration remains unvalidated.

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Complete and publish all 50 custom-suite Astra judgments: 29 required-task passes,
+  21 failures, archived pre-grading views, and a 50-session isolation audit.
+
 - Distinguish missing required prose delimiters from ambiguous extraction, so
   missing file delivery fails completion instead of remaining pending.
 
