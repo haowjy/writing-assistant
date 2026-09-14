@@ -194,6 +194,7 @@ class GenerationTests(unittest.TestCase):
 
     def test_context_overflow_is_not_silently_truncated(self):
         backend = TransformersBackend(self.model, self.tokenizer, {**CONFIG, "context_tokens": 1})
+        self.assertTrue(backend.config["enable_thinking"])
         with self.assertRaisesRegex(ValueError, "Context budget"):
             backend.complete([{"role": "user", "content": "hello"}], [])
 

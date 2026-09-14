@@ -76,8 +76,8 @@ makes input-format and parsing failures inspectable without reconstructing them.
 The tokenizer chat-template and response-template hashes are recorded with results.
 
 Instruction-tuned research and pilot configurations enable thinking through the
-explicit `enable_thinking=True` model setting. Omitted settings retain the earlier
-non-thinking behavior. Thinking shares the `max_tokens` output budget with tool
+explicit `enable_thinking=True` model setting. Omitted settings also enable thinking for native chat. Thinking is the standard
+research condition; disable it only for an explicitly selected ablation. Thinking shares the `max_tokens` output budget with tool
 calls and final text; budget exhaustion remains an execution failure.
 The parser’s `thinking` field is saved separately from answer content and mapped
 to the template’s `reasoning` field for subsequent tool calls. Prose extraction

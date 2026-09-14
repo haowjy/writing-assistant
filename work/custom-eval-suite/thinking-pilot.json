@@ -1,0 +1,131 @@
+{
+  "code_checkpoint": "6d0490b",
+  "enable_thinking": true,
+  "attempts": 5,
+  "tool_calls": 7,
+  "generation_loop_seconds": 392.30001350981183,
+  "astra_calls": 0,
+  "automatic_retries": 0,
+  "cases": [
+    {
+      "id": "F5-05",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "thinking_messages": 3,
+      "changed_files": [
+        "drafts/scene.md"
+      ],
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "failed_checks": [
+        "retrieve-state",
+        "retrieve-belief",
+        "word-budget"
+      ],
+      "usage": {
+        "prompt_tokens": 3418,
+        "completion_tokens": 1465
+      },
+      "seconds": 68.55252792104147,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-thinking-2026-09-13/attempts/018b616c362a050e8323012126e6f81dc194e506b7080990f6852a70cff482b2/attempt-0001-ec0d092d/review.md"
+    },
+    {
+      "id": "F1-01",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "thinking_messages": 1,
+      "changed_files": [],
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "failed_checks": [],
+      "usage": {
+        "prompt_tokens": 312,
+        "completion_tokens": 753
+      },
+      "seconds": 35.59301611292176,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-thinking-2026-09-13/attempts/03cf24f35002b323f9255ae7373ec15aae24a1164e578a6704ba6f0030185071/attempt-0001-e9438bc1/review.md"
+    },
+    {
+      "id": "F3-03",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "thinking_messages": 1,
+      "changed_files": [],
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "failed_checks": [],
+      "usage": {
+        "prompt_tokens": 307,
+        "completion_tokens": 1259
+      },
+      "seconds": 59.26669595204294,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-thinking-2026-09-13/attempts/4f7d49ac4ee65efc297afa7b56023a62902ac9afa8a11378953276c4e4eb1ca8/attempt-0001-d19ef391/review.md"
+    },
+    {
+      "id": "F4-08",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 3,
+      "tool_errors": 0,
+      "thinking_messages": 6,
+      "changed_files": [
+        "kb/index.md"
+      ],
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "failed_checks": [],
+      "usage": {
+        "prompt_tokens": 9043,
+        "completion_tokens": 2508
+      },
+      "seconds": 133.31377265183255,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-thinking-2026-09-13/attempts/6b1ed06eac04d803023b1013f0ce30c119f9ac31ee5b84f5e0154838c201f7a0/attempt-0001-4306d0ad/review.md"
+    },
+    {
+      "id": "F2-06",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "thinking_messages": 3,
+      "changed_files": [
+        "drafts/scene.md"
+      ],
+      "task_completion": {
+        "value": null,
+        "status": "pending",
+        "method": "deterministic",
+        "reason": "Required checks or extraction pending"
+      },
+      "failed_checks": [],
+      "usage": {
+        "prompt_tokens": 3376,
+        "completion_tokens": 2061
+      },
+      "seconds": 95.57400087197311,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-thinking-2026-09-13/attempts/abc1fdc8af8efa16c274f2c1dc85f22b21ce2850d79953bc9dddd81e31738780/attempt-0001-cea736c9/review.md"
+    }
+  ]
+}

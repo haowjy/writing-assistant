@@ -17,3 +17,5 @@
   copying error separately from successful tool execution.
 - Enable thinking explicitly in Gemma IT experiment configurations, preserve it
   between native tool calls, and show it separately in pilot reviews.
+- Default native Gemma chat inference to thinking on; record the five-case
+  thinking rerun and a qualitative review of writing, grounding, and wiki accuracy.
