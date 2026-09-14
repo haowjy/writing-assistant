@@ -71,3 +71,5 @@ README changes are needed for this work plan.
 Latest numerical pass: [rescored thinking pilot](../../runs/pilot-e2b-it-thinking-2026-09-13/rescored/review.md).
 Gutenberg references are exploratory and unmatched. Single-task MMD lacks enough
 outputs; pooled MMD is diagnostic only. Markdown selectors remain unchanged.
+
+Both reference tracks are now calculated: [broad and task-selected results](reference-comparisons.md).

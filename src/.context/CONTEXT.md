@@ -135,3 +135,9 @@ hashes. Tasks without designated prose have explicit not-applicable profiles.
 A single draft cannot support unbiased MMD; aggregate comparisons must disclose
 reference selection and grouping. MPNet features use tokenizer overflow chunks
 (feature version 2); older cached features must not be pooled with them.
+
+`references.load_matched_references` validates frozen development reference texts
+and scenario-bound assignments. The pilot rescorer records broad and task-selected
+profiles separately; partial matches remain explicit. Both tracks share feature
+configuration and broad-reference bandwidth, without treating passages as repeated
+candidate generations.

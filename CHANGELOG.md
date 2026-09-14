@@ -22,3 +22,5 @@
 - Rescore saved pilot outputs with pinned token/embedding features, n-gram distance,
   source overlap, and exploratory pooled MMD; retain every metric status per task.
 - Fix MPNet feature chunking for the installed Transformers tokenizer API.
+- Complete broad and task-selected pilot comparisons with frozen source passages,
+  explicit match limitations, per-task tracks, and saved pooled diagnostics.

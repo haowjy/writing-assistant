@@ -6,15 +6,19 @@ from pathlib import Path
 
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.prose import ProseFeatures, bandwidth, prose_profile, score_prose
+from writing_agent.references import load_matched_references
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(source: Path, *, allow_download=False):
-    destination = source / "rescored"
+def run(source: Path, *, allow_download=False, matched_manifest: Path | None = None):
+    destination = source / ("rescored-dual" if matched_manifest else "rescored")
     selection = json.loads((source / "selection.json").read_text())
     scenarios = {s["id"]: s for s in selection["scenarios"]}
-    extractor = ProseFeatures(destination / "features")
+    matched = load_matched_references(matched_manifest, scenarios) if matched_manifest else None
+    if matched:
+        save_json(destination / "matched-reference-selection.json", matched)
+    extractor = ProseFeatures(source / "rescored" / "features")
     catalog = json.loads((ROOT / "data/processed/custom-eval/catalog.json").read_text())
     references = []
     for book in catalog:
@@ -50,6 +54,16 @@ def run(source: Path, *, allow_download=False):
     ]
     vectors = [r["embedding"] for r in refs if "embedding" in r]
     sigma = bandwidth(vectors) if len(vectors) == len(refs) and len(vectors) >= 2 else None
+    matched_features = (
+        {
+            r["id"]: extractor.extract(
+                r["text"], tokens=True, embeddings=True, allow_download=allow_download
+            )
+            for r in matched["references"]
+        }
+        if matched
+        else {}
+    )
     cards, texts, feats = [], [], []
     for path in sorted(source.glob("attempts/*/*/result.json")):
         result = json.loads(path.read_text())
@@ -64,6 +78,22 @@ def run(source: Path, *, allow_download=False):
             allow_download=allow_download,
         )
         card["prose_profile"]["reference_policy"] = "exploratory Gutenberg; not matched"
+        card["reference_tracks"] = {"broad": card["prose_profile"]}
+        if matched:
+            assignment = matched["assignments"][result["scenario_id"]]
+            profile = score_prose(
+                card,
+                scenarios[result["scenario_id"]],
+                result,
+                extractor,
+                references=[matched_features[key] for key in assignment["reference_ids"]],
+                sigma=sigma,
+                allow_download=allow_download,
+            )
+            profile["reference_selection"] = assignment
+            profile["reference_manifest_hash"] = fingerprint(matched)
+            profile["bandwidth_policy"] = "Same frozen broad-reference bandwidth for both tracks"
+            card["reference_tracks"]["matched"] = profile
         save_json(destination / (result["scenario_id"] + ".json"), card)
         cards.append(card)
         for artifact in card["artifacts"]:
@@ -94,6 +124,37 @@ def run(source: Path, *, allow_download=False):
             if len(value) > 250:
                 value = f"See [{card['scenario_id']}.json]({card['scenario_id']}.json)"
             lines.append(f"| {card['scenario_id']} | {key} | {m['status']} | {value} |")
+    if matched:
+        matched_pool = prose_profile(
+            texts, feats, references=list(matched_features.values()), sigma=sigma
+        )
+        matched_pool["limitation"] = (
+            "Pooled descriptive comparison across task-selected references; not stratified MMD. "
+            "References share authors/works; fantasy style match is partial."
+        )
+        matched_pool["reference_manifest_hash"] = fingerprint(matched)
+        save_json(destination / "pooled-matched-exploratory.json", matched_pool)
+        lines += [
+            "",
+            "## Both reference tracks",
+            "",
+            "Same pinned features and broad-reference RBF bandwidth in both tracks.",
+            "Task-selected references are exploratory; F5 style match is partial.",
+            "",
+            "| Case | Track | Unigram L2 | Bigram L2 | Trigram L2 | MMD² status |",
+            "|---|---|---|---|---|---|",
+        ]
+        for card in cards:
+            for track, profile in card["reference_tracks"].items():
+                d1, d2 = profile["metrics"]["D1"], profile["metrics"]["D2"]
+                values = d1["value"] or {str(i): d1["status"] for i in (1, 2, 3)}
+                row = " | ".join(str(values[str(i)]) for i in (1, 2, 3))
+                lines.append(f"| {card['scenario_id']} | {track} | {row} | {d2['status']} |")
+        lines += [
+            "",
+            "[Matched references and limitations](matched-reference-selection.json) · "
+            "[Pooled matched-reference diagnostic](pooled-matched-exploratory.json)",
+        ]
     lines += [
         "",
         "[Pooled exploratory metrics](pooled-exploratory.json) · "

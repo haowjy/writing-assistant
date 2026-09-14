@@ -1,0 +1,196 @@
+{
+  "F1-01": {
+    "broad": {
+      "D1": {
+        "value": {
+          "1": 0.10698686111230289,
+          "2": 0.07058225478299125,
+          "3": 0.0657028175494832
+        },
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null
+      },
+      "D2": {
+        "value": null,
+        "status": "insufficient_samples",
+        "method": "learned_representation",
+        "reason": "At least two independent outputs and references required",
+        "sigma": 1.126177412218949
+      }
+    },
+    "matched": {
+      "D1": {
+        "value": {
+          "1": 0.11698318524687346,
+          "2": 0.07326341728875582,
+          "3": 0.0689870502916876
+        },
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null
+      },
+      "D2": {
+        "value": null,
+        "status": "insufficient_samples",
+        "method": "learned_representation",
+        "reason": "At least two independent outputs and references required",
+        "sigma": 1.126177412218949
+      }
+    }
+  },
+  "F2-06": {
+    "broad": {
+      "D1": {
+        "value": {
+          "1": 0.09471751674005702,
+          "2": 0.062384254259441746,
+          "3": 0.05321390841840539
+        },
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null
+      },
+      "D2": {
+        "value": null,
+        "status": "insufficient_samples",
+        "method": "learned_representation",
+        "reason": "At least two independent outputs and references required",
+        "sigma": 1.126177412218949
+      }
+    },
+    "matched": {
+      "D1": {
+        "value": {
+          "1": 0.09059319870826438,
+          "2": 0.07775610278684622,
+          "3": 0.06626610895788745
+        },
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null
+      },
+      "D2": {
+        "value": null,
+        "status": "insufficient_samples",
+        "method": "learned_representation",
+        "reason": "At least two independent outputs and references required",
+        "sigma": 1.126177412218949
+      }
+    }
+  },
+  "F3-03": {
+    "broad": {
+      "D1": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      },
+      "D2": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      }
+    },
+    "matched": {
+      "D1": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      },
+      "D2": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      }
+    }
+  },
+  "F4-08": {
+    "broad": {
+      "D1": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      },
+      "D2": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      }
+    },
+    "matched": {
+      "D1": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      },
+      "D2": {
+        "value": null,
+        "status": "not_applicable",
+        "method": "deterministic",
+        "reason": "No designated prose in this task"
+      }
+    }
+  },
+  "F5-05": {
+    "broad": {
+      "D1": {
+        "value": {
+          "1": 0.10841598847925488,
+          "2": 0.06637656114369646,
+          "3": 0.06066338516405306
+        },
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null
+      },
+      "D2": {
+        "value": null,
+        "status": "insufficient_samples",
+        "method": "learned_representation",
+        "reason": "At least two independent outputs and references required",
+        "sigma": 1.126177412218949
+      }
+    },
+    "matched": {
+      "D1": {
+        "value": {
+          "1": 0.1026273092686412,
+          "2": 0.07288946786419097,
+          "3": 0.06721130071767355
+        },
+        "status": "ok",
+        "method": "deterministic",
+        "reason": null
+      },
+      "D2": {
+        "value": null,
+        "status": "insufficient_samples",
+        "method": "learned_representation",
+        "reason": "At least two independent outputs and references required",
+        "sigma": 1.126177412218949
+      }
+    }
+  },
+  "pooled-exploratory": {
+    "value": 0.11515182510583188,
+    "status": "ok",
+    "method": "learned_representation",
+    "reason": null,
+    "sigma": 1.126177412218949
+  },
+  "pooled-matched-exploratory": {
+    "value": 0.07576056302995005,
+    "status": "ok",
+    "method": "learned_representation",
+    "reason": null,
+    "sigma": 1.126177412218949
+  }
+}

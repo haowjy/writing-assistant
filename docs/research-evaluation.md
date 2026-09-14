@@ -120,3 +120,9 @@ references, and an exploratory pooled comparison. Pass `allow_download=True`
 explicitly if pinned metric weights are not cached. The pilot rescoring script
 uses unreviewed Gutenberg paragraphs; it does not claim genre/style matching.
 Semantic judgments remain pending unless the separate grading stage is run.
+
+For both broad and task-selected comparisons, pass
+`matched_manifest=Path("data/references/pilot-matched-v1.json")` to the pilot
+rescoring function. It writes `rescored-dual/` and records both tracks per task.
+See the [reference comparison report](../work/custom-eval-suite/reference-comparisons.md)
+for selection limits and reproducible settings.

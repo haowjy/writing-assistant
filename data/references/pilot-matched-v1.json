@@ -1,0 +1,283 @@
+{
+  "version": 1,
+  "selection_policy": "Assistant-selected passages after reviewing pilot; developmental and exploratory, not gold answers",
+  "independence": "Three passages per work are correlated; no uncertainty or significance estimates",
+  "sources": [
+    {
+      "id": "gutenberg-2814",
+      "title": "Dubliners — Eveline",
+      "author": "James Joyce",
+      "url": "https://www.gutenberg.org/ebooks/2814",
+      "raw_file": "data/raw/research/matched-references/2814.txt",
+      "normalized_text_hash": "d4675deb1773398d4212b49ca13b5feca8928a020d695fc86cfe031950f3d865",
+      "provenance": "human",
+      "role": "development",
+      "terms": "Project Gutenberg; public domain in USA; license retained in raw file"
+    },
+    {
+      "id": "gutenberg-844",
+      "title": "The Importance of Being Earnest",
+      "author": "Oscar Wilde",
+      "url": "https://www.gutenberg.org/ebooks/844",
+      "raw_file": "data/raw/research/matched-references/844.txt",
+      "normalized_text_hash": "ab4fbdce4974f52bb39b4a38989620641269e8e8101e48f6dd91d766a3a81400",
+      "provenance": "human",
+      "role": "development",
+      "terms": "Project Gutenberg; public domain in USA; license retained in raw file"
+    },
+    {
+      "id": "gutenberg-11",
+      "title": "Alice’s Adventures in Wonderland — trial",
+      "author": "Lewis Carroll",
+      "url": "https://www.gutenberg.org/ebooks/11",
+      "raw_file": "data/raw/research/gutenberg/11.txt",
+      "normalized_text_hash": "1975fed5006780385b25fb45ddb1ad7a418be9e9ef1bbd341f2f08ab3eae1c91",
+      "provenance": "human",
+      "role": "development",
+      "terms": "Project Gutenberg; public domain in USA; license retained in raw file"
+    }
+  ],
+  "assignments": {
+    "F1-01": {
+      "reference_ids": [
+        "matched-F1-01-1",
+        "matched-F1-01-2",
+        "matched-F1-01-3"
+      ],
+      "match_status": "selected",
+      "matched_dimensions": {
+        "genre": "literary fiction",
+        "style": "concrete detail and reflective close third person",
+        "format": "narrative prose",
+        "length": "160–350 word passages; same short-scene length band"
+      },
+      "limitations": [
+        "Historical register; reflective exposition rather than a staged two-person dispute"
+      ],
+      "visible_hash": "7ec63fc62c962cddfb3fa082d05e2af29ecacf61005fd270b9e0c99af281c624"
+    },
+    "F2-06": {
+      "reference_ids": [
+        "matched-F2-06-1",
+        "matched-F2-06-2",
+        "matched-F2-06-3"
+      ],
+      "match_status": "selected",
+      "matched_dimensions": {
+        "genre": "comedy",
+        "style": "social embarrassment and verbal comedy",
+        "format": "play dialogue with stage directions",
+        "length": "360–450 words; matched to the accepted script output"
+      },
+      "limitations": [
+        "Victorian social comedy, not a contemporary cinema",
+        "Format/length matched after observing output; exploratory, not a preregistered target"
+      ],
+      "visible_hash": "a182fb97c4812f002208ef4ea31f61d4eae3376b28fa53a43918be94c42890ef"
+    },
+    "F5-05": {
+      "reference_ids": [
+        "matched-F5-05-1",
+        "matched-F5-05-2",
+        "matched-F5-05-3"
+      ],
+      "match_status": "partial",
+      "matched_dimensions": {
+        "genre": "fantasy",
+        "style": "courtroom language; third-person focus on Alice",
+        "format": "narrative prose and dialogue",
+        "length": "160–350 words; same short-scene length band"
+      },
+      "limitations": [
+        "Comic and intrusive narrator; only a partial match to formal precise close-third prose",
+        "Reference length follows requested range, not the overlength candidate"
+      ],
+      "visible_hash": "b01cd050068148d1566dd921b3d11e253ff6286ec67bec1a435549997b9602de"
+    },
+    "F3-03": {
+      "reference_ids": [],
+      "match_status": "not_applicable",
+      "reason": "No designated prose; planning/KB outputs retain Q/R metrics without fictional-prose distance",
+      "visible_hash": "3b12f62f8ea2ce06842e2ea4977558907d7716449f980e24ca6b7c21d8d735b1"
+    },
+    "F4-08": {
+      "reference_ids": [],
+      "match_status": "not_applicable",
+      "reason": "No designated prose; planning/KB outputs retain Q/R metrics without fictional-prose distance",
+      "visible_hash": "ffe40aa54df82f5c44c8da275df3bce75643bddb493f9a9daa55947875289bc2"
+    }
+  },
+  "references": [
+    {
+      "id": "matched-F1-01-1",
+      "text": "She sat at the window watching the evening invade the avenue. Her head\nwas leaned against the window curtains and in her nostrils was the\nodour of dusty cretonne. She was tired.\n\nFew people passed. The man out of the last house passed on his way\nhome; she heard his footsteps clacking along the concrete pavement and\nafterwards crunching on the cinder path before the new red houses. One\ntime there used to be a field there in which they used to play every\nevening with other people’s children. Then a man from Belfast bought\nthe field and built houses in it—not like their little brown houses but\nbright brick houses with shining roofs. The children of the avenue used\nto play together in that field—the Devines, the Waters, the Dunns,\nlittle Keogh the cripple, she and her brothers and sisters. Ernest,\nhowever, never played: he was too grown up. Her father used often to\nhunt them in out of the field with his blackthorn stick; but usually\nlittle Keogh used to keep _nix_ and call out when he saw her father\ncoming. Still they seemed to have been rather happy then. Her father\nwas not so bad then; and besides, her mother was alive. That was a long\ntime ago; she and her brothers and sisters were all grown up; her\nmother was dead. Tizzie Dunn was dead, too, and the Waters had gone\nback to England. Everything changes. Now she was going to go away like\nthe others, to leave her home.",
+      "sha256": "3f2b565ebe35a43da99a03bddbb7bfb8956de85b0d6c8eba926db1ec7f07726e",
+      "parent_id": "gutenberg-2814",
+      "parent_hash": "d4675deb1773398d4212b49ca13b5feca8928a020d695fc86cfe031950f3d865",
+      "span": [
+        47044,
+        48431
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 254,
+      "url": "https://www.gutenberg.org/ebooks/2814",
+      "title": "Dubliners — Eveline",
+      "author": "James Joyce"
+    },
+    {
+      "id": "matched-F1-01-2",
+      "text": "Home! She looked round the room, reviewing all its familiar objects\nwhich she had dusted once a week for so many years, wondering where on\nearth all the dust came from. Perhaps she would never see again those\nfamiliar objects from which she had never dreamed of being divided. And\nyet during all those years she had never found out the name of the\npriest whose yellowing photograph hung on the wall above the broken\nharmonium beside the coloured print of the promises made to Blessed\nMargaret Mary Alacoque. He had been a school friend of her father.\nWhenever he showed the photograph to a visitor her father used to pass\nit with a casual word:\n\n“He is in Melbourne now.”\n\nShe had consented to go away, to leave her home. Was that wise? She\ntried to weigh each side of the question. In her home anyway she had\nshelter and food; she had those whom she had known all her life about\nher. Of course she had to work hard, both in the house and at business.\nWhat would they say of her in the Stores when they found out that she\nhad run away with a fellow? Say she was a fool, perhaps; and her place\nwould be filled up by advertisement. Miss Gavan would be glad. She had\nalways had an edge on her, especially whenever there were people\nlistening.",
+      "sha256": "c4fba87043c9f71a24cb82a5bac711fee47fe3673f36af89fcbff509168bb48a",
+      "parent_id": "gutenberg-2814",
+      "parent_hash": "d4675deb1773398d4212b49ca13b5feca8928a020d695fc86cfe031950f3d865",
+      "span": [
+        48433,
+        49672
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 233,
+      "url": "https://www.gutenberg.org/ebooks/2814",
+      "title": "Dubliners — Eveline",
+      "author": "James Joyce"
+    },
+    {
+      "id": "matched-F1-01-3",
+      "text": "She would not cry many tears at leaving the Stores.\n\nBut in her new home, in a distant unknown country, it would not be like\nthat. Then she would be married—she, Eveline. People would treat her\nwith respect then. She would not be treated as her mother had been.\nEven now, though she was over nineteen, she sometimes felt herself in\ndanger of her father’s violence. She knew it was that that had given\nher the palpitations. When they were growing up he had never gone for\nher like he used to go for Harry and Ernest, because she was a girl;\nbut latterly he had begun to threaten her and say what he would do to\nher only for her dead mother’s sake. And now she had nobody to protect\nher. Ernest was dead and Harry, who was in the church decorating\nbusiness, was nearly always down somewhere in the country. Besides, the\ninvariable squabble for money on Saturday nights had begun to weary her\nunspeakably. She always gave her entire wages—seven shillings—and Harry\nalways sent up what he could but the trouble was to get any money from\nher father. He said she used to squander the money, that she had no\nhead, that he wasn’t going to give her his hard-earned money to throw\nabout the streets, and much more, for he was usually fairly bad of a\nSaturday night. In the end he would give her the money and ask her had\nshe any intention of buying Sunday’s dinner. Then she had to rush out\nas quickly as she could and do her marketing, holding her black leather\npurse tightly in her hand as she elbowed her way through the crowds and\nreturning home late under her load of provisions. She had hard work to\nkeep the house together and to see that the two young children who had\nbeen left to her charge went to school regularly and got their meals\nregularly. It was hard work—a hard life—but now that she was about to\nleave it she did not find it a wholly undesirable life.",
+      "sha256": "73ae4fc809180484bfd4b79c9af46267acf0daab62912d75e5a9307e2e538729",
+      "parent_id": "gutenberg-2814",
+      "parent_hash": "d4675deb1773398d4212b49ca13b5feca8928a020d695fc86cfe031950f3d865",
+      "span": [
+        49763,
+        51624
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 350,
+      "url": "https://www.gutenberg.org/ebooks/2814",
+      "title": "Dubliners — Eveline",
+      "author": "James Joyce"
+    },
+    {
+      "id": "matched-F2-06-1",
+      "text": "ALGERNON.\nDid you hear what I was playing, Lane?\n\nLANE.\nI didn’t think it polite to listen, sir.\n\nALGERNON.\nI’m sorry for that, for your sake. I don’t play accurately—any one can\nplay accurately—but I play with wonderful expression. As far as the\npiano is concerned, sentiment is my forte. I keep science for Life.\n\nLANE.\nYes, sir.\n\nALGERNON.\nAnd, speaking of the science of Life, have you got the cucumber\nsandwiches cut for Lady Bracknell?\n\nLANE.\nYes, sir. [Hands them on a salver.]\n\nALGERNON.\n[Inspects them, takes two, and sits down on the sofa.] Oh! . . . by the\nway, Lane, I see from your book that on Thursday night, when Lord\nShoreman and Mr. Worthing were dining with me, eight bottles of\nchampagne are entered as having been consumed.\n\nLANE.\nYes, sir; eight bottles and a pint.\n\nALGERNON.\nWhy is it that at a bachelor’s establishment the servants invariably\ndrink the champagne? I ask merely for information.\n\nLANE.\nI attribute it to the superior quality of the wine, sir. I have often\nobserved that in married households the champagne is rarely of a\nfirst-rate brand.\n\nALGERNON.\nGood heavens! Is marriage so demoralising as that?\n\nLANE.\nI believe it _is_ a very pleasant state, sir. I have had very little\nexperience of it myself up to the present. I have only been married\nonce. That was in consequence of a misunderstanding between myself and\na young person.\n\nALGERNON.\n[Languidly_._] I don’t know that I am much interested in your family\nlife, Lane.\n\nLANE.\nNo, sir; it is not a very interesting subject. I never think of it\nmyself.\n\nALGERNON.\nVery natural, I am sure. That will do, Lane, thank you.\n\nLANE.\nThank you, sir. [Lane goes out.]\n\nALGERNON.\nLane’s views on marriage seem somewhat lax. Really, if the lower orders\ndon’t set us a good example, what on earth is the use of them? They\nseem, as a class, to have absolutely no sense of moral responsibility.\n\n[Enter Lane.]\n\nLANE.\nMr. Ernest Worthing.\n\n[Enter Jack.]\n\n[Lane goes out_._]\n\nALGERNON.\nHow are you, my dear Ernest? What brings you up to town?\n\nJACK.\nOh, pleasure, pleasure! What else should bring one anywhere? Eating as\nusual, I see, Algy!",
+      "sha256": "27183af6a4a2b53f6d2342c928ec33e8279c013fca25f0c26d336e558d971301",
+      "parent_id": "gutenberg-844",
+      "parent_hash": "ab4fbdce4974f52bb39b4a38989620641269e8e8101e48f6dd91d766a3a81400",
+      "span": [
+        2167,
+        4285
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 369,
+      "url": "https://www.gutenberg.org/ebooks/844",
+      "title": "The Importance of Being Earnest",
+      "author": "Oscar Wilde"
+    },
+    {
+      "id": "matched-F2-06-2",
+      "text": "ALGERNON.\n[Stiffly_._] I believe it is customary in good society to take some\nslight refreshment at five o’clock. Where have you been since last\nThursday?\n\nJACK.\n[Sitting down on the sofa.] In the country.\n\nALGERNON.\nWhat on earth do you do there?\n\nJACK.\n[Pulling off his gloves_._] When one is in town one amuses oneself.\nWhen one is in the country one amuses other people. It is excessively\nboring.\n\nALGERNON.\nAnd who are the people you amuse?\n\nJACK.\n[Airily_._] Oh, neighbours, neighbours.\n\nALGERNON.\nGot nice neighbours in your part of Shropshire?\n\nJACK.\nPerfectly horrid! Never speak to one of them.\n\nALGERNON.\nHow immensely you must amuse them! [Goes over and takes sandwich.] By\nthe way, Shropshire is your county, is it not?\n\nJACK.\nEh? Shropshire? Yes, of course. Hallo! Why all these cups? Why cucumber\nsandwiches? Why such reckless extravagance in one so young? Who is\ncoming to tea?\n\nALGERNON.\nOh! merely Aunt Augusta and Gwendolen.\n\nJACK.\nHow perfectly delightful!\n\nALGERNON.\nYes, that is all very well; but I am afraid Aunt Augusta won’t quite\napprove of your being here.\n\nJACK.\nMay I ask why?\n\nALGERNON.\nMy dear fellow, the way you flirt with Gwendolen is perfectly\ndisgraceful. It is almost as bad as the way Gwendolen flirts with you.\n\nJACK.\nI am in love with Gwendolen. I have come up to town expressly to\npropose to her.\n\nALGERNON.\nI thought you had come up for pleasure? . . . I call that business.\n\nJACK.\nHow utterly unromantic you are!\n\nALGERNON.\nI really don’t see anything romantic in proposing. It is very romantic\nto be in love. But there is nothing romantic about a definite proposal.\nWhy, one may be accepted. One usually is, I believe. Then the\nexcitement is all over. The very essence of romance is uncertainty. If\never I get married, I’ll certainly try to forget the fact.\n\nJACK.\nI have no doubt about that, dear Algy. The Divorce Court was specially\ninvented for people whose memories are so curiously constituted.\n\nALGERNON.\nOh! there is no use speculating on that subject. Divorces are made in\nHeaven—[Jack puts out his hand to take a sandwich. Algernon at once\ninterferes.] Please don’t touch the cucumber sandwiches. They are\nordered specially for Aunt Augusta. [Takes one and eats it.]",
+      "sha256": "813945076460f3c1dc724494cf8fd00df66c0b81c32cc0baac54b54470634e67",
+      "parent_id": "gutenberg-844",
+      "parent_hash": "ab4fbdce4974f52bb39b4a38989620641269e8e8101e48f6dd91d766a3a81400",
+      "span": [
+        4287,
+        6508
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 379,
+      "url": "https://www.gutenberg.org/ebooks/844",
+      "title": "The Importance of Being Earnest",
+      "author": "Oscar Wilde"
+    },
+    {
+      "id": "matched-F2-06-3",
+      "text": "JACK.\nWell, you have been eating them all the time.\n\nALGERNON.\nThat is quite a different matter. She is my aunt. [Takes plate from\nbelow.] Have some bread and butter. The bread and butter is for\nGwendolen. Gwendolen is devoted to bread and butter.\n\nJACK.\n[Advancing to table and helping himself.] And very good bread and\nbutter it is too.\n\nALGERNON.\nWell, my dear fellow, you need not eat as if you were going to eat it\nall. You behave as if you were married to her already. You are not\nmarried to her already, and I don’t think you ever will be.\n\nJACK.\nWhy on earth do you say that?\n\nALGERNON.\nWell, in the first place girls never marry the men they flirt with.\nGirls don’t think it right.\n\nJACK.\nOh, that is nonsense!\n\nALGERNON.\nIt isn’t. It is a great truth. It accounts for the extraordinary number\nof bachelors that one sees all over the place. In the second place, I\ndon’t give my consent.\n\nJACK.\nYour consent!\n\nALGERNON.\nMy dear fellow, Gwendolen is my first cousin. And before I allow you to\nmarry her, you will have to clear up the whole question of Cecily.\n[Rings bell.]\n\nJACK.\nCecily! What on earth do you mean? What do you mean, Algy, by Cecily! I\ndon’t know any one of the name of Cecily.\n\n[Enter Lane.]\n\nALGERNON.\nBring me that cigarette case Mr. Worthing left in the smoking-room the\nlast time he dined here.\n\nLANE.\nYes, sir. [Lane goes out.]\n\nJACK.\nDo you mean to say you have had my cigarette case all this time? I wish\nto goodness you had let me know. I have been writing frantic letters to\nScotland Yard about it. I was very nearly offering a large reward.\n\nALGERNON.\nWell, I wish you would offer one. I happen to be more than usually hard\nup.\n\nJACK.\nThere is no good offering a large reward now that the thing is found.\n\n[Enter Lane with the cigarette case on a salver. Algernon takes it at\nonce. Lane goes out.]\n\nALGERNON.\nI think that is rather mean of you, Ernest, I must say. [Opens case and\nexamines it.] However, it makes no matter, for, now that I look at the\ninscription inside, I find that the thing isn’t yours after all.",
+      "sha256": "eddb59f34c2cb5d139959f24107bb78504bc0a10580b46e47b8351a316c5e62c",
+      "parent_id": "gutenberg-844",
+      "parent_hash": "ab4fbdce4974f52bb39b4a38989620641269e8e8101e48f6dd91d766a3a81400",
+      "span": [
+        6510,
+        8561
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 384,
+      "url": "https://www.gutenberg.org/ebooks/844",
+      "title": "The Importance of Being Earnest",
+      "author": "Oscar Wilde"
+    },
+    {
+      "id": "matched-F5-05-1",
+      "text": "The King and Queen of Hearts were seated on their throne when they\narrived, with a great crowd assembled about them—all sorts of little\nbirds and beasts, as well as the whole pack of cards: the Knave was\nstanding before them, in chains, with a soldier on each side to guard\nhim; and near the King was the White Rabbit, with a trumpet in one\nhand, and a scroll of parchment in the other. In the very middle of the\ncourt was a table, with a large dish of tarts upon it: they looked so\ngood, that it made Alice quite hungry to look at them—“I wish they’d\nget the trial done,” she thought, “and hand round the refreshments!”\nBut there seemed to be no chance of this, so she began looking at\neverything about her, to pass away the time.\n\nAlice had never been in a court of justice before, but she had read\nabout them in books, and she was quite pleased to find that she knew\nthe name of nearly everything there. “That’s the judge,” she said to\nherself, “because of his great wig.”",
+      "sha256": "70232fa760551fc9f7d85964a196c3a9890172c9f5a8a64200b6dc17c7de3ab3",
+      "parent_id": "gutenberg-11",
+      "parent_hash": "1975fed5006780385b25fb45ddb1ad7a418be9e9ef1bbd341f2f08ab3eae1c91",
+      "span": [
+        122588,
+        123563
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 187,
+      "url": "https://www.gutenberg.org/ebooks/11",
+      "title": "Alice’s Adventures in Wonderland — trial",
+      "author": "Lewis Carroll"
+    },
+    {
+      "id": "matched-F5-05-2",
+      "text": "The judge, by the way, was the King; and as he wore his crown over the\nwig, (look at the frontispiece if you want to see how he did it,) he\ndid not look at all comfortable, and it was certainly not becoming.\n\n“And that’s the jury-box,” thought Alice, “and those twelve creatures,”\n(she was obliged to say “creatures,” you see, because some of them were\nanimals, and some were birds,) “I suppose they are the jurors.” She\nsaid this last word two or three times over to herself, being rather\nproud of it: for she thought, and rightly too, that very few little\ngirls of her age knew the meaning of it at all. However, “jury-men”\nwould have done just as well.\n\nThe twelve jurors were all writing very busily on slates. “What are\nthey doing?” Alice whispered to the Gryphon. “They can’t have anything\nto put down yet, before the trial’s begun.”\n\n“They’re putting down their names,” the Gryphon whispered in reply,\n“for fear they should forget them before the end of the trial.”",
+      "sha256": "c539d269dcabe9a5eb52647fe4c4abeacacc1d4abf10a430e000dba96d82471f",
+      "parent_id": "gutenberg-11",
+      "parent_hash": "1975fed5006780385b25fb45ddb1ad7a418be9e9ef1bbd341f2f08ab3eae1c91",
+      "span": [
+        123565,
+        124537
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 176,
+      "url": "https://www.gutenberg.org/ebooks/11",
+      "title": "Alice’s Adventures in Wonderland — trial",
+      "author": "Lewis Carroll"
+    },
+    {
+      "id": "matched-F5-05-3",
+      "text": "“Stupid things!” Alice began in a loud, indignant voice, but she\nstopped hastily, for the White Rabbit cried out, “Silence in the\ncourt!” and the King put on his spectacles and looked anxiously round,\nto make out who was talking.\n\nAlice could see, as well as if she were looking over their shoulders,\nthat all the jurors were writing down “stupid things!” on their slates,\nand she could even make out that one of them didn’t know how to spell\n“stupid,” and that he had to ask his neighbour to tell him. “A nice\nmuddle their slates’ll be in before the trial’s over!” thought Alice.\n\nOne of the jurors had a pencil that squeaked. This of course, Alice\ncould _not_ stand, and she went round the court and got behind him, and\nvery soon found an opportunity of taking it away. She did it so quickly\nthat the poor little juror (it was Bill, the Lizard) could not make out\nat all what had become of it; so, after hunting all about for it, he\nwas obliged to write with one finger for the rest of the day; and this\nwas of very little use, as it left no mark on the slate.",
+      "sha256": "610eff43f4bc7daf302aee3846b1229170ebdb196009a4d5f8c5f9a399738c4b",
+      "parent_id": "gutenberg-11",
+      "parent_hash": "1975fed5006780385b25fb45ddb1ad7a418be9e9ef1bbd341f2f08ab3eae1c91",
+      "span": [
+        124539,
+        125601
+      ],
+      "provenance": "human",
+      "role": "development",
+      "review_status": "assistant_reviewed",
+      "human_acceptance": "pending",
+      "word_count": 203,
+      "url": "https://www.gutenberg.org/ebooks/11",
+      "title": "Alice’s Adventures in Wonderland — trial",
+      "author": "Lewis Carroll"
+    }
+  ]
+}
