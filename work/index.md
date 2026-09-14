@@ -9,3 +9,5 @@ Maintain task status in TODO and FUTURE. Keep designs, inventories, and verifica
 evidence in their work-item directories, linked from the task lists. Move an item
 between lists when its priority changes; remove completed tasks once their outcome
 is recorded in the relevant work item.
+
+- [Creative Writing v3](creative-writing-v3/cost-plan.md): primary external prose benchmark, first-run scope and Anthropic cost estimate.

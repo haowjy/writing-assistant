@@ -104,7 +104,7 @@
     "embedding_model": "sentence-transformers/all-mpnet-base-v2",
     "embedding_revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
     "chunk_tokens": 256,
-    "version": 1
+    "version": 2
   },
   "variability": {
     "scenario_ids": [

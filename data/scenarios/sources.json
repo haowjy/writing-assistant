@@ -99,13 +99,13 @@
     "id": "world-tidal_archive-historical_fiction",
     "work_id": "world-tidal_archive",
     "role": "development",
-    "text": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
-    "sha256": "3095b24379b272b5110d969a350798717ac9a01cde75420e3b363649e2c814a5",
+    "text": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+    "sha256": "292c2cec827c9e55938b25faee048df5e900c5ed93d220b752c322d6a021f21f",
     "provenance": "synthetic",
     "parents": [
       "world-tidal_archive"
     ],
-    "revision": "6183c172aea897d3b7b32dd534cf5ea049604e39ad839fea8c1bc35e1a61fc6f",
+    "revision": "1e82f291d68f7b34e8a40f9270814053fdf3773b2ece6f2759636f328c74f486",
     "generator": "Codex authored development fixture",
     "terms": {
       "origin": "project-generated",
@@ -369,13 +369,13 @@
     "id": "world-night_ferry-historical_fiction",
     "work_id": "world-night_ferry",
     "role": "development",
-    "text": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
-    "sha256": "88ddcf56260a00b34789e1a837453ed869f6543c55ec900cff07f96c857c0822",
+    "text": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.",
+    "sha256": "337b878bb1de8fa16d57195be93139242d23e3f9d583c8aacdc8d1f58fab9ffb",
     "provenance": "synthetic",
     "parents": [
       "world-night_ferry"
     ],
-    "revision": "8e959cdf6ae5fdc55a56caea75cd327a28cb6d38bb1dec47fe13595bf1a2e8a3",
+    "revision": "f0d081c647caba5e7de0bc52a57ec7ca3cd430862d9844b3d181a0ed580c1e31",
     "generator": "Codex authored development fixture",
     "terms": {
       "origin": "project-generated",
@@ -639,13 +639,13 @@
     "id": "world-copper_trial-historical_fiction",
     "work_id": "world-copper_trial",
     "role": "development",
-    "text": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
-    "sha256": "002243a2ee168482c167648d55e20eb0995aa04c4b09f42210fd82df5c286e08",
+    "text": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+    "sha256": "14534cdd79c2a37fff5d7e73547bfcbafbd8e0f9a0241e61b4eaf06f3700ec84",
     "provenance": "synthetic",
     "parents": [
       "world-copper_trial"
     ],
-    "revision": "af4d67388983181d1a8dd15db14669a44fc69cc84f0709b59d0e4c49de5c604f",
+    "revision": "ea87bdad0538e3ad87c64d4dcefac6ac1b70286c0ab36b64e90b656f0b13ab90",
     "generator": "Codex authored development fixture",
     "terms": {
       "origin": "project-generated",
@@ -909,13 +909,13 @@
     "id": "world-salt_garden-historical_fiction",
     "work_id": "world-salt_garden",
     "role": "development",
-    "text": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
-    "sha256": "a6f831115362463a8d6ddc6e854a7219de72e8a91e432fe1c8b0e7ae42c428ca",
+    "text": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.",
+    "sha256": "f9216dc55ba7ad04c0bc966bb88d51a10579cb246fe781cea348c97268f63f4e",
     "provenance": "synthetic",
     "parents": [
       "world-salt_garden"
     ],
-    "revision": "d69c216e4b4f03d9b689a4cb4597d443b9d1a1dc96da11035462675dcc47bc7c",
+    "revision": "de9c61adc98ecfbdfc6fd9b1feb01d553c6a1d3c523e75c5db11abe172167fc2",
     "generator": "Codex authored development fixture",
     "terms": {
       "origin": "project-generated",
@@ -1309,13 +1309,13 @@
     "id": "world-hollow_clock-historical_fiction",
     "work_id": "world-hollow_clock",
     "role": "development",
-    "text": "The year is 1936. News reaches a clockmaker's workshop through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Pia and Ren are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
-    "sha256": "be7927cb285bed49b6da93899edec0fe3b57e9c14d0d9ee953ba2efdc0720154",
+    "text": "The year is 1936. News reaches a clockmaker's workshop through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Pia and Ren are working with the supplies already on hand.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.",
+    "sha256": "e3980ed8a65f9158650e0c4f3c989bd320b3732338015019d84685cdb0018d4e",
     "provenance": "synthetic",
     "parents": [
       "world-hollow_clock"
     ],
-    "revision": "d869613b77022e2c64b763a547c182d216545f6a38735443f3c9d7739cff062e",
+    "revision": "5be06cd77bc02831652fc055e9feb8aa1cea033ba8ef5eaf15f5f4c3095d78bc",
     "generator": "Codex authored development fixture",
     "terms": {
       "origin": "project-generated",

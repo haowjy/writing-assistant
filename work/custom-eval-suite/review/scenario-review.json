@@ -928,7 +928,7 @@
     "visible": {
       "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a historical fiction story.",
       "initial_files": {
-        "source/chapter.md": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+        "source/chapter.md": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
       },
       "followups": [],
       "tools": [
@@ -1034,7 +1034,7 @@
           "statement": "Only the retired keeper has the upper-room key.",
           "importance": "required",
           "weight": 3,
-          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
           "after_update": null
         },
         {
@@ -1042,7 +1042,7 @@
           "statement": "Mara suspects Ilan sold the ledger; this is an unproven accusation.",
           "importance": "required",
           "weight": 3,
-          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
           "placement": "Any findable page; keep attribution and uncertainty."
         },
         {
@@ -1050,14 +1050,14 @@
           "statement": "Ilan repairs the flooded shelves.",
           "importance": "optional",
           "weight": 1,
-          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
         },
         {
           "id": "incidental",
           "statement": "The scarf is red.",
           "importance": "incidental",
           "weight": 0,
-          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+          "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
           "omission": "allowed"
         }
       ],
@@ -1411,6 +1411,172 @@
         },
         "source_ids": [
           "world-tidal_archive-science_fiction"
+        ],
+        "review_status": "pending",
+        "reviewer": null,
+        "label_corrections": [],
+        "comments": ""
+      },
+      {
+        "scenario_id": "F4-01",
+        "family": "F4",
+        "instruction_specificity": "explicit",
+        "genre": "historical_fiction",
+        "visible": {
+          "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a historical fiction story.",
+          "initial_files": {
+            "source/chapter.md": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+          },
+          "followups": [],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "search",
+            "write_file",
+            "patch_file"
+          ],
+          "budgets": {
+            "max_steps": 12,
+            "max_tool_calls": 24,
+            "max_read_tokens": 4000,
+            "max_total_bytes": 24000
+          },
+          "prose": []
+        },
+        "labels": {
+          "rubric_version": 1,
+          "checks": [
+            {
+              "id": "wiki-words",
+              "metric": "Q1",
+              "kind": "kb_word_budget",
+              "method": "deterministic",
+              "required": false,
+              "max": 500
+            },
+            {
+              "id": "wiki-links",
+              "metric": "Q1",
+              "kind": "wiki_links",
+              "method": "deterministic",
+              "required": true
+            },
+            {
+              "id": "wiki-index",
+              "metric": "Q3",
+              "kind": "nonempty",
+              "method": "deterministic",
+              "required": true,
+              "path": "kb/index.md"
+            },
+            {
+              "id": "wiki-only",
+              "metric": "Q1",
+              "kind": "allowed_changes",
+              "method": "deterministic",
+              "required": true,
+              "paths": [
+                "kb/*.md"
+              ]
+            },
+            {
+              "id": "consequential-state",
+              "metric": "Q8",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": true,
+              "weight": 3,
+              "text": "Only the retired keeper has the upper-room key."
+            },
+            {
+              "id": "qualified-belief",
+              "metric": "Q8",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": true,
+              "weight": 3,
+              "text": "Mara suspects Ilan sold the ledger; this is an unproven accusation."
+            },
+            {
+              "id": "optional-context",
+              "metric": "Q8",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": false,
+              "weight": 1,
+              "text": "Ilan repairs the flooded shelves."
+            }
+          ],
+          "rubrics": {
+            "Q7": {
+              "description": "Identify factual KB claims and count source-supported claims / checked claims. Distinguish uncertainty and qualified interpretation; an empty KB cannot pass.",
+              "range": [
+                0,
+                1
+              ],
+              "anchors": "0: none satisfied; 1: all satisfied. State numerator and denominator."
+            },
+            "Q9": {
+              "description": "Assess evidence, entity and temporal understanding, selection for the stated purpose, and uncertainty. Accept defensible alternative interpretations and placement.",
+              "range": [
+                1,
+                5
+              ],
+              "anchors": "1: fails the brief; 2: substantial weaknesses; 3: usable with revision; 4: effective with minor weaknesses; 5: consistently effective. Cite concrete evidence."
+            }
+          },
+          "knowledge": [
+            {
+              "id": "essential",
+              "statement": "Only the retired keeper has the upper-room key.",
+              "importance": "required",
+              "weight": 3,
+              "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+              "after_update": null
+            },
+            {
+              "id": "belief",
+              "statement": "Mara suspects Ilan sold the ledger; this is an unproven accusation.",
+              "importance": "required",
+              "weight": 3,
+              "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+              "placement": "Any findable page; keep attribution and uncertainty."
+            },
+            {
+              "id": "context",
+              "statement": "Ilan repairs the flooded shelves.",
+              "importance": "optional",
+              "weight": 1,
+              "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+            },
+            {
+              "id": "incidental",
+              "statement": "The scarf is red.",
+              "importance": "incidental",
+              "weight": 0,
+              "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+              "omission": "allowed"
+            }
+          ],
+          "source_cutoff": "supplied passage only",
+          "entrypoints": [
+            "kb/index.md"
+          ],
+          "probes": [
+            {
+              "id": "state",
+              "question": "What practical restriction or permission governs the next action? Answer with supporting page paths.",
+              "expected": "Only the retired keeper has the upper-room key."
+            },
+            {
+              "id": "belief",
+              "question": "Which central belief is still uncertain? Name its owner and supporting page paths.",
+              "expected": "Mara suspects Ilan sold the ledger; this is an unproven accusation."
+            }
+          ]
+        },
+        "source_ids": [
+          "world-tidal_archive-historical_fiction"
         ],
         "review_status": "pending",
         "reviewer": null,
@@ -4397,7 +4563,7 @@
     "instruction_specificity": "explicit",
     "genre": "historical_fiction",
     "visible": {
-      "brief": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a historical fiction story.",
+      "brief": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a historical fiction story.",
       "initial_files": {},
       "followups": [],
       "tools": [],
@@ -4561,6 +4727,65 @@
         },
         "source_ids": [
           "world-night_ferry-romance"
+        ],
+        "review_status": "pending",
+        "reviewer": null,
+        "label_corrections": [],
+        "comments": ""
+      },
+      {
+        "scenario_id": "F3-03",
+        "family": "F3",
+        "instruction_specificity": "explicit",
+        "genre": "historical_fiction",
+        "visible": {
+          "brief": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a historical fiction story.",
+          "initial_files": {},
+          "followups": [],
+          "tools": [],
+          "budgets": {
+            "max_steps": 12,
+            "max_tool_calls": 24,
+            "max_read_tokens": 4000,
+            "max_total_bytes": 24000
+          },
+          "prose": []
+        },
+        "labels": {
+          "rubric_version": 1,
+          "checks": [
+            {
+              "id": "three-directions",
+              "metric": "Q1",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": true,
+              "text": "Exactly three developed viable directions."
+            }
+          ],
+          "rubrics": {
+            "Q5": {
+              "description": "Assess usefulness, feasibility within canon, and actionable development; honor the latest feedback.",
+              "range": [
+                1,
+                5
+              ],
+              "anchors": "1: fails the brief; 2: substantial weaknesses; 3: usable with revision; 4: effective with minor weaknesses; 5: consistently effective. Cite concrete evidence."
+            },
+            "Q6": {
+              "description": "Among all three requested pairs, count pairs whose two alternatives are viable and meaningfully different in dramatic choice or consequence. Missing alternatives earn no diverse pairs. Return diverse viable pairs / 3.",
+              "range": [
+                0,
+                1
+              ],
+              "anchors": "0: none satisfied; 1: all satisfied. State numerator and denominator."
+            }
+          },
+          "knowledge": [],
+          "source_cutoff": "supplied passage only"
+        },
+        "source_ids": [
+          "world-night_ferry-historical_fiction"
         ],
         "review_status": "pending",
         "reviewer": null,
@@ -7563,7 +7788,7 @@
     "visible": {
       "brief": "Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120–220 words in formal, precise prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Dara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.\n\nThis is for a historical fiction story.",
       "initial_files": {
-        "notes/source.md": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+        "notes/source.md": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
         "drafts/scene.md": "Dara set down her pen.\nThe judge called for silence.\n"
       },
       "followups": [],
@@ -8042,6 +8267,136 @@
         },
         "source_ids": [
           "world-copper_trial-horror"
+        ],
+        "review_status": "pending",
+        "reviewer": null,
+        "label_corrections": [],
+        "comments": ""
+      },
+      {
+        "scenario_id": "F2-05",
+        "family": "F2",
+        "instruction_specificity": "explicit",
+        "genre": "historical_fiction",
+        "visible": {
+          "brief": "Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120–220 words in formal, precise prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Dara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.\n\nThis is for a historical fiction story.",
+          "initial_files": {
+            "notes/source.md": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.",
+            "drafts/scene.md": "Dara set down her pen.\nThe judge called for silence.\n"
+          },
+          "followups": [],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "search",
+            "write_file",
+            "patch_file"
+          ],
+          "budgets": {
+            "max_steps": 12,
+            "max_tool_calls": 24,
+            "max_read_tokens": 4000,
+            "max_total_bytes": 24000
+          },
+          "prose": [
+            {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md",
+              "selection": "delimited",
+              "start": "<prose>",
+              "end": "</prose>"
+            }
+          ]
+        },
+        "labels": {
+          "rubric_version": 1,
+          "checks": [
+            {
+              "id": "preserve-ending",
+              "metric": "Q1",
+              "kind": "protected",
+              "method": "deterministic",
+              "required": true,
+              "path": "drafts/scene.md",
+              "text": "The judge called for silence."
+            },
+            {
+              "id": "saved-scene",
+              "metric": "Q3",
+              "kind": "nonempty",
+              "method": "deterministic",
+              "required": true,
+              "path": "drafts/scene.md"
+            },
+            {
+              "id": "edit-scope",
+              "metric": "Q1",
+              "kind": "allowed_changes",
+              "method": "deterministic",
+              "required": true,
+              "paths": [
+                "drafts/scene.md"
+              ]
+            },
+            {
+              "id": "word-budget",
+              "metric": "Q1",
+              "kind": "word_range",
+              "method": "deterministic",
+              "required": false,
+              "artifact": "scene",
+              "min": 120,
+              "max": 220
+            },
+            {
+              "id": "continuity",
+              "metric": "Q13",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": true,
+              "text": "Preserve The original seal remains in a locked evidence chest. Keep Sen alleges copying; the expert has seen only a drawing. Do not assert: The court finds the seal counterfeit."
+            },
+            {
+              "id": "pov-style",
+              "metric": "Q1",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": false,
+              "text": "Close third person on Dara; formal, precise prose."
+            },
+            {
+              "id": "genre-fit",
+              "metric": "Q1",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": false,
+              "text": "Fit the requested historical fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them."
+            }
+          ],
+          "rubrics": {
+            "Q2": {
+              "description": "Rate selected prose holistically for coherence, characterization, pacing, language, and unnecessary explanation. Discuss applicable dialogue, imagery, subtext and style. Do not penalize an allowed alternative plot for differing from a reference.",
+              "range": [
+                1,
+                5
+              ],
+              "anchors": "1: fails the brief; 2: substantial weaknesses; 3: usable with revision; 4: effective with minor weaknesses; 5: consistently effective. Cite concrete evidence.",
+              "dimensions": [
+                "coherence",
+                "characterization",
+                "pacing",
+                "language",
+                "redundancy",
+                "style_adherence"
+              ]
+            }
+          },
+          "knowledge": [],
+          "source_cutoff": "supplied passage only"
+        },
+        "source_ids": [
+          "world-copper_trial-historical_fiction"
         ],
         "review_status": "pending",
         "reviewer": null,
@@ -11261,7 +11616,7 @@
     "instruction_specificity": "loose",
     "genre": "historical_fiction",
     "visible": {
-      "brief": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a historical fiction story.",
+      "brief": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a historical fiction story.",
       "initial_files": {},
       "followups": [],
       "tools": [],
@@ -11540,6 +11895,79 @@
         },
         "source_ids": [
           "world-salt_garden"
+        ],
+        "review_status": "pending",
+        "reviewer": null,
+        "label_corrections": [],
+        "comments": ""
+      },
+      {
+        "scenario_id": "F1-07",
+        "family": "F1",
+        "instruction_specificity": "loose",
+        "genre": "historical_fiction",
+        "visible": {
+          "brief": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a historical fiction story.",
+          "initial_files": {},
+          "followups": [],
+          "tools": [],
+          "budgets": {
+            "max_steps": 12,
+            "max_tool_calls": 24,
+            "max_read_tokens": 4000,
+            "max_total_bytes": 24000
+          },
+          "prose": [
+            {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "whole"
+            }
+          ]
+        },
+        "labels": {
+          "rubric_version": 2,
+          "checks": [
+            {
+              "id": "continuity",
+              "metric": "Q13",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": true,
+              "text": "Respect the supplied starting facts and distinguish character beliefs from established knowledge. Accept plausible new events, revelations, dialogue, viewpoint, and endings; no particular continuation is required."
+            },
+            {
+              "id": "genre-fit",
+              "metric": "Q1",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": false,
+              "text": "Fit the requested historical fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them."
+            }
+          ],
+          "rubrics": {
+            "Q2": {
+              "description": "Rate selected prose holistically for coherence, characterization, pacing, language, and unnecessary explanation. Discuss applicable dialogue, imagery, subtext and style. Do not penalize an allowed alternative plot for differing from a reference. The request leaves creative choices open. Do not invent unstated requirements for length, viewpoint, style, structure, ending, or number of ideas.",
+              "range": [
+                1,
+                5
+              ],
+              "anchors": "1: fails the brief; 2: substantial weaknesses; 3: usable with revision; 4: effective with minor weaknesses; 5: consistently effective. Cite concrete evidence.",
+              "dimensions": [
+                "coherence",
+                "characterization",
+                "pacing",
+                "language",
+                "redundancy",
+                "style_adherence"
+              ]
+            }
+          },
+          "knowledge": [],
+          "source_cutoff": "supplied passage only"
+        },
+        "source_ids": [
+          "world-salt_garden-historical_fiction"
         ],
         "review_status": "pending",
         "reviewer": null,
@@ -17145,7 +17573,7 @@
         "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
         "kb/canon.md": "# canon\n\nA collector holds the square key needed to open the watch.\n\nPia agreed to record stopping times before drawing conclusions.",
         "kb/interpretations.md": "# interpretations\n\nPia suspects a trick; neither mechanism nor intent is established.",
-        "kb/story-context.md": "# story-context\n\nThe year is 1936. News reaches a clockmaker's workshop through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Pia and Ren are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world."
+        "kb/story-context.md": "# story-context\n\nThe year is 1936. News reaches a clockmaker's workshop through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Pia and Ren are working with the supplies already on hand."
       },
       "followups": [],
       "tools": [
@@ -17674,6 +18102,116 @@
         },
         "source_ids": [
           "world-hollow_clock-fantasy"
+        ],
+        "review_status": "pending",
+        "reviewer": null,
+        "label_corrections": [],
+        "comments": ""
+      },
+      {
+        "scenario_id": "F5-09",
+        "family": "F5",
+        "instruction_specificity": "loose",
+        "genre": "historical_fiction",
+        "visible": {
+          "brief": "Could you write a scene using the notes in kb/? Save it in drafts/scene.md. Keep the notes as they are for now.\n\nThis is for a historical fiction story.",
+          "initial_files": {
+            "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+            "kb/canon.md": "# canon\n\nA collector holds the square key needed to open the watch.\n\nPia agreed to record stopping times before drawing conclusions.",
+            "kb/interpretations.md": "# interpretations\n\nPia suspects a trick; neither mechanism nor intent is established.",
+            "kb/story-context.md": "# story-context\n\nThe year is 1936. News reaches a clockmaker's workshop through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Pia and Ren are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world."
+          },
+          "followups": [],
+          "tools": [
+            "list_dir",
+            "read_file",
+            "search",
+            "write_file",
+            "patch_file"
+          ],
+          "budgets": {
+            "max_steps": 12,
+            "max_tool_calls": 24,
+            "max_read_tokens": 4000,
+            "max_total_bytes": 24000
+          },
+          "prose": [
+            {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            }
+          ]
+        },
+        "labels": {
+          "rubric_version": 2,
+          "checks": [
+            {
+              "id": "retrieve-state",
+              "metric": "Q12",
+              "kind": "evidence_exposed",
+              "method": "deterministic",
+              "required": false,
+              "text": "A collector holds the square key needed to open the watch."
+            },
+            {
+              "id": "retrieve-belief",
+              "metric": "Q12",
+              "kind": "evidence_exposed",
+              "method": "deterministic",
+              "required": false,
+              "text": "Pia suspects a trick; neither mechanism nor intent is established."
+            },
+            {
+              "id": "preserve-kb",
+              "metric": "Q1",
+              "kind": "allowed_changes",
+              "method": "deterministic",
+              "required": true,
+              "paths": [
+                "drafts/scene.md"
+              ]
+            },
+            {
+              "id": "continuity",
+              "metric": "Q13",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": true,
+              "text": "Respect the supplied starting facts and distinguish character beliefs from established knowledge. Accept plausible new events, revelations, dialogue, viewpoint, and endings; no particular continuation is required."
+            },
+            {
+              "id": "genre-fit",
+              "metric": "Q1",
+              "kind": "semantic",
+              "method": "llm_judge",
+              "required": false,
+              "text": "Fit the requested historical fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them."
+            }
+          ],
+          "rubrics": {
+            "Q2": {
+              "description": "Rate selected prose holistically for coherence, characterization, pacing, language, and unnecessary explanation. Discuss applicable dialogue, imagery, subtext and style. Do not penalize an allowed alternative plot for differing from a reference. The request leaves creative choices open. Do not invent unstated requirements for length, viewpoint, style, structure, ending, or number of ideas.",
+              "range": [
+                1,
+                5
+              ],
+              "anchors": "1: fails the brief; 2: substantial weaknesses; 3: usable with revision; 4: effective with minor weaknesses; 5: consistently effective. Cite concrete evidence.",
+              "dimensions": [
+                "coherence",
+                "characterization",
+                "pacing",
+                "language",
+                "redundancy",
+                "style_adherence"
+              ]
+            }
+          },
+          "knowledge": [],
+          "source_cutoff": "supplied passage only"
+        },
+        "source_ids": [
+          "world-hollow_clock-historical_fiction"
         ],
         "review_status": "pending",
         "reviewer": null,

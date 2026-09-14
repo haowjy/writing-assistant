@@ -151,6 +151,8 @@ class TransformersBackend:
         }
         if temperature > 0:
             generation.update(temperature=temperature, top_p=self.config["top_p"])
+        if temperature > 0:
+            generation.update({k: self.config[k] for k in ("min_p", "top_k") if k in self.config})
         device = self.model.device
         devices = [device.index or 0] if device.type == "cuda" else []
         # Keep a training caller's RNG and per-module train/eval modes intact.

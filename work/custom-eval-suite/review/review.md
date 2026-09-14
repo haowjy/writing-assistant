@@ -338,7 +338,7 @@ This is for a historical fiction story.
       "statement": "Only the retired keeper has the upper-room key.",
       "importance": "required",
       "weight": 3,
-      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
       "after_update": null
     },
     {
@@ -346,7 +346,7 @@ This is for a historical fiction story.
       "statement": "Mara suspects Ilan sold the ledger; this is an unproven accusation.",
       "importance": "required",
       "weight": 3,
-      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
       "placement": "Any findable page; keep attribution and uncertainty."
     },
     {
@@ -354,14 +354,14 @@ This is for a historical fiction story.
       "statement": "Ilan repairs the flooded shelves.",
       "importance": "optional",
       "weight": 1,
-      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
     },
     {
       "id": "incidental",
       "statement": "The scarf is red.",
       "importance": "incidental",
       "weight": 0,
-      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
+      "evidence": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.",
       "omission": "allowed"
     }
   ],
@@ -1128,7 +1128,7 @@ Genre: historical_fiction
 
 Instruction specificity: explicit
 
-The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.
+The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand.
 
 Oren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.
 
@@ -2747,7 +2747,7 @@ Genre: historical_fiction
 
 Instruction specificity: loose
 
-The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand. Any unusual phenomena in the supplied premise remain part of this story's world.
+The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand.
 
 Yara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.
 

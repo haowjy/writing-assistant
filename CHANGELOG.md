@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add a Python-driven Creative Writing v3 runner, saved rubric judgments, and an
+  Anthropic spending ledger with request reservations and cached responses.
+- Prepare the authorized 50-case E2B-IT run and remove an unnecessary supernatural
+  qualifier from historical-fiction context; preserve previous pilot artifacts.
+
 - Add the Python research evaluation suite, local Transformers/PEFT inference,
   constrained agent workspace, artifact extraction, scoring, and saved-run reports.
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;

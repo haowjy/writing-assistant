@@ -6,9 +6,11 @@ completion evidence in the linked work item; remove completed entries from this 
 
 - [ ] Review the [five-case E2B-IT pilot](custom-eval-suite/pilot-e2b.md) and its saved artifacts with the user. Check task realism, hidden requirements, prose selection, and expected outcomes.
 - [ ] Review the [five-case thinking rerun](custom-eval-suite/thinking-pilot.md): all workspace cases used tools. Inspect prose quality, single-page wiki interpretations, and the wiki-to-prose retrieval/word-budget failures.
-- [ ] Decide the next small run and grading scope from that review; keep the larger comparison deferred.
+- [ ] Complete and inspect the authorized 50-case E2B-IT run; retain failures and pending semantic judgments in the results.
 
 Listing a run here does not start it. The full comparison and larger experiments
 retain the execution boundary in the [suite plan](custom-eval-suite/plan.md).
 
 - [ ] Address the [output review](custom-eval-suite/output-review.md): semantic grounding checks, metadata/script extraction, KB retrieval coverage, and conditional genre wording. Preserve current case versions and saved artifacts.
+
+- [ ] Prepare and run the primary external prose benchmark: [Creative Writing v3 scope and cost](creative-writing-v3/cost-plan.md). Authorized first run: E2B-IT thinking, rubric only, 96 outputs, $10 API ceiling. Generation and grading are queued after the custom run.

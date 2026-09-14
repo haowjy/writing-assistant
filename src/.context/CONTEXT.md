@@ -141,3 +141,10 @@ and scenario-bound assignments. The pilot rescorer records broad and task-select
 profiles separately; partial matches remain explicit. Both tracks share feature
 configuration and broad-reference bandwidth, without treating passages as repeated
 candidate generations.
+
+`anthropic_grading.AnthropicGrader` caches complete direct-API rubric responses and
+serializes spending through a locked, persistent reservation ledger. Unresolved
+requests require inspection before retrying. Credentials enter only at execution
+through an explicit argument or `from_env`; they are excluded from saved requests.
+Pricing is pinned to Sonnet 4.6. The external Creative Writing research script keeps
+its prompt expansion and aggregation separate from the custom harness scorecards.
