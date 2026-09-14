@@ -13,4 +13,6 @@ retain the execution boundary in the [suite plan](custom-eval-suite/plan.md).
 
 - [ ] Address the [output review](custom-eval-suite/output-review.md): semantic grounding checks, metadata/script extraction, KB retrieval coverage, and conditional genre wording. Preserve current case versions and saved artifacts.
 
-- [ ] Prepare and run the primary external prose benchmark: [Creative Writing v3 scope and cost](creative-writing-v3/cost-plan.md). Authorized first run: E2B-IT thinking, rubric only, 96 outputs, $10 API ceiling. Generation and grading are queued after the custom run.
+- [ ] Prepare and run the primary external prose benchmark: [Creative Writing v3 scope and cost](creative-writing-v3/cost-plan.md). Paid execution paused while the user chooses a cheaper baseline subset; the 96-output/$10 scope is not currently running.
+
+- [ ] Complete the [automatic external checks](external-benchmarks/plan.md): IFEval and the 32-task HumanEval+ diagnostic are queued on E2B-IT. Keep paid prose grading paused until subset selection.

@@ -11,3 +11,4 @@ between lists when its priority changes; remove completed tasks once their outco
 is recorded in the relevant work item.
 
 - [Creative Writing v3](creative-writing-v3/cost-plan.md): primary external prose benchmark, first-run scope and Anthropic cost estimate.
+- [External checks](external-benchmarks/plan.md): automatic instruction-following/coding runs and paid-subset decisions.

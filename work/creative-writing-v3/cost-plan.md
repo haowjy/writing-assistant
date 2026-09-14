@@ -52,11 +52,11 @@ short custom-pilot timings do not justify a precise full-run estimate.
 
 ## Execution
 
-The user authorized the custom 50-case run followed by the E2B-IT external prose
-benchmark on 2026-09-14. The custom run is in progress. Creative Writing v3 waits
-for its report, then verifies one generation and one paid judgment before running
-the remaining items. WritingBench, other external checks, and other checkpoints
-remain separate scope.
+The initial 96-output/$10 run was authorized on 2026-09-14, then paused when the
+user reconsidered LLM-grading cost. No external generation or paid judgment has
+been sent. A proposed 32-output baseline and $2 cap await subset selection; see
+[external benchmark scope](../external-benchmarks/plan.md). The custom50 run
+continues, followed by automatic instruction-following and coding checks.
 
 The implementation is [scripts/creative_writing_v3.py](../../scripts/creative_writing_v3.py).
 Call `prepare()`, `generate(subset=...)`, `grade(subset=...)`, and `report()` from

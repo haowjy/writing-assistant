@@ -148,3 +148,9 @@ requests require inspection before retrying. Credentials enter only at execution
 through an explicit argument or `from_env`; they are excluded from saved requests.
 Pricing is pinned to Sonnet 4.6. The external Creative Writing research script keeps
 its prompt expansion and aggregation separate from the custom harness scorecards.
+
+`external.generate_tasks` runs public single-turn benchmark prompts with the shared
+Transformers backend. Its generation manifest binds task selection and model
+configuration; completed and failed outputs are both resumable. External benchmark
+graders retain their own protocols and denominators, rather than entering custom
+suite scorecards. Coding execution belongs in the isolated EvalPlus container.

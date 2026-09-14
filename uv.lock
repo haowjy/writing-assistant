@@ -566,6 +566,12 @@ source = { editable = "." }
 data = [
     { name = "cryptography" },
 ]
+external = [
+    { name = "absl-py" },
+    { name = "immutabledict" },
+    { name = "langdetect" },
+    { name = "nltk" },
+]
 inference = [
     { name = "accelerate" },
     { name = "bitsandbytes" },
@@ -592,10 +598,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "absl-py", marker = "extra == 'external'", specifier = ">=2,<3" },
     { name = "accelerate", marker = "extra == 'inference'", specifier = ">=1,<2" },
     { name = "bert-score", marker = "extra == 'models'", specifier = ">=0.3.13,<0.4" },
     { name = "bitsandbytes", marker = "extra == 'inference'", specifier = ">=0.46,<1" },
     { name = "cryptography", marker = "extra == 'data'", specifier = ">=44,<48" },
+    { name = "immutabledict", marker = "extra == 'external'", specifier = ">=4,<5" },
+    { name = "langdetect", marker = "extra == 'external'", specifier = "==1.0.9" },
+    { name = "nltk", marker = "extra == 'external'", specifier = ">=3.9,<4" },
     { name = "peft", marker = "extra == 'inference'", specifier = ">=0.17,<1" },
     { name = "python-dotenv", marker = "extra == 'judging'", specifier = ">=1,<2" },
     { name = "rouge-score", marker = "extra == 'metrics'", specifier = "==0.1.2" },
@@ -604,7 +614,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'inference'", specifier = ">=5,<6" },
     { name = "transformers", marker = "extra == 'models'", specifier = ">=5,<6" },
 ]
-provides-extras = ["data", "metrics", "inference", "models", "judging"]
+provides-extras = ["data", "metrics", "inference", "models", "judging", "external"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.11,<1" }]
@@ -937,6 +947,15 @@ wheels = [
 ]
 
 [[package]]
+name = "immutabledict"
+version = "4.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/e6/718471048fea0366c3e3d1df3acfd914ca66d571cdffcf6d37bbcd725708/immutabledict-4.3.1.tar.gz", hash = "sha256:f844a669106cfdc73f47b1a9da003782fb17dc955a54c80972e0d93d1c63c514", size = 7806, upload-time = "2026-02-15T10:32:34.668Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/ce/f9018bf69ae91b273b6391a095e7c93fa5e1617f25b6ba81ad4b20c9df10/immutabledict-4.3.1-py3-none-any.whl", hash = "sha256:c9facdc0ff30fdb8e35bd16532026cac472a549e182c94fa201b51b25e4bf7bf", size = 5000, upload-time = "2026-02-15T10:32:33.672Z" },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1089,6 +1108,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/10/b1/d61c61a84ff85d1a36a99df2c152b59ffedb1d356c598902aba44abcdb60/kiwisolver-1.5.1-pp311-pypy311_pp73-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:cdaeeb6c350106df6bf9d873395973e5f066a9713200b72cd64f55d0a3eafab6", size = 77605, upload-time = "2026-08-28T10:28:24.322Z" },
     { url = "https://files.pythonhosted.org/packages/d3/52/5aef56f21a460a6e43ab3cdfc7697d59d7b87deb0ec97a0f7b91aa4a521b/kiwisolver-1.5.1-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:17851e5dad4484be0cbccbde3b15331deae036de9aebd45eed964487802b172f", size = 98465, upload-time = "2026-08-28T10:28:25.696Z" },
 ]
+
+[[package]]
+name = "langdetect"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/72/a3add0e4eec4eb9e2569554f7c70f4a3c27712f40e3284d483e88094cc0e/langdetect-1.0.9.tar.gz", hash = "sha256:cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0", size = 981474, upload-time = "2021-05-07T07:54:13.562Z" }
 
 [[package]]
 name = "markdown-it-py"

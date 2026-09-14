@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add resumable external generation, official IFEval scoring, and an isolated
+  EvalPlus runner for the 32-task coding diagnostic. Pause paid prose grading
+  while the baseline subset is reconsidered.
+
 - Preserve omitted Creative Writing rubric criteria as unscored, matching the
   upstream instruction to skip inapplicable criteria.
 
