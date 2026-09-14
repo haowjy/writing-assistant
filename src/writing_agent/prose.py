@@ -20,7 +20,7 @@ class FeatureConfig:
     embedding_model: str = "sentence-transformers/all-mpnet-base-v2"
     embedding_revision: str = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
     chunk_tokens: int = 256
-    version: int = 1
+    version: int = 2
 
 
 def ngrams(tokens: list, n: int) -> Counter:
@@ -180,20 +180,31 @@ class ProseFeatures:
             )
             self._embedding = AutoModel.from_pretrained(self.config.embedding_model, **args).eval()
         tokenizer = self._embedding_tokenizer
-        ids = tokenizer.encode(text, add_special_tokens=False)
-        if not ids:
+        if not text.strip():
             raise ValueError("Cannot embed empty prose")
+        special = tokenizer.num_special_tokens_to_add(pair=False)
+        encoded = tokenizer(
+            text,
+            truncation=True,
+            max_length=self.config.chunk_tokens + special,
+            return_overflowing_tokens=True,
+            padding=True,
+            return_tensors="pt",
+        )
         weighted, total = None, 0
-        for offset in range(0, len(ids), self.config.chunk_tokens):
-            chunk = ids[offset : offset + self.config.chunk_tokens]
-            inputs = tokenizer.prepare_for_model(chunk, return_tensors="pt")
-            inputs = {k: v.unsqueeze(0) if v.ndim == 1 else v for k, v in inputs.items()}
+        for i in range(len(encoded["input_ids"])):
+            inputs = {k: encoded[k][i : i + 1] for k in ("input_ids", "attention_mask")}
+            count = int(inputs["attention_mask"].sum()) - special
+            if count <= 0:
+                continue
             with torch.no_grad():
                 hidden = self._embedding(**inputs).last_hidden_state
                 mask = inputs["attention_mask"].unsqueeze(-1)
                 vector = (hidden * mask).sum(1) / mask.sum(1)
-            weighted = vector * len(chunk) if weighted is None else weighted + vector * len(chunk)
-            total += len(chunk)
+            weighted = vector * count if weighted is None else weighted + vector * count
+            total += count
+        if total == 0:
+            raise ValueError("Cannot embed empty prose")
         vector = weighted / total
         return torch.nn.functional.normalize(vector, p=2, dim=1)[0].tolist()
 
@@ -265,6 +276,9 @@ def prose_profile(
             status="ok" if value is not None else "insufficient_samples",
             method="learned_representation",
             sigma=sigma,
+            reason=None
+            if value is not None
+            else "At least two independent outputs and references required",
         )
     else:
         profile["D2"] = measurement(
@@ -306,7 +320,7 @@ def prose_profile(
         profile["D11"] = measurement(
             {"within_trigram": [f["lexical"]["repeated_trigram_rate"] for f in features]}
         )
-    if gt and len(gt) == len(features):
+    if gt and len(gt) == len(features) and (prompt_tokens is not None or source_tokens is not None):
         profile["D10"] = measurement(
             {
                 name: [overlap(t, context) for t in gt]
@@ -326,8 +340,24 @@ def prose_profile(
         profile["D11"]["value"]["duplicate_output_rate"] = (len(texts) - len(set(texts))) / len(
             texts
         )
+    if not texts:
+        profile = {
+            key: measurement(status="not_applicable", reason="No designated prose in this task")
+            for key in profile
+        }
+    else:
+        for key in ("D4", "D6"):
+            if profile[key]["status"] == "not_applicable":
+                profile[key] = measurement(
+                    status="insufficient_samples",
+                    reason="At least two saved alternatives for the same prompt required",
+                )
+        for key in ("D7", "D8"):
+            profile[key] = measurement(
+                status="not_applicable", reason="No task-paired reference supplied"
+            )
     return {
-        "version": 1,
+        "version": 2,
         "metrics": profile,
         "samples": len(features),
         "reference_samples": len(references),
@@ -472,3 +502,57 @@ def compare_groups(
             }
         )
     return comparisons
+
+
+def score_prose(
+    card: dict,
+    scenario: dict,
+    result: dict,
+    extractor: ProseFeatures,
+    *,
+    references: list[dict] | None = None,
+    sigma: float | None = None,
+    model_features: bool = True,
+    allow_download: bool = False,
+) -> dict:
+    """Measure designated prose from saved attempts; never generate candidate text.
+
+    References are caller-selected feature records. Single-output MMD remains
+    insufficient_samples; chunks are not promoted to independent observations.
+    """
+    texts = [a["text"] for a in card["artifacts"] if a["status"] == "ok"]
+    features = [
+        extractor.extract(
+            t, tokens=model_features, embeddings=model_features, allow_download=allow_download
+        )
+        for t in texts
+    ]
+    context_features = {}
+    if texts and model_features:
+        contexts = {"prompt": scenario["visible"]["brief"]}
+        sources = result.get("before", {})
+        if sources:
+            contexts["source"] = "\n\n".join(sources[k] for k in sorted(sources))
+        context_features = {
+            name: extractor.extract(text, tokens=True, allow_download=allow_download)
+            for name, text in contexts.items()
+        }
+    profile = prose_profile(
+        texts,
+        features,
+        references=references,
+        sigma=sigma,
+        prompt_tokens=context_features.get("prompt", {}).get("tokens"),
+        source_tokens=context_features.get("source", {}).get("tokens"),
+    )
+    paired = scenario["labels"].get("paired_reference")
+    if paired is not None and len(texts) == 1:
+        profile["metrics"].update(paired_similarity(texts[0], paired))
+    profile["feature_errors"] = [
+        {"hash": f["prose_hash"], **{k: v for k, v in f.items() if k.endswith("_error")}}
+        for f in features + list(context_features.values())
+        if any(k.endswith("_error") for k in f)
+    ]
+    profile["context_hashes"] = {k: v["prose_hash"] for k, v in context_features.items()}
+    profile["source_overlap_scope"] = "initial supplied files, not evidence of actual retrieval"
+    return profile

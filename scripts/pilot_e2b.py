@@ -7,7 +7,7 @@ from pathlib import Path
 
 from writing_agent.catalog import save_json
 from writing_agent.inference import PROTOCOL, evaluate_checkpoint
-from writing_agent.prose import ProseFeatures, prose_profile
+from writing_agent.prose import ProseFeatures, score_prose
 from writing_agent.scoring import build_report, mechanical_score
 from writing_agent.suite import load_scenarios
 
@@ -86,9 +86,7 @@ def review_results(scenarios, results, config):
     ]
     for scenario, result in zip(scenarios, results, strict=True):
         card = mechanical_score(scenario, result)
-        prose = [a["text"] for a in card["artifacts"] if a["status"] == "ok"]
-        extracted = [features.extract(t, tokens=False, embeddings=False) for t in prose]
-        card["prose_profile"] = prose_profile(prose, extracted)
+        card["prose_profile"] = score_prose(card, scenario, result, features)
         path = Path(result["path"])
         save_json(path / "scorecard.json", card)
         cards.append(card)

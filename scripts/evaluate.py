@@ -17,8 +17,7 @@ from writing_agent.prose import (
     FeatureConfig,
     ProseFeatures,
     compare_groups,
-    paired_similarity,
-    prose_profile,
+    score_prose,
 )
 from writing_agent.scoring import build_report, mechanical_score
 from writing_agent.suite import compile_scenarios, load_scenarios, saved_results
@@ -35,7 +34,7 @@ APPROVED_CANDIDATE_RUN = False
 FEATURES = FeatureConfig()
 REFERENCE_IDS = []  # Select reviewed human reference records from the shared catalog.
 MMD_BANDWIDTH = None  # Freeze from development reference embeddings before comparison.
-COMPUTE_MODEL_FEATURES = False  # Optional locally cached tokenizer and embedding weights.
+COMPUTE_MODEL_FEATURES = True  # Optional locally cached tokenizer and embedding weights.
 MODELS = [
     {
         "id": "google/gemma-4-12B",
@@ -185,12 +184,20 @@ def generate(model: dict, *, approved=False, scenario_ids=None):
     )
 
 
-def score_saved(*, judge=False, model_features=False):
+def score_saved(*, judge=False, model_features=True):
     scenarios = {
         s["id"]: s for s in load_scenarios(RELEASE, SCENARIO_IDS) if s["provenance"] in PROVENANCE
     }
     cards, reviewed = [], []
     features = ProseFeatures(OUTPUT / "features", FEATURES)
+    catalog = json.loads((RELEASE / "catalog.json").read_text())
+    references = [r for r in catalog if r["id"] in REFERENCE_IDS]
+    if len(references) != len(REFERENCE_IDS):
+        raise ValueError("Unknown reference IDs")
+    reference_features = [
+        features.extract(r["text"], tokens=model_features, embeddings=model_features)
+        for r in references
+    ]
     grader = CodexGrader(OUTPUT / "judgments", max_calls=3) if judge else None
     for result in saved_results(OUTPUT / "attempts"):
         path = Path(result["path"]) / "result.json"
@@ -200,14 +207,15 @@ def score_saved(*, judge=False, model_features=False):
         if result["visible_hash"] != scenario["visible_hash"]:
             raise ValueError("Saved result uses a different scenario package")
         card = mechanical_score(scenario, result)
-        prose = [a["text"] for a in card["artifacts"] if a["status"] == "ok"]
-        extracted = [
-            features.extract(t, tokens=model_features, embeddings=model_features) for t in prose
-        ]
-        card["prose_profile"] = prose_profile(prose, extracted)
-        paired = scenario["labels"].get("paired_reference")
-        if paired is not None and len(prose) == 1:
-            card["prose_profile"]["metrics"].update(paired_similarity(prose[0], paired))
+        card["prose_profile"] = score_prose(
+            card,
+            scenario,
+            result,
+            features,
+            model_features=model_features,
+            references=reference_features,
+            sigma=MMD_BANDWIDTH,
+        )
         if grader:
             packet = grading_packet(scenario, result, card)
             judgment = grader.grade(packet)
@@ -217,10 +225,6 @@ def score_saved(*, judge=False, model_features=False):
         cards.append(card)
     if judge:
         save_json(OUTPUT / "judgment-review.json", reviewed)
-    catalog = json.loads((RELEASE / "catalog.json").read_text())
-    references = [r for r in catalog if r["id"] in REFERENCE_IDS]
-    if len(references) != len(REFERENCE_IDS):
-        raise ValueError("Unknown reference IDs")
     save_json(
         OUTPUT / "reports/prose-groups.json",
         compare_groups(

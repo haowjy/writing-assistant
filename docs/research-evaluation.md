@@ -112,3 +112,11 @@ uv run ruff check src scripts tests
 
 These tests use synthetic fixtures and scripted backends. They do not establish
 model quality, serving speed, or agreement between Astra and human reviewers.
+
+Saved pilots can be rescored without candidate generation using
+`scripts.rescore_pilot.run(Path("runs/<pilot-directory>"))`. This writes a separate
+`rescored/` directory with all Q/R/D statuses per task, feature caches, selected
+references, and an exploratory pooled comparison. Pass `allow_download=True`
+explicitly if pinned metric weights are not cached. The pilot rescoring script
+uses unreviewed Gutenberg paragraphs; it does not claim genre/style matching.
+Semantic judgments remain pending unless the separate grading stage is run.

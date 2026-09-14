@@ -128,3 +128,10 @@ chat is reserved for explicitly selected ablations. The parser returns `thinking
 maps it to `reasoning` so the checkpoint template preserves it within tool turns.
 Saved thinking remains separate from prose content. It consumes the same output
 token budget as tool calls and final answers.
+
+`prose.score_prose` is the shared saved-attempt measurement pass. It records D1–D13
+for every task, uses only designated prose, and records feature errors and context
+hashes. Tasks without designated prose have explicit not-applicable profiles.
+A single draft cannot support unbiased MMD; aggregate comparisons must disclose
+reference selection and grouping. MPNet features use tokenizer overflow chunks
+(feature version 2); older cached features must not be pooled with them.

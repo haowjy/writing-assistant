@@ -19,3 +19,6 @@
   between native tool calls, and show it separately in pilot reviews.
 - Default native Gemma chat inference to thinking on; record the five-case
   thinking rerun and a qualitative review of writing, grounding, and wiki accuracy.
+- Rescore saved pilot outputs with pinned token/embedding features, n-gram distance,
+  source overlap, and exploratory pooled MMD; retain every metric status per task.
+- Fix MPNet feature chunking for the installed Transformers tokenizer API.

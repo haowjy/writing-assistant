@@ -67,3 +67,7 @@ Build a useful small suite before generating a large training corpus. Plans for
 alternate plots, styles, and fanfiction-like branches remain in
 [branching authorship](../research-plan/branching-authorship.md). No AGENTS.md or
 README changes are needed for this work plan.
+
+Latest numerical pass: [rescored thinking pilot](../../runs/pilot-e2b-it-thinking-2026-09-13/rescored/review.md).
+Gutenberg references are exploratory and unmatched. Single-task MMD lacks enough
+outputs; pooled MMD is diagnostic only. Markdown selectors remain unchanged.

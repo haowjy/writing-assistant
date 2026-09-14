@@ -569,13 +569,16 @@ class ProseTests(unittest.TestCase):
             self.assertEqual(profile["metrics"]["D2"]["status"], "unavailable")
             self.assertGreater(first["lexical"]["repeated_trigram_rate"], 0)
             other = copy.deepcopy(first)
-            other["config"] = asdict(FeatureConfig(version=2))
+            other["config"] = asdict(FeatureConfig(version=999))
             with self.assertRaisesRegex(ValueError, "cannot be pooled"):
                 prose_profile([text], [first], references=[other])
             with self.assertRaisesRegex(ValueError, "do not match"):
                 prose_profile(["Other"], [first])
 
     def test_empty_prose_is_not_perfect(self):
+        profile = prose_profile([], [])
+        self.assertEqual(len(profile["metrics"]), 13)
+        self.assertTrue(all(m["status"] == "not_applicable" for m in profile["metrics"].values()))
         self.assertIsNone(lexical_features("")["type_token_ratio"])
         self.assertIsNone(distribution_l2([], [], 1))
         with self.assertRaises(ValueError):
