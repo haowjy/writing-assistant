@@ -284,7 +284,20 @@ def run(*, execute=False, grade=False):
         review += ["## Final files", ""]
         for name, content in result["after"].items():
             review += [f"### {name}", "", _fenced(content)]
-        review += ["## Scores", "", _fenced(json.dumps(card["scores"], indent=2))]
+        review += ["## Scores", "", "| Metric | Score | Status |", "|---|---|---|"]
+        for key, score in card["scores"].items():
+            if score["status"] != "not_applicable":
+                value = score["value"]
+                if isinstance(value, dict):
+                    value = "See scorecard"
+                review.append(f"| {key} | {value} | {score['status']} |")
+        for key, score in card["scores"].items():
+            if score.get("rationale"):
+                review += ["", f"### {key}: {score['value']}", "", score["rationale"], ""]
+                review.extend(
+                    f"- {d['name']}: {d['value']} — {d.get('reason', '')}"
+                    for d in score.get("dimensions", [])
+                )
         (destination / "review.md").write_text("\n".join(review))
         task = card["scores"]["Q3"]
         prose = card["scores"]["Q2"]

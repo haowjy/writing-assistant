@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Record the completed Grok/OpenCode pilot: five task passes, mean Astra prose
+  rating 4/5, and explicit comparisons with the same Gemma cases and harness limits.
+
 - Add a five-case xAI Grok/OpenCode pilot with native tool traces, isolated scenario
   directories, saved artifacts, and shared Astra rubric scoring.
 

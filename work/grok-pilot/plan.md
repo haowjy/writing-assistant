@@ -1,5 +1,7 @@
 # Grok / OpenCode comparison pilot
 
+[Completed five-case results](results.md).
+
 Run `xai/grok-4.6` through the existing OpenCode xAI login on five frozen custom-suite
 cases: F1-01, F2-06, F3-03, F4-08, and F5-05. This compares the Grok/OpenCode system
 with the saved Gemma/custom-harness outputs. It does not isolate model capability
