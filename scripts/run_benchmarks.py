@@ -1,4 +1,4 @@
-"""Explicit research execution: finish the custom run, then CWv3 generation and grading.
+"""Serial execution: custom50, the 32-output prose baseline, then automatic checks.
 
 Call run() from Python after starting the authorized custom50 run. This script
 never starts automatically when imported and never loads or prints credentials.
@@ -8,12 +8,13 @@ import json
 import time
 
 from scripts import creative_writing_v3 as creative
+from scripts import external_checks
 from writing_agent.catalog import save_json
 
 CUSTOM = creative.ROOT / "runs/custom50-e2b-it-2026-09-14"
 
 
-def run():
+def _run_creative():
     state = creative.OUTPUT / "pipeline.json"
     save_json(state, {"stage": "waiting_for_custom50"})
     while not (CUSTOM / "review.md").exists():
@@ -39,3 +40,18 @@ def run():
     report = creative.report()
     save_json(state, {"stage": "finished", "report": report})
     return report
+
+
+def run():
+    """Keep automatic checks runnable even if paid grading stops at its budget."""
+    try:
+        result = _run_creative()
+    except Exception as exc:
+        result = {
+            "stage": "failed",
+            "error": f"{type(exc).__name__}: {exc}",
+            "report": creative.report(),
+        }
+        save_json(creative.OUTPUT / "pipeline.json", result)
+    external_checks.run()
+    return {"creative_writing": result, "automatic_checks": "finished"}

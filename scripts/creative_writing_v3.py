@@ -10,7 +10,8 @@ from writing_agent.catalog import fingerprint, save_json
 from writing_agent.inference import TransformersBackend, load_checkpoint
 
 UPSTREAM = ROOT / "data/raw/research/creative-writing-v3"
-OUTPUT = ROOT / "runs/creative-writing-v3-e2b-it-2026-09-14"
+OUTPUT = ROOT / "runs/creative-writing-v3-32-e2b-it-2026-09-14"
+PAID_BUDGET_USD = 2
 CONFIG = {
     **MODEL,
     "purpose": "Creative Writing v3 rubric benchmark",
@@ -41,13 +42,15 @@ def tasks():
 
 
 def prepare():
-    selected = tasks()
-    assert len(selected) == 96
+    selected = [task for task in tasks() if task["iteration"] == 1]
+    assert len(selected) == 32
     manifest = {
         "tasks": selected,
         "model": CONFIG,
         "judge": "claude-sonnet-4-6",
-        "paid_budget_usd": 10,
+        "paid_budget_usd": PAID_BUDGET_USD,
+        "scope": "32-output development subset; first variant of each prompt",
+        "selection_hash": fingerprint(selected),
         "elo": False,
         "upstream": json.loads((UPSTREAM / "revision.json").read_text()),
         "deviations": [
@@ -114,7 +117,7 @@ def parse_scores(text, criteria):
 
 def grade(*, subset=None):
     manifest = prepare()
-    grader = from_env(OUTPUT / "judgments", ROOT / ".env", budget_usd=10)
+    grader = from_env(OUTPUT / "judgments", ROOT / ".env", budget_usd=manifest["paid_budget_usd"])
     template = (UPSTREAM / "data/creative_writing_judging_prompt.txt").read_text()
     criteria = (UPSTREAM / "data/creative_writing_criteria.txt").read_text().splitlines()
     negatives = (UPSTREAM / "data/negative_criteria.txt").read_text().splitlines()
@@ -162,7 +165,9 @@ def grade(*, subset=None):
 
 def report():
     rows = []
-    for task in tasks():
+    manifest = prepare()
+    expected = len(manifest["tasks"])
+    for task in manifest["tasks"]:
         directory = OUTPUT / "items" / task["id"]
         g = (
             json.loads((directory / "generation.json").read_text())
@@ -186,10 +191,13 @@ def report():
     ledger_path = OUTPUT / "judgments/ledger.json"
     ledger = json.loads(ledger_path.read_text()) if ledger_path.exists() else {}
     result = {
-        "expected": 96,
+        "expected": expected,
+        "scope": manifest["scope"],
+        "selection_hash": manifest["selection_hash"],
         "generated": sum(r["generation"] == "completed" for r in rows),
         "graded": len(scores),
-        "score_0_100": mean(scores) if len(scores) == 96 else None,
+        "score_0_100": None,  # Reserved for the full upstream 96-output benchmark.
+        "selected_score_0_100": mean(scores) if len(scores) == expected else None,
         "observed_subset_mean": mean(scores) if scores else None,
         "charged_or_reserved_usd": sum(r["charged_or_reserved_micro_usd"] for r in ledger.values())
         / 1e6,
@@ -199,10 +207,11 @@ def report():
     lines = [
         "# Creative Writing v3 — E2B-IT",
         "",
-        f"Generated {result['generated']}/96; graded {len(scores)}/96. "
+        f"Generated {result['generated']}/{expected}; graded {len(scores)}/{expected}. "
         f"Charged/reserved: ${result['charged_or_reserved_usd']:.4f}.",
         "",
-        f"Full rubric score: {result['score_0_100']}. No Elo run.",
+        f"32-output subset score: {result['selected_score_0_100']}. "
+        "This is not the full 96-output benchmark. No Elo run.",
         "",
         "| Item | Generation | Grading | Score /100 | Artifacts |",
         "|---|---|---|---|---|",

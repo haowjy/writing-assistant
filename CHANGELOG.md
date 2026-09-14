@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Freeze the approved 32-output Creative Writing baseline, enforce its $2 grading
+  cap, and report subset scores separately from the full benchmark.
+
 - Add resumable external generation, official IFEval scoring, and an isolated
   EvalPlus runner for the 32-task coding diagnostic. Pause paid prose grading
   while the baseline subset is reconsidered.

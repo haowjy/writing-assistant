@@ -2,21 +2,21 @@
 
 Use E2B-IT with thinking enabled for the initial baseline. On 2026-09-14 the user
 expanded the run to include the planned external checks, then reconsidered the
-cost of LLM grading. Automatic checks are queued; paid prose grading is paused
-while the user chooses its subset. No paid judgment has been sent.
+cost of LLM grading. The user selected 32 Creative Writing v3 outputs with a $2 grading cap. The queue
+is custom50, the prose baseline, the coding diagnostic, then IFEval. WritingBench
+is deferred.
 
 | Benchmark | Selection | Grading | Current execution |
 |---|---:|---|---|
 | IFEval | All 541 prompts, 834 instructions | Official strict/loose prompt and instruction accuracy | Queued after the coding diagnostic |
-| HumanEval+ | HumanEval/0–31 | EvalPlus base and extended tests, one generation per task | Queued after custom50 |
-| Creative Writing v3 | Proposed 32 prompts, first seed variant each | Sonnet 4.6 rubric | Paused; subset choice pending |
-| WritingBench | 1,000 downloaded prompts | Request-specific LLM rubric | Deferred pending paid scope |
+| HumanEval+ | HumanEval/0–31 | EvalPlus base and extended tests, one generation per task | Queued after the prose baseline |
+| Creative Writing v3 | 32 prompts, first seed variant each | Sonnet 4.6 rubric | Approved; queued after custom50 |
+| WritingBench | 1,000 downloaded prompts | Request-specific LLM rubric | Deferred until a later decision |
 
-The proposed Creative Writing subset costs roughly $0.60–$1.40 in judgment tokens,
-with a proposed $2 ceiling. These are estimates from the
+The Creative Writing subset is estimated to cost roughly $0.60–$1.40 in judgment tokens,
+with an approved $2 ceiling. These are estimates from the
 [full-run cost assumptions](../creative-writing-v3/cost-plan.md), not measured
-charges. The existing 96-output/$10 authorization is paused while scope is being
-reconsidered. IFEval and HumanEval+ have no judge API charge. Local generation can
+charges. The 32-output/$2 selection supersedes the earlier 96-output/$10 scope. IFEval and HumanEval+ have no judge API charge. Local generation can
 take hours; these checks do not share the short custom suite's output budget.
 
 Freeze the baseline subset and reuse it at selected training checkpoints. Keep it
@@ -36,7 +36,7 @@ responses, preserving the selected denominator.
 
 Run artifacts are under `runs/external-e2b-it-2026-09-14/`: the selection manifest,
 per-item prompts, exact traces, thinking, responses, grading logs, and results.
-The Python pipeline waits for custom50, runs the 32 coding tasks and grades them,
+The automatic-check pipeline starts after the prose baseline, runs the 32 coding tasks and grades them,
 then runs IFEval and grades it. It does not invoke an LLM judge.
 
 IFEval uses the downloaded upstream verifier at
@@ -59,7 +59,7 @@ integrated into paid execution.
 
 ## Verification
 
-- The 52-test repository suite passes, including external generation resume,
+- The 53-test repository suite passes, including external generation resume,
   immutable selections, invalid paths, and preserved generation failures.
 - Official IFEval grading of empty fixture responses returns zero for all four
   aggregate metrics, over 541 prompts and 834 instructions.

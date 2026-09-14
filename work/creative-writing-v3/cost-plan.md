@@ -2,8 +2,9 @@
 
 Use Creative Writing v3 rubric scoring as the primary external prose benchmark.
 Keep our custom suite for tools, KB work, and prose-distribution diagnostics.
-Start with Gemma E2B-IT on the local RTX 3090, thinking enabled, 32 prompts with
-three seed variants each (96 outputs). Other checkpoints remain separate runs.
+Start with Gemma E2B-IT on the local RTX 3090, thinking enabled: the first seed
+variant of each of 32 prompts. The 96-output benchmark and other checkpoints remain
+separate runs. The approved grading ceiling for this baseline is $2.
 
 ## Paid grading protocol
 
@@ -31,8 +32,8 @@ judgment on the successful path. Actual length and retries change cost.
 
 Upstream caps rubric outputs at 4,096 tokens. At 4,000 input tokens and that full
 output limit, 96 successful calls cost $7.05. That is an example, not an absolute
-upper bound on input length or retries. Approved spending ceiling: **$10 for the
-first E2B-IT rubric run**, with per-request usage accounting and budget reservation
+upper bound on input length or retries. Earlier full-run proposal: **$10 for 96 outputs**; the approved current
+selection is **32 outputs with a $2 ceiling**, with per-request usage accounting and budget reservation
 before sending calls. The local adapter enforces this ceiling through persistent request reservations;
 it does not change the Anthropic account limit.
 
@@ -52,11 +53,17 @@ short custom-pilot timings do not justify a precise full-run estimate.
 
 ## Execution
 
-The initial 96-output/$10 run was authorized on 2026-09-14, then paused when the
-user reconsidered LLM-grading cost. No external generation or paid judgment has
-been sent. A proposed 32-output baseline and $2 cap await subset selection; see
-[external benchmark scope](../external-benchmarks/plan.md). The custom50 run
-continues, followed by automatic instruction-following and coding checks.
+The user selected the 32-output baseline with a $2 grading cap on 2026-09-14.
+The selection takes the first upstream seed variant of each prompt and is frozen
+in `runs/creative-writing-v3-32-e2b-it-2026-09-14/manifest.json`, including a selection
+hash for the post-training comparison. Its report has a subset score and leaves
+the full 96-output benchmark score unavailable. WritingBench remains deferred.
+
+The execution order is custom50, this prose baseline, then the automatic coding
+and instruction-following checks. The first generation and judgment gate the
+remaining prose items. A grading stop cannot increase the cap or prevent the
+separate automatic checks from running. See the
+[external benchmark scope](../external-benchmarks/plan.md).
 
 The implementation is [scripts/creative_writing_v3.py](../../scripts/creative_writing_v3.py).
 Call `prepare()`, `generate(subset=...)`, `grade(subset=...)`, and `report()` from
@@ -79,7 +86,7 @@ reserves a conservative request cost before each paid call, replaces it with act
 usage on success, and retains unresolved reservations after interruptions. It never
 automatically retries an uncertain paid request. Completed raw judgments are cached.
 
-Artifacts are under `runs/creative-writing-v3-e2b-it-2026-09-14/`: `manifest.json`,
+Artifacts are under `runs/creative-writing-v3-32-e2b-it-2026-09-14/`: `manifest.json`,
 per-item generation/thinking/judgments, `judgments/ledger.json`, `report.json`, and
 `review.md`. The custom run lives in `runs/custom50-e2b-it-2026-09-14/`.
 
