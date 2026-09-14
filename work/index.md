@@ -12,3 +12,5 @@ is recorded in the relevant work item.
 
 - [Creative Writing v3](creative-writing-v3/cost-plan.md): primary external prose benchmark, first-run scope and Anthropic cost estimate.
 - [External checks](external-benchmarks/plan.md): automatic instruction-following/coding runs and paid-subset decisions.
+
+- [Grok / OpenCode pilot](grok-pilot/plan.md): five-case comparison using native xAI tools and Astra ratings.

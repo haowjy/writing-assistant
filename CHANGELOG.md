@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add a five-case xAI Grok/OpenCode pilot with native tool traces, isolated scenario
+  directories, saved artifacts, and shared Astra rubric scoring.
+
 - Complete and publish all 50 custom-suite Astra judgments: 29 required-task passes,
   21 failures, archived pre-grading views, and a 50-session isolation audit.
 
