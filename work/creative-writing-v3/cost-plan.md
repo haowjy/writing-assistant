@@ -69,8 +69,9 @@ Prompts, rubric, criteria, and inspected upstream code are pinned at
 top_p 1, top_k 0, a 12,000-token output allowance, and a 16,384-token context.
 Thinking consumes output tokens and is saved separately; the judge receives final
 writing only. Local inference uses NF4 quantization. Failed generations are kept
-without upstream's automatic retries. A rubric result requires all 22 criteria;
-partial results cannot become a full benchmark score.
+without upstream's automatic retries. The rubric contains 22 criteria. Following upstream instructions, omitted criteria
+remain unscored and the item score averages the returned numeric criteria. The full
+benchmark score requires a judgment for every output.
 
 Credentials load from `ANTHROPIC_API_KEY` or the ignored root `.env` at grading
 execution. The free token-count endpoint verified key and model access. The ledger

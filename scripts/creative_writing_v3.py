@@ -53,7 +53,7 @@ def prepare():
         "deviations": [
             "NF4 local inference",
             "No regeneration retries",
-            "Strict complete rubric required; failed items retained",
+            "Only named rubric criteria are parsed; omitted criteria remain unscored",
         ],
     }
     path = OUTPUT / "manifest.json"
@@ -102,9 +102,13 @@ def parse_scores(text, criteria):
     for name in criteria:
         pattern = rf"^\s*(?:\*\*)?{re.escape(name)}(?:\*\*)?\s*:\s*\[?(?:Score\s+)?(\d+(?:\.\d+)?)"
         match = re.search(pattern, section, flags=re.M | re.I)
-        if not match or not 0 <= float(match[1]) <= 20:
+        if not match:
+            continue
+        if not 0 <= float(match[1]) <= 20:
             raise ValueError(f"Missing or invalid rubric score: {name}")
         scores[name] = float(match[1])
+    if not scores:
+        raise ValueError("No valid rubric scores")
     return scores
 
 
@@ -146,6 +150,7 @@ def grade(*, subset=None):
             judgment.update(
                 status="completed",
                 scores=scores,
+                unscored_criteria=[name for name in criteria if name not in scores],
                 score_0_100=5 * mean(20 - v if k in negatives else v for k, v in scores.items()),
             )
         except ValueError as exc:
@@ -204,7 +209,13 @@ def report():
     ]
     lines += [
         f"| {r['id']} | {r['generation']} | {r['judgment']} | {r['score']} | "
-        f"[Text](items/{r['id']}/response.md) |"
+        + (
+            f"[Text](items/{r['id']}/response.md) · "
+            f"[Thinking](items/{r['id']}/thinking.txt) · "
+            f"[Record](items/{r['id']}/generation.json) |"
+            if r["generation"] != "pending"
+            else "Pending |"
+        )
         for r in rows
     ]
     (OUTPUT / "review.md").write_text("\n".join(lines) + "\n")

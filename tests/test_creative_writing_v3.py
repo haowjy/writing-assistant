@@ -21,6 +21,7 @@ class CreativeWritingTests(unittest.TestCase):
             parse_scores("[Scores]\nClarity: 17\nCoherence: [15]", ["Clarity", "Coherence"]),
             {"Clarity": 17, "Coherence": 15},
         )
-        for text in ("Clarity: 30\nCoherence: 15", "Clarity: 17"):
+        self.assertEqual(parse_scores("Clarity: 17", ["Clarity", "Coherence"]), {"Clarity": 17})
+        for text in ("Clarity: 30\nCoherence: 15", "No scores here"):
             with self.assertRaises(ValueError):
                 parse_scores(text, ["Clarity", "Coherence"])

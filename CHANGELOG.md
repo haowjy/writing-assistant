@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Preserve omitted Creative Writing rubric criteria as unscored, matching the
+  upstream instruction to skip inapplicable criteria.
+
 - Add a Python-driven Creative Writing v3 runner, saved rubric judgments, and an
   Anthropic spending ledger with request reservations and cached responses.
 - Prepare the authorized 50-case E2B-IT run and remove an unnecessary supernatural
