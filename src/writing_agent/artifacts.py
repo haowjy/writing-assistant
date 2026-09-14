@@ -18,7 +18,7 @@ def extract_prose(result: dict, selectors: list[dict]) -> list[dict]:
         item = {
             "id": selector.get("id", str(index)),
             "selector": selector,
-            "extraction_version": 1,
+            "extraction_version": 2,
             "status": "missing_prose",
             "text": None,
             "provenance": result.get("provenance", "unknown"),
@@ -42,8 +42,16 @@ def extract_prose(result: dict, selectors: list[dict]) -> list[dict]:
                 start, end = 0, len(raw)
             elif selection == "delimited":
                 left, right = selector["start"], selector["end"]
-                if not left or not right or raw.count(left) != 1 or raw.count(right) != 1:
-                    raise ValueError("Prose delimiters missing or ambiguous")
+                if not left or not right:
+                    raise ValueError("Empty prose delimiter configuration")
+                if left not in raw or right not in raw:
+                    item["reason"] = (
+                        "Required prose delimiters are missing from the designated artifact"
+                    )
+                    artifacts.append(item)
+                    continue
+                if raw.count(left) != 1 or raw.count(right) != 1:
+                    raise ValueError("Prose delimiters are ambiguous")
                 start, end = raw.index(left) + len(left), raw.index(right)
             elif selection == "span":
                 if selector.get("source_hash") != fingerprint(raw):

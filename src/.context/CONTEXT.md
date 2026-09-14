@@ -154,3 +154,15 @@ Transformers backend. Its generation manifest binds task selection and model
 configuration; completed and failed outputs are both resumable. External benchmark
 graders retain their own protocols and denominators, rather than entering custom
 suite scorecards. Coding execution belongs in the isolated EvalPlus container.
+
+`CodexGrader` replaces built-in coding instructions with `grader_instructions.md`,
+starts a fresh ephemeral session outside the repository, suppresses project/skill
+instruction loading, and preserves launch evidence. Packet/cache identity includes
+the instruction content. Its persisted call budget is locked across workers.
+Semantic judgments remain uncalibrated until human review; original deterministic
+and numerical measurements are retained when judgments are applied.
+
+Prose extraction version 2 distinguishes absent required delimiters (missing
+delivery) from multiple delimiters or invalid reviewed spans (needs review).
+Missing delivery fails completion; ambiguous extraction stays pending. Successful
+prose text/spans and numerical feature definitions are unchanged by this distinction.

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Distinguish missing required prose delimiters from ambiguous extraction, so
+  missing file delivery fails completion instead of remaining pending.
+
+- Add a dedicated Astra literary-grading instruction profile, isolated sessions,
+  locked call accounting, and versioned custom50 semantic scorecard reports.
+
 - Freeze the approved 32-output Creative Writing baseline, enforce its $2 grading
   cap, and report subset scores separately from the full benchmark.
 

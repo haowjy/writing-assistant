@@ -431,6 +431,8 @@ class ResearchTests(unittest.TestCase):
         artifacts = extract_prose(result, selectors)
         self.assertEqual(artifacts[0]["text"], "A scene.")
         self.assertEqual(artifacts[1]["status"], "duplicate_delivery")
+        missing = extract_prose({"output": "Prose without the required markers."}, selectors[:1])
+        self.assertEqual(missing[0]["status"], "missing_prose")
         result["output"] += "<prose>Another.</prose>"
         self.assertEqual(extract_prose(result, selectors)[0]["status"], "needs_review")
         self.assertEqual(

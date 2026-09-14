@@ -73,3 +73,5 @@ Gutenberg references are exploratory and unmatched. Single-task MMD lacks enough
 outputs; pooled MMD is diagnostic only. Markdown selectors remain unchanged.
 
 Both reference tracks are now calculated: [broad and task-selected results](reference-comparisons.md).
+
+- [Astra semantic grading](astra-grading.md): clean grader design, custom50 authorization, and artifacts.
