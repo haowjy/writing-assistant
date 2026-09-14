@@ -1,0 +1,67 @@
+{
+  "code_checkpoint": "8b5ae84",
+  "protocol": "gemma-native-v1",
+  "model": "google/gemma-4-E2B-it",
+  "attempts": 3,
+  "tool_calls": 2,
+  "generation_loop_seconds": 38.17052823188715,
+  "astra_calls": 0,
+  "automatic_retries": 0,
+  "cases": [
+    {
+      "id": "F5-05",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 2,
+      "tool_errors": 0,
+      "changed_files": [
+        "Drafts/scene.md"
+      ],
+      "failed_checks": [
+        "retrieve-state",
+        "retrieve-belief",
+        "preserve-kb"
+      ],
+      "usage": {
+        "prompt_tokens": 2072,
+        "completion_tokens": 601
+      },
+      "seconds": 30.950602479977533,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-native-2026-09-13/attempts/44fb8ec33191df6f6cefd663d9c7dea1ce94aab6e97577a71cd009b0635c9395/attempt-0001-4dd69823/review.md"
+    },
+    {
+      "id": "F4-08",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "changed_files": [],
+      "failed_checks": [
+        "wiki-index"
+      ],
+      "usage": {
+        "prompt_tokens": 1761,
+        "completion_tokens": 127
+      },
+      "seconds": 6.205990731017664,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-native-2026-09-13/attempts/7e758e5713abab042295552b099b9e607043c850cbe8c3e4a098d6cae1ff830b/attempt-0001-6d5a7a02/review.md"
+    },
+    {
+      "id": "F2-06",
+      "status": "completed",
+      "error": null,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "changed_files": [],
+      "failed_checks": [
+        "saved-scene"
+      ],
+      "usage": {
+        "prompt_tokens": 491,
+        "completion_tokens": 22
+      },
+      "seconds": 1.0139350208919495,
+      "review": "/home/jimyao/gitrepos/research/writing-assistant/runs/pilot-e2b-it-native-2026-09-13/attempts/fdea03a117c905aa1980eb58e54bf0c3571a151f5a82ef0d020803d532b42122/attempt-0001-c8b500c8/review.md"
+    }
+  ]
+}

@@ -75,7 +75,13 @@ are in `trace.jsonl`; the pilot review links captured prompts when available. Th
 makes input-format and parsing failures inspectable without reconstructing them.
 The tokenizer chat-template and response-template hashes are recorded with results.
 
-Instruction-tuned checkpoints use their native chat template with thinking disabled.
+Instruction-tuned research and pilot configurations enable thinking through the
+explicit `enable_thinking=True` model setting. Omitted settings retain the earlier
+non-thinking behavior. Thinking shares the `max_tokens` output budget with tool
+calls and final text; budget exhaustion remains an execution failure.
+The parser’s `thinking` field is saved separately from answer content and mapped
+to the template’s `reasoning` field for subsequent tool calls. Prose extraction
+uses answer content or designated files, never the separate thinking field.
 Base text-only conditions retain explicit role-labelled transcripts. Native tool
 execution requires a verified chat template: base transcript conditions reject tool
 use until a separate base-model formatting decision is implemented and verified.
@@ -84,7 +90,8 @@ truncated to make it fit.
 
 The earlier `writing-json-v1` and `writing-tools-v2` outputs remain historical
 artifacts. The five-case E2B pilot used v2, with schemas embedded as ordinary text.
-It has not been rerun under native formatting. New protocol identities prevent
+Three file/workspace cases have since been rerun with native tools and thinking
+disabled; those artifacts remain separate. New protocol identities prevent
 those outputs from being reused as native results.
 
 The native integration follows Google's

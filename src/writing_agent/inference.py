@@ -41,6 +41,8 @@ def render_messages(messages: list[dict]) -> list[dict]:
     rendered = []
     for original in messages:
         message = copy.deepcopy(original)
+        if "thinking" in message:
+            message["reasoning"] = message.pop("thinking")
         if message["role"] == "tool":
             if not rendered or not rendered[-1].get("tool_calls"):
                 raise ValueError("Tool response has no preceding calls")
@@ -90,6 +92,10 @@ class TransformersBackend:
             raise ValueError("Token budgets must be positive")
         if config["temperature"] < 0 or not 0 < config["top_p"] <= 1:
             raise ValueError("Invalid sampling configuration")
+        if not isinstance(config.get("enable_thinking", False), bool):
+            raise ValueError("enable_thinking must be a boolean")
+        if config.get("enable_thinking", False) and config["prompt_format"] != "chat":
+            raise ValueError("Thinking requires native chat formatting")
         self.model, self.tokenizer = model, tokenizer
         self.config = copy.deepcopy(config)
         self.calls = 0
@@ -106,7 +112,7 @@ class TransformersBackend:
                 tools=tools or None,
                 tokenize=False,
                 add_generation_prompt=True,
-                enable_thinking=False,
+                enable_thinking=self.config.get("enable_thinking", False),
             )
             inputs = self.tokenizer(prompt, add_special_tokens=False, return_tensors="pt")
         else:
@@ -189,6 +195,7 @@ def load_checkpoint(config: dict, *, allow_download: bool = False):
     import transformers
 
     record = copy.deepcopy(config)
+    record.setdefault("enable_thinking", False)
     record.update(checkpoint_identity(config["id"], config.get("revision")))
     record["kind"] = "transformers"
     record["runtime"] = {name: version(name) for name in ("torch", "transformers", "accelerate")}

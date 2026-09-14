@@ -9,6 +9,8 @@ only a small E2B-IT pilot has run. See [delivery evidence](delivery.md).
 
 Task queues: [TODO — now](../TODO.md) and [FUTURE](../FUTURE.md).
 
+Latest rerun: [three native-tool cases](native-pilot.md).
+
 Native harness validation: [read/write smoke and limitations](native-inference.md).
 
 Five-case run: [E2B-IT five-case pilot](pilot-e2b.md), with saved artifacts and observed failures.

@@ -21,6 +21,7 @@ MODEL = {
     "kind": "transformers",
     "protocol": PROTOCOL,
     "prompt_format": "chat",
+    "enable_thinking": True,
     "loader": "causal_lm",
     "device": "cuda:0",
     "dtype": "bfloat16",
@@ -132,6 +133,8 @@ def review_results(scenarios, results, config):
                 review.append(f"- [{name}]({name})")
             review.append("")
         for message in result.get("messages", []):
+            if message.get("thinking"):
+                review += ["### Model thinking", "", _fenced(message["thinking"])]
             review += [
                 f"### {message['role']}",
                 "",

@@ -121,3 +121,9 @@ Genre is separate from prose style and is carried into results and grouping.
 Authored genre contexts create derivative sources linked to the original world;
 all variants share its development role. Genre assertions must be visible in the
 brief or supplied files, not introduced only through private grading labels.
+
+Local Gemma thinking is an explicit `enable_thinking` model setting, enabled in
+research/pilot IT configurations. The parser returns `thinking`; history rendering
+maps it to `reasoning` so the checkpoint template preserves it within tool turns.
+Saved thinking remains separate from prose content. It consumes the same output
+token budget as tool calls and final answers.

@@ -15,3 +15,5 @@
   parse its native output grammar, and capture actual model inputs and raw outputs.
 - Verify an E2B-IT native read/write round trip; preserve its trailing-newline
   copying error separately from successful tool execution.
+- Enable thinking explicitly in Gemma IT experiment configurations, preserve it
+  between native tool calls, and show it separately in pilot reviews.

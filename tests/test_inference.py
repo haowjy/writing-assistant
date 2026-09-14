@@ -75,7 +75,10 @@ class ProtocolTests(unittest.TestCase):
             '<|tool_call>call:write_file{path:<|"|>draft.md<|"|>,'
             'content:<|"|>Hello, {world}!\nA "quote" and café.<|"|>}<tool_call|><|tool_response>'
         )
+        text = "<|channel>thought\nRead then write.\n<channel|>" + text
         call = parse_response(tokenizer, text, prefix="")
+        self.assertEqual(call["thinking"], "Read then write.")
+        self.assertNotIn("Read then write.", call.get("content", ""))
         self.assertEqual(
             call["tool_calls"][0]["function"]["arguments"]["content"],
             'Hello, {world}!\nA "quote" and café.',
@@ -88,6 +91,7 @@ class ProtocolTests(unittest.TestCase):
         prompt = tokenizer.apply_chat_template(
             render_messages(history), tools=TOOL_SCHEMAS, tokenize=False, add_generation_prompt=True
         )
+        self.assertIn("<|channel>thought\nRead then write.\n<channel|>", prompt)
         self.assertIn("<|tool>declaration:write_file", prompt)
         self.assertIn("<|tool_response>response:write_file{ok:true}", prompt)
         self.assertEqual(

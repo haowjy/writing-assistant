@@ -63,6 +63,7 @@ for model in MODELS:
         kind="transformers",
         protocol=PROTOCOL,
         prompt_format="chat" if model["variant"] == "it" else "transcript",
+        enable_thinking=model["variant"] == "it",
         loader="multimodal_lm" if "12B" in model["id"] else "causal_lm",
         device="cuda:0",
         dtype="bfloat16",

@@ -26,3 +26,8 @@ The original five cases have not been rerun. No Astra grading was invoked.
 Native tool use on the other checkpoints is unverified; base-model transcript
 runs reject tools until an appropriate template/protocol is established. The
 200-attempt manifest remains a proposal, not a claim that every condition is ready.
+
+Thinking-enabled validation: [recorded results](thinking-validation.json) and
+[local review](../../runs/validation/gemma-thinking-native/review.md). This separate
+smoke emitted thinking on three generations and executed read/write tools.
+The first tool-call thought was present in the next captured prompt.

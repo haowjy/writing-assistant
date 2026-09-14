@@ -1,0 +1,15 @@
+{
+  "status": "completed",
+  "tool_calls": 2,
+  "tool_errors": 0,
+  "usage": {
+    "prompt_tokens": 1502,
+    "completion_tokens": 494
+  },
+  "latency_seconds": 23.357849242864177,
+  "path": "/home/jimyao/gitrepos/research/writing-assistant/runs/validation/gemma-thinking-native/attempts/e406ef43f2c91d2db8994e871a29c96bb4233298d0df8a7d2a30fc8be9727a79/attempt-0001-b2ad5ede",
+  "enable_thinking": true,
+  "thinking_messages": 3,
+  "thinking_preserved_after_tool": true,
+  "exact_copy_passed": false
+}
