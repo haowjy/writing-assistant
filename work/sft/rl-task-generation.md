@@ -1,6 +1,8 @@
 # Branching fiction tasks and task-specific RL rewards
 
-Proposed direction, 2026-09-15. No RL judge has been selected or validated. Train on
+Selected direction, 2026-09-15. GLM-5.3 through Reka is the preferred training judge,
+task generator, and simulated author, using separate role-specific calls. The user
+has settled training-use permission; literary calibration remains unverified. Train on
 the same five task families and harness capabilities as the benchmark, using separate
 source works, task instances, and derivatives. Share scoring implementations where
 appropriate; keep held-out benchmark examples and private evaluation labels out of
@@ -136,8 +138,12 @@ recycling failures from final evaluation into training examples.
 1. Specify the source packet and branch contract, using independently grounded examples.
 2. Create mechanically checkable training tasks for delivery, protected edits, and wiki
    navigation, plus semantic tasks that remain separate until a judge is validated.
-3. Validate a permitted local judge on source-backed comparisons, deliberate continuity
+3. Validate GLM-5.3 through Reka on source-backed comparisons, deliberate continuity
    errors, ineffective transformations, and near-copying; test order sensitivity and
-   misleading instructions embedded in candidate text. No candidate is selected yet.
+   misleading instructions embedded in candidate text. Keep Astra as the held-out evaluator.
 4. Verify task replay and group isolation, then propose a bounded RL feasibility run.
    Neither this document nor on-demand generation authorizes unbounded training or cost.
+
+The [compiled research and generation workflow](training-data-research.md) defines
+the first 100 task assignments and distinguishes prepared requests from generated,
+reviewed tasks and successful SFT trajectories.

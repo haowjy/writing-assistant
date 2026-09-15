@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Compile training-system and synthetic-data research; prepare 100 source-backed
+  task-generation assignments with coverage, hashes, lineage checks, and no API calls.
+  Record GLM-5.3/Reka selection and keep generated-task admission pending.
+
 - Record the 3090-first training decision, defer GPU rental, and outline optional
   W&B logging for written critiques, prose, metrics, and artifacts.
 

@@ -9,6 +9,12 @@ This list sets the work order. It does not authorize training, new paid generati
 or larger evaluation runs. Agree on the bounded training test before executing it;
 keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 
+- [ ] Complete the approved first 100 training tasks using the
+  [compiled research and generation workflow](../sft/training-data-research.md).
+  Source packets and coverage assignments are prepared; actual generated requests,
+  starting drafts/KBs, branch contracts, semantic review and admission remain.
+  Use GLM-5.3 through Reka; training-use permission is settled. Credentials and a
+  generation spending cap are pending. Generate SFT demonstrations separately.
 - [ ] Follow the [3090-first compute plan](../sft/local-compute-and-tracking.md):
   measure bounded training and rollout memory/time locally; defer GPU rental until
   the bottleneck is known.
@@ -37,7 +43,7 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 - [ ] Design [composed multi-turn sessions](../sft/multi-turn-rl.md): grounded adaptive
   author feedback, shared project state, stage and final rewards, and reproducible
   compaction. Measure practical training context before expanding session length.
-- [ ] Validate local reward/judge candidates, training-use permissions, and informative
+- [ ] Validate the selected GLM-5.3/Reka judge and informative
   rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
   preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.
 - [ ] Define a short feasibility run, then obtain approval and execute it. Measure

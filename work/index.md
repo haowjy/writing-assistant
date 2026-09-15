@@ -16,3 +16,5 @@ is recorded in the relevant work item.
 - [Grok / OpenCode pilot](grok-pilot/plan.md): five-case comparison using native xAI tools and Astra ratings.
 
 - [SFT preparation](sft/plan.md): native loss masks, training-data requirements, and the bounded QLoRA feasibility plan.
+- [Training data and task-generation research](sft/training-data-research.md): paper evidence,
+  source-backed generation workflow, and the first 100 task assignments.

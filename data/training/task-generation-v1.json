@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "status": "prepared_requests_only",
+  "coverage": {
+    "family": {
+      "F1": 20,
+      "F2": 20,
+      "F3": 20,
+      "F4": 20,
+      "F5": 20
+    },
+    "instruction_specificity": {
+      "explicit": 52,
+      "loose": 48
+    },
+    "transformation": {
+      "close_continuation": 33,
+      "genre_adaptation": 34,
+      "major_event_divergence": 33
+    },
+    "genre": {
+      "LitRPG": 7,
+      "adventure": 9,
+      "gothic mystery": 9,
+      "historical fiction": 7,
+      "literary realism": 7,
+      "pastoral fantasy": 11,
+      "preserve source genre": 33,
+      "romantic comedy": 9,
+      "workplace science fiction": 8
+    },
+    "style": {
+      "dialogue-led": 20,
+      "dryly comic": 20,
+      "expansive and sensory": 20,
+      "reflective and interior": 20,
+      "spare and concrete": 20
+    },
+    "stages": {
+      "1": 50,
+      "2": 25,
+      "3": 25
+    },
+    "source_groups": {
+      "gutenberg-289-opening": 20,
+      "tmas-train-example_033-prompt": 80
+    },
+    "source_works": {
+      "gutenberg-289": 20,
+      "tmas-train-example_104": 20,
+      "tmas-train-example_100": 20,
+      "tmas-train-example_033": 20,
+      "tmas-train-example_046": 20
+    }
+  },
+  "catalog_hash": "2fe4774615cb5ee7b8803253c31c9e3b9af3c207c35ee87b85d8d0d6e3e0b3a5",
+  "excluded_source_groups": [
+    "world-blue_kitchen",
+    "world-blue_kitchen-comedy",
+    "world-blue_kitchen-horror",
+    "world-blue_kitchen-mystery",
+    "world-blue_kitchen-science_fiction",
+    "world-blue_kitchen-thriller",
+    "world-copper_trial",
+    "world-copper_trial-adventure",
+    "world-copper_trial-fantasy",
+    "world-copper_trial-historical_fiction",
+    "world-copper_trial-literary_fiction",
+    "world-copper_trial-romance",
+    "world-glass_orchard",
+    "world-glass_orchard-comedy",
+    "world-glass_orchard-horror",
+    "world-glass_orchard-mystery",
+    "world-glass_orchard-science_fiction",
+    "world-glass_orchard-thriller",
+    "world-hollow_clock",
+    "world-hollow_clock-adventure",
+    "world-hollow_clock-fantasy",
+    "world-hollow_clock-historical_fiction",
+    "world-hollow_clock-literary_fiction",
+    "world-hollow_clock-romance",
+    "world-last_cinema",
+    "world-last_cinema-comedy",
+    "world-last_cinema-horror",
+    "world-last_cinema-mystery",
+    "world-last_cinema-science_fiction",
+    "world-last_cinema-thriller",
+    "world-night_ferry",
+    "world-night_ferry-adventure",
+    "world-night_ferry-fantasy",
+    "world-night_ferry-historical_fiction",
+    "world-night_ferry-literary_fiction",
+    "world-night_ferry-romance",
+    "world-paper_border",
+    "world-paper_border-comedy",
+    "world-paper_border-horror",
+    "world-paper_border-mystery",
+    "world-paper_border-science_fiction",
+    "world-paper_border-thriller",
+    "world-salt_garden",
+    "world-salt_garden-adventure",
+    "world-salt_garden-fantasy",
+    "world-salt_garden-historical_fiction",
+    "world-salt_garden-literary_fiction",
+    "world-salt_garden-romance",
+    "world-tidal_archive",
+    "world-tidal_archive-adventure",
+    "world-tidal_archive-fantasy",
+    "world-tidal_archive-historical_fiction",
+    "world-tidal_archive-literary_fiction",
+    "world-tidal_archive-romance",
+    "world-winter_radio",
+    "world-winter_radio-comedy",
+    "world-winter_radio-horror",
+    "world-winter_radio-mystery",
+    "world-winter_radio-science_fiction",
+    "world-winter_radio-thriller"
+  ],
+  "generated_tasks": 0,
+  "accepted_tasks": 0,
+  "count": 100,
+  "source_ids": [
+    "gutenberg-289-opening",
+    "tmas-train-example_104-story",
+    "tmas-train-example_100-story",
+    "tmas-train-example_033-story",
+    "tmas-train-example_046-story"
+  ],
+  "requests_hash": "5cff76b847be45532a4c13a184ef536f335b408dc594b390c1b8742aba3a62d3",
+  "generator_instructions_hash": "2647f9d2883df3d85ac08a21e469d930e7316141d3ffa02266f06717da4e4220",
+  "generation_context_hash": "c70e3acc95d4e9ced7b16f5cf5e425a76a9b6913c3ced14517d0d634aac8845d",
+  "generator": {
+    "transport": "openrouter",
+    "provider": "reka",
+    "model": "z-ai/glm-5.3"
+  },
+  "training_use_permission": "settled_by_user",
+  "generation_executed": false,
+  "limitations": [
+    "Five source works in two conservative lineage groups, not 100 independent works.",
+    "No generated task, KB, branch contract, or target answer is accepted yet.",
+    "Close continuation takes precedence over sampled genre and style suggestions."
+  ]
+}

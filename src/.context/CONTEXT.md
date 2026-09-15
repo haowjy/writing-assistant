@@ -182,3 +182,9 @@ rejects overlength data, reasoning fields, special-token input, and known evalua
 source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
 the trainer. GPU training and checkpoint restore remain unverified.
+
+`task_generation.prepare_task_requests` prepares source-backed coverage assignments
+without inference. It accepts only selected human training sources, checks content
+hashes and connected-lineage exclusions, and reports actual source groups separately
+from work counts. Prepared requests are not generated or accepted training tasks.
+The research script binds their hashes to source inventory and generator instructions.
