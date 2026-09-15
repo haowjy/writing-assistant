@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Record candidate harness, serving provider, and model on scorecards and report
+  groups; keep scores from different execution systems separate.
+
 - Record the completed Grok/OpenCode pilot: five task passes, mean Astra prose
   rating 4/5, and explicit comparisons with the same Gemma cases and harness limits.
 

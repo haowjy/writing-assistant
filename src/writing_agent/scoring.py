@@ -27,6 +27,31 @@ QUALITY = {
 }
 
 
+def candidate_metadata(record: dict) -> dict:
+    """Identify the evaluated system, independently of the judge and model publisher."""
+    if "candidate" in record:
+        return dict(record["candidate"])
+    config = record.get("model", {})
+    model_id = config.get("id", "unknown")
+    kind = config.get("kind", "unknown")
+    provider, model = "unknown", model_id
+    harness = "unknown"
+    if kind == "opencode":
+        harness = "opencode"
+        if "/" in model_id:
+            provider, model = model_id.split("/", 1)
+    elif kind == "transformers":
+        harness, provider = "custom", "local"
+    elif kind in {"scripted", "chat_server"}:
+        harness = "custom"
+        provider = "fixture" if kind == "scripted" else "unknown"
+    return {
+        "harness": config.get("harness_name", harness),
+        "provider": config.get("provider", provider),
+        "model": config.get("model_name", model),
+    }
+
+
 def measurement(value=None, *, status="ok", method="deterministic", reason=None, **extra):
     return {"value": value, "status": status, "method": method, "reason": reason, **extra}
 
@@ -220,6 +245,7 @@ def mechanical_score(scenario: dict, result: dict) -> dict:
         "provenance": result.get("provenance", "unknown"),
         "input_provenance": scenario["provenance"],
         "model": result.get("model", {}),
+        "candidate": candidate_metadata(result),
         "source_groups": scenario.get("source_groups", []),
         "style": scenario.get("style", "unspecified"),
         "instruction_specificity": scenario.get("instruction_specificity", "unspecified"),
@@ -241,6 +267,7 @@ def build_report(scorecards: list[dict], destination: Path | None = None) -> dic
             fingerprint(card.get("model", {})),
             card.get("instruction_specificity", "unspecified"),
             card.get("genre", "unspecified"),
+            fingerprint(candidate_metadata(card)),
         )
         groups[key].append(card)
     summaries = []
@@ -275,6 +302,7 @@ def build_report(scorecards: list[dict], destination: Path | None = None) -> dic
                 "input_provenance": key[4],
                 "style": key[5],
                 "model_configuration": cards[0].get("model", {}),
+                "candidate": candidate_metadata(cards[0]),
                 "model_configuration_hash": key[6],
                 "instruction_specificity": key[7],
                 "genre": key[8],
@@ -299,12 +327,14 @@ def build_report(scorecards: list[dict], destination: Path | None = None) -> dic
             "",
             f"{len(scorecards)} saved attempts. Semantic calibration is unvalidated.",
             "",
-            "| Model | Family | Condition | Genre | Specificity | Attempts | Execution failures |",
-            "|---|---|---|---|---|---:|---:|",
+            "| Harness | Provider | Model | Family | Condition | Genre | Specificity | "
+            "Attempts | Execution failures |",
+            "|---|---|---|---|---|---|---|---:|---:|",
         ]
         for group in summaries:
             lines.append(
-                f"| {group['model']} | {group['family']} | {group['condition']} | "
+                f"| {group['candidate']['harness']} | {group['candidate']['provider']} | "
+                f"{group['candidate']['model']} | {group['family']} | {group['condition']} | "
                 f"{group['genre']} | {group['instruction_specificity']} | {group['attempts']} | "
                 f"{group['failed_execution']} |"
             )

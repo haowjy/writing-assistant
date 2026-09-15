@@ -166,3 +166,11 @@ Prose extraction version 2 distinguishes absent required delimiters (missing
 delivery) from multiple delimiters or invalid reviewed spans (needs review).
 Missing delivery fails completion; ambiguous extraction stays pending. Successful
 prose text/spans and numerical feature definitions are unchanged by this distinction.
+
+Scorecards carry a shared `candidate` identity (`harness`, `provider`, `model`)
+for all their measurements and prose profiles. Provider identifies the serving
+route; locally loaded Google weights use provider `local`, not `google`. Keep the
+full model configuration alongside this identity and judge identity separately.
+Reports group by candidate identity as well as full model configuration, so
+identical model names under different harnesses or providers are not pooled.
+Legacy records infer only known routes; unspecified providers remain `unknown`.

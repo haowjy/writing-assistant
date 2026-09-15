@@ -272,6 +272,9 @@ def run(*, execute=False, grade=False):
             "",
             LIMITATIONS,
             "",
+            f"Harness: {card['candidate']['harness']}; provider: "
+            f"{card['candidate']['provider']}; model: {card['candidate']['model']}.",
+            "",
             "[Scorecard](scorecard.json) · [Result and tool trace](result.json)",
             "",
             "## Conversation",

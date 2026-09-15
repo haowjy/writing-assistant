@@ -130,6 +130,35 @@ class ResearchTests(unittest.TestCase):
             {g["instruction_specificity"] for g in report["groups"]}, {"explicit", "loose"}
         )
 
+    def test_candidate_identity_separates_report_groups(self):
+        scenario = next(s for s in self.compile() if s["id"] == "F1-06")
+        card = mechanical_score(
+            scenario,
+            {
+                "status": "completed",
+                "output": "A scene.",
+                "turns": [],
+                "after": {},
+                "model": {"kind": "opencode", "id": "xai/grok-4.6"},
+            },
+        )
+        self.assertEqual(
+            card["candidate"],
+            {
+                "harness": "opencode",
+                "provider": "xai",
+                "model": "grok-4.6",
+            },
+        )
+        alternate = copy.deepcopy(card)
+        alternate["candidate"]["harness"] = "custom"
+        routed = copy.deepcopy(card)
+        routed["candidate"]["provider"] = "another-provider"
+        report = build_report([card, alternate, routed], self.root / "report")
+        self.assertEqual(len(report["groups"]), 3)
+        self.assertTrue(all(g["attempts"] == 1 for g in report["groups"]))
+        self.assertIn("| opencode | xai | grok-4.6 |", (self.root / "report/report.md").read_text())
+
     def test_judgment_merge_preserves_completion_invariants(self):
         scenario = next(s for s in self.compile() if s["id"] == "F2-01")
         for status, semantic_passed, missing, expected in [

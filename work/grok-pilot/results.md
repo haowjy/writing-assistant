@@ -38,3 +38,8 @@ Artifacts are under `runs/pilot-grok46-opencode-2026-09-14/`:
 Three earlier setup attempts are preserved in directories with `-invalid-*` suffixes
 and excluded. Regenerating the report reused all five saved attempts and judgments;
 no additional candidate or grader calls were needed.
+
+Every scorecard records `candidate.harness = opencode`, `candidate.provider = xai`,
+and `candidate.model = grok-4.6`. These fields apply to all measurements in the
+card and appear in report groups. The full routed ID remains `xai/grok-4.6` in
+the model configuration; Astra stays separate under judgment metadata.
