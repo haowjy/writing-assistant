@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Identify released Skywork and RM-R1 reward-model candidates; record local memory,
+  scoring-interface limits and criteria for deferring custom reward-model training.
+
 - Review LitBench, HANNA, LiteraryTaste and WritingPreferenceBench as writing-reward
   references; distinguish preferences, dimensional ratings and unlabeled prose.
 

@@ -4,6 +4,54 @@ Start with LitBench's training pairs for preference calibration, keep HANNA as a
 independent dimensional check, and consider LiteraryTaste for author-specific taste.
 Public releases checked 2026-09-15. No new datasets, judge calls or training ran.
 
+## Existing reward models before custom training
+
+Do not make a new reward-model training project a prerequisite for the first 100
+tasks. Compare a pretrained scorer against GLM on suitable preference-development
+data and representative training-only outputs first. The task definitions alone
+do not contain reward-training labels.
+
+| Released candidate | Interface | Practical role |
+|---|---|---|
+| [Skywork-Reward-V2-Qwen3-4B](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-4B) | Scalar sequence-classification score | First local throughput/quality candidate |
+| [Skywork-Reward-V2-Qwen3-8B](https://huggingface.co/Skywork/Skywork-Reward-V2-Qwen3-8B) | Same scoring approach with a larger backbone | Compare if 4B judgments are inadequate; higher memory cost |
+| [RM-R1-Qwen2.5-Instruct-7B](https://huggingface.co/gaotang/RM-R1-Qwen2.5-Instruct-7B) | Generates a rationale and pairwise preference | Inspectable local judging alternative; generation adds latency |
+
+These are general reward models, not validated judges of our literary styles or
+KB tasks. Skywork recommends inputs within its 16,384-token training length and
+omitting system messages from its scoring template. Its raw score is not a calibrated
+1–5 literary rating. RM-R1's published interface compares two responses; using it
+for single-output rewards requires an explicit comparison/aggregation design.
+
+The LitBench paper reports trained writing verifiers, but the linked public
+collections inspected here expose datasets, not confirmed downloadable verifier
+checkpoints. StoryAlign/StoryReward describes a planned model release. IP-GRM's
+repository claims released weights, but a usable checkpoint link was not confirmed.
+Do not list these as installed or ready-to-run models on the strength of a paper
+announcement. [LitBench collection](https://huggingface.co/collections/SAA-Lab/litbench),
+[StoryAlign paper](https://arxiv.org/abs/2605.04831),
+[IP-GRM repository](https://github.com/ShadeCloak/IP-GRM).
+
+A 4B BF16 model has roughly 8 GB of raw parameter storage; an 8B model roughly 16 GB.
+These arithmetic estimates exclude runtime memory, input activations and batching.
+On the 3090, measure isolated scoring and model-swap overhead instead of assuming
+reward inference and writer training can share the GPU efficiently. A scalar model
+avoids generating a long critique, but actual throughput and ranking quality remain
+unmeasured. Quantization also needs a ranking-agreement check.
+
+Keep mechanical tools/files/navigation checks in code. GLM can initially assess
+source-backed interpretation, continuity and prose. A pretrained scalar scorer is
+a comparison signal until validated, not an automatic replacement for those passes.
+If judging later dominates cost or latency, fine-tune an existing scorer using
+eligible public preference pairs plus reviewed, representative in-domain pairs.
+Include fluent-but-inconsistent and compliant-but-poorly-written examples so it
+cannot learn prose polish as a substitute for task success. Keep the reward model
+fixed during a writer-training experiment and evaluate with a separate held-out judge.
+
+No checkpoint was downloaded or executed for this review.
+
+## Available preference and rating data
+
 | Dataset | Available signal | Proposed role |
 |---|---|---|
 | [LitBench-Train](https://huggingface.co/datasets/SAA-Lab/LitBench-Train) | About 43,800 prompt/chosen/rejected story pairs, with timestamps and voting metadata | Judge calibration; later reward-model training |
