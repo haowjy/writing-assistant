@@ -13,8 +13,9 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   [compiled research and generation workflow](../sft/training-data-research.md).
   Source packets and coverage assignments are prepared; actual generated requests,
   starting drafts/KBs, branch contracts, semantic review and admission remain.
-  Use GLM-5.3 through Reka; training-use permission is settled. Credentials and a
-  generation spending cap are pending. Generate SFT demonstrations separately.
+  Use GLM-5.3 through Reka; training-use permission is settled. The user approved $10 total for generation and
+  task review; `OPENROUTER_API_KEY` is pending. The Python generation pipeline and
+  GLM output-grader adapter are implemented; live API verification remains. Generate SFT demonstrations separately.
 - [ ] Review realized genre blends, tropes, situations and KB constraints against the
   [variation catalog](../../data/training/variation-catalog-v1.json). Adapt incompatible
   combinations, record actual labels, and keep source fidelity and prose quality

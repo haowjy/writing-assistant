@@ -51,6 +51,8 @@ def prepare():
         generator={"transport": "openrouter", "provider": "reka", "model": "z-ai/glm-5.3"},
         training_use_permission="settled_by_user",
         generation_executed=False,
+        approved_budget_usd=10,
+        budget_scope="Task generation and task review; excludes SFT answer trajectories",
         limitations=[
             "Five source works in two conservative lineage groups, not 100 independent works.",
             "No generated task, KB, branch contract, or target answer is accepted yet.",

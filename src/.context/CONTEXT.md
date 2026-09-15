@@ -192,3 +192,20 @@ Variation vocabulary is caller-supplied data. Sampling uses a local seeded RNG;
 source-preserving continuations receive no genre blend and retain source style.
 Tropes, situations and continuity challenges remain authoring suggestions until the
 generator grounds them in a visible task. Assigned coverage is not realized coverage.
+
+
+`task_authoring.author_tasks` turns frozen requests into the existing scenario format.
+Structural admission and an independent task-review call precede compilation; model
+review is not human acceptance or a successful writer trajectory. Outcomes retain
+raw candidates and review evidence. Resume rejects changed inputs or cached outcomes.
+
+`openrouter.OpenRouterClient` owns the shared paid-call ledger for task authors,
+reviewers and `GLMGrader`. Each call has fresh messages; response identity includes
+instructions, payload, role and routing. Uncertain charges retain reservations and
+block new requests. Keep the same ledger when revising a batch. Raw responses retain
+reasoning separately from candidate prose. `GLMGrader` uses the existing blinded
+packet and judgment application; failed judgments leave scores pending.
+
+Grading packet version 3 includes each completed turn’s reply and file snapshot, so
+planning and earlier revisions remain assessable after later stages replace them.
+Prose quality still uses only designated prose selections.

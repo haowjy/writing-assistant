@@ -292,8 +292,8 @@
     "tmas-train-example_046-story"
   ],
   "requests_hash": "bfcf4e8059edf302a0939ec977c3c4152543fe38a15ccd58fd60e2e4e99b8de4",
-  "generator_instructions_hash": "fd5143453bb3ca3e0571d2153662b6c55948d0440c08d0ddbd4a11a38fa722e5",
-  "generation_context_hash": "2a5c56365ca4df2688a93a3a9e4f259966b8f58e8cc984661cc4768acdd6b2db",
+  "generator_instructions_hash": "2289e0ee89869ad1e35ffce1a5e4ab08f3f138c131a63d5ff977fb65fe201a54",
+  "generation_context_hash": "37c30ac4be157118538b9462047835c1095bc60a6130bd99d610b79035b216e9",
   "generator": {
     "transport": "openrouter",
     "provider": "reka",
@@ -301,6 +301,8 @@
   },
   "training_use_permission": "settled_by_user",
   "generation_executed": false,
+  "approved_budget_usd": 10,
+  "budget_scope": "Task generation and task review; excludes SFT answer trajectories",
   "limitations": [
     "Five source works in two conservative lineage groups, not 100 independent works.",
     "No generated task, KB, branch contract, or target answer is accepted yet.",

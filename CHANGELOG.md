@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add Python-driven GLM/Reka task generation and independent review with a shared
+  $10 budget, resumable calls, source and schema checks, and visible/private export.
+  Add a GLM output-grader adapter using existing rubrics; live calls await credentials.
+
 - Specify purpose-dependent information coverage, relevance, density and structure
   measurements, including prose contribution and a proposed bounded nonfiction slice.
 

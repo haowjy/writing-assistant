@@ -79,7 +79,7 @@ def grading_packet(scenario: dict, result: dict, scorecard: dict) -> dict:
         if a["status"] == "ok"
     ]
     return {
-        "version": 2,
+        "version": 3,
         "execution_status": result.get("status"),
         "rubric_version": scenario["labels"].get("rubric_version", 1),
         "brief": scenario["visible"]["brief"],
@@ -92,6 +92,10 @@ def grading_packet(scenario: dict, result: dict, scorecard: dict) -> dict:
         },
         "checks": [c for c in scenario["labels"]["checks"] if c["method"] == "llm_judge"],
         "knowledge_labels": scenario["labels"].get("knowledge", []),
+        "turn_outputs": [
+            {"turn": index, "output": turn["output"], "snapshot": turn["snapshot"]}
+            for index, turn in enumerate(result.get("turns", []))
+        ],
         "output": result.get("output", ""),
         "after": result.get("after", {}),
         "tool_trace": [e for e in result.get("trace", []) if e["type"] == "tool"],

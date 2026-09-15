@@ -101,3 +101,49 @@ All files must use safe relative paths. Keep private evidence, branch grading ru
 and review notes outside `visible`. Do not set an acceptance status, fabricate a
 passing trace, or claim that a generated KB has been independently verified.
 The caller records source lineage, provenance, model/provider identity and hashes.
+
+The object also requires `realized_variation` (an object describing the actual
+implemented genre blend, style, trope, situation and continuity challenge) and
+`labels` (the private grading specification below). Use exactly these seven top-level
+fields: visible, labels, branch_contract, evidence, stage_families, realized_variation,
+review_notes.
+
+Use positive `max_steps` up to 48 and `max_total_bytes` up to 262144; nonnegative
+`max_tool_calls` up to 64 and `max_read_tokens` up to 20000. File tasks need usable
+read/write tools and nonzero tool budgets. Provide all referenced starting files.
+Starting KB pages live under `kb/`; linked pages must be reachable from `kb/index.md`
+with working inline Markdown links. A flat KB can be a single `kb/index.md`.
+A later F5 stage can consume the KB produced by an earlier F4 stage.
+
+Each prose selector has a unique `id`, `kind` (`reply` or `file`), `selection`
+(`whole` or `delimited`) and zero-based `turn`. Files also need `path`. Delimited
+selections need literal nonempty `start` and `end` markers requested visibly.
+Use a whole reply only when that turn requests prose alone. Every F1, F2 and F5
+stage needs its own extraction selector. Do not mark planning or KB text as prose.
+
+`labels.checks` is a list. Every check needs unique `id`, a metric ID, `method`,
+`kind`, and boolean `required`. Deterministic methods support:
+
+- `nonempty`: require delivery; target `artifact` (selector ID), or `path` (file).
+  Without either, this checks the final reply. Include a required delivery check.
+- `contains` or `excludes`: literal `text`, with optional `artifact` or `path`.
+- `word_range`: integer `min` and `max`, with optional `artifact` or `path`.
+- `protected`: `path` and exact `text` present in the initial file.
+- `wiki_links`: requires two or more linked pages, so use only for a visibly requested
+  linked wiki. `labels.entrypoints` supplies its root paths, normally `kb/index.md`.
+
+All other semantic constraints use `method: "llm_judge"`, `kind: "semantic"`,
+and a concrete `description`. Checks inspect final files/final reply unless targeting
+a prose artifact with a turn selector. Do not put `turn` on a check itself.
+Do not mechanically require a word count or phrase the user did not request.
+
+`labels.rubrics` maps metric IDs to objects containing `description`, `range: [1,5]`
+and `anchors` (an object with string keys "1" through "5" and specific descriptions).
+Use Q1 instruction adherence for every task. Applicable metrics are Q2 prose quality,
+Q4 tool use, Q5 planning utility, Q6 alternative diversity, Q7 KB faithfulness,
+Q8 KB coverage, Q9 KB interpretation, Q10 KB navigation, Q11 KB updates,
+Q12 retrieval use and Q13 continuity. Q3 completion is calculated from checks;
+do not create a subjective Q3 rubric. Include Q2/Q13 for F1 or F2, Q5 for F3,
+Q7/Q8/Q9 for F4, and Q2/Q12/Q13 for F5, taking the union across stages.
+Add other relevant metrics where the request supports them. Keep literary judgment
+specific to designated prose; judge planning and KB information by purpose and use.
