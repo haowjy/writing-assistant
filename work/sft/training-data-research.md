@@ -99,11 +99,54 @@ mix loose and explicit requests. Follow-ups should change direction, add a reque
 or ask for a revision without falsely asserting that an unseen answer made an error.
 Adaptive criticism requires a later simulator that reads the actual output.
 
-The manifest varies genre, style, transformation, and KB format. Close continuation
-preserves source genre/style even when a sampled style would conflict. A genre
+The manifest samples a [variation catalog](../../data/training/variation-catalog-v1.json)
+with 60 genre options, 20 styles, 40 tropes, 32 situations, and 12 continuity challenges.
+This catalog supplies combinations, not a requirement that each batch or story cover
+every entry. The seeded sampler shuffles options to limit habitual repetition;
+the generator must adapt incompatible suggestions and record realized coverage.
+Close continuation preserves source genre/style. A genre
 adaptation must change meaningful narrative constraints rather than rename a character.
 Names inherited from a source normally stay fixed; demographic and naming coverage
 requires additional sources or explicit adaptation, not cosmetic duplicates.
+
+The current assignments include 33 two-genre blends, 34 single-genre transformations,
+and 33 source-preserving continuations. Each assignment also suggests a trope,
+situation and continuity challenge. These are generation inputs, not hidden scoring
+requirements. Only choices grounded and made visible in the resulting task become
+binding. The 15 book candidates are acquisition ideas, not additional admitted sources.
+
+For example, nautical adventure plus LitRPG could make shipboard experience alter
+available skills, with rank creating a conflict over command. Cozy mystery plus
+workplace science fiction might make a maintenance log central to a small community's
+dispute. The blend should affect choices and consequences; it need not announce itself
+in the prose. Both examples are design illustrations, not generated records.
+
+## Coherence and prose quality constrain variety
+
+The five task families classify the assistant's work, independently of genre:
+
+| Family | What the assistant does | Example |
+|---|---|---|
+| F1 | Writes prose in a reply | Continue a scene under the supplied story constraints |
+| F2 | Authors or revises files | Change a confrontation while preserving the ending |
+| F3 | Brainstorms and plans | Offer alternative consequences of an accepted plot change |
+| F4 | Builds or maintains a KB | Extract useful knowledge, organize navigation, update canon |
+| F5 | Writes using a KB | Read project knowledge and create a consistent new scene |
+
+A project may visit several families over many tasks. For a long story, keep a stable
+project identity, manuscript, timeline, character knowledge and author decisions in
+files. Sample the next task against that current state. Do not roll a new genre at
+every turn unless the author requests a change. This project-state progression is
+part of the [multi-turn design](multi-turn-rl.md), not implemented by the current
+independent request sampler.
+
+Minimizing formulaic writing means reviewing repeated explanations, interchangeable
+images, generic dialogue, unearned emotional statements and inconsistencies in context.
+It does not require uniformly terse prose or avoiding familiar tropes. Keep these
+literary judgments separate from adherence to KB facts and instructions, and support
+critiques with excerpts. Retain repetition, lexical diversity, source overlap and
+corpus-level distribution metrics as diagnostics. Increasing lexical novelty alone
+does not show better prose or faithful continuity.
 
 Example combinations include planning alternatives → writing one branch → recording
 accepted decisions; constructing a KB → revising a scene → writing from the updated

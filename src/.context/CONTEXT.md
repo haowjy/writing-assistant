@@ -188,3 +188,7 @@ without inference. It accepts only selected human training sources, checks conte
 hashes and connected-lineage exclusions, and reports actual source groups separately
 from work counts. Prepared requests are not generated or accepted training tasks.
 The research script binds their hashes to source inventory and generator instructions.
+Variation vocabulary is caller-supplied data. Sampling uses a local seeded RNG;
+source-preserving continuations receive no genre blend and retain source style.
+Tropes, situations and continuity challenges remain authoring suggestions until the
+generator grounds them in a visible task. Assigned coverage is not realized coverage.

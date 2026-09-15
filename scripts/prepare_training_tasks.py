@@ -13,6 +13,7 @@ CATALOG = ROOT / "data/processed/sft-starter-v1/catalog.json"
 DESTINATION = ROOT / "data/processed/training-tasks-v1"
 MANIFEST = ROOT / "data/training/task-generation-v1.json"
 INSTRUCTIONS = ROOT / "work/sft/task-generator-instructions.md"
+VARIATIONS = ROOT / "data/training/variation-catalog-v1.json"
 SOURCE_IDS = [
     "gutenberg-289-opening",
     "tmas-train-example_104-story",
@@ -33,6 +34,7 @@ def prepare():
         catalog,
         SOURCE_IDS,
         excluded_source_groups=evaluation_source_groups(),
+        variation_catalog=json.loads(VARIATIONS.read_text()),
         count=100,
     )
     instruction_text = INSTRUCTIONS.read_text()
@@ -52,7 +54,7 @@ def prepare():
         limitations=[
             "Five source works in two conservative lineage groups, not 100 independent works.",
             "No generated task, KB, branch contract, or target answer is accepted yet.",
-            "Close continuation takes precedence over sampled genre and style suggestions.",
+            "Genre blends need grounding; assignments are not verified stories.",
         ],
     )
     save_json(MANIFEST, manifest)
@@ -61,15 +63,16 @@ def prepare():
         "",
         "100 requests; no generated or accepted tasks. Five works in two lineage groups.",
         "",
-        "| Request | Source | Stages | Specificity | Transformation | Genre |",
-        "|---|---|---|---|---|---|",
+        "| Request | Source | Stages | Specificity | Transformation | Genres | Trope | Situation |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for request in batch["requests"]:
         a = request["assignment"]
         lines.append(
             f"| {request['id']} | {request['packet']['source']['id']} | "
             f"{' → '.join(a['stage_families'])} | {a['instruction_specificity']} | "
-            f"{a['transformation']} | {a['genre']} |"
+            f"{a['transformation']} | {' + '.join(a['genre_blend']) or a['genre']} | "
+            f"{a['trope']} | {a['situation']} |"
         )
     (DESTINATION / "review.md").write_text("\n".join(lines) + "\n")
     return manifest

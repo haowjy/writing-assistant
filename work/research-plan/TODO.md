@@ -15,6 +15,10 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   starting drafts/KBs, branch contracts, semantic review and admission remain.
   Use GLM-5.3 through Reka; training-use permission is settled. Credentials and a
   generation spending cap are pending. Generate SFT demonstrations separately.
+- [ ] Review realized genre blends, tropes, situations and KB constraints against the
+  [variation catalog](../../data/training/variation-catalog-v1.json). Adapt incompatible
+  combinations, record actual labels, and keep source fidelity and prose quality
+  separate from label coverage. Acquire and split additional book candidates before use.
 - [ ] Follow the [3090-first compute plan](../sft/local-compute-and-tracking.md):
   measure bounded training and rollout memory/time locally; defer GPU rental until
   the bottleneck is known.

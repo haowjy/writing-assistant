@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Expand task-authoring options to 60 genres with explicit blends, 40 tropes,
+  32 situations and continuity challenges; preserve source style in continuations
+  and distinguish sampled options from verified narrative diversity.
+
 - Compile training-system and synthetic-data research; prepare 100 source-backed
   task-generation assignments with coverage, hashes, lineage checks, and no API calls.
   Record GLM-5.3/Reka selection and keep generated-task admission pending.

@@ -18,6 +18,20 @@ style. Genre adaptation or a changed major event may override original canon, bu
 state the departure in the visible brief. Preserve source names unless the adaptation
 has a reason to change them. Do not simply rename a previous task.
 
+The variation catalog is an option pool, not a list every story must cover. When
+`genre_blend` contains two genres, develop a coherent combination: one may determine
+the setting and the other the conflict or narrative expectations. Make both matter
+through events and choices; labeling a scene with two genre names is insufficient.
+Treat the sampled trope and situation as starting ideas. Adapt or replace an
+incompatible ingredient and explain the replacement in `review_notes` rather than
+forcing a contradictory task. Preserve-source assignments need no new genre or trope.
+
+The continuity challenge is a skill to exercise, not an invented source fact. Ground
+it in cited source material or a visibly authorized branch change. A character may
+act only on information they have; a tentative note is not accepted canon. Every
+required deviation or constraint must be visible to the candidate through the request
+or project files. The generated task's actual labels must describe what you made.
+
 For loose instructions, leave reasonable choices open. Do not hide exact word counts,
 viewpoints, filenames or plot events in the grading rules. For explicit instructions,
 make every required constraint visible and achievable within the supplied tools.
@@ -60,6 +74,13 @@ one preferred plot. Mechanical checks cover delivery, protected text, supported
 tools and navigation. Semantic questions cover continuity, interpretation, useful
 planning and requested transformation. Literary quality is a separate rubric.
 Do not invent a numerical MMD reward for a single scene.
+
+For prose, review unnecessary restatement, interchangeable imagery, generic dialogue,
+unearned emotional summaries, and details that contradict the scene. Explain problems
+using passages and the requested style. Do not equate ornate prose with poor writing,
+ban particular words as a quality proxy, or reward maximal novelty at the expense of
+coherence. A familiar trope can support an effective scene when its consequences and
+characters are specific.
 
 ## Response contract
 
