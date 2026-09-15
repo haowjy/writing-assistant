@@ -10,6 +10,10 @@ This guide joins the earlier [SFT/RL research](rl-bootstrap-research.md),
 and [3090 compute plan](local-compute-and-tracking.md). The recommendations below
 are our design choices, not claims that any paper validated this writing harness.
 
+The [writing-reward data review](writing-reward-data.md) identifies public preference
+and rating datasets for judge calibration and separates them from unlabeled prose
+references used for distribution metrics.
+
 ## Keep the training artifacts distinct
 
 | Artifact | Contents | Used for |

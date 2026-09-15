@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Review LitBench, HANNA, LiteraryTaste and WritingPreferenceBench as writing-reward
+  references; distinguish preferences, dimensional ratings and unlabeled prose.
+
 - Expand task-authoring options to 60 genres with explicit blends, 40 tropes,
   32 situations and continuity challenges; preserve source style in continuations
   and distinguish sampled options from verified narrative diversity.

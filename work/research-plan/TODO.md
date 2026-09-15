@@ -50,6 +50,9 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 - [ ] Validate the selected GLM-5.3/Reka judge and informative
   rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
   preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.
+- [ ] Inspect and inventory [writing-reward reference data](../sft/writing-reward-data.md),
+  starting with LitBench-Train. Preserve official test splits and the existing HANNA
+  evaluation role; audit cross-dataset prompt/story overlap before judge calibration.
 - [ ] Define a short feasibility run, then obtain approval and execute it. Measure
   VRAM and processed tokens per second; verify checkpoint save, resume, and inference
   loading. Use measured throughput and the actual token count to estimate a full run.
