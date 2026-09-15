@@ -4,8 +4,10 @@
 
 The first feasibility checkpoint is Gemma 4 E2B-IT with QLoRA SFT; the final
 training model size remains open. See [SFT preparation](../sft/plan.md).
-Test whether adaptation improves authoring behavior before adding RL. Later
-experiments depend on the remaining failures and the reliability of their rewards.
+The intended training direction is SFT bootstrapping followed by RL, with direct RL
+from the IT checkpoint as a comparison. The [research review](../sft/rl-bootstrap-research.md)
+separates bootstrap demonstrations, RL tasks, judge data, and held-out evaluation.
+Training scope depends on rollout behavior and the reliability of rewards.
 The [baseline comparison](baseline-comparison.md) covers Gemma 4 12B and E4B,
 pretrained and instruction-tuned, on an RTX 3090. The broader checkpoint comparison remains separate from the initial training
 feasibility test.
@@ -69,11 +71,12 @@ Use RL first where signals are objective or semi-objective:
 
 Task success should dominate so the model does not learn to avoid tools.
 
-## Writer RL, Only If Necessary
+## Writer RL
 
-Use writer RL only for specific residual failures that can be measured reliably, such as leakage, plan violations, repetition, semantic redundancy, recap, length errors, and continuity errors.
-
-Avoid initially optimizing vague scalar rewards like creativity or literary quality.
+Investigate writing-quality preference rewards alongside constraint and continuity
+checks. Validate a training judge before optimizing its scores. Keep literary
+assessment distinct from mechanical compliance and distribution diagnostics;
+measure whether gains transfer to held-out projects and an independent evaluator.
 
 ## Interleaved Reasoning
 
@@ -118,17 +121,11 @@ After each major stage, test ordinary instruction following, QA, summarization, 
 
 ## Recommended First Experiment
 
-Before RL:
-
-```text
-Base IT baseline
-vs
-Unified SFT LoRA
-vs
-Planner SFT + Writer SFT
-```
-
-If this does not produce measurable gains, debug data and architecture before introducing GRPO.
+Compare the unchanged IT checkpoint, SFT-only, direct RL from IT, and short SFT → RL.
+Use matched RL task pools and rollout budgets for the two RL conditions. The SFT
+warm-up should address demonstrated sampling or tool-use gaps; do not impose a fixed
+500–1,000-example prerequisite. Separate planner/writer adapters remain later ablations.
+Validate rewards, source permissions, and a bounded runtime test before scaling.
 
 ## Supervision setup
 

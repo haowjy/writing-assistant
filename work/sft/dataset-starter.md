@@ -84,11 +84,12 @@ quality claims.
 
 ## Expand for the first substantive SFT experiment
 
-Working target: **500–1,000 curated training trajectories**, plus a separate grouped
-validation collection. This is an experiment-design starting point, not a proven
-minimum or a guarantee of improvement. Freeze the count after measuring target-token
-lengths, curation yield, and the bounded training test's throughput.
-
+The [SFT/RL research review](rl-bootstrap-research.md) revises the expansion priority:
+first test whether a short SFT warm-up improves RL readiness compared with direct RL
+from Gemma-IT. The earlier 500–1,000 SFT target is an optional expansion range, not a
+prerequisite. Expand independent RL tasks and validate rewards; add demonstrations
+when observed behavior requires them. Codex-authored seed material remains pending
+acceptance and provider-terms review.
 1. Broaden upstream-train human source selection and acquire more independent eligible
    works. Inventory source groups before assigning train/validation roles.
 2. Build many distinct authorship checkpoints: supplied story passages, extracted notes,
@@ -97,7 +98,8 @@ lengths, curation yield, and the bounded training test's throughput.
    multi-turn revisions, and reply/file delivery. Avoid expanding by cosmetic renaming.
 4. Execute tool traces, verify protected files and links, inspect native loss masks,
    and check source lineage and textual duplicates. Keep related task views grouped.
-5. Grade target quality and instruction/continuity compliance with a fixed Astra rubric;
+5. Grade target quality and instruction/continuity compliance with a permitted training
+   judge and fixed rubric;
    revise or reject weak examples. Record that acceptance decision separately from
    mechanical verification. Synthetic authorship alone does not imply quality.
 6. Freeze accepted records and token counts, then run the separately authorized GPU

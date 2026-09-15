@@ -62,11 +62,19 @@ and literal special-token input are rejected in this first preparation path. Nat
 thinking mode remains enabled in rendering and evaluation; supervising reasoning is
 a separate unresolved data decision. This path does not claim to teach reasoning.
 
+## SFT as an RL bootstrap
+
+The [research review](rl-bootstrap-research.md) proposes direct RL from Gemma-IT versus
+a short SFT warm-up followed by RL. SFT-only remains a control, not the intended final
+approach. A large SFT target collection is not a prerequisite; reward quality and
+useful policy rollouts determine readiness. Resolve training-source and judge-output
+permissions before accepting the current synthetic seed.
+
 ## Next TODO
 
-- [ ] Expand the 24-record seed to a proposed 500–1,000 curated training trajectories
-  across independent projects, with separate grouped validation; finalize size from
-  token counts, curation quality, and measured throughput.
+- [ ] Establish permitted bootstrap demonstrations and an independent RL task pool.
+  Test warm-up size from behavior; expand SFT only for observed gaps.
+- [ ] Validate candidate training rewards/judges separately from held-out evaluation.
 - [ ] Inspect their native masks and lengths, then freeze the preparation manifest.
 - [ ] Approve and run the bounded GPU feasibility test; verify save/resume and adapter inference.
 - [ ] Freeze checkpoint mini-evaluation selection and cadence after timing the test.

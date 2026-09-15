@@ -13,8 +13,9 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   prose weaknesses, continuity errors, failed file delivery, and KB navigation.
   Aggregate counts are recorded in the [SFT plan](../sft/plan.md); retain representative
   cases and use the findings to select training examples.
-- [ ] Expand the [24-record seed](../sft/dataset-starter.md) into a substantive collection
-  (working target: 500–1,000 training trajectories plus grouped validation), mixing
+- [ ] Establish permitted demonstrations and an independent RL task collection using
+  the [bootstrap research](../sft/rl-bootstrap-research.md). Treat the
+  [24-record seed](../sft/dataset-starter.md) as pending; determine SFT size by readiness, mixing
   vague and explicit requests, genres, and prose styles. Include successful tool
   trajectories, local revisions, and handling of proposals versus accepted canon.
   Preserve provenance and group related sources before splitting. Keep evaluation
@@ -25,6 +26,9 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   template and loss masking: train the intended assistant responses and tool calls,
   while excluding system/user messages and tool observations. Decide explicitly
   whether any reasoning data belongs in the training targets.
+- [ ] Validate local reward/judge candidates, training-use permissions, and informative
+  rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
+  preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.
 - [ ] Define a short feasibility run, then obtain approval and execute it. Measure
   VRAM and processed tokens per second; verify checkpoint save, resume, and inference
   loading. Use measured throughput and the actual token count to estimate a full run.

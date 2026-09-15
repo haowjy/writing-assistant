@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Research SFT as an RL bootstrap, writing-specific rewards, local judge candidates,
+  and provider restrictions; replace the fixed SFT expansion prerequisite with a
+  proposed direct-RL versus short-SFT-plus-RL comparison.
+
 - Create a labeled 24-trajectory SFT seed from upstream-train human stories, two
   Gutenberg works, and original synthetic projects; save tool traces, source lineage,
   token masks, and review materials. Plan expansion before substantive SFT.
