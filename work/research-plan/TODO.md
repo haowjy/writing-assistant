@@ -50,6 +50,10 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 - [ ] Validate the selected GLM-5.3/Reka judge and informative
   rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
   preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.
+- [ ] Validate the [information-value profile](../sft/information-value.md) with
+  concise-but-incomplete, accurate-but-irrelevant, redundant and useful-detailed
+  outputs. Keep statistical quality rewards inactive until checked; scope a small
+  source-grounded nonfiction slice within the existing task families.
 - [ ] Inspect and inventory [writing-reward reference data](../sft/writing-reward-data.md),
   starting with LitBench-Train. Preserve official test splits and the existing HANNA
   evaluation role; audit cross-dataset prompt/story overlap before judge calibration.

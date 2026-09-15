@@ -14,6 +14,10 @@ The [writing-reward data review](writing-reward-data.md) identifies public prefe
 and rating datasets for judge calibration and separates them from unlabeled prose
 references used for distribution metrics.
 
+The [information-value design](information-value.md) covers relevance, useful coverage,
+redundancy and structure for planning, discussion, KB pages and nonfiction, with a
+separate treatment of narrative contribution in prose.
+
 ## Keep the training artifacts distinct
 
 | Artifact | Contents | Used for |

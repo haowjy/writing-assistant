@@ -17,6 +17,10 @@ one sampling condition.
 
 ### Proposed initial scalar reward: version 0
 
+The [information-value extension](information-value.md) specifies proposed content
+coverage, relevance, density and structure measurements by output type. Statistical
+quality weights remain inactive pending validation.
+
 Start with `raw = 0.40 * quality + 0.30 * intent + 0.20 * continuity + 0.10 * mechanics`.
 All four components range from zero to one. These weights are a starting hypothesis,
 not validated experimental findings or an implemented RL reward adapter.

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Specify purpose-dependent information coverage, relevance, density and structure
+  measurements, including prose contribution and a proposed bounded nonfiction slice.
+
 - Specify a proposed initial mixed RL reward, task-specific quality rubrics,
   critical-failure cap, unavailable-grading behavior and multi-stage aggregation.
 
