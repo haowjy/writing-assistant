@@ -10,4 +10,6 @@ it becomes near-term work. Detailed acceptance criteria stay in the linked plans
 - [ ] **Clarification-dependent conversations:** design responsive user follow-ups and grading for material missing information, sensible assumptions, and unnecessary questioning. See [instruction specificity](custom-eval-suite/design.md).
 - [ ] **Training-checkpoint evaluation:** connect the existing inference interface to a future trainer, choose a development cadence and budget, and preserve held-out final evaluation. See [checkpoint execution](../docs/local-inference.md).
 
+- [ ] **Cloud GPU training:** revisit after the [3090-first measurements](sft/local-compute-and-tracking.md) establish memory or throughput limits. Preserve the Python/terminal workflow, manifests, and checkpoint identity when migrating.
+
 These entries are deferred directions, not scheduled runs or generation jobs.

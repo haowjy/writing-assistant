@@ -1,7 +1,7 @@
-# Next experiment: first supervised fine-tuning run
+# Next experiment: SFT bootstrap and RL preparation
 
-The next priority is to prepare training data and verify a small QLoRA training
-pipeline, using the completed baselines to choose what to teach. The
+The next priority is to prepare training tasks, validate rewards, and verify the
+bounded SFT/RL pipeline, using completed baselines to identify learning objectives. The
 [Grok comparison](../grok-pilot/results.md) provides examples of stronger outputs;
 it compares different models and harnesses, so it does not isolate model capability.
 
@@ -9,6 +9,11 @@ This list sets the work order. It does not authorize training, new paid generati
 or larger evaluation runs. Agree on the bounded training test before executing it;
 keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 
+- [ ] Follow the [3090-first compute plan](../sft/local-compute-and-tracking.md):
+  measure bounded training and rollout memory/time locally; defer GPU rental until
+  the bottleneck is known.
+- [ ] Add optional W&B tracking for scores, written critiques, prose, and versioned
+  artifacts while retaining local outputs. Logging is currently disabled.
 - [ ] Summarize failure types from the [custom50 assessments](../custom-eval-suite/astra-grading.md):
   prose weaknesses, continuity errors, failed file delivery, and KB navigation.
   Aggregate counts are recorded in the [SFT plan](../sft/plan.md); retain representative
@@ -29,6 +34,9 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 - [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):
   grounded source packets, permitted divergences, task-specific rewards, private judge
   evidence, coverage tracking, and reproducible per-group initial states.
+- [ ] Design [composed multi-turn sessions](../sft/multi-turn-rl.md): grounded adaptive
+  author feedback, shared project state, stage and final rewards, and reproducible
+  compaction. Measure practical training context before expanding session length.
 - [ ] Validate local reward/judge candidates, training-use permissions, and informative
   rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
   preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Record the 3090-first training decision, defer GPU rental, and outline optional
+  W&B logging for written critiques, prose, metrics, and artifacts.
+
+- Research composed multi-turn RL with simulated author feedback and context
+  compaction; record reward/credit requirements and verified context limits.
+
 - Specify on-demand branching-fiction RL tasks, source-backed judge context, and
   separate mechanical, semantic, and source-overlap rewards.
 

@@ -6,6 +6,11 @@ source works, task instances, and derivatives. Share scoring implementations whe
 appropriate; keep held-out benchmark examples and private evaluation labels out of
 training. See the [SFT/RL research](rl-bootstrap-research.md).
 
+The [multi-turn session design](multi-turn-rl.md) composes these families through
+author feedback, revisions, shared project state, and eventual context compaction.
+A session can exercise several families; the initial single-family cases are only
+one sampling condition.
+
 ## What scores an attempt
 
 RL needs a reward function, not necessarily a language-model judge. Use mechanical
