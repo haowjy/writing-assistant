@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from pathlib import Path
 
-from writing_agent.catalog import save_json
+from writing_agent.catalog import save_json, validate_catalog
 from writing_agent.data import read_records
 from writing_agent.development import author_development
 from writing_agent.training import SFTSettings, encode_trajectory, prepare_sft, train_sft
@@ -76,9 +76,17 @@ def audit_fixtures():
     return {"examples": len(rows), "review": str(AUDIT / "review.md")}
 
 
+def evaluation_source_groups():
+    sources, _ = author_development(ROOT / "data/scenarios/worlds.json")
+    return (
+        set(validate_catalog(sources).values())
+        | {s["id"] for s in sources}
+        | {s["work_id"] for s in sources}
+    )
+
+
 def prepare():
-    _, scenarios = author_development(ROOT / "data/scenarios/worlds.json")
-    excluded = {g for s in scenarios for g in s.get("source_groups", [])}
+    excluded = evaluation_source_groups()
     return prepare_sft(
         read_records(SOURCE),
         tokenizer(),

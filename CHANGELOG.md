@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Create a labeled 24-trajectory SFT seed from upstream-train human stories, two
+  Gutenberg works, and original synthetic projects; save tool traces, source lineage,
+  token masks, and review materials. Plan expansion before substantive SFT.
+- Fix SFT evaluation exclusions to use actual catalog source IDs and lineage groups.
+
 - Prepare Python-driven Gemma SFT with native assistant/tool-call loss masks,
   grouped data exclusions, optional QLoRA execution, and pinned training dependencies.
   Verify five pending format probes and TRL label preservation without training.

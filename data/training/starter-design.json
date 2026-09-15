@@ -1,0 +1,80 @@
+[
+  {
+    "id": "gutenberg-289",
+    "book": 289,
+    "title": "The Wind in the Willows",
+    "author_id": "kenneth-grahame",
+    "author": "Kenneth Grahame",
+    "split": "train",
+    "genre": "pastoral fantasy",
+    "style": "warm, lightly comic",
+    "opening": "The Mole had been working very hard",
+    "notes": "Mole has abandoned spring-cleaning and emerged through his tunnel into a sunny meadow. Whitewash is on his fur; his arms and back ache. He enjoys the birds and warm air and reaches a hedge. No other character has appeared in the supplied passage. The cause of his restlessness is presented as spring's influence, not a message from a known visitor.",
+    "uncertainty": "What lies beyond the hedge and whom Mole might meet are open at this cutoff.",
+    "alternatives": "1. A narrow gap forces Mole to set aside his impatience and examine the hedge. The next scene becomes a small problem of choosing a way through; we need not introduce a companion yet.\n2. He hears a noise that resembles his abandoned pail tipping over. Whether it is real can remain uncertain while he chooses between returning and continuing. This makes his unfinished work an immediate obstacle rather than a moral lecture.\n3. Mole stops to learn the unfamiliar sounds around him. Misidentifying a bird call as a greeting can produce gentle comedy without requiring an unseen character to know him.",
+    "branch": "At the hedge, Mole discovered that he was still holding the little scraper. It lay across his palm, a strip of drying whitewash curling from its edge.\n\nHe could throw it away. There was a very convenient clump of nettles nearby. He stood considering the nettles until he noticed that the scraper had a particularly comfortable handle, worn to the shape of his own paw.\n\nMole turned back. Not to finish the cleaning, certainly. Merely to put one thing where it belonged.\n\nHe hurried across the meadow, keeping his eyes on the opening of his tunnel. Behind him the hedge rustled. This time he did not stop to find out why.",
+    "revision": {
+      "old": "keeping his eyes on the opening of his tunnel",
+      "new": "taking the long way around a patch of daisies"
+    },
+    "accepted_update": "Accepted plan for the next scene, not an event yet: Mole returns his scraper before exploring beyond the hedge."
+  },
+  {
+    "id": "gutenberg-113",
+    "book": 113,
+    "title": "The Secret Garden",
+    "author_id": "frances-hodgson-burnett",
+    "author": "Frances Hodgson Burnett",
+    "split": "validation",
+    "genre": "historical childhood fiction",
+    "style": "observant, restrained",
+    "opening": "When Mary Lennox was sent to Misselthwaite Manor",
+    "notes": "The narrator introduces Mary Lennox and her eventual move to her uncle's Misselthwaite Manor. Her early childhood was in India. Her parents kept her at a distance, servants usually obeyed her, and several governesses left. She learned to read because she wanted to. At the current scene cutoff she is about nine, wakes on a hot morning, and finds a servant other than her usual Ayah beside the bed. The servant's reason for being there has not been supplied.",
+    "uncertainty": "The Ayah's absence is unexplained at this cutoff. Do not import later events, causes, or characters.",
+    "alternatives": "1. Mary tests the unfamiliar servant with a minor demand, then becomes curious when it is misunderstood. The dramatic change is from effortless command to having to explain herself; the Ayah's absence stays unresolved.\n2. The servant brings the wrong book. Mary initially objects, but a picture holds her attention. This uses her established interest in reading and allows an encounter without making her suddenly considerate.\n3. Mary decides to find her Ayah herself. The choice makes her act rather than wait, while the next scene can remain within the house and avoid revealing why the usual servant is absent.",
+    "branch": "The woman reached for the curtain.\n\n“Leave it,” Mary said.\n\nShe had meant to complain about the light. Now, having given the order, she could hardly ask for the opposite. A bright stripe lay across the foot of her bed. She moved one toe into it, then withdrew it under the sheet.\n\n“What is your name?” she asked.\n\nThe woman looked up. Mary repeated the question, louder, and was annoyed to hear how much it sounded like another command.\n\nOn the table stood her cup. She took it herself this time, although it required leaning farther than she liked. The woman remained beside the curtain, waiting for Mary to finish drinking.",
+    "revision": {
+      "old": "A bright stripe lay across the foot of her bed.",
+      "new": "A narrow stripe of sunlight crossed the foot of her bed."
+    },
+    "accepted_update": "Accepted plan for the next scene, not an event yet: Mary asks the unfamiliar servant's name. The Ayah's absence remains unexplained."
+  },
+  {
+    "id": "original-orbital-laundry",
+    "author_id": "codex-starter-author",
+    "author": "Codex session author",
+    "split": "train",
+    "genre": "workplace science fiction",
+    "style": "dry humor with concrete technical details",
+    "source": "Nima supervises the laundry on a small orbital hotel. Osric brings her a jacket whose sleeves have shrunk unevenly. He thinks the new rinse cycle caused it, but the cycle log has not been checked. The jacket belongs to the station's visiting inspector. Its owner has not been told about the damage. Only Nima may suspend a wash program. The evening laundry cart leaves at eighteen hundred. The log can be read from the terminal; reading it does not require the inspector's permission.",
+    "notes": "Nima supervises laundry and alone can suspend a wash program. Osric brings the inspector's jacket with unevenly shrunk sleeves. Osric suspects the new rinse cycle; the log has not been checked. The inspector has not been informed. The evening cart leaves at eighteen hundred. The terminal log is available to read without asking the inspector.",
+    "uncertainty": "The rinse cycle is a hypothesis, not an established cause. Do not invent a log result.",
+    "prose": "Osric laid the jacket on the folding table and smoothed the longer sleeve beside the shorter one.\n\n“Perhaps he stands like this,” he said, raising one shoulder.\n\nNima pulled a chair to the terminal. On the wall, the cart clock changed to seventeen forty-two. She could hear the next load turning behind her.\n\n“Did you check the log?”\n\n“I checked the jacket.”\n\n“Yes. I can see how thoroughly.”\n\nHe lowered his shoulder. Nima put her hand on the mouse, then moved the jacket away from the ventilation grille. Whatever had happened to it, she did not intend to lose a button down there as well.",
+    "alternatives": "1. Check the log together. Osric must explain what he actually did, giving the scene a practical interrogation without predetermining the fault.\n2. Prepare to tell the inspector before the cart leaves. The conflict becomes how to describe damage honestly while the cause remains unknown.\n3. Nima temporarily suspends the program and redirects the queue. This protects other clothes but creates a visible operational cost; the suspension must be her decision, not Osric's.",
+    "branch": "Nima stopped the cart with one foot. Its front wheel hummed against the sole of her shoe.\n\n“Not that one,” she said.\n\nOsric lifted the inspector's jacket from the top tray. Beneath it lay six identical napkins, every corner meeting its opposite. He looked from the napkins to the mismatched sleeves.\n\n“That proves something.”\n\n“It proves you can fold a napkin.”\n\nShe released the cart and watched it turn into the corridor. Then she opened the cycle log on the terminal, angling the screen so Osric would have to stand beside her to read it. She left the jacket spread across the table.",
+    "revision": {
+      "old": "Its front wheel hummed against the sole of her shoe.",
+      "new": "Its front wheel pressed a clean semicircle into her shoe."
+    },
+    "accepted_update": "Accepted new event: Nima suspends the new rinse program pending investigation. The log's contents and the cause of damage remain unknown."
+  },
+  {
+    "id": "original-puppet-theatre",
+    "author_id": "codex-starter-author",
+    "author": "Codex session author",
+    "split": "train",
+    "genre": "village comedy",
+    "style": "quick dialogue and restrained physical comedy",
+    "source": "Teo repairs puppets for a village theatre. Jun, tonight's narrator, has found two different endings tucked inside the dragon puppet. One ending is signed by the director; the other has no signature. Neither Jun nor Teo has established which version the cast rehearsed. The signed ending has the dragon return a stolen bell. The unsigned ending has it keep the bell. Only the director can approve a changed ending. The director is expected before the audience enters. Jun may rehearse a passage privately, but rehearsal does not make it approved.",
+    "notes": "Teo repairs puppets; Jun narrates tonight. Two endings were found inside the dragon: signed return of the stolen bell, unsigned retention of it. The rehearsed version is unknown. Only the director can approve a change and is expected before admission. Private rehearsal is permitted and is not approval.",
+    "uncertainty": "Neither the unsigned ending's author nor the rehearsed version is established.",
+    "prose": "Jun held the two pages against the dragon's flanks.\n\n“Which side did you open first?”\n\n“The side with the loose stitch,” Teo said.\n\n“That doesn't help.”\n\n“It helped the dragon.”\n\nHe took the puppet from her and examined its jaw. A bead of glue held the lower teeth shut. Jun tried the signed ending aloud, quietly, then the other. The dragon appeared equally pleased with both.\n\nFrom the lobby came the scrape of chairs. Teo set the puppet on its stand and laid the pages beside it, signature uppermost on one, blank margin uppermost on the other.\n\n“Now,” he said, “at least we can ask the right question.”",
+    "alternatives": "1. Ask a cast member to describe the rehearsal without showing either page. Conflicting memories can make the uncertainty concrete without selecting an ending.\n2. Jun privately tries both endings while Teo repairs the jaw. The same prop action takes on different meanings, giving the director a clear comparison later.\n3. Prepare the bell prop so either ending remains possible. This turns delay into useful work, but the director still makes the final decision before the audience enters.",
+    "branch": "“Give me the bell,” Jun said.\n\nTeo handed it over by the ribbon. She read the signed page, rang once, and placed the bell beyond the dragon's reach. Then she tried the unsigned page and pushed it beneath the puppet's cloth belly.\n\nThe bell rang again.\n\n“That,” Teo said, “may give the game away.”\n\nJun retrieved it and wrapped the clapper in a scrap of felt. They tried the movement once more. This time the dragon kept its prize silently.\n\nShe removed the felt before putting the bell on the prop table. When the director arrived, she wanted both versions ready to show, and neither mistaken for a decision.",
+    "revision": {
+      "old": "They tried the movement once more.",
+      "new": "Jun repeated the movement with one hand behind her back."
+    },
+    "accepted_update": "Accepted new event, after the director arrives: the director confirms the signed ending for tonight. The dragon will return the bell; the unsigned version is retained as an unused alternative."
+  }
+]

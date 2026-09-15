@@ -11,8 +11,10 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 
 - [ ] Summarize failure types from the [custom50 assessments](../custom-eval-suite/astra-grading.md):
   prose weaknesses, continuity errors, failed file delivery, and KB navigation.
-  Record representative cases and use the findings to select training examples.
-- [ ] Prepare a separate training collection across all five task families, mixing
+  Aggregate counts are recorded in the [SFT plan](../sft/plan.md); retain representative
+  cases and use the findings to select training examples.
+- [ ] Expand the [24-record seed](../sft/dataset-starter.md) into a substantive collection
+  (working target: 500–1,000 training trajectories plus grouped validation), mixing
   vague and explicit requests, genres, and prose styles. Include successful tool
   trajectories, local revisions, and handling of proposals versus accepted canon.
   Preserve provenance and group related sources before splitting. Keep evaluation

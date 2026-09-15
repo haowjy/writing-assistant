@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "records": 24,
+  "splits": {
+    "train": 19,
+    "validation": 5
+  },
+  "tasks": {
+    "F1": 8,
+    "F2": 4,
+    "F3": 4,
+    "F4": 4,
+    "F5": 4
+  },
+  "sources": {
+    "gutenberg": 10,
+    "new_synthetic": 10,
+    "tell_me_a_story": 4
+  },
+  "provenance": {
+    "half_synthetic": 6,
+    "synthetic_fanfic": 4,
+    "synthetic": 10,
+    "human": 4
+  },
+  "tokens": 18830,
+  "max_tokens": 1551,
+  "supervised_tokens": 7798,
+  "hanna_reference_only": 3,
+  "selected_tmas": [
+    "tmas-train-example_104-story",
+    "tmas-train-example_100-story",
+    "tmas-train-example_033-story",
+    "tmas-train-example_046-story"
+  ],
+  "excluded_tmas": {
+    "tmas-train-example_097-story": "Embedded song lyrics require separate reuse review."
+  },
+  "dataset_hash": "7b08758d27d47601a3857763865e604795046dbd95a3f38c13344d1158ad1faa",
+  "review_status": "pending",
+  "selection_policy": "four shortest complete upstream-train TMAS pairs that fit after exclusions; two independent Gutenberg works; two original synthetic projects",
+  "source_inventory": [
+    {
+      "id": "gutenberg-289-opening",
+      "raw_file": "data/raw/sft-starter/289.txt",
+      "raw_sha256": "98f6b6cda20087857cefe9121b71d6166c1b92423bb7645fdba3c45ff0c141e8",
+      "character_span": [
+        1392,
+        3120
+      ],
+      "span_basis": "UTF-8 decoded, universal newlines",
+      "url": "https://www.gutenberg.org/ebooks/289",
+      "provenance": "human",
+      "upstream_split": "unsplit",
+      "terms": {
+        "license": "Public domain in the USA; Project Gutenberg terms retained",
+        "evidence": "https://www.gutenberg.org/ebooks/289"
+      },
+      "work_id": "gutenberg-289",
+      "author_id": "kenneth-grahame",
+      "author": "Kenneth Grahame",
+      "role": "train",
+      "sha256": "e1218d456ce4a0c0270a2b97266707ba0b93ca62feec1402519840af3efd4855",
+      "parents": [],
+      "transformations": []
+    },
+    {
+      "id": "gutenberg-113-opening",
+      "raw_file": "data/raw/sft-starter/113.txt",
+      "raw_sha256": "6b0bb5fbd0c4e873d2d22028da9d753cf3977d5f70ac58221556b28060badbf5",
+      "character_span": [
+        1823,
+        3720
+      ],
+      "span_basis": "UTF-8 decoded, universal newlines",
+      "url": "https://www.gutenberg.org/ebooks/113",
+      "provenance": "human",
+      "upstream_split": "unsplit",
+      "terms": {
+        "license": "Public domain in the USA; Project Gutenberg terms retained",
+        "evidence": "https://www.gutenberg.org/ebooks/113"
+      },
+      "work_id": "gutenberg-113",
+      "author_id": "frances-hodgson-burnett",
+      "author": "Frances Hodgson Burnett",
+      "role": "development",
+      "sha256": "8d947b7d269c55cbe99eec878a64042135c63aa0496ab73f3d11e18ab774a506",
+      "parents": [],
+      "transformations": []
+    },
+    {
+      "id": "original-orbital-laundry",
+      "provenance": "synthetic",
+      "generator": {
+        "harness": "codex",
+        "provider": "openai",
+        "model": "session-model-not-recorded"
+      },
+      "upstream_split": "newly_authored",
+      "terms": {
+        "license": "Repository-authored synthetic research material",
+        "evidence": "data/training/starter-design.json"
+      },
+      "work_id": "original-orbital-laundry",
+      "author_id": "codex-starter-author",
+      "author": "Codex session author",
+      "role": "train",
+      "sha256": "ad64ddd41cdbec1f8c7d73733afe48bfd15db35b135e71cc1910157e9600a98a",
+      "parents": [],
+      "transformations": []
+    },
+    {
+      "id": "original-puppet-theatre",
+      "provenance": "synthetic",
+      "generator": {
+        "harness": "codex",
+        "provider": "openai",
+        "model": "session-model-not-recorded"
+      },
+      "upstream_split": "newly_authored",
+      "terms": {
+        "license": "Repository-authored synthetic research material",
+        "evidence": "data/training/starter-design.json"
+      },
+      "work_id": "original-puppet-theatre",
+      "author_id": "codex-starter-author",
+      "author": "Codex session author",
+      "role": "train",
+      "sha256": "3c6c08f283438dc4b061196783f936978952a28acd9e27baf2813549641b830b",
+      "parents": [],
+      "transformations": []
+    },
+    {
+      "id": "tmas-train-example_104-prompt",
+      "sha256": "a8f3f316c962a230c2efa1ee655db79f13ede5160e2cdfab5cb532f92888aa35",
+      "work_id": "tmas-train-example_104",
+      "provenance": "unknown",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prompt",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_104-story",
+      "sha256": "8ab78973d071d62f50fa4db54fbab1d521e6053061a1a916d4200d8d335cd168",
+      "work_id": "tmas-train-example_104",
+      "provenance": "human",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prose_reference",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_100-prompt",
+      "sha256": "9db33b3b6f5e8dc1999807e0f0a3bbee2e88a2229ebd587ce31f93b06f8b353f",
+      "work_id": "tmas-train-example_100",
+      "provenance": "unknown",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prompt",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_100-story",
+      "sha256": "0d143b8f6c349f06ebf482d2d7e436b5270ee2effbad11a5e3e507517c93fd1e",
+      "work_id": "tmas-train-example_100",
+      "provenance": "human",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prose_reference",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_033-prompt",
+      "sha256": "ae7c38ffe7c808c88a8c6e151c893544fff3df1dd4a9393dfbf2430d36cdbf9a",
+      "work_id": "tmas-train-example_033",
+      "provenance": "unknown",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prompt",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_033-story",
+      "sha256": "ca7831d14adfb57619b6e7896ebccb8defdf6ddb5b9a70cb9c2e6b7532c72766",
+      "work_id": "tmas-train-example_033",
+      "provenance": "human",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prose_reference",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_046-prompt",
+      "sha256": "b089d16fcf7f04470af0d1754ee8277be1963831b08891a264405c5f39ad2c41",
+      "work_id": "tmas-train-example_046",
+      "provenance": "unknown",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prompt",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "tmas-train-example_046-story",
+      "sha256": "ea0f19a3d00523115b41397fd20f08f1337fc589d1a2c4053e697addc8ccc9e0",
+      "work_id": "tmas-train-example_046",
+      "provenance": "human",
+      "role": "train",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "artifact_type": "prose_reference",
+      "revision": "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e",
+      "upstream_split": "train",
+      "url": "https://github.com/google-deepmind/tell_me_a_story",
+      "terms": {
+        "license": "CC-BY-4.0",
+        "evidence": "README.md",
+        "training": "selected_upstream_train",
+        "evaluation": "allowed"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/tell_me_a_story/train_encrypted.jsonl",
+      "raw_sha256": "1d6c3e65ca6a3a430797e230d479070d186a64f900660c364c1d3950a057a4f5",
+      "author_id": "tmas-unattributed-authors"
+    },
+    {
+      "id": "hanna-0",
+      "sha256": "cadc9b66a550ebb222474981ecbabf2b3b2c274c1da406c023ae59ddfb71a241",
+      "work_id": "writingprompts-c6c1628276e3604c",
+      "provenance": "human",
+      "role": "development",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "generator": "Human",
+      "revision": "282f27536a5d05ad4ce14298abcd70c45668fed2",
+      "upstream_split": "evaluation",
+      "url": "https://github.com/dig-team/hanna-benchmark-asg",
+      "terms": {
+        "license": "MIT repository; upstream WritingPrompts terms retained",
+        "training": "unresolved",
+        "redistribution": "unresolved",
+        "evaluation": "local_research"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/hanna/hanna_stories_annotations.csv",
+      "prompt": "When you die the afterlife is an arena where you face every insect and animal you killed in your life. If you win you go to heaven, lose you go to hell. Your job was an exterminator on earth.",
+      "artifact_type": "prose",
+      "annotations": [
+        {
+          "Relevance": "4",
+          "Coherence": "4",
+          "Empathy": "3",
+          "Surprise": "2",
+          "Engagement": "4",
+          "Complexity": "4"
+        },
+        {
+          "Relevance": "5",
+          "Coherence": "5",
+          "Empathy": "1",
+          "Surprise": "3",
+          "Engagement": "4",
+          "Complexity": "1"
+        },
+        {
+          "Relevance": "2",
+          "Coherence": "2",
+          "Empathy": "3",
+          "Surprise": "2",
+          "Engagement": "2",
+          "Complexity": "3"
+        }
+      ],
+      "use": "evaluation_reference_only"
+    },
+    {
+      "id": "hanna-1",
+      "sha256": "f9eddb03161694aad29cad67542df4cab9e83981bbe7eb368a54eb20619a76e6",
+      "work_id": "writingprompts-9dafb866d2e4f1df",
+      "provenance": "human",
+      "role": "development",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "generator": "Human",
+      "revision": "282f27536a5d05ad4ce14298abcd70c45668fed2",
+      "upstream_split": "evaluation",
+      "url": "https://github.com/dig-team/hanna-benchmark-asg",
+      "terms": {
+        "license": "MIT repository; upstream WritingPrompts terms retained",
+        "training": "unresolved",
+        "redistribution": "unresolved",
+        "evaluation": "local_research"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/hanna/hanna_stories_annotations.csv",
+      "prompt": "A new law is enacted that erases soldiers memories of their time at war.",
+      "artifact_type": "prose",
+      "annotations": [
+        {
+          "Relevance": "5",
+          "Coherence": "5",
+          "Empathy": "3",
+          "Surprise": "4",
+          "Engagement": "4",
+          "Complexity": "4"
+        },
+        {
+          "Relevance": "5",
+          "Coherence": "4",
+          "Empathy": "4",
+          "Surprise": "4",
+          "Engagement": "4",
+          "Complexity": "4"
+        },
+        {
+          "Relevance": "5",
+          "Coherence": "5",
+          "Empathy": "5",
+          "Surprise": "3",
+          "Engagement": "3",
+          "Complexity": "4"
+        }
+      ],
+      "use": "evaluation_reference_only"
+    },
+    {
+      "id": "hanna-2",
+      "sha256": "7aaa959206dcd806de0e11834434f1a883f3d3819d04e3f690f58ba21482f1d2",
+      "work_id": "writingprompts-e04c59ad6ea96793",
+      "provenance": "human",
+      "role": "development",
+      "parents": [],
+      "review_status": "pending",
+      "transformations": [],
+      "generator": "Human",
+      "revision": "282f27536a5d05ad4ce14298abcd70c45668fed2",
+      "upstream_split": "evaluation",
+      "url": "https://github.com/dig-team/hanna-benchmark-asg",
+      "terms": {
+        "license": "MIT repository; upstream WritingPrompts terms retained",
+        "training": "unresolved",
+        "redistribution": "unresolved",
+        "evaluation": "local_research"
+      },
+      "raw_file": "/home/jimyao/gitrepos/research/writing-assistant/data/raw/research/hanna/hanna_stories_annotations.csv",
+      "prompt": "A scientific study proves that all humans have been breathing a mind-altering gas from birth. It has been in the air since the beginning of recorded time. People have been in a constant state of being high. Until now. Specialised gas masks are handed out and people have begun to act strange.",
+      "artifact_type": "prose",
+      "annotations": [
+        {
+          "Relevance": "5",
+          "Coherence": "5",
+          "Empathy": "5",
+          "Surprise": "5",
+          "Engagement": "5",
+          "Complexity": "5"
+        },
+        {
+          "Relevance": "5",
+          "Coherence": "4",
+          "Empathy": "2",
+          "Surprise": "3",
+          "Engagement": "2",
+          "Complexity": "3"
+        },
+        {
+          "Relevance": "4",
+          "Coherence": "5",
+          "Empathy": "5",
+          "Surprise": "5",
+          "Engagement": "5",
+          "Complexity": "5"
+        }
+      ],
+      "use": "evaluation_reference_only"
+    }
+  ],
+  "separation_audit": {
+    "excluded_source_groups": [
+      "gutenberg-11",
+      "gutenberg-1661",
+      "gutenberg-84",
+      "world-blue_kitchen",
+      "world-blue_kitchen-comedy",
+      "world-blue_kitchen-horror",
+      "world-blue_kitchen-mystery",
+      "world-blue_kitchen-science_fiction",
+      "world-blue_kitchen-thriller",
+      "world-copper_trial",
+      "world-copper_trial-adventure",
+      "world-copper_trial-fantasy",
+      "world-copper_trial-historical_fiction",
+      "world-copper_trial-literary_fiction",
+      "world-copper_trial-romance",
+      "world-glass_orchard",
+      "world-glass_orchard-comedy",
+      "world-glass_orchard-horror",
+      "world-glass_orchard-mystery",
+      "world-glass_orchard-science_fiction",
+      "world-glass_orchard-thriller",
+      "world-hollow_clock",
+      "world-hollow_clock-adventure",
+      "world-hollow_clock-fantasy",
+      "world-hollow_clock-historical_fiction",
+      "world-hollow_clock-literary_fiction",
+      "world-hollow_clock-romance",
+      "world-last_cinema",
+      "world-last_cinema-comedy",
+      "world-last_cinema-horror",
+      "world-last_cinema-mystery",
+      "world-last_cinema-science_fiction",
+      "world-last_cinema-thriller",
+      "world-night_ferry",
+      "world-night_ferry-adventure",
+      "world-night_ferry-fantasy",
+      "world-night_ferry-historical_fiction",
+      "world-night_ferry-literary_fiction",
+      "world-night_ferry-romance",
+      "world-paper_border",
+      "world-paper_border-comedy",
+      "world-paper_border-horror",
+      "world-paper_border-mystery",
+      "world-paper_border-science_fiction",
+      "world-paper_border-thriller",
+      "world-salt_garden",
+      "world-salt_garden-adventure",
+      "world-salt_garden-fantasy",
+      "world-salt_garden-historical_fiction",
+      "world-salt_garden-literary_fiction",
+      "world-salt_garden-romance",
+      "world-tidal_archive",
+      "world-tidal_archive-adventure",
+      "world-tidal_archive-fantasy",
+      "world-tidal_archive-historical_fiction",
+      "world-tidal_archive-literary_fiction",
+      "world-tidal_archive-romance",
+      "world-winter_radio",
+      "world-winter_radio-comedy",
+      "world-winter_radio-horror",
+      "world-winter_radio-mystery",
+      "world-winter_radio-science_fiction",
+      "world-winter_radio-thriller"
+    ],
+    "overlapping_source_groups": [],
+    "upstream_tmas_split": "train",
+    "training_validation_group_check": "passed",
+    "limitation": "Exact recorded lineage only; anonymous author overlap is unknown."
+  }
+}

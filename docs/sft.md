@@ -22,6 +22,11 @@ are not a production training dataset. Read the
 
 ## Prepare data
 
+A [24-record seed collection](../work/sft/dataset-starter.md) now exists at the default
+source path. Its records are pending literary acceptance and are not exported by
+`prepare()` yet. The seed validates format and curation; the planned substantive
+collection is larger and spans more independent projects.
+
 Place version-1 trajectory records at `data/training/sft-v1.jsonl`, or change `SOURCE`
 in the research script. The existing [trajectory validator](../src/writing_agent/data.py)
 requires provenance, messages, tool schemas, initial/expected files, split, and review

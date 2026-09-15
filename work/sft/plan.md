@@ -12,8 +12,10 @@ tracks the broader sequence.
 - Verified the cached native tokenizer on five synthetic format probes, without weights.
 - Verified that TRL's dataloader preserves the labels and masks padding, using a tiny
   randomly initialized CPU model. No forward/backward training or optimizer step ran.
-- No accepted production training collection exists. No Gemma training weights were
-  loaded, adapter trained, or GPU training throughput measured.
+- Created a [24-record labeled seed dataset](dataset-starter.md), with 19 train and
+  five validation records. All remain pending literary acceptance. This is a pipeline
+  seed, not the substantive training collection.
+- No Gemma training weights were loaded, adapter trained, or GPU throughput measured.
 
 The [mask review](preparation-audit/review.md) shows complete native conversations
 and the selected loss tokens. The accompanying masks.json preserves the token IDs
@@ -62,7 +64,9 @@ a separate unresolved data decision. This path does not claim to teach reasoning
 
 ## Next TODO
 
-- [ ] Curate accepted training trajectories and a separate grouped validation split.
+- [ ] Expand the 24-record seed to a proposed 500–1,000 curated training trajectories
+  across independent projects, with separate grouped validation; finalize size from
+  token counts, curation quality, and measured throughput.
 - [ ] Inspect their native masks and lengths, then freeze the preparation manifest.
 - [ ] Approve and run the bounded GPU feasibility test; verify save/resume and adapter inference.
 - [ ] Freeze checkpoint mini-evaluation selection and cadence after timing the test.
