@@ -15,6 +15,64 @@ one sampling condition.
 
 ## What scores an attempt
 
+### Proposed initial scalar reward: version 0
+
+Start with `raw = 0.40 * quality + 0.30 * intent + 0.20 * continuity + 0.10 * mechanics`.
+All four components range from zero to one. These weights are a starting hypothesis,
+not validated experimental findings or an implemented RL reward adapter.
+
+| Component | Initial scorer | Meaning |
+|---|---|---|
+| Quality | GLM-5.3/Reka | Literary effectiveness for prose; useful distinct alternatives for planning; useful selection and organization for KB tasks |
+| Intent | GLM-5.3/Reka | Achieves the requested transformation, revision or other author goal; excludes mechanical delivery checks |
+| Continuity | GLM-5.3/Reka with source evidence | Respects applicable source/KB facts, character knowledge and accepted decisions; allows authorized divergences |
+| Mechanics | Existing deterministic checks | Correct delivery, protected content, paths, tools and navigation where applicable |
+
+Use anchored 1–5 semantic ratings mapped by `(rating - 1) / 4`: failed, major issues,
+usable with substantial revision, effective with minor issues, fully effective.
+Require cited evidence and uncertainty alongside each semantic component. Quality
+is task-dependent; do not score a KB as if it were a literary scene.
+
+Mechanics is the mean of task-declared applicable checks, with delivery as a minimum
+check on every initial task. Fix that check set before generating rollout groups;
+an inapplicable link check does not earn a direct-prose task free points. A recovered
+tool error is diagnostic rather than automatic failure. Tool-call count and file
+count are not positive objectives.
+
+For a preregistered critical failure, use `reward = min(raw, 0.25)`; otherwise use
+`reward = raw`. Examples include a missing required final artifact, an unauthorized
+protected edit, or violation of an explicitly critical canon constraint confirmed
+against source evidence. Declare critical criteria before sampling; do not promote
+an ordinary rubric weakness into a critical failure after seeing the answer. Assess
+recoverable delivery/consistency failures at the required stage or final boundary.
+Permitted fanfiction departures are not canon failures.
+
+The cap retains partial learning signal while limiting compensation by polished
+writing. It does not guarantee a failed attempt receives negative GRPO advantage:
+relative ranking depends on the other group members. Monitor all-fail/all-equal
+groups and adjust curriculum or demonstrations rather than interpreting higher
+relative reward as absolute success.
+
+If a required artifact is absent, its quality component is zero; a receipt or prose
+written elsewhere does not substitute for it. A judge timeout or insufficient
+evidence is different: mark reward unavailable and leave the rollout group pending
+until resolved. Do not drop only inconvenient judgments or silently reweight them.
+
+For initial two- or three-stage sessions, propose `0.5 * mean(stage_rewards) +
+0.5 * final_state_reward`, applying the same critical-failure cap to unresolved
+mandatory failures. The final-state assessment checks the current manuscript/KB
+against active author requirements and persistence of earlier accepted decisions.
+Superseded requirements are removed; repeated checks are intentionally tracking
+persistence, not counted as independent evidence. Record this aggregation separately
+from the later RL algorithm's per-action credit assignment.
+
+Do not initially add MMD, n-gram distance, lexical diversity, a pretrained reward
+model score, or a token-efficiency bonus to this scalar. Retain them as diagnostics
+where applicable, then consider additions only after checking whether optimization
+improves writing rather than gaming the measurement. Keep rubric and reward versions
+fixed within a training experiment. Validate version 0 on controlled failures and
+matched good/weak examples before its first policy update.
+
 RL needs a reward function, not necessarily a language-model judge. Use mechanical
 rewards for outcomes that code can verify and semantic judgments where meaning matters.
 A mixed reward can include both. The existence of a requested file earns delivery

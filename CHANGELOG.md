@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Specify a proposed initial mixed RL reward, task-specific quality rubrics,
+  critical-failure cap, unavailable-grading behavior and multi-stage aggregation.
+
 - Identify released Skywork and RM-R1 reward-model candidates; record local memory,
   scoring-interface limits and criteria for deferring custom reward-model training.
 
