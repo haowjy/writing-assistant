@@ -1,5 +1,8 @@
 # Research work plan
 
+- [Next TODO: first supervised fine-tuning run](TODO.md): baseline failure analysis,
+  separate training data, QLoRA setup, and checkpoint evaluation.
+
 These documents describe experiments to consider. Choose models, data sizes,
 metrics, and execution order for the active research task.
 

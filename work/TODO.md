@@ -1,5 +1,8 @@
 # TODO — now
 
+- [ ] Follow the [next training-experiment TODO](research-plan/TODO.md), beside the
+  full experimental plans. Start with failure analysis and separate training data.
+
 Near-term work for the current evaluation pilot. Move deferred items here from
 [FUTURE](FUTURE.md) when they become the next work to do. Keep detailed designs and
 completion evidence in the linked work item; remove completed entries from this list.

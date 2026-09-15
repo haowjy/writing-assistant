@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Record the next training-experiment TODO beside the full research plans, covering
+  failure analysis, separate training data, QLoRA verification, and checkpoint evaluation.
+
 - Record candidate harness, serving provider, and model on scorecards and report
   groups; keep scores from different execution systems separate.
 
