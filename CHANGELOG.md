@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Specify on-demand branching-fiction RL tasks, source-backed judge context, and
+  separate mechanical, semantic, and source-overlap rewards.
+
 - Research SFT as an RL bootstrap, writing-specific rewards, local judge candidates,
   and provider restrictions; replace the fixed SFT expansion prerequisite with a
   proposed direct-RL versus short-SFT-plus-RL comparison.

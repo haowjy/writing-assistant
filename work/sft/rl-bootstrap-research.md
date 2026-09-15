@@ -24,6 +24,9 @@ Research methods and provider authorization are separate questions. A paper repo
 use of a proprietary teacher does not establish that the same use is permitted under
 our account agreement, or disclose whether the authors had separate permission.
 
+The [branching-task design](rl-task-generation.md) details task-specific mixed rewards,
+on-demand fanfiction variations, and the source context supplied to semantic judges.
+
 ## Distinct data requirements
 
 - **SFT demonstrations:** successful conversations and tool trajectories that establish

@@ -5,8 +5,10 @@ notes at a point in a book, then ask for continuations, revisions, or changes in
 style—the “make fanfiction” experiment. Collect sessions through a harness that
 executes file operations and records the conversation for training and evaluation.
 
-Start by gathering source data and reviewing a small pilot. Use the pilot to
-work out the dataset format and the harness behavior needed to run it.
+The [RL task and reward plan](../sft/rl-task-generation.md) extends this into an
+on-demand training-task stream: source-grounded branch requests, initial files,
+private grading evidence, and reproducible variations. The same five benchmark task
+families guide training, while works and instances remain separate from evaluation.
 
 ## Sources and story checkpoints
 
@@ -57,7 +59,7 @@ A scenario specifies starting files, available tools, author requests, output
 locations, and private scoring criteria. An evaluation session is one model
 running that scenario across conversation turns and tool calls.
 
-Run a teacher model through real file tools. Record requests, assistant responses,
+For SFT demonstrations, run a permitted teacher model through real file tools. Record requests, assistant responses,
 tool calls and results, revisions, approvals, and final files. Use scripted author
 turns initially. Where feedback must reference generated content, use an author
 simulator with a recorded model version and private brief. Replay sessions to
@@ -68,19 +70,24 @@ human-written target. Construct and verify a compatible conversation and tool
 sequence around it. Alternative branches need new prose; label human and synthetic
 targets separately and compare their effects during training.
 
-Initial SFT learns assistant responses and tool calls from accepted recordings.
+For RL, the current writer policy generates attempts in the real harness; score
+those attempts with task-specific mechanical checks and semantic rewards where
+validated. A teacher-written ideal continuation is not required for every RL task.
+
+A short SFT bootstrap learns assistant responses and tool calls from accepted recordings.
 The [supervision setup](training-experiments.md#supervision-setup) describes loss
-masking. Later preference or live-rollout training may reuse the environment once
-its scores are reliable. Vary file layouts and tool configurations to test whether
-learned behavior transfers. The choice of harness framework remains open.
+masking. Preference or live-rollout training uses the environment once
+its rewards are reliable. Vary file layouts and tool configurations to test whether
+learned behavior transfers. The existing Python workspace harness is the starting point for RL integration.
 
 ## Evaluation and pilot
 
 Run evaluation with frozen model weights. Score tool use, instruction following,
 state changes, and prose separately; assess wiki organization when the task calls
 for it. Each scenario identifies the chat response, file, or revised passage to
-score. Use the original continuation as a human reference while allowing valid
-alternative branches.
+score. Use the original continuation as a reference only when the task calls for that
+comparison. A requested alternate event or genre overrides incompatible original
+canon; textual overlap and narrative departure are scored separately.
 
 The pilot should contain source samples and a few reviewed checkpoint records,
 then demonstrate a complete session: propose alternatives, choose, write, revise,

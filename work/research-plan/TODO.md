@@ -26,6 +26,9 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   template and loss masking: train the intended assistant responses and tool calls,
   while excluding system/user messages and tool observations. Decide explicitly
   whether any reasoning data belongs in the training targets.
+- [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):
+  grounded source packets, permitted divergences, task-specific rewards, private judge
+  evidence, coverage tracking, and reproducible per-group initial states.
 - [ ] Validate local reward/judge candidates, training-use permissions, and informative
   rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
   preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.
