@@ -14,3 +14,5 @@ is recorded in the relevant work item.
 - [External checks](external-benchmarks/plan.md): automatic instruction-following/coding runs and paid-subset decisions.
 
 - [Grok / OpenCode pilot](grok-pilot/plan.md): five-case comparison using native xAI tools and Astra ratings.
+
+- [SFT preparation](sft/plan.md): native loss masks, training-data requirements, and the bounded QLoRA feasibility plan.

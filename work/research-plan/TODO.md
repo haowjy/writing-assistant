@@ -18,7 +18,7 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   Preserve provenance and group related sources before splitting. Keep evaluation
   cases and related derivatives out of training; the five Grok outputs are comparison
   evidence, not an approved training dataset.
-- [ ] Implement the first supervised QLoRA pipeline for Gemma E2B-IT on the RTX 3090,
+- [ ] Verify the [prepared supervised QLoRA pipeline](../sft/plan.md) for Gemma E2B-IT on the RTX 3090,
   using Transformers, PEFT, TRL, and bitsandbytes. Verify the native conversation/tool
   template and loss masking: train the intended assistant responses and tool calls,
   while excluding system/user messages and tool observations. Decide explicitly

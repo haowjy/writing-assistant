@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Prepare Python-driven Gemma SFT with native assistant/tool-call loss masks,
+  grouped data exclusions, optional QLoRA execution, and pinned training dependencies.
+  Verify five pending format probes and TRL label preservation without training.
+
 - Record the next training-experiment TODO beside the full research plans, covering
   failure analysis, separate training data, QLoRA verification, and checkpoint evaluation.
 

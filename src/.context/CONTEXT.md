@@ -91,7 +91,7 @@ fresh-reader question success are separate measurements.
 The 50 authored scenarios and rubric labels require human review. They are short
 synthetic development cases, not a validated or contamination-free benchmark.
 Near-duplicate discovery is heuristic; grouping works, authors, and derivatives
-remains necessary. Training orchestration is separate work. Checkpoint evaluation
+remains necessary. Checkpoint evaluation
 uses saved weights or caller-owned single-device weights; the caller owns training
 pauses and checkpoint identity. Generation restores module modes and PyTorch RNG
 state. It never retains cross-scenario conversation or KV caches. Runtime imports
@@ -174,3 +174,11 @@ full model configuration alongside this identity and judge identity separately.
 Reports group by candidate identity as well as full model configuration, so
 identical model names under different harnesses or providers are not pooled.
 Legacy records infer only known routes; unspecified providers remain `unknown`.
+
+`training.py` prepares accepted grouped trajectories and exposes explicit QLoRA
+execution. Native template annotations must preserve rendered bytes, supervise
+assistant text/tool calls/endings, and mask embedded observations. Preparation
+rejects overlength data, reasoning fields, special-token input, and known evaluation
+source groups. Saved token labels are preserved by the TRL collator. Training
+requires explicit execution and matching prepared hashes; no benchmarks run from
+the trainer. GPU training and checkpoint restore remain unverified.

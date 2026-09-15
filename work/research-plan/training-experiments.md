@@ -2,12 +2,13 @@
 
 ## Starting point
 
-The proposed starting point is an instruction-tuned 7B–12B model with QLoRA SFT.
+The first feasibility checkpoint is Gemma 4 E2B-IT with QLoRA SFT; the final
+training model size remains open. See [SFT preparation](../sft/plan.md).
 Test whether adaptation improves authoring behavior before adding RL. Later
 experiments depend on the remaining failures and the reliability of their rewards.
 The [baseline comparison](baseline-comparison.md) covers Gemma 4 12B and E4B,
-pretrained and instruction-tuned, on an RTX 3090. The training checkpoint and
-software stack remain to be selected from those results.
+pretrained and instruction-tuned, on an RTX 3090. The broader checkpoint comparison remains separate from the initial training
+feasibility test.
 
 The [branching authorship plan](branching-authorship.md) describes collecting
 harness-backed sessions across plot directions and prose styles for this training.
@@ -136,4 +137,5 @@ plans, while masking user, system, and tool-observation tokens. With TRL,
 `assistant_only_loss=True` requires a compatible chat template that supplies
 assistant masks. Inspect a rendered batch and verify the masks before training.
 Use explicit plans and decisions as supervision; do not import private reasoning
-traces automatically. The training runner and masking checks are not implemented.
+traces automatically. The Python trainer and native masking checks are implemented; GPU training,
+checkpoint resume, and trained-adapter inference remain to be verified.
