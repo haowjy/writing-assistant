@@ -183,16 +183,27 @@ source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
 the trainer. GPU training and checkpoint restore remain unverified.
 
-`task_generation.prepare_task_requests` prepares source-backed coverage assignments
-without inference. It accepts only selected human training sources, checks content
-hashes and connected-lineage exclusions, and reports actual source groups separately
-from work counts. Prepared requests are not generated or accepted training tasks.
+`task_generation.iter_requests` streams source-backed coverage assignments without
+inference; `build_request` returns the one at an index and `prepare_task_requests`
+materializes a batch with a coverage summary. Requests reference their source by
+identity and hash instead of embedding the passage, so a batch costs O(requests)
+rather than O(requests x source size); `task_authoring.resolve_packet` inlines the
+passage for a model call or validation. Each request is derivable from its index and
+seeded per-key permutations rather than shared RNG state, so a batch can resume
+mid-way. Only selected human training sources are accepted; content hashes and
+connected-lineage exclusions are checked, and source groups are reported separately
+from work counts. Instruction specificity is structured as a level plus the stated and
+withheld decision points, and coverage reports the level and withheld points.
+Prepared requests are not generated or accepted training tasks.
 The research script binds their hashes to source inventory and generator instructions.
-Variation vocabulary is caller-supplied data. Sampling uses a local seeded RNG;
-source-preserving continuations receive no genre blend and retain source style.
+Variation vocabulary is caller-supplied data.
+Source-preserving continuations receive no genre blend and retain source style.
 Tropes, situations and continuity challenges remain authoring suggestions until the
 generator grounds them in a visible task. Assigned coverage is not realized coverage.
 
+`task_authoring.resolve_packet` inlines the passage a request refers to and verifies
+its identity and hash. Model calls and `validate_task` receive resolved requests;
+stored outcomes and compiled scenarios keep the reference form and only the source id.
 
 `task_authoring.author_tasks` turns frozen requests into the existing scenario format.
 Structural admission and an independent task-review call precede compilation; model

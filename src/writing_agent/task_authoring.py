@@ -39,8 +39,30 @@ Do not equate schema validation with literary quality or factual grounding.
 """
 
 
+def resolve_packet(request: dict, catalog: list[dict]) -> dict:
+    """Inline the referenced source passage for a model call or validation.
+
+    Stored requests reference their source by identity. This returns a copy with the
+    passage present under ``packet.source``, verifying the identity and content hash.
+    """
+    packet = request["packet"]
+    source = next((item for item in catalog if item["id"] == packet.get("source_id")), None)
+    if source is None:
+        raise ValueError(f"Unknown source: {packet.get('source_id')}")
+    if source.get("role") != "train":
+        raise ValueError("Source packet differs from training catalog")
+    if fingerprint(source.get("text", "")) != packet.get("source_sha256"):
+        raise ValueError(f"Changed source text: {packet.get('source_id')}")
+    resolved = copy.deepcopy(request)
+    resolved["packet"] = {**packet, "source": source}
+    return resolved
+
+
 def validate_task(request: dict, candidate: dict) -> dict:
-    """Return a scenario after structural checks; semantic acceptance is separate."""
+    """Return a scenario after structural checks; semantic acceptance is separate.
+
+    The request must be resolved: call resolve_packet before this.
+    """
     required = {
         "visible",
         "labels",
@@ -78,7 +100,9 @@ def validate_task(request: dict, candidate: dict) -> dict:
         or any(not isinstance(r, dict) for r in labels["rubrics"].values())
     ):
         raise ValueError("Invalid checks or rubrics")
-    source = request["packet"]["source"]
+    source = request["packet"].get("source")
+    if source is None:
+        raise ValueError("validate_task needs a resolved request; call resolve_packet first")
     if source["role"] != "train" or fingerprint(source["text"]) != source["sha256"]:
         raise ValueError("Invalid training source packet")
     assignment = request["assignment"]
@@ -264,7 +288,6 @@ def author_tasks(
 ) -> dict:
     """Save every outcome and compile only mechanically valid, model-reviewed tasks."""
     validate_catalog(catalog)
-    sources = {source["id"]: source for source in catalog}
     ids = set()
     for request in requests:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", request["id"]) or request["id"] in ids:
@@ -273,9 +296,7 @@ def author_tasks(
         body = {k: v for k, v in request.items() if k not in {"id", "status", "request_hash"}}
         if fingerprint(body) != request["request_hash"]:
             raise ValueError("Request hash mismatch")
-        source = request["packet"]["source"]
-        if source != sources.get(source["id"]) or source["role"] != "train":
-            raise ValueError("Source packet differs from training catalog")
+        resolve_packet(request, catalog)
     identity = fingerprint(
         {
             "requests": requests,
@@ -311,10 +332,11 @@ def author_tasks(
                     "request_hash": request["request_hash"],
                     "status": "pending",
                 }
+                resolved = resolve_packet(request, catalog)
                 try:
                     generated = client.json_call(
                         instructions,
-                        {"request": request, "tool_schemas": tool_schemas},
+                        {"request": resolved, "tool_schemas": tool_schemas},
                         role="task_author",
                         max_tokens=16384,
                         thinking=False,
@@ -322,7 +344,7 @@ def author_tasks(
                     outcome.update(
                         generation_identity=generated["identity"], candidate=generated["value"]
                     )
-                    scenario = validate_task(request, generated["value"])
+                    scenario = validate_task(resolved, generated["value"])
                     with tempfile.TemporaryDirectory(prefix="training-task-validation-") as tmp:
                         compile_scenarios([scenario], catalog, Path(tmp))
                     brief = " ".join(scenario["visible"]["brief"].lower().split())
@@ -331,7 +353,7 @@ def author_tasks(
                     reviewed = client.json_call(
                         REVIEW_INSTRUCTIONS,
                         {
-                            "request": request,
+                            "request": resolved,
                             "candidate": generated["value"],
                             "required_gates": list(REVIEW_GATES),
                             "tool_schemas": tool_schemas,

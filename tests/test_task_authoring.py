@@ -26,7 +26,7 @@ from writing_agent.paid import (
     reconcile_abandoned,
 )
 from writing_agent.suite import load_scenarios
-from writing_agent.task_authoring import REVIEW_GATES, author_tasks, validate_task
+from writing_agent.task_authoring import REVIEW_GATES, author_tasks, resolve_packet, validate_task
 from writing_agent.task_generation import prepare_task_requests
 
 
@@ -411,7 +411,8 @@ class TaskAdmissionTests(unittest.TestCase):
                 self.assertEqual(reviewer.call_count, 1)
 
     def test_reject_bad_evidence_and_missing_stage_prose(self):
-        _, request, candidate, _ = fixture()
+        catalog, request, candidate, _ = fixture()
+        request = resolve_packet(request, catalog)
         for invalid in ("evidence", "prose"):
             changed = copy.deepcopy(candidate)
             if invalid == "evidence":
@@ -422,18 +423,20 @@ class TaskAdmissionTests(unittest.TestCase):
                 validate_task(request, changed)
 
     def test_extra_top_level_keys_are_ignored(self):
-        _, request, candidate, _ = fixture()
+        catalog, request, candidate, _ = fixture()
         candidate = copy.deepcopy(candidate)
         candidate["type"] = "task"
         candidate["review_notes_extra"] = "ignored"
-        validate_task(request, candidate)
+        validate_task(resolve_packet(request, catalog), candidate)
 
     def test_evidence_quote_whitespace_normalization(self):
-        _, request, candidate, _ = fixture()
+        catalog, request, candidate, _ = fixture()
+        catalog = copy.deepcopy(catalog)
+        catalog[0]["text"] = "till he had\n    dust in his throat"
+        catalog[0]["sha256"] = fingerprint(catalog[0]["text"])
         request = copy.deepcopy(request)
-        source = request["packet"]["source"]
-        source["text"] = "till he had\n    dust in his throat"
-        source["sha256"] = fingerprint(source["text"])
+        request["packet"]["source_sha256"] = catalog[0]["sha256"]
+        request = resolve_packet(request, catalog)
         candidate = copy.deepcopy(candidate)
         candidate["evidence"][0]["quote"] = "till he had dust in his throat"
         validate_task(request, candidate)
@@ -442,12 +445,39 @@ class TaskAdmissionTests(unittest.TestCase):
             validate_task(request, candidate)
 
     def test_starting_kb_navigation(self):
-        _, request, candidate, _ = fixture()
+        catalog, request, candidate, _ = fixture()
+        request = resolve_packet(request, catalog)
         candidate["visible"]["initial_files"] = {"kb/index.md": "[Missing](missing.md)"}
         with self.assertRaisesRegex(ValueError, "Starting KB"):
             validate_task(request, candidate)
         candidate["visible"]["initial_files"] = {"kb/index.md": "# Mara\nAt the river."}
         validate_task(request, candidate)
+
+
+class ResolvePacketTests(unittest.TestCase):
+    def test_resolution_inlines_the_source_beside_the_reference(self):
+        catalog, request, _, _ = fixture()
+        resolved = resolve_packet(request, catalog)
+        self.assertEqual(resolved["packet"]["source_id"], "book")
+        self.assertEqual(resolved["packet"]["source"]["text"], catalog[0]["text"])
+        self.assertNotIn("source", request["packet"])
+        self.assertEqual(resolved["request_hash"], request["request_hash"])
+
+    def test_unknown_source_and_changed_text_raise(self):
+        catalog, request, _, _ = fixture()
+        unknown = copy.deepcopy(request)
+        unknown["packet"]["source_id"] = "missing"
+        with self.assertRaisesRegex(ValueError, "Unknown source"):
+            resolve_packet(unknown, catalog)
+        changed = copy.deepcopy(catalog)
+        changed[0]["text"] = "Rewritten passage"
+        with self.assertRaisesRegex(ValueError, "Changed source text"):
+            resolve_packet(request, changed)
+
+    def test_unresolved_requests_are_rejected_by_validate_task(self):
+        _, request, candidate, _ = fixture()
+        with self.assertRaisesRegex(ValueError, "resolved request"):
+            validate_task(request, candidate)
 
 
 class OutputGraderTests(unittest.TestCase):
@@ -487,8 +517,8 @@ class OutputGraderTests(unittest.TestCase):
 
 class MultiStagePacketTests(unittest.TestCase):
     def test_earlier_planning_and_file_versions_reach_judge(self):
-        _, request, candidate, _ = fixture()
-        scenario = validate_task(request, candidate)
+        catalog, request, candidate, _ = fixture()
+        scenario = validate_task(resolve_packet(request, catalog), candidate)
         result = {
             "status": "completed",
             "output": "Final prose",

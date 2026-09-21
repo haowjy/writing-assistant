@@ -14,6 +14,10 @@ DESTINATION = ROOT / "data/processed/training-tasks-v1"
 MANIFEST = ROOT / "data/training/task-generation-v1.json"
 INSTRUCTIONS = ROOT / "work/sft/task-generator-instructions.md"
 VARIATIONS = ROOT / "data/training/variation-catalog-v1.json"
+# Specificity levels for this batch. Opt into a ladder here; the default states every
+# decision point. A ladder divides ``count`` across levels, so raise ``count`` to keep
+# the same number of base assignments.
+SPECIFICITY_LEVELS = ("L3",)
 SOURCE_IDS = [
     "gutenberg-289-opening",
     "tmas-train-example_104-story",
@@ -36,6 +40,7 @@ def prepare():
         excluded_source_groups=evaluation_source_groups(),
         variation_catalog=json.loads(VARIATIONS.read_text()),
         count=100,
+        levels=SPECIFICITY_LEVELS,
     )
     instruction_text = INSTRUCTIONS.read_text()
     context = {"instructions": instruction_text, "tool_schemas": TOOL_SCHEMAS}
@@ -71,8 +76,8 @@ def prepare():
     for request in batch["requests"]:
         a = request["assignment"]
         lines.append(
-            f"| {request['id']} | {request['packet']['source']['id']} | "
-            f"{' → '.join(a['stage_families'])} | {a['instruction_specificity']} | "
+            f"| {request['id']} | {request['packet']['source_id']} | "
+            f"{' → '.join(a['stage_families'])} | {a['instruction_specificity']['level']} | "
             f"{a['transformation']} | {' + '.join(a['genre_blend']) or a['genre']} | "
             f"{a['trope']} | {a['situation']} |"
         )

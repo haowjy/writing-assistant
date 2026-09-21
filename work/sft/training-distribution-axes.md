@@ -22,7 +22,7 @@ adapt to it.
 | Axis | Varies | Kind | Evidence today |
 |---|---|---|---|
 | **A. Task content** | genre, style, trope, situation, continuity challenge, transformation | task | [variation catalog](../../data/training/variation-catalog-v1.json); `TRANSFORMATIONS` |
-| **B. Starting point** | family F1–F5, initial files, stage depth | task | `FAMILIES`, `initial_files`, `stage_families` |
+| **B. Starting point** | family F1–F5, initial files, stage depth, prior context | task | `FAMILIES`, `initial_files`, `stage_families` |
 | **C. Instruction specificity** | which decision points the brief states, and how explicitly | task — primary | partial: "prompt specificity" is a listed coverage dimension |
 | **D. Thinking level** | none / brief / extended reasoning before a turn | conditioning | none; DeepSeek exposes only thinking on/off |
 | **E. Instruction phrasing** | meaning-preserving rewrites of the same brief | nuisance | none |
@@ -31,7 +31,40 @@ adapt to it.
 
 Axes A and B are already sampled by `_sample_options` in
 [`task_generation.py`](../../src/writing_agent/task_generation.py) and summarized by
-the coverage `Counter` in the same module. The rest are new.
+the coverage `Counter` in the same module. The rest are new. Axis B should later extend
+to include basic coding tasks, so that writing fine-tuning does not regress general
+coding ability; see the coding rehearsal entry in the [deferred work](../FUTURE.md).
+
+### Prior context (sub-axis of B)
+
+A task can begin after an earlier conversation. The visible package seeds those turns
+before the brief, and the correct handling depends on how the new request relates to them.
+
+| Prior context | New request | Correct behavior |
+|---|---|---|
+| unrelated | self-contained | do the task; do not contaminate and do not refuse |
+| tangential | ambiguous scope | ask, or proceed with a stated assumption |
+| stale | contradicts a prior decision | follow the latest decision over stale notes |
+| superseding | replaces a prior requirement | mark the old requirement superseded |
+
+The tangential case is an ask-required specificity decision, `scope`: whether the request
+connects to the existing project or stands alone. Withheld and tangential, the writer
+should ask; withheld and clearly unrelated, it should proceed standalone and state the
+assumption.
+
+Two failures are worth scoring directly. **Contamination** applies the old project's style
+or canon to the new request, and is mechanically checkable with the `excludes` kind when
+the prior context carries distinctive markers. **Refusal** declines because the request is
+unrelated, which is a failure rather than diligence.
+
+The prior context must be part of the frozen initial state so it repeats identically
+across a group, and the new request must be scorable without it. Making the prior turns
+include the writer's own earlier drafts is the harder variant: the writer must recognize a
+new task rather than continue defending its own prior output.
+
+The visible package has no `history` field today (`VISIBLE_FIELDS` in
+[`suite.py`](../../src/writing_agent/suite.py)) and seeds a single user turn, so this is a
+scenario-format and compiler change; the agent loop already accepts seeded messages.
 
 ## Reward rules
 
@@ -104,18 +137,30 @@ run should attempt. Assign each request a **sampled tuple** and track *marginal*
 per axis, which is what the existing sampler and coverage `Counter` already do. Extend
 that machinery rather than multiplying it.
 
-## Staging
+## Staging and dispositions
 
 One 3090, a 2B base, and small batches cannot support exploring seven axes at once.
-Varying everything produces a confounded result that cannot be attributed. Suggested
-order:
+Varying everything produces a confounded result that cannot be attributed. The core claim
+— an underspecified request should provoke a clarifying question or a reversible proposal
+rather than an invented decision — is testable **single-turn**, without the simulated
+author, so most of the backlog is conditional on that test.
 
-1. **A + B** — already sampled.
-2. **C** — cheap text variation, and the scientifically central axis.
-3. **E** — cheap; pure robustness.
-4. **G** — needs the [simulated-author](simulated-author.md) infrastructure.
-5. **F** — needs a second runtime; see the boundary below.
-6. **D** — depends on the base model and may not pay at 2B scale.
+| Item | Disposition | Why |
+|---|---|---|
+| A + B content and starting-point sampling | do | already implemented |
+| C specificity ladder | do | the primary axis; schema and sampler done, probe next |
+| Clarify reward (outcome vs hidden preference) | do | scores the core claim |
+| E instruction phrasing | tiny probe | cheap robustness; one meaning-preserving rephrasing pass |
+| Unrelated prior context | tiny probe | cheap, clean contamination signal |
+| G partner identity | defer | needs the simulated author |
+| Simulated author and multi-turn credit | defer | only if the single-turn test shows asking is learnable |
+| F tool envelope (pi) | defer | second runtime; see the boundary below |
+| D thinking level | defer | may not pay at 2B |
+| Tangential prior context | defer | plausible-context design is the hard part |
+| Seven-axis exploration | skip | confounded and unaffordable |
+
+A tiny probe is four to twenty samples whose only job is to falsify one assumption, such
+as "the ladder realizes" or "an underspecified request makes the writer ask."
 
 ## Runtime boundary (F)
 

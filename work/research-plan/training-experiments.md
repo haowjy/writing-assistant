@@ -135,7 +135,7 @@ and multitask student distillation against retaining specialists with runtime sw
 
 ## General Capability Preservation
 
-After each major stage, test ordinary instruction following, QA, summarization, coding, conversation, structured output, and non-fiction tool calling.
+After each major stage, test ordinary instruction following, QA, summarization, coding, conversation, structured output, and non-fiction tool calling. Preserving a capability is not the same as measuring it: a small rehearsed slice of basic coding tasks in the training mix is the anti-forgetting mechanism, and the checkpoint runs are its measurement. See the [training-distribution axes](../sft/training-distribution-axes.md) and the coding rehearsal entry in [deferred work](../FUTURE.md).
 
 ## Recommended First Experiment
 

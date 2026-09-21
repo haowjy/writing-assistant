@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+- Make task preparation streaming and source-referencing: `iter_requests` and
+  `build_request` yield one request at a time, each derivable from its index and seeded
+  per-key permutations instead of shared RNG state, so a batch can resume mid-way.
+  Requests carry a source id and hash rather than the passage; `resolve_packet` inlines
+  it for model calls and validation. On the 100-request fixture this drops the prepared
+  payload from 558 KB to 134 KB and embeds no source text. Batch and request
+  `schema_version` is 3.
+
+- Add the specificity ladder: a structured `instruction_specificity`
+  (`level`, `stated`, `withheld`) with per-family decision points, ask-required vs
+  default-safe behavior classes, and matched request ladders. Coverage reports the
+  level and withheld points.
+
 - Specify the training-distribution axes (task variables vs nuisance variables, reward
   invariance across nuisance axes) and treat underspecified requests as the primary case:
   clarify when a decision is consequential and undetermined, proceed when it is not, and
