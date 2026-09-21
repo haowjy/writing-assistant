@@ -155,6 +155,18 @@ configuration; completed and failed outputs are both resumable. External benchma
 graders retain their own protocols and denominators, rather than entering custom
 suite scorecards. Coding execution belongs in the isolated EvalPlus container.
 
+`longform.py` binds the pinned EQ-Bench Longform Writing release as the one benchmark
+we did not design, which is what lets it separate "our reward moved the policy" from
+"our reward moved the policy toward our own taste." It renders the upstream 13-step
+plan-then-eight-chapters protocol, compiles twelve `final_eval` scenarios through the
+unmodified `compile_scenarios` contract, and reimplements the upstream criteria,
+weights and arithmetic. It is an adaptation, not a leaderboard entry: the staccato
+penalty is the continuous curve upstream's own comment describes rather than its
+discontinuous implementation, parsed metrics are filtered to the declared criteria, and
+local sampling and context differ. `faithful` mode keeps generation reply-only so a
+score stays comparable; `workspace` mode adds file delivery and is therefore not
+comparable. Quote a score with its mode and chapter count, never alone.
+
 `CodexGrader` replaces built-in coding instructions with `grader_instructions.md`,
 starts a fresh ephemeral session outside the repository, suppresses project/skill
 instruction loading, and preserves launch evidence. Packet/cache identity includes

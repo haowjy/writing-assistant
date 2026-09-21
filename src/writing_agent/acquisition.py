@@ -10,6 +10,26 @@ from writing_agent.catalog import download_source, fingerprint, read_jsonl, save
 TELL_REV = "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e"
 HANNA_REV = "282f27536a5d05ad4ce14298abcd70c45668fed2"
 IFEVAL_REV = "26d8ccdab6fec61b5c83ad6327ea8bda9e580288"
+EQBENCH_LONGFORM_REV = "34f60a028c3f973c19cde98dc5a9e8f9875a87e3"
+EQBENCH_LONGFORM_FILES = (
+    "README.md",
+    "data/criteria_weights.json",
+    "data/longform_creative_writing_criteria_chapter.txt",
+    "data/longform_creative_writing_criteria_final.txt",
+    "data/longform_creative_writing_judging_prompt_chapter.txt",
+    "data/longform_creative_writing_judging_prompt_final.txt",
+    "data/longform_creative_writing_prompts_minimalist.json",
+    "data/longform_negative_criteria_chapter.txt",
+    "data/longform_negative_criteria_final.txt",
+    "data/prompt1.txt",
+    "data/prompt2.txt",
+    "data/prompt3.txt",
+    "data/prompt4.txt",
+    "data/prompt5.txt",
+    "data/prompt_chapter_first.txt",
+    "data/prompt_chapter_intermediate.txt",
+    "data/prompt_chapter_last.txt",
+)
 BOOKS = {
     84: ("Frankenstein", "Mary Shelley"),
     1661: ("The Adventures of Sherlock Holmes", "Arthur Conan Doyle"),
@@ -18,7 +38,9 @@ BOOKS = {
 
 
 def acquire_sources(
-    destination: Path, *, selections=("tell_me_a_story", "hanna", "ifeval", "gutenberg")
+    destination: Path,
+    *,
+    selections=("tell_me_a_story", "hanna", "ifeval", "gutenberg", "eqbench_longform"),
 ) -> dict:
     """Acquire small releases / three books; do not run benchmarks or fetch model weights."""
     urls = []
@@ -68,7 +90,21 @@ def acquire_sources(
             (f"gutenberg/{book}.txt", f"https://www.gutenberg.org/ebooks/{book}.txt.utf-8")
             for book in BOOKS
         )
-    if set(selections) - {"tell_me_a_story", "hanna", "ifeval", "gutenberg"}:
+    if "eqbench_longform" in selections:
+        root = (
+            "https://raw.githubusercontent.com/EQ-bench/longform-writing-bench/"
+            + EQBENCH_LONGFORM_REV
+        )
+        urls.extend(
+            ("eqbench-longform/" + name, root + "/" + name) for name in EQBENCH_LONGFORM_FILES
+        )
+    if set(selections) - {
+        "tell_me_a_story",
+        "hanna",
+        "ifeval",
+        "gutenberg",
+        "eqbench_longform",
+    }:
         raise ValueError("Unknown source selection")
     receipts = []
     for name, url in urls:

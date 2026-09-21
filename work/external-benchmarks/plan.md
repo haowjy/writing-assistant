@@ -11,6 +11,7 @@ is deferred.
 | IFEval | All 541 prompts, 834 instructions | Official strict/loose prompt and instruction accuracy | Queued after the coding diagnostic |
 | HumanEval+ | HumanEval/0–31 | EvalPlus base and extended tests, one generation per task | Queued after the prose baseline |
 | Creative Writing v3 | 32 prompts, first seed variant each | Sonnet 4.6 rubric | Approved; queued after custom50 |
+| EQ-Bench Longform | 12 prompts, 13 steps each | Sonnet 4.6, 14 upstream criteria | Prepared; see [adaptation and deltas](longform-eqbench.md). No run authorized |
 | WritingBench | 1,000 downloaded prompts | Request-specific LLM rubric | Deferred until a later decision |
 
 The Creative Writing subset is estimated to cost roughly $0.60–$1.40 in judgment tokens,
@@ -23,6 +24,12 @@ Freeze the baseline subset and reuse it at selected training checkpoints. Keep i
 out of training data. Repeated checkpoint-based selection makes this a development
 comparison, so reserve a separate final evaluation set for final claims. Label a
 32-output prose run and the coding diagnostic as subsets, not full leaderboards.
+
+The [EQ-Bench Longform anchor](longform-eqbench.md) is the external long-form
+comparison. It is the only measurement here that a third party designed, so it is the
+one that can distinguish "our reward moved the policy" from "our reward moved the
+policy toward our own taste." Its full run is roughly $5 in judge tokens and is not
+authorized.
 
 ## Python execution and artifacts
 

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- Bind the pinned EQ-Bench Longform Writing release as the external long-form anchor.
+  `longform.py` renders the upstream 13-step plan-then-eight-chapters protocol,
+  compiles twelve `final_eval` scenarios through the existing compile contract, and
+  reimplements the upstream criteria, weights and arithmetic, including its
+  chapter-degradation and staccato-penalty behaviour. Generation is reply-only in
+  `faithful` mode for comparability and file-delivering in `workspace` mode, which is
+  labelled an adaptation. `acquire_sources` gains the pinned `eqbench_longform`
+  selection. Upstream's discontinuous staccato curve is documented and reproducible via
+  `legacy_curve=True` rather than silently replicated.
+
 - Add `reward.py`, the training-side RL scalar. Version 0 combines anchored 1-5 quality,
   intent and continuity judgments with deterministic mechanics, applies a declared
   critical-failure cap, composes stages with the final project state, and computes
