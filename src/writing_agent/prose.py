@@ -465,9 +465,15 @@ def sample_distribution(
         raise ValueError(f"Pool attempts of one scenario; got {sorted(scenarios)}")
     # One scenario id can be run by several models or conditions. Those outputs belong to
     # different distributions, and the feature-config guard cannot catch it because a
-    # single extractor produces every feature record.
+    # single extractor produces every feature record. The sampling seed is excluded from
+    # the comparison: varying it per attempt is what repeated sampling is, not a different
+    # setting, and fingerprinting the whole record rejected every real repeated run.
     settings = {
-        (fingerprint(card.get("model", {})), card.get("condition", "unspecified")) for card in cards
+        (
+            fingerprint({k: v for k, v in card.get("model", {}).items() if k != "seed"}),
+            card.get("condition", "unspecified"),
+        )
+        for card in cards
     }
     if len(settings) > 1:
         raise ValueError(

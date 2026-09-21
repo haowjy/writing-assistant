@@ -192,6 +192,17 @@ class IndependentUnitTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "one model and condition"):
             sample_distribution(cards, self.extractor)
 
+    def test_a_varying_sampling_seed_is_still_one_distribution(self):
+        # The seed lives in the model record, and varying it per attempt is what repeated
+        # sampling is. Fingerprinting the whole record rejected every real repeated run.
+        cards = [
+            {**self.card(index, 1), "model": {"id": "one-model", "seed": 4200 + index}}
+            for index in range(9)
+        ]
+        result = sample_distribution(cards, self.extractor)
+        self.assertEqual(result["attempts"], 9)
+        self.assertEqual(result["metrics"]["D4"]["status"], "ok")
+
     def test_repeated_prompt_profiles_carry_their_floors_without_a_pooler(self):
         # A direct caller used to get an unmarked number below the floor.
         texts = [prose(index) for index in range(3)]
