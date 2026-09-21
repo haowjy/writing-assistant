@@ -4,6 +4,7 @@
 - [FUTURE](FUTURE.md): deferred work, including the final data-generation coverage review.
 - [Custom evaluation suite](custom-eval-suite/index.md): implementation, data, metrics, review materials, and [current coverage](custom-eval-suite/coverage.md).
 - [Precision is not a detail](custom-eval-suite/precision.md): the nf4 baseline's unmeasured confound, and why the bf16 arm shows a *less* diverse model than the 4-bit one suggested.
+- [Strict code review, 2026-09-21](reviews/session-code-review-2026-09-21.md): an independent pass over the reward, prose, scoring and long-form code, with the critical and major findings reproduced and fixed.
 - [Research plan](research-plan/index.md): broader experiments and source research.
 
 Maintain task status in TODO and FUTURE. Keep designs, inventories, and verification

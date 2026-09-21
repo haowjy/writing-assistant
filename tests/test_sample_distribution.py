@@ -240,6 +240,11 @@ class SampleFloorTests(unittest.TestCase):
         original = {"status": "unavailable", "reason": "no embeddings"}
         self.assertEqual(sample_power("D2", original, 100), original)
 
+    def test_a_measure_with_no_value_never_claims_power(self):
+        entry = sample_power("D4", {"status": "ok", "value": None}, 100)
+        self.assertIsNone(entry["value"])
+        self.assertNotIn("power", entry)
+
     def test_a_pooled_run_withholds_an_underpowered_measure(self):
         few = MINIMUM_SAMPLES["D4"] - 1
         result = sample_distribution(

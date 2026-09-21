@@ -392,7 +392,9 @@ def sample_power(metric: str, entry: dict, samples: int) -> dict:
     the same quantity, so the count travels with the value and an under-powered measure
     reports `insufficient_samples` instead of a number someone might quote.
     """
-    if entry.get("status") != "ok":
+    if entry.get("status") != "ok" or entry.get("value") is None:
+        # A measurement with no value has no power to report. Labelling it `ok` would
+        # claim a sample count for a number that does not exist.
         return entry
     floor = MINIMUM_SAMPLES.get(metric)
     if floor is None:
