@@ -162,6 +162,11 @@ def mechanical_score(scenario: dict, result: dict) -> dict:
             passed = check["text"].casefold() in text.casefold()
         elif kind == "excludes":
             passed = check["text"].casefold() not in text.casefold()
+        elif kind == "excludes_all":
+            if not check.get("texts"):
+                raise ValueError("excludes_all needs a non-empty list of forbidden strings")
+            lowered = text.casefold()
+            passed = not any(item.casefold() in lowered for item in check["texts"])
         elif kind == "word_range":
             passed = check["min"] <= len(text.split()) <= check["max"]
         elif kind == "exact":

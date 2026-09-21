@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add the `excludes_all` mechanical check, which passes only when none of a declared set
+  of strings appears. Deleting a fact from a document fails in a second way beyond
+  leaving the fact in: the text can keep referring to it by negation, and phrases like
+  "no longer" or "rather than" are edit artifacts that should be caught mechanically
+  rather than left to a judge.
+
 - Raise the harness context limit to 65,536 tokens and the SFT acceptance bound to
   match, replacing arbitrary 8192/16384 settings that silently capped the long-form
   evaluation cases. Add `scripts/probe_context_budget.py`, which computes the inference

@@ -70,6 +70,11 @@ Independent identical alternatives remain samples for duplicate-rate measurement
 The scoring module owns check aggregation and task-completion invariants. Judgment
 application supplies validated outcomes to that same aggregation function; it cannot
 turn failed execution, missing delivery, or a required-check failure into success.
+Mechanical checks include `excludes_all`, which passes only when none of a listed set of
+strings appears. It exists because deleting a fact has a failure mode beyond leaving the
+fact in: the text can keep referring to it by negation, and "no longer", "rather than"
+and "unlike the earlier version" are edit artifacts that a judge should not be the first
+to notice.
 
 Mechanical scores remain available when Astra or optional models are unavailable.
 Semantic outcomes remain pending on grader failure. The grader does not execute
