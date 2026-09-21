@@ -13,9 +13,22 @@ from writing_agent.inference import checkpoint_identity, render_messages
 
 @dataclass(frozen=True)
 class SFTSettings:
+    """Bounded QLoRA configuration.
+
+    ``max_length`` is an acceptance bound, not an allocation: preparation rejects a
+    trajectory longer than it and never pads to it, so the collator pads to the longest
+    sequence actually in the batch. Raising it therefore costs nothing until long
+    trajectories exist, and the cost when they do is step time rather than memory -
+    see ``scripts/probe_context_budget.py``.
+
+    ``max_steps`` is an optimizer-step count, so the tokens processed are
+    ``max_steps x gradient_accumulation x sequence length``. That product, not the
+    window alone, is what a bounded run costs.
+    """
+
     model_id: str = "google/gemma-4-E2B-it"
     revision: str = "3e22461f65e89153144f8adb70e3b8c2cc9845a7"
-    max_length: int = 2048
+    max_length: int = 65536
     max_steps: int = 20
     batch_size: int = 1
     gradient_accumulation: int = 8

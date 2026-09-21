@@ -16,6 +16,42 @@ from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
 
+# Context limit for the research harnesses. A limit, not an allocation: the KV cache grows
+# only with the conversation actually present, so a short run pays nothing for it.
+#
+# Gemma-4-E2B supports 131,072 positions, and its cache is far smaller than an all-layers
+# estimate suggests: 28 of 35 layers use a 512-token sliding window and every layer has a
+# single KV head, so the whole 128K cache is about 1.9 GB. An earlier 8192/16384 pairing
+# was an arbitrary setting rather than a hardware limit, and it silently capped the
+# long-form evaluation cases, which need 14K-28K before they generate anything.
+#
+# `scripts/probe_context_budget.py` recomputes the cache from the checkpoint config and
+# measures the attention step cost at each length.
+HARNESS_CONTEXT_TOKENS = 65536
+
+
+def kv_cache_bytes(text_config: dict, context: int) -> int:
+    """Inference KV cache in bf16 for one sequence at ``context`` tokens.
+
+    Sliding-attention layers cap their cache at the window rather than the context, so
+    the total is far below the all-layers estimate that makes 128K sound impossible.
+    Grouped-query attention divides it again by the KV head count. This arithmetic is
+    why a long harness limit costs almost nothing here, and it is the number to quote
+    rather than an assumed per-token cost.
+    """
+    layers = text_config["layer_types"]
+    sliding = text_config["sliding_window"]
+    bytes_per_element = 2
+    full_kv_heads = (
+        text_config.get("num_global_key_value_heads") or text_config["num_key_value_heads"]
+    )
+    per_token = 2 * bytes_per_element  # keys and values
+    full = layers.count("full_attention") * context * per_token
+    full *= text_config["global_head_dim"] * full_kv_heads
+    windowed = layers.count("sliding_attention") * min(context, sliding) * per_token
+    windowed *= text_config["head_dim"] * text_config["num_key_value_heads"]
+    return full + windowed
+
 
 def checkpoint_identity(source: str, revision: str | None = None) -> dict:
     """Hash a completed local save, or require an immutable Hub commit."""

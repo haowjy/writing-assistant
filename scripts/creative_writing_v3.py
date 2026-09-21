@@ -7,7 +7,11 @@ from statistics import mean
 from scripts.pilot_e2b import MODEL, ROOT
 from writing_agent.anthropic_grading import from_env
 from writing_agent.catalog import fingerprint, save_json
-from writing_agent.inference import TransformersBackend, load_checkpoint
+from writing_agent.inference import (
+    HARNESS_CONTEXT_TOKENS,
+    TransformersBackend,
+    load_checkpoint,
+)
 
 UPSTREAM = ROOT / "data/raw/research/creative-writing-v3"
 OUTPUT = ROOT / "runs/creative-writing-v3-32-e2b-it-2026-09-14"
@@ -16,7 +20,7 @@ CONFIG = {
     **MODEL,
     "purpose": "Creative Writing v3 rubric benchmark",
     "max_tokens": 12000,
-    "context_tokens": 16384,
+    "context_tokens": HARNESS_CONTEXT_TOKENS,
     "temperature": 0.7,
     "top_p": 1.0,
     "min_p": 0.1,

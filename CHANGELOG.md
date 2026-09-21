@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- Raise the harness context limit to 65,536 tokens and the SFT acceptance bound to
+  match, replacing arbitrary 8192/16384 settings that silently capped the long-form
+  evaluation cases. Add `scripts/probe_context_budget.py`, which computes the inference
+  KV cache from the checkpoint config and measures the attention step cost on the real
+  layer shapes. Measured: 128K inference needs 1.9 GB of cache because 28 of 35 layers
+  use a 512-token sliding window and every layer has a single KV head, while a 64K
+  training step projects to 12.7 minutes. FlashAttention is unavailable because the
+  full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
+  memory-efficient SDPA is the only O(n) path.
+
 - Add the held-out long-form final-evaluation suite: six cases over three public-domain
   works that supply a multi-chapter manuscript and ask for more, so the axis is long-range
   continuity, plan adherence, revision propagation and arc closure rather than short

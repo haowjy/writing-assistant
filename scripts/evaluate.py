@@ -12,7 +12,7 @@ from writing_agent.acquisition import acquire_sources, compile_downloads
 from writing_agent.catalog import save_json
 from writing_agent.development import author_development
 from writing_agent.grading import CodexGrader, apply_judgment, grading_packet, write_review
-from writing_agent.inference import PROTOCOL, evaluate_checkpoint
+from writing_agent.inference import HARNESS_CONTEXT_TOKENS, PROTOCOL, evaluate_checkpoint
 from writing_agent.prose import (
     FeatureConfig,
     ProseFeatures,
@@ -67,7 +67,7 @@ for model in MODELS:
         device="cuda:0",
         dtype="bfloat16",
         attention="sdpa",
-        context_tokens=8192,
+        context_tokens=HARNESS_CONTEXT_TOKENS,
         top_p=0.95,
         runtime_verified=False,
         quantization="nf4",

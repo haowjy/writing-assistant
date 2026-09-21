@@ -118,9 +118,13 @@ Three limits currently differ:
 | Limit | Current evidence |
 |---|---|
 | Gemma E2B architectural context | 131,072 tokens in cached model config; Google documents 128K |
-| Main evaluation/pilot configuration | 8,192 total context tokens, reserving up to 2,048 generation tokens per call |
-| SFT preparation | 2,048 tokens per complete prepared trajectory; overlength records fail |
-| RL training context on this 3090 | Not measured; no RL integration or compaction implemented |
+| Inference KV cache | 132 MB at 8K, 484 MB at 32K, 954 MB at 64K, 1.9 GB at 128K. 28 of 35 layers use a 512-token sliding window and every layer has a single KV head, so the cache is far below an all-layers estimate |
+| Harness context limit | 65,536 total tokens (`inference.HARNESS_CONTEXT_TOKENS`), a limit rather than an allocation |
+| SFT preparation | 65,536 tokens accepted per trajectory; overlength records fail. An acceptance bound, not a pad length |
+| FlashAttention | Unavailable: full-attention layers use `global_head_dim=512`, above the 256 limit for the FA kernels reachable through SDPA on this stack. Memory-efficient SDPA is the only O(n) option |
+| Measured attention step cost | One full-attention layer, forward and backward: 0.26 s at 8K, 3.35 s at 32K, 13.61 s at 64K |
+| Projected training cost | 12.7 min per optimizer step at 64K with gradient accumulation 8, so about 4.2 h for 20 optimizer steps. A lower bound: it excludes the sliding layers, MLP, embeddings, optimizer step and checkpoint recomputation |
+| RL rollout cost | Not measured. At 64K per rollout, a group of eight is over half a million generated tokens per prompt, which is a throughput problem before it is a memory problem |
 
 The [Google model card](https://ai.google.dev/gemma/docs/core/model_card_4) is the model
 limit reference. Local evidence is `SFTSettings.max_length`, the configurations in
@@ -148,9 +152,16 @@ or treat user/tool observations as policy actions. Delayed credit must cross the
 compaction boundary when earlier actions affect later outcomes.
 
 Compaction limits the active window, not total rollout time, storage, or all training
-costs. Measure training at the current 2K cap, then probe 4K and 8K as targets subject
-to memory/throughput results. Do not promise 128K training or assume an 8K rollout can
-be optimized intact by the present 2K SFT exporter. Segment-aware RL is new work.
+costs. Long context is affordable here for a reason specific to this architecture: the
+sliding-window KV keeps the cache at 1.9 GB even at 128K. What is not cheap is attention
+compute, which is quadratic in length, and generation throughput, which gates rollout
+groups. `scripts/probe_context_budget.py` reproduces both figures.
+
+**A long window is a data problem before it is a compute problem.** Raising the accepted
+trajectory length costs nothing while every record is 2K tokens: it changes which
+trajectories are admitted and nothing else. Training at 64K only means something once
+long trajectories exist to fill it, which is what the composed sessions in this document
+are for. Do not widen the window and call it long-context training.
 
 The [local compute plan](local-compute-and-tracking.md) records the decision to test
 the 3090 first, defer rentals, and add optional qualitative/quantitative W&B tracking.

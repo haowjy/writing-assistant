@@ -9,6 +9,7 @@ import sys
 from scripts.pilot_e2b import MODEL, ROOT
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.external import generate_tasks
+from writing_agent.inference import HARNESS_CONTEXT_TOKENS
 
 OUTPUT = ROOT / "runs/external-e2b-it-2026-09-14"
 RAW = ROOT / "data/raw/research"
@@ -16,7 +17,7 @@ CONFIG = {
     **MODEL,
     "temperature": 0,
     "max_tokens": 8192,
-    "context_tokens": 16384,
+    "context_tokens": HARNESS_CONTEXT_TOKENS,
     "purpose": "external instruction-following and coding diagnostics",
 }
 

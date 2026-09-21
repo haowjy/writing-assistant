@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from writing_agent.catalog import save_json
-from writing_agent.inference import PROTOCOL, evaluate_checkpoint
+from writing_agent.inference import HARNESS_CONTEXT_TOKENS, PROTOCOL, evaluate_checkpoint
 from writing_agent.prose import ProseFeatures, score_prose
 from writing_agent.scoring import build_report, mechanical_score
 from writing_agent.suite import load_scenarios
@@ -26,7 +26,7 @@ MODEL = {
     "device": "cuda:0",
     "dtype": "bfloat16",
     "attention": "sdpa",
-    "context_tokens": 8192,
+    "context_tokens": HARNESS_CONTEXT_TOKENS,
     "quantization": "nf4",
     "temperature": 0.7,
     "top_p": 0.95,

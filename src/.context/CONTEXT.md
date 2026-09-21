@@ -98,6 +98,19 @@ state. It never retains cross-scenario conversation or KV caches. Runtime import
 and downloads occur only during explicit loading. See
 [local inference](../../docs/local-inference.md) for protocol and scheduling limits.
 
+`inference.HARNESS_CONTEXT_TOKENS` is the harness context limit, a limit rather than an
+allocation: the cache grows only with the conversation present. It is 65,536 because the
+long-form cases need up to 28K before generating anything, and because the model's cache
+is cheap at that length - 28 of 35 layers use a 512-token sliding window and every layer
+has a single KV head, so 128K costs about 1.9 GB. `inference.kv_cache_bytes` computes
+that from a checkpoint config, and `scripts/probe_context_budget.py` also measures the
+attention step cost. FlashAttention is unavailable for this model because the
+full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
+memory-efficient SDPA is the only O(n) path and the cost of length is time, not memory.
+`SFTSettings.max_length` is an acceptance bound that rejects overflow and never pads, so
+widening it costs nothing until long trajectories exist to fill it; a long window is a
+data problem before it is a compute problem.
+
 Use [research-evaluation.md](../../docs/research-evaluation.md) for stage usage and
 [delivery evidence](../../work/custom-eval-suite/delivery.md) for measured checks and
 remaining experimental prerequisites. Tests cover the library without live candidate

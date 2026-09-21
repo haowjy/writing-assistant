@@ -38,8 +38,12 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   combinations, record actual labels, and keep source fidelity and prose quality
   separate from label coverage. Acquire and split additional book candidates before use.
 - [ ] Follow the [3090-first compute plan](../sft/local-compute-and-tracking.md):
-  measure bounded training and rollout memory/time locally; defer GPU rental until
-  the bottleneck is known.
+  the context budget is measured, not assumed. 128K inference needs about 1.9 GB of KV
+  cache, and a 64K training step projects to 12.7 minutes, so the binding constraints
+  are attention compute and rollout throughput rather than memory. FlashAttention is
+  unavailable for this model (`global_head_dim` 512 exceeds the FA limit), so
+  memory-efficient SDPA is the only O(n) attention path. Re-run
+  `scripts/probe_context_budget.py` before quoting any length.
 - [ ] Add optional W&B tracking for scores, written critiques, prose, and versioned
   artifacts while retaining local outputs. Logging is currently disabled.
 - [ ] Summarize failure types from the [custom50 assessments](../custom-eval-suite/astra-grading.md):

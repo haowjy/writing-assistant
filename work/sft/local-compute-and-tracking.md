@@ -12,18 +12,35 @@ used. This is an idle-memory observation, not a training capacity measurement.
 The cached Gemma E2B configuration supports 131,072 positions, matching the
 [official 128K context specification](https://ai.google.dev/gemma/docs/core/model_card_4).
 Its sliding attention and shared KV states make a generic all-layers full-cache
-estimate inappropriate. Nevertheless, fitting an inference cache alone does not
-establish that prompt processing or a training step fits: model weights, activations,
-attention implementation, loss calculation, optimizer state, and other resident models
-also matter. No 128K inference or training memory claim has been verified here.
+estimate inappropriate, and the measured answer is far below that estimate. On
+2026-09-21 `scripts/probe_context_budget.py` computed the cache from the checkpoint
+config and measured the attention step cost on the real layer shapes:
 
-Use the current 2K SFT cap for the initial bounded training measurement. Probe 4K,
-then 8K only as memory and speed permit; these are proposed targets, not guarantees.
-For each configuration record allocated/reserved peak VRAM, complete step time,
-processed and generated tokens, attention backend, quantization, gradient accumulation,
-and checkpoint behavior. Test optimizer steps when measuring training; inference-only
-measurements miss training memory. Data acceptance and the scoped execution boundary
-remain prerequisites to the actual experiment.
+| Context | Inference KV (bf16) | One full-attention layer, fwd+bwd | Projected optimizer step |
+|---:|---:|---:|---:|
+| 8K | 132 MB | 0.26 s | 0.2 min |
+| 32K | 484 MB | 3.35 s | 3.1 min |
+| 64K | 954 MB | 13.61 s | 12.7 min |
+| 128K | 1.9 GB | not measured | not measured |
+
+Projected steps assume gradient accumulation 8 and multiply the measured per-layer
+figure by the seven full-attention layers. They are lower bounds: the sliding layers,
+MLP, embeddings, optimizer step and activation-checkpoint recomputation are excluded.
+An optimizer step is 8 sequences, so a 20-step run at 64K is roughly 4.2 hours, and
+longer in practice.
+
+Two consequences. **128K inference is not the problem** - at 1.9 GB the cache is a
+rounding error against 24 GB, and an earlier 8192/16384 harness limit was an arbitrary
+setting rather than a hardware limit. **FlashAttention is not available** for this
+model: the full-attention layers use `global_head_dim=512`, above the 256 limit for the
+FA kernels reachable through SDPA on this stack, so memory-efficient SDPA is the only
+O(n) option. That makes cost time, not memory.
+
+The remaining prerequisite is data, not hardware. `max_length` is an acceptance bound
+that rejects overflow and never pads, so widening it costs nothing while trajectories
+are short. A 64K window only means something once long trajectories exist to fill it.
+Use the same probe before claiming any length, and record peak VRAM, step time,
+attention backend, quantization and gradient accumulation together.
 
 For RL, separately measure rollout generation, workspace execution, feedback generation,
 reward evaluation, and policy updates. Avoid simultaneous policy/judge/simulator
