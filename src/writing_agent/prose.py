@@ -367,6 +367,117 @@ def prose_profile(
     }
 
 
+# Samples required before a distributional measurement is reported at all, and before it
+# carries enough power to compare two models. These are our floors, not validated
+# thresholds: MMD is a U-statistic whose variance dominates the estimate below a few tens
+# of samples, and the technique this instrument is borrowed from reported against 2,000.
+# Below the floor a measure is unavailable rather than a noisy number.
+MINIMUM_SAMPLES = {"D1": 2, "D2": 20, "D4": 8, "D6": 8}
+RELIABLE_SAMPLES = {"D1": 25, "D2": 50, "D4": 25, "D6": 25}
+DISTRIBUTIONAL = tuple(MINIMUM_SAMPLES)
+
+
+def sample_power(metric: str, entry: dict, samples: int) -> dict:
+    """Attach the sample count to a distribution measurement, or withhold it.
+
+    A distribution measured from four outputs and one measured from two hundred are not
+    the same quantity, so the count travels with the value and an under-powered measure
+    reports `insufficient_samples` instead of a number someone might quote.
+    """
+    if entry.get("status") != "ok":
+        return entry
+    floor = MINIMUM_SAMPLES.get(metric)
+    if floor is None:
+        return {**entry, "samples": samples}
+    if samples < floor:
+        return measurement(
+            status="insufficient_samples",
+            method=entry.get("method", "deterministic"),
+            reason=f"{metric} needs at least {floor} samples; this run has {samples}",
+            samples=samples,
+        )
+    return {
+        **entry,
+        "samples": samples,
+        "power": "ok" if samples >= RELIABLE_SAMPLES[metric] else "low",
+    }
+
+
+def sampling_plan(samples: int) -> dict:
+    """Map a sample count onto the distributional measures it can actually support.
+
+    The floors are the ones `sample_power` enforces, so a plan computed here and a result
+    produced later cannot disagree. Use it to size a run before spending the GPU time: it
+    answers how many attempts a claim needs, and names the measures a cheaper run has to
+    give up rather than leaving them to fail quietly at scoring time.
+    """
+    if type(samples) is not int or samples < 1:
+        raise ValueError("Sample count must be a positive integer")
+    return {
+        metric: (
+            "insufficient"
+            if samples < MINIMUM_SAMPLES[metric]
+            else "low"
+            if samples < RELIABLE_SAMPLES[metric]
+            else "ok"
+        )
+        for metric in DISTRIBUTIONAL
+    }
+
+
+def sample_distribution(
+    cards: list[dict],
+    extractor: ProseFeatures,
+    *,
+    references: list[dict] | None = None,
+    sigma: float | None = None,
+    embeddings: bool = True,
+    allow_download: bool = False,
+) -> dict:
+    """Distribution measurements pooled across repeated attempts of one scenario.
+
+    `score_prose` profiles one attempt against a reference corpus, so measures defined
+    across outputs -- MMD, self-BLEU, within-prompt dispersion -- can never be computed
+    from it. This pools every attempt of a single scenario, which is the only thing that
+    makes them exist at all, and reports the sample count beside each value.
+
+    Token features are always requested because the n-gram measures are cheap and local.
+    Embeddings are separate because they need a pinned model, and leaving them off should
+    cost D2 and D6 rather than every measure in the profile.
+
+    Identical outputs are kept. They are the signal the duplicate-rate measure is looking
+    for, and dropping them would hide the failure mode this instrument exists to detect.
+    """
+    if not cards:
+        raise ValueError("No attempts to pool")
+    scenarios = {card["scenario_id"] for card in cards}
+    if len(scenarios) != 1:
+        raise ValueError(f"Pool attempts of one scenario; got {sorted(scenarios)}")
+    texts = [a["text"] for card in cards for a in card["artifacts"] if a["status"] == "ok"]
+    features = [
+        extractor.extract(text, tokens=True, embeddings=embeddings, allow_download=allow_download)
+        for text in texts
+    ]
+    profile = prose_profile(
+        texts,
+        features,
+        references=references,
+        sigma=sigma,
+        repeated_prompt=True,
+    )
+    metrics = {
+        name: sample_power(name, entry, len(texts)) if name in DISTRIBUTIONAL else entry
+        for name, entry in profile["metrics"].items()
+    }
+    return {
+        "scenario_id": scenarios.pop(),
+        "attempts": len(cards),
+        "samples": len(texts),
+        "reference_samples": profile["reference_samples"],
+        "metrics": metrics,
+    }
+
+
 def paired_similarity(
     candidate: str,
     reference: str,

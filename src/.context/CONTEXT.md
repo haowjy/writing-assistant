@@ -154,6 +154,16 @@ A single draft cannot support unbiased MMD; aggregate comparisons must disclose
 reference selection and grouping. MPNet features use tokenizer overflow chunks
 (feature version 2); older cached features must not be pooled with them.
 
+`prose.sample_distribution` pools every attempt of one scenario, which is what makes the
+across-output measures exist: a per-attempt profile can only report MMD, self-BLEU and
+dispersion as insufficient samples. Token features are always requested because the
+n-gram measures are cheap and local; embeddings are separate, and leaving them off costs
+D2 and D6 rather than the whole profile. `MINIMUM_SAMPLES` withholds a measure below its
+floor with the required count in the reason, `RELIABLE_SAMPLES` marks where two models can
+be compared, and `sampling_plan` resolves a proposed attempt count against both so a run
+can be sized before it is paid for. Repeated identical outputs are retained, since they
+are what the duplicate-rate measure exists to detect.
+
 `references.load_matched_references` validates frozen development reference texts
 and scenario-bound assignments. The pilot rescorer records broad and task-selected
 profiles separately; partial matches remain explicit. Both tracks share feature

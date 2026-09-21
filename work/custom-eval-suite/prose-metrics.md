@@ -21,6 +21,15 @@ samples to be meaningful. Their status as secondary targets is unchanged — mat
 metric is not the objective, and the author of the technique reports adding seven further
 metrics specifically to check he was not doing that.
 
+**Four of them are defined across outputs, not within one.** `prose.sample_distribution`
+pooled over repeated attempts is what makes D2, D4 and D6 exist; a per-attempt profile can
+only ever report them as `insufficient_samples`. Sizing the run matters more than choosing
+the metric: `prose.MINIMUM_SAMPLES` withholds a measure below its floor, and
+`RELIABLE_SAMPLES` marks where two models can be usefully compared. `prose.sampling_plan(n)`
+resolves a proposed sample count against those floors before the GPU time is spent. The
+current final suite runs four attempts per case and therefore cannot report D2 at all —
+see [the sampling section](longform-suite.md#sampling-and-the-measurement-this-suite-cannot-make).
+
 ## Measurements to record
 
 Availability below defines required inputs, not permission to drop a measure

@@ -4,6 +4,11 @@
   "frozen": "2026-09-21",
   "role": "final_eval",
   "note": "Long-form final-evaluation cases. Supplied manuscripts are deterministic slices of public-domain works that no training source or development case uses. Every anchor listed on a case is verified to occur in that case's supplied text at build time, so a label cannot cite a fact the candidate was never given. Reserved before any policy result was seen; do not tune against these cases and do not use them for checkpoint selection.",
+  "sampling": {
+    "samples_per_case": 4,
+    "note": "Attempts per case. Four supports the within-case persistence measures and the duplicate-output rate. It cannot support MMD, whose sample floor is 20, and a long-form case costs thirteen turns at 14K-28K context, so reaching that floor here would mean hundreds of novella-length generations. The distributional claim therefore needs a separate cheap component sampled many times per prompt; see work/custom-eval-suite/longform-suite.md. Recorded so the gap is a declared cost rather than a metric that fails quietly at scoring time.",
+    "distributional_component": "not built: short held-out prompts, at least one repeated many times, with human continuations as the paired reference"
+  },
   "works": {
     "gutenberg-84": {
       "gutenberg": 84,

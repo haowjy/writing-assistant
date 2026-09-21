@@ -16,6 +16,7 @@ from writing_agent.catalog import save_json
 from writing_agent.longform_suite import (
     build_release,
     claimed_hashes,
+    documented_sampling,
     freeze,
     holdout_audit,
 )
@@ -53,9 +54,11 @@ def main() -> int:
     )
     manifest = compile_scenarios(scenarios, catalog, DESTINATION)
     frozen = freeze(manifest, DESTINATION)
-    save_json(DESTINATION / "freeze.json", {"holdout": audit, **frozen})
+    sampling = documented_sampling(SPEC)
+    save_json(DESTINATION / "freeze.json", {"holdout": audit, "sampling": sampling, **frozen})
     print(f"{len(scenarios)} cases -> {DESTINATION.relative_to(ROOT)}")
     print(f"holdout: {audit['status']} | claimed {audit['claimed']}")
+    print(f"sampling: {sampling['samples_per_case']}/case -> {sampling['plan']}")
     print(f"freeze: {frozen['freeze_hash'][:16]}")
     return 0
 

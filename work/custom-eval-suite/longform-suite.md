@@ -75,6 +75,60 @@ legitimate. If a development case ever adopts one, the build stops.
   failure, not a low prose score.
 - Rebuild and re-freeze if the specification changes, and report the new hash.
 
+## Sampling, and the measurement this suite cannot make
+
+Every evaluation we had run before this was **one attempt per case**, which silently
+disabled the measures that are defined across outputs. `D2` (MMD), `D4` (self-BLEU) and
+`D6` (within-prompt dispersion) all reported `insufficient_samples`, and no sample count
+declared anywhere would have caught it. That half of the instrument is the one that says
+whether the output *distribution* is too narrow, which is a different claim from whether
+any single artifact is good.
+
+The fix has three parts.
+
+**Attempts pool per case.** `prose.sample_distribution` collects every attempt of one
+scenario and profiles them together, which is the only thing that makes the across-output
+measures exist. Repeated identical outputs are kept, because they are exactly the signal
+the duplicate-rate measure is looking for.
+
+**Sample floors are enforced, not documented.** `prose.MINIMUM_SAMPLES` withholds a
+measure below its floor and names the count in the reason; `RELIABLE_SAMPLES` marks the
+count above which two models can be usefully compared. A distribution measured from four
+outputs and one measured from two hundred are different quantities, so the count travels
+with the value.
+
+**The suite declares its sample count and its consequence.** `data/scenarios/longform-v1.json`
+carries a `sampling` block, and the builder resolves it against the floors, so the gap is
+computed at build time rather than discovered at scoring time:
+
+```
+sampling: 4/case -> {'D1': 'low', 'D2': 'insufficient', 'D4': 'insufficient', 'D6': 'insufficient'}
+```
+
+Four attempts per case supports persistence, the duplicate-output rate and `D1` at low
+power. **It cannot support MMD**, whose floor is 20.
+
+## The distributional component, which is not built
+
+Reaching the MMD floor inside this suite is not affordable and the arithmetic is worth
+recording. A long-form case is thirteen turns over 14K-28K of context. Twenty attempts per
+case across six cases is 120 novella-length generations, roughly a million words, to
+produce one distribution estimate.
+
+So the human-likeness claim needs its own cheap component instead, and the suite declares
+that rather than pretending the long-form cases can carry it:
+
+- **Short held-out prompts**, sampled many times, paying for breadth rather than depth.
+- **Human continuations as the paired reference**, so the candidate distribution is
+  compared against a human distribution rather than a single reference text. This is also
+  what would make `D7` and `D8` computable, since they currently report `not_applicable`
+  for want of a paired reference.
+- **At least one prompt repeated enough to clear the floors**, and the rest sized by what
+  the claim needs.
+
+Use `prose.sampling_plan(n)` before committing GPU time; it returns which measures a run
+of `n` attempts can support, using the same floors the measurement enforces.
+
 ## What it does not do
 
 - **Statistical power.** Six cases cannot distinguish small effects. Treat differences

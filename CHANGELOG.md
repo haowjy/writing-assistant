@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Make the across-output prose measures computable. `prose.sample_distribution` pools
+  every attempt of one scenario, which is what MMD, self-BLEU and dispersion require; a
+  per-attempt profile could only ever report them as insufficient samples. `MINIMUM_SAMPLES`
+  withholds a measure below its floor with the required count in the reason,
+  `RELIABLE_SAMPLES` marks where two models can be compared, and `sampling_plan` resolves a
+  proposed attempt count against both. The held-out long-form suite now declares its
+  attempts per case and the builder resolves it, so a metric cannot fail quietly at
+  scoring time after the GPU time is spent.
+
 - Add the `excludes_all` mechanical check, which passes only when none of a declared set
   of strings appears. Deleting a fact from a document fails in a second way beyond
   leaving the fact in: the text can keep referring to it by negation, and phrases like

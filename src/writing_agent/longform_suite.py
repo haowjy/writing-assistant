@@ -172,6 +172,27 @@ def build_release(spec_path: Path, raw: Path) -> tuple[list[dict], list[dict]]:
     return catalog, scenarios
 
 
+def documented_sampling(spec_path: Path) -> dict:
+    """The specimen's declared attempts per case, and what that sample count supports.
+
+    A suite that names a sample count but not its consequences invites a metric to fail
+    quietly at scoring time, months after the GPU time was spent. This resolves the
+    declared count against the sample floors so the gap is visible at build time.
+    """
+    from writing_agent.prose import sampling_plan
+
+    spec = json.loads(spec_path.read_text())
+    sampling = spec.get("sampling") or {}
+    samples = sampling.get("samples_per_case", 1)
+    if type(samples) is not int or samples < 1:
+        raise ValueError("sampling.samples_per_case must be a positive integer")
+    return {
+        "samples_per_case": samples,
+        "plan": sampling_plan(samples),
+        "distributional_component": sampling.get("distributional_component", "undeclared"),
+    }
+
+
 def holdout_audit(catalog: list[dict], *, claimed: dict[str, set[str]]) -> dict:
     """Prove the benchmark shares no text with anything already spoken for.
 

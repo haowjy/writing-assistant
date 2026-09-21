@@ -8,6 +8,7 @@ from pathlib import Path
 from writing_agent.longform_suite import (
     build_release,
     claimed_hashes,
+    documented_sampling,
     freeze,
     holdout_audit,
     section_slug,
@@ -87,9 +88,7 @@ class SectionTests(unittest.TestCase):
 
 class AnchorTests(unittest.TestCase):
     def test_a_grounded_anchor_passes(self):
-        verify_anchors(
-            base_case(), {"manuscript/a.md": "Alpha reached Ingolstadt with Elizabeth."}
-        )
+        verify_anchors(base_case(), {"manuscript/a.md": "Alpha reached Ingolstadt with Elizabeth."})
 
     def test_a_cited_fact_the_text_lacks_fails_the_build(self):
         case = base_case(anchors=["Ingolstadt", "the creature"])
@@ -206,6 +205,47 @@ class HoldoutTests(unittest.TestCase):
 
     def test_a_missing_catalog_claims_nothing(self):
         self.assertEqual(claimed_hashes(Path("/nonexistent/catalog.json")), set())
+
+
+class SamplingDeclarationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _spec(self, sampling):
+        path = fixture(self.root)
+        spec = json.loads(path.read_text())
+        spec["sampling"] = sampling
+        path.write_text(json.dumps(spec))
+        return path
+
+    def test_the_declared_count_is_resolved_against_the_floors(self):
+        path = self._spec({"samples_per_case": 4, "distributional_component": "not built"})
+        declared = documented_sampling(path)
+        self.assertEqual(declared["samples_per_case"], 4)
+        self.assertEqual(declared["plan"]["D2"], "insufficient")
+        self.assertEqual(declared["distributional_component"], "not built")
+
+    def test_a_count_that_supports_the_measures_says_so(self):
+        declared = documented_sampling(self._spec({"samples_per_case": 60}))
+        self.assertEqual(declared["plan"]["D2"], "ok")
+
+    def test_an_undeclared_component_is_marked_rather_than_assumed(self):
+        self.assertEqual(
+            documented_sampling(self._spec({"samples_per_case": 1}))["distributional_component"],
+            "undeclared",
+        )
+
+    def test_a_missing_sampling_block_defaults_to_one_attempt(self):
+        self.assertEqual(documented_sampling(fixture(self.root))["samples_per_case"], 1)
+
+    def test_a_nonsense_count_is_rejected(self):
+        for samples in (0, -2, 2.5, "four"):
+            with self.subTest(samples=samples), self.assertRaises(ValueError):
+                documented_sampling(self._spec({"samples_per_case": samples}))
 
 
 class FreezeTests(unittest.TestCase):

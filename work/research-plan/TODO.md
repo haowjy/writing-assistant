@@ -118,6 +118,12 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   converts it into a development set. Report it beside the
   [external EQ-Bench anchor](../external-benchmarks/longform-eqbench.md); agreement
   between the two is the result, and disagreement is the more informative one.
+- [ ] Build the distributional component of the final suite. The long-form cases run four
+  attempts each and cannot report MMD, whose floor is twenty; reaching that inside them
+  would cost roughly a million words. It needs short held-out prompts sampled many times,
+  with human continuations as the paired reference, which would also make D7 and D8
+  computable. Use `prose.sampling_plan` to size it. See
+  [the sampling section](../custom-eval-suite/longform-suite.md#sampling-and-the-measurement-this-suite-cannot-make).
 
 Astra remains the primary subjective evaluator; human grading is optional. Fix its
 model, rubric, and grading settings across checkpoints. Occasional repeated grading
