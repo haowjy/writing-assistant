@@ -218,6 +218,14 @@ later work. W&B is an optional mirror of local scores, critiques and artifacts.
   Scripted tests verify accounting and admission, not provider availability or task quality.
   The prepared requests are not 100 completed training tasks.
 
+Where the **targets** for supervised training come from is a separate and still-open
+question. This pipeline produces tasks and conditioning; the text a model is trained to
+produce is currently model-generated, which is the self-consumption risk named in
+[multi-turn RL](multi-turn-rl.md). [Distribution fine-tuning](distribution-finetuning.md)
+argues for inverting the construction, using human documents as targets behind recovered
+conditioning, and records the cheap measurement that should decide whether that outranks
+the reward work.
+
 The DeepSeek [OpenAI-compatible API](https://api-docs.deepseek.com/) exposes V4.1 Flash
 as model id `deepseek-flash` at `https://api.deepseek.com`, authenticated with
 `DEEPSEEK_API_KEY`. Its Open Platform Terms assign outputs to the customer and permit

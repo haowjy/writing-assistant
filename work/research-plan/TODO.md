@@ -58,6 +58,12 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   Preserve provenance and group related sources before splitting. Keep evaluation
   cases and related derivatives out of training; the five Grok outputs are comparison
   evidence, not an approved training dataset.
+- [ ] Measure the [distribution gap](../sft/distribution-finetuning.md) between current outputs
+  and human writing before rebuilding the data. Reuse `prose.score_prose` (D1 n-gram L2,
+  D2 MMD, D4 self-BLEU) against the frozen references; this needs local GPU time and no
+  API budget. A large gap makes human-target data construction the highest-leverage
+  change available, ahead of reward work; a small gap retires the idea. Record the
+  configuration with the number.
 - [ ] Verify the [prepared supervised QLoRA pipeline](../sft/plan.md) for Gemma E2B-IT on the RTX 3090,
   using Transformers, PEFT, TRL, and bitsandbytes. Verify the native conversation/tool
   template and loss masking: train the intended assistant responses and tool calls,

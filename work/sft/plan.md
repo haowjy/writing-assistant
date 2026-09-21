@@ -75,6 +75,10 @@ permissions before accepting the current synthetic seed.
 
 - [ ] Design the training distribution and the simulated author: [axis set and reward
   rules](training-distribution-axes.md), [multi-turn loop](simulated-author.md).
+- [ ] Measure how far current outputs sit from the human writing distribution before
+  changing the data construction. Reuse `prose.score_prose` (D1, D2, D4) against the
+  frozen references; local GPU time, no API budget. The result decides whether
+  [distribution fine-tuning](distribution-finetuning.md) outranks the reward work.
 - [ ] Establish permitted bootstrap demonstrations and an independent RL task pool.
   Test warm-up size from behavior; expand SFT only for observed gaps.
 - [ ] Validate candidate training rewards/judges separately from held-out evaluation.

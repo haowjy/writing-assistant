@@ -11,6 +11,16 @@ selected prose in assistant turns or manuscript files, excluding conversational
 commentary, plans, tool traces, and KB text. Local edits use their declared passage
 scope. Multiple versions/copies are not independent samples.
 
+These measures have a second use beyond diagnostics. D1, D2 and D4 are the primary
+metrics by which [distribution fine-tuning](../sft/distribution-finetuning.md) measures
+how far generated text sits from human writing, so they are also the instrument for
+judging whether a change to the data construction moved the output distribution. That
+framing changes how to read them: they compare a *population* of outputs against a human
+reference population, not one artifact against one expectation, and D1 and D2 need enough
+samples to be meaningful. Their status as secondary targets is unchanged — matching a
+metric is not the objective, and the author of the technique reports adding seven further
+metrics specifically to check he was not doing that.
+
 ## Measurements to record
 
 Availability below defines required inputs, not permission to drop a measure
