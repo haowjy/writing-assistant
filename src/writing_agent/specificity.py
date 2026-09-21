@@ -3,128 +3,126 @@
 Specificity is *which decision points a brief states*, not an adjective handed to the
 author model. An author merely told "loose" decides for itself what to leave open, which
 is how a declared variation goes unrealized. This module owns the schema: the decision
-points of each task family, the level ladder that decides which are stated, and the
-checks that a generated brief declared what it was asked to.
+points of each task family, the level at which each becomes stated, and the checks that
+a generated brief declared what it was asked to.
 
 A withheld point is not an absence; it is a target. Ask-required points must be
 clarified, and default-safe points must be resolved with a stated reversible default.
 """
 
+from typing import NamedTuple
+
 ALWAYS_STATED = "always_stated"
 ASK_REQUIRED = "ask_required"
 DEFAULT_SAFE = "default_safe"
-
-# Decision points and the behavior expected when one is withheld.
-DECISION_POINTS = {
-    "deliverable": ALWAYS_STATED,
-    "goal": ALWAYS_STATED,
-    "setting": DEFAULT_SAFE,
-    "style": DEFAULT_SAFE,
-    "length": DEFAULT_SAFE,
-    "navigation": DEFAULT_SAFE,
-    "selection": DEFAULT_SAFE,
-    "option_count": DEFAULT_SAFE,
-    "continuity": DEFAULT_SAFE,
-    "canon_authorization": DEFAULT_SAFE,
-    "branch_choice": ASK_REQUIRED,
-}
+BEHAVIORS = (ALWAYS_STATED, ASK_REQUIRED, DEFAULT_SAFE)
 
 LEVELS = ("L0", "L1", "L2", "L3")
 
-# Points introduced at each level, cumulative from L0. The lowest level always states
-# the deliverable and goal, because a request with no target is not a task.
-FAMILY_LADDER = {
-    "F1": {
-        "L0": ("deliverable", "goal"),
-        "L1": ("setting",),
-        "L2": ("length", "style"),
-        "L3": ("continuity", "branch_choice", "canon_authorization"),
-    },
-    "F2": {
-        "L0": ("deliverable", "goal"),
-        "L1": ("setting",),
-        "L2": ("length", "style"),
-        "L3": ("continuity", "branch_choice", "canon_authorization"),
-    },
-    "F3": {
-        "L0": ("deliverable", "goal"),
-        "L1": ("setting",),
-        "L2": ("option_count",),
-        "L3": ("continuity", "canon_authorization"),
-    },
-    "F4": {
-        "L0": ("deliverable", "goal"),
-        "L1": ("navigation",),
-        "L2": ("selection",),
-        "L3": ("continuity",),
-    },
-    "F5": {
-        "L0": ("deliverable", "goal"),
-        "L1": ("setting",),
-        "L2": ("length", "style"),
-        "L3": ("continuity", "branch_choice", "canon_authorization"),
-    },
+
+class Point(NamedTuple):
+    """A decision a brief can state, and what a withheld one requires."""
+
+    behavior: str
+    level: str
+
+
+# A decision point becomes stated at exactly one level, for the whole schema, so a
+# per-family ladder is derived instead of restated. An always-stated point is stated at
+# the lowest level and can never be withheld.
+DECISION_POINTS = {
+    "deliverable": Point(ALWAYS_STATED, "L0"),
+    "goal": Point(ALWAYS_STATED, "L0"),
+    "setting": Point(DEFAULT_SAFE, "L1"),
+    "navigation": Point(DEFAULT_SAFE, "L1"),
+    "length": Point(DEFAULT_SAFE, "L2"),
+    "style": Point(DEFAULT_SAFE, "L2"),
+    "selection": Point(DEFAULT_SAFE, "L2"),
+    "option_count": Point(DEFAULT_SAFE, "L2"),
+    "continuity": Point(DEFAULT_SAFE, "L3"),
+    "canon_authorization": Point(DEFAULT_SAFE, "L3"),
+    "branch_choice": Point(ASK_REQUIRED, "L3"),
+}
+
+# The points each family can have, in the order a split reports them. Direct prose and
+# its KB-grounded variant share a point set; planning and KB building do not.
+_PROSE = (
+    "deliverable",
+    "goal",
+    "setting",
+    "length",
+    "style",
+    "continuity",
+    "branch_choice",
+    "canon_authorization",
+)
+FAMILY_POINTS = {
+    "F1": _PROSE,
+    "F2": _PROSE,
+    "F3": ("deliverable", "goal", "setting", "option_count", "continuity", "canon_authorization"),
+    "F4": ("deliverable", "goal", "navigation", "selection", "continuity"),
+    "F5": _PROSE,
 }
 
 
-def _ladder(family: str) -> dict:
-    if family not in FAMILY_LADDER:
-        raise ValueError(f"Unknown task family: {family}")
-    return FAMILY_LADDER[family]
+def _validate_schema() -> None:
+    """Reject an inconsistent point table at import rather than at request time."""
+    if not DECISION_POINTS:
+        raise ValueError("The decision point table is empty")
+    for name, point in DECISION_POINTS.items():
+        if point.behavior not in BEHAVIORS:
+            raise ValueError(f"Decision point {name} has an unknown behavior: {point.behavior}")
+        if point.level not in LEVELS:
+            raise ValueError(f"Decision point {name} has an unknown level: {point.level}")
+        if point.behavior == ALWAYS_STATED and point.level != LEVELS[0]:
+            raise ValueError(f"Always-stated point {name} must be stated at {LEVELS[0]}")
+    for family, points in FAMILY_POINTS.items():
+        if len(set(points)) != len(points):
+            raise ValueError(f"Family {family} repeats a decision point")
+        unknown = set(points) - set(DECISION_POINTS)
+        if unknown:
+            raise ValueError(f"Family {family} names unknown decision points: {sorted(unknown)}")
+
+
+_validate_schema()
 
 
 def decision_points(family: str) -> tuple[str, ...]:
-    """All decision points of a family, in the order the ladder introduces them."""
-    ladder = _ladder(family)
-    points: list[str] = []
-    for level in LEVELS:
-        for name in ladder[level]:
-            if name not in DECISION_POINTS:
-                raise ValueError(f"Unknown decision point in ladder: {name}")
-            if name not in points:
-                points.append(name)
-    return tuple(points)
+    """All decision points of a family, in the order a split reports them."""
+    if family not in FAMILY_POINTS:
+        raise ValueError(f"Unknown task family: {family}")
+    return FAMILY_POINTS[family]
 
 
 def split_spec(family: str, level: str, *, applicable=None) -> dict:
-    """Split a family's decision points into what the brief states and what it withholds.
+    """Split a family's decision points into what a brief states and what it withholds.
 
     ``applicable`` optionally prunes points irrelevant to a specific task, such as a
     branch choice on a close continuation. Pruned points appear in neither list.
     """
-    ladder = _ladder(family)
+    points = decision_points(family)
     if level not in LEVELS:
         raise ValueError(f"Unknown specificity level: {level}")
-    points = decision_points(family)
     if applicable is not None:
         unknown = set(applicable) - set(points)
         if unknown:
             raise ValueError(f"Points not in family {family}: {sorted(unknown)}")
-    index = LEVELS.index(level)
-    stated = {name for seen in LEVELS[: index + 1] for name in ladder[seen]}
-    if applicable is not None:
-        stated &= set(applicable)
-    return {
-        "level": level,
-        "stated": [name for name in points if name in stated],
-        "withheld": [
-            name
-            for name in points
-            if name not in stated and (applicable is None or name in applicable)
-        ],
-    }
+        points = tuple(point for point in points if point in set(applicable))
+    cutoff = LEVELS.index(level)
+    stated = [point for point in points if LEVELS.index(DECISION_POINTS[point].level) <= cutoff]
+    withheld = [point for point in points if point not in set(stated)]
+    return {"level": level, "stated": stated, "withheld": withheld}
 
 
 def withheld_behaviors(family: str, level: str, *, applicable=None) -> dict:
     """Classify the withheld points by the behavior they require of the writer."""
-    classed = {"ask_required": [], "default_safe": []}
-    for name in split_spec(family, level, applicable=applicable)["withheld"]:
-        kind = DECISION_POINTS[name]
-        if kind == ASK_REQUIRED:
-            classed["ask_required"].append(name)
-        elif kind == DEFAULT_SAFE:
-            classed["default_safe"].append(name)
-    return classed
+    classed = {ASK_REQUIRED: [], DEFAULT_SAFE: []}
+    for point in split_spec(family, level, applicable=applicable)["withheld"]:
+        behavior = DECISION_POINTS[point].behavior
+        if behavior == ALWAYS_STATED:
+            raise ValueError(f"Withheld decision point is always stated: {point}")
+        classed[behavior].append(point)
+    return {"ask_required": classed[ASK_REQUIRED], "default_safe": classed[DEFAULT_SAFE]}
 
 
 def check_spec(spec: dict, family: str, *, applicable=None) -> list[str]:

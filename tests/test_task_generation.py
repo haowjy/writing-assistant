@@ -4,7 +4,12 @@ import copy
 import unittest
 
 from writing_agent.catalog import fingerprint
-from writing_agent.task_generation import build_request, iter_requests, prepare_task_requests
+from writing_agent.task_generation import (
+    Sampler,
+    build_request,
+    iter_requests,
+    prepare_task_requests,
+)
 
 VARIATIONS = {
     key: ["option one", "option two"]
@@ -26,6 +31,14 @@ def source(key, **changes):
     }
 
 
+def sampler(catalog, source_ids, **kwargs):
+    return Sampler.build(catalog, source_ids, **kwargs)
+
+
+def prepare(catalog, source_ids, **kwargs):
+    return prepare_task_requests(sampler(catalog, source_ids, **kwargs))
+
+
 class TaskGenerationTests(unittest.TestCase):
     def test_excluded_parent_and_shared_author_block_selected_child(self):
         parent = source("parent", author_id="author")
@@ -33,7 +46,7 @@ class TaskGenerationTests(unittest.TestCase):
         sibling = source("sibling", author_id="author")
         for excluded in ({"parent"}, {"sibling"}, {"author"}):
             with self.subTest(excluded=excluded), self.assertRaisesRegex(ValueError, "Held-out"):
-                prepare_task_requests(
+                prepare(
                     [parent, child, sibling],
                     ["child"],
                     excluded_source_groups=excluded,
@@ -48,7 +61,7 @@ class TaskGenerationTests(unittest.TestCase):
             {"provenance": "synthetic"},
         ):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
-                prepare_task_requests(
+                prepare(
                     [source("book", **changes)],
                     ["book"],
                     excluded_source_groups=set(),
@@ -58,7 +71,7 @@ class TaskGenerationTests(unittest.TestCase):
     def test_preparation_is_reproducible_and_does_not_certify_or_mutate_sources(self):
         catalog = [source("book")]
         before = copy.deepcopy(catalog)
-        batch = prepare_task_requests(
+        batch = prepare(
             catalog,
             ["book"],
             excluded_source_groups=set(),
@@ -70,7 +83,7 @@ class TaskGenerationTests(unittest.TestCase):
         self.assertEqual(batch["accepted_tasks"], 0)
         self.assertEqual(
             batch,
-            prepare_task_requests(
+            prepare(
                 catalog,
                 ["book"],
                 excluded_source_groups=set(),
@@ -86,7 +99,7 @@ class TaskGenerationTests(unittest.TestCase):
 
     def test_genre_blends_respect_continuations_and_preserve_catalog(self):
         original = copy.deepcopy(VARIATIONS)
-        batch = prepare_task_requests(
+        batch = prepare(
             [source("book")],
             ["book"],
             excluded_source_groups=set(),
@@ -107,7 +120,7 @@ class TaskGenerationTests(unittest.TestCase):
 class SpecificityLadderRequestTests(unittest.TestCase):
     def _batch(self, count, levels=None):
         kwargs = {} if levels is None else {"levels": levels}
-        return prepare_task_requests(
+        return prepare(
             [source("book")],
             ["book"],
             excluded_source_groups=set(),
@@ -126,8 +139,7 @@ class SpecificityLadderRequestTests(unittest.TestCase):
                 self._batch(4, levels)
 
     def test_default_levels_state_every_point(self):
-        batch = self._batch(4)
-        for request in batch["requests"]:
+        for request in self._batch(4)["requests"]:
             specificity = request["assignment"]["instruction_specificity"]
             self.assertEqual(specificity["level"], "L3")
             self.assertEqual(specificity["withheld"], [])
@@ -186,46 +198,43 @@ class SpecificityLadderRequestTests(unittest.TestCase):
 
 
 class StreamingSamplerTests(unittest.TestCase):
-    def _kwargs(self, **changes):
-        base = {
+    def _sampler(self, **changes):
+        kwargs = {
             "excluded_source_groups": set(),
             "variation_catalog": VARIATIONS,
             "count": 8,
             "levels": ("L0", "L1", "L2", "L3"),
         }
-        base.update(changes)
-        return base
+        kwargs.update(changes)
+        return sampler([source("book")], ["book"], **kwargs)
 
     def test_iterator_matches_the_materialized_batch(self):
-        catalog = [source("book")]
-        batch = prepare_task_requests(catalog, ["book"], **self._kwargs())
-        self.assertEqual(
-            list(iter_requests(catalog, ["book"], **self._kwargs())), batch["requests"]
-        )
+        sampled = self._sampler()
+        self.assertEqual(list(iter_requests(sampled)), prepare_task_requests(sampled)["requests"])
 
     def test_requests_are_addressable_without_materializing_the_batch(self):
-        catalog = [source("book")]
-        streamed = list(iter_requests(catalog, ["book"], **self._kwargs()))
+        sampled = self._sampler()
+        streamed = list(iter_requests(sampled))
         for index in (0, 3, 7):
-            self.assertEqual(
-                build_request(index, catalog, ["book"], **self._kwargs()), streamed[index]
-            )
+            self.assertEqual(build_request(sampled, index), streamed[index])
 
     def test_resuming_from_an_index_matches_the_full_stream(self):
-        catalog = [source("book")]
-        full = list(iter_requests(catalog, ["book"], **self._kwargs()))
-        resumed = list(iter_requests(catalog, ["book"], start=5, **self._kwargs()))
-        self.assertEqual(resumed, full[5:])
+        sampled = self._sampler()
+        full = list(iter_requests(sampled))
+        self.assertEqual(list(iter_requests(sampled, start=5)), full[5:])
 
-    def test_out_of_range_start_and_index_raise(self):
-        catalog = [source("book")]
+    def test_invalid_start_and_index_raise_without_iterating(self):
+        sampled = self._sampler()
         with self.assertRaisesRegex(ValueError, "Start index"):
-            list(iter_requests(catalog, ["book"], start=9, **self._kwargs()))
+            iter_requests(sampled, start=9)
         with self.assertRaisesRegex(ValueError, "out of range"):
-            build_request(99, catalog, ["book"], **self._kwargs())
+            build_request(sampled, 99)
+
+    def test_sampler_length_is_the_request_count(self):
+        self.assertEqual(len(self._sampler(count=12)), 12)
 
     def test_packets_reference_sources_instead_of_embedding_them(self):
-        packet = next(iter(iter_requests([source("book")], ["book"], **self._kwargs())))["packet"]
+        packet = build_request(self._sampler(), 0)["packet"]
         self.assertEqual(packet["source_id"], "book")
         self.assertEqual(packet["source_work"], "book")
         self.assertNotIn("source", packet)

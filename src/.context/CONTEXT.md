@@ -183,17 +183,20 @@ source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
 the trainer. GPU training and checkpoint restore remain unverified.
 
-`task_generation.iter_requests` streams source-backed coverage assignments without
-inference; `build_request` returns the one at an index and `prepare_task_requests`
-materializes a batch with a coverage summary. Requests reference their source by
-identity and hash instead of embedding the passage, so a batch costs O(requests)
-rather than O(requests x source size); `task_authoring.resolve_packet` inlines the
-passage for a model call or validation. Each request is derivable from its index and
-seeded per-key permutations rather than shared RNG state, so a batch can resume
-mid-way. Only selected human training sources are accepted; content hashes and
+`task_generation.Sampler.build` validates a selection once and derives its
+index-addressable content; `iter_requests` streams from it, `build_request` returns the
+one at an index, and `prepare_task_requests` materializes a batch with a coverage
+summary. Requests reference their source by identity and hash instead of embedding the
+passage, so a batch costs O(requests) rather than O(requests x source size);
+`task_authoring.resolve_packet` inlines the passage for a model call or validation, and
+a batch resolves each request once before spending. Each request is derived from its
+index and seeded per-key permutations rather than shared RNG state, so a batch can
+resume mid-way. Only selected human training sources are accepted; content hashes and
 connected-lineage exclusions are checked, and source groups are reported separately
-from work counts. Instruction specificity is structured as a level plus the stated and
-withheld decision points, and coverage reports the level and withheld points.
+from work counts. `specificity.py` gives each decision point one behavior and one
+introduction level, and derives each family's stated and withheld split from that
+table; an inconsistent table is rejected at import. Coverage reports the level and
+withheld points.
 Prepared requests are not generated or accepted training tasks.
 The research script binds their hashes to source inventory and generator instructions.
 Variation vocabulary is caller-supplied data.

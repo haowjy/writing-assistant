@@ -1,18 +1,23 @@
 """Prepare reproducible, source-backed task-authoring requests without inference.
 
 Requests reference their source passage by identity rather than embedding it, so a
-batch costs O(requests) instead of O(requests x source size). Each request is
-addressable by index and derivable without shared random state, so a batch can be
-streamed, resumed mid-way, or sampled one request at a time.
+batch costs O(requests) instead of O(requests x source size). Each request is derived
+from its index and a per-key seeded permutation, so a batch can be streamed, resumed
+mid-way, or sampled one request at a time.
+
+Inputs are validated once when a ``Sampler`` is built; the operations over it are
+lazy and addressable.
 """
 
 from collections import Counter
 from collections.abc import Iterator
+from dataclasses import dataclass
 from random import Random
 
 from writing_agent.catalog import fingerprint, validate_catalog
 from writing_agent.specificity import LEVELS, decision_points, split_spec
 
+SCHEMA_VERSION = 3
 FAMILIES = ("F1", "F2", "F3", "F4", "F5")
 TRANSFORMATIONS = ("close_continuation", "genre_adaptation", "major_event_divergence")
 CONTENT_KEYS = ("genres", "styles", "tropes", "situations", "continuity_challenges")
@@ -87,11 +92,72 @@ def _source_packets(catalog: list[dict], source_ids: list[str], excluded: set[st
     return packets
 
 
-def _base_assignment(slot: int, packets: list[dict], orders: dict) -> tuple[int, dict]:
-    """Every coverage field for one base, independent of specificity level."""
+@dataclass(frozen=True)
+class Sampler:
+    """Validated request inputs, with content derived once and addressable by index."""
+
+    packets: tuple[dict, ...]
+    orders: dict
+    variation_catalog_hash: str
+    catalog_hash: str
+    excluded_source_groups: tuple[str, ...]
+    count: int
+    seed: int
+    levels: tuple[str, ...]
+
+    def __len__(self) -> int:
+        return self.count
+
+    @classmethod
+    def build(
+        cls,
+        catalog: list[dict],
+        source_ids: list[str],
+        *,
+        excluded_source_groups: set[str],
+        variation_catalog: dict,
+        count: int = 100,
+        seed: int = 42,
+        levels: tuple[str, ...] = ("L3",),
+    ) -> "Sampler":
+        """Validate a selection once and derive its index-addressable content.
+
+        Requests are emitted as matched ladders: each base assignment repeats once per
+        specificity level, with the level cycling fastest so a base's ladder is adjacent.
+        ``count`` is the total request count and must be divisible by the level count.
+        The default level states every decision point, which is an explicit task.
+        """
+        if type(count) is not int or count < 1:
+            raise ValueError("Task count must be a positive integer")
+        levels = tuple(levels)
+        if (
+            not levels
+            or len(set(levels)) != len(levels)
+            or any(level not in LEVELS for level in levels)
+        ):
+            raise ValueError("Specificity levels must be unique members of LEVELS")
+        if count % len(levels):
+            raise ValueError("Request count must be divisible by the number of specificity levels")
+        return cls(
+            packets=tuple(_source_packets(catalog, source_ids, excluded_source_groups)),
+            orders={
+                key: _permutation(variation_catalog.get(key), seed=seed, key=key)
+                for key in CONTENT_KEYS
+            },
+            variation_catalog_hash=fingerprint(variation_catalog),
+            catalog_hash=fingerprint(catalog),
+            excluded_source_groups=tuple(sorted(excluded_source_groups)),
+            count=count,
+            seed=seed,
+            levels=levels,
+        )
+
+
+def _body(sampler: Sampler, slot: int, level: str) -> dict:
+    """Every coverage field for one base at one level, independent of other requests."""
     family_index = slot % len(FAMILIES)
-    source_index = (slot // len(FAMILIES)) % len(packets)
-    variant = slot // (len(FAMILIES) * len(packets))
+    source_index = (slot // len(FAMILIES)) % len(sampler.packets)
+    variant = slot // (len(FAMILIES) * len(sampler.packets))
     family = FAMILIES[family_index]
     stages = [family]
     if variant % 4 >= 2:
@@ -103,83 +169,53 @@ def _base_assignment(slot: int, packets: list[dict], orders: dict) -> tuple[int,
     if continuation:
         genre, blend = "preserve source genre", []
     else:
-        genre = _value(orders["genres"], slot)
+        genre = _value(sampler.orders["genres"], slot)
         blend = [genre]
-        alternatives = [candidate for candidate in orders["genres"] if candidate != genre]
+        alternatives = [candidate for candidate in sampler.orders["genres"] if candidate != genre]
         if slot % 2 and alternatives:
             blend.append(alternatives[slot % len(alternatives)])
-    return source_index, {
-        "family": family,
-        "stage_families": stages,
-        "transformation": transformation,
-        "genre": genre,
-        "genre_blend": blend,
-        "style": "preserve source style" if continuation else _value(orders["styles"], slot),
-        "trope": _value(orders["tropes"], slot),
-        "situation": _value(orders["situations"], slot),
-        "continuity_challenge": _value(orders["continuity_challenges"], slot),
-        "creative_options_status": "suggestions_until_grounded_in_visible_task",
-        "delivery": "reply" if family in {"F1", "F3"} else "files",
-        "kb_format": "linked_markdown" if slot % 2 else "flat_markdown",
+    applicable = tuple(
+        point for point in decision_points(family) if point != "branch_choice" or not continuation
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "packet": sampler.packets[source_index],
+        "assignment": {
+            "family": family,
+            "stage_families": stages,
+            "transformation": transformation,
+            "genre": genre,
+            "genre_blend": blend,
+            "style": (
+                "preserve source style" if continuation else _value(sampler.orders["styles"], slot)
+            ),
+            "trope": _value(sampler.orders["tropes"], slot),
+            "situation": _value(sampler.orders["situations"], slot),
+            "continuity_challenge": _value(sampler.orders["continuity_challenges"], slot),
+            "creative_options_status": "suggestions_until_grounded_in_visible_task",
+            "delivery": "reply" if family in {"F1", "F3"} else "files",
+            "kb_format": "linked_markdown" if slot % 2 else "flat_markdown",
+            "instruction_specificity": split_spec(family, level, applicable=applicable),
+        },
+        "variation_catalog_hash": sampler.variation_catalog_hash,
+        "seed": sampler.seed,
     }
 
 
-def iter_requests(
-    catalog: list[dict],
-    source_ids: list[str],
-    *,
-    excluded_source_groups: set[str],
-    variation_catalog: dict,
-    count: int = 100,
-    seed: int = 42,
-    levels: tuple[str, ...] = ("L3",),
-    start: int = 0,
-) -> Iterator[dict]:
-    """Yield one request at a time.
-
-    Requests are emitted as matched ladders: each base assignment repeats once per
-    specificity level, with the level cycling fastest so a base's ladder is adjacent.
-    ``count`` is the total request count and must be divisible by the number of levels.
-    The default level states every decision point, which is an explicit task.
-    """
-    if type(count) is not int or count < 1:
-        raise ValueError("Task count must be a positive integer")
-    levels = tuple(levels)
-    if (
-        not levels
-        or len(set(levels)) != len(levels)
-        or any(level not in LEVELS for level in levels)
-    ):
-        raise ValueError("Specificity levels must be unique members of LEVELS")
-    if count % len(levels):
-        raise ValueError("Request count must be divisible by the number of specificity levels")
-    if type(start) is not int or not 0 <= start <= count:
+def iter_requests(sampler: Sampler, *, start: int = 0) -> Iterator[dict]:
+    """Yield one request at a time, resumable from ``start``."""
+    if type(start) is not int or not 0 <= start <= sampler.count:
         raise ValueError("Start index must be within the batch")
-    packets = _source_packets(catalog, source_ids, excluded_source_groups)
-    orders = {
-        key: _permutation(variation_catalog.get(key), seed=seed, key=key) for key in CONTENT_KEYS
-    }
-    variation_hash = fingerprint(variation_catalog)
-    for index in range(start, count):
-        slot = index // len(levels)
-        level = levels[index % len(levels)]
-        source_index, base = _base_assignment(slot, packets, orders)
-        family = base["family"]
-        applicable = tuple(
-            point
-            for point in decision_points(family)
-            if point != "branch_choice" or base["transformation"] != "close_continuation"
+    return _stream(sampler, start)
+
+
+def _stream(sampler: Sampler, start: int) -> Iterator[dict]:
+    for index in range(start, sampler.count):
+        body = _body(
+            sampler,
+            index // len(sampler.levels),
+            sampler.levels[index % len(sampler.levels)],
         )
-        body = {
-            "schema_version": 3,
-            "packet": packets[source_index],
-            "assignment": {
-                **base,
-                "instruction_specificity": split_spec(family, level, applicable=applicable),
-            },
-            "variation_catalog_hash": variation_hash,
-            "seed": seed,
-        }
         yield {
             "id": f"training-task-{index + 1:03d}",
             **body,
@@ -188,15 +224,11 @@ def iter_requests(
         }
 
 
-def build_request(
-    index: int, catalog: list[dict], source_ids: list[str], *, count: int = 100, **kwargs
-) -> dict:
-    """Return one request without materializing the batch. Bounded by ``count``."""
-    if type(index) is not int or not 0 <= index < count:
+def build_request(sampler: Sampler, index: int) -> dict:
+    """Return one request without materializing the batch. Bounded by the sampler count."""
+    if type(index) is not int or not 0 <= index < sampler.count:
         raise ValueError(f"Request index out of range: {index}")
-    for request in iter_requests(catalog, source_ids, count=count, start=index, **kwargs):
-        return request
-    raise ValueError(f"Request index out of range: {index}")
+    return next(iter_requests(sampler, start=index))
 
 
 def coverage(requests: list[dict]) -> dict:
@@ -228,42 +260,23 @@ def coverage(requests: list[dict]) -> dict:
     return summary
 
 
-def prepare_task_requests(
-    catalog: list[dict],
-    source_ids: list[str],
-    *,
-    excluded_source_groups: set[str],
-    variation_catalog: dict,
-    count: int = 100,
-    seed: int = 42,
-    levels: tuple[str, ...] = ("L3",),
-) -> dict:
+def prepare_task_requests(sampler: Sampler) -> dict:
     """Materialize a batch of requests and its coverage summary.
 
-    For on-demand work use iter_requests or build_request; this exists for the frozen
-    prepared-batch artifact.
+    For on-demand work iterate the sampler; this exists for the frozen prepared-batch
+    artifact.
     """
-    requests = list(
-        iter_requests(
-            catalog,
-            source_ids,
-            excluded_source_groups=excluded_source_groups,
-            variation_catalog=variation_catalog,
-            count=count,
-            seed=seed,
-            levels=levels,
-        )
-    )
+    requests = list(iter_requests(sampler))
     return {
-        "schema_version": 3,
+        "schema_version": SCHEMA_VERSION,
         "status": "prepared_requests_only",
         "requests": requests,
         "coverage": coverage(requests),
-        "catalog_hash": fingerprint(catalog),
-        "variation_catalog_hash": fingerprint(variation_catalog),
-        "seed": seed,
-        "levels": list(levels),
-        "excluded_source_groups": sorted(excluded_source_groups),
+        "catalog_hash": sampler.catalog_hash,
+        "variation_catalog_hash": sampler.variation_catalog_hash,
+        "seed": sampler.seed,
+        "levels": list(sampler.levels),
+        "excluded_source_groups": list(sampler.excluded_source_groups),
         "generated_tasks": 0,
         "accepted_tasks": 0,
     }

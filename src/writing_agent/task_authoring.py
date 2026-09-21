@@ -288,6 +288,7 @@ def author_tasks(
 ) -> dict:
     """Save every outcome and compile only mechanically valid, model-reviewed tasks."""
     validate_catalog(catalog)
+    resolved_requests = []
     ids = set()
     for request in requests:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", request["id"]) or request["id"] in ids:
@@ -296,7 +297,7 @@ def author_tasks(
         body = {k: v for k, v in request.items() if k not in {"id", "status", "request_hash"}}
         if fingerprint(body) != request["request_hash"]:
             raise ValueError("Request hash mismatch")
-        resolve_packet(request, catalog)
+        resolved_requests.append(resolve_packet(request, catalog))
     identity = fingerprint(
         {
             "requests": requests,
@@ -316,23 +317,22 @@ def author_tasks(
         save_json(manifest_path, {"identity": identity, "requested": len(requests)})
         outcomes, accepted, briefs = [], [], set()
         interruption = None
-        for request in requests:
-            path = destination / "tasks" / (request["id"] + ".json")
+        for resolved in resolved_requests:
+            path = destination / "tasks" / (resolved["id"] + ".json")
             if path.exists():
                 outcome = json.loads(path.read_text())
                 saved_hash = outcome.pop("outcome_hash", None)
                 if (
                     fingerprint(outcome) != saved_hash
-                    or outcome["request_hash"] != request["request_hash"]
+                    or outcome["request_hash"] != resolved["request_hash"]
                 ):
                     raise ValueError("Saved task outcome hash mismatch")
             else:
                 outcome = {
-                    "id": request["id"],
-                    "request_hash": request["request_hash"],
+                    "id": resolved["id"],
+                    "request_hash": resolved["request_hash"],
                     "status": "pending",
                 }
-                resolved = resolve_packet(request, catalog)
                 try:
                     generated = client.json_call(
                         instructions,

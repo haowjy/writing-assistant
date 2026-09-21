@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scripts.train_sft import evaluation_source_groups
 from writing_agent.catalog import fingerprint, save_json
-from writing_agent.task_generation import prepare_task_requests
+from writing_agent.task_generation import Sampler, prepare_task_requests
 from writing_agent.workspace import TOOL_SCHEMAS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,12 +35,14 @@ def prepare():
         if source["id"] in SOURCE_IDS and frozen.get(source["id"]) != source["sha256"]:
             raise ValueError("Source differs from the frozen starter inventory")
     batch = prepare_task_requests(
-        catalog,
-        SOURCE_IDS,
-        excluded_source_groups=evaluation_source_groups(),
-        variation_catalog=json.loads(VARIATIONS.read_text()),
-        count=100,
-        levels=SPECIFICITY_LEVELS,
+        Sampler.build(
+            catalog,
+            SOURCE_IDS,
+            excluded_source_groups=evaluation_source_groups(),
+            variation_catalog=json.loads(VARIATIONS.read_text()),
+            count=100,
+            levels=SPECIFICITY_LEVELS,
+        )
     )
     instruction_text = INSTRUCTIONS.read_text()
     context = {"instructions": instruction_text, "tool_schemas": TOOL_SCHEMAS}

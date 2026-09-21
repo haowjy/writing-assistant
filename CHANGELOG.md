@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- Restructure task preparation around one validated `Sampler` value: `Sampler.build`
+  checks the selection and derives its index-addressable content, and
+  `iter_requests` / `build_request` / `prepare_task_requests` each take it. This removes
+  a seven-parameter contract duplicated across three functions, eager-validates instead
+  of deferring errors to first iteration, and drops an unreachable branch.
+- Give each specificity decision point one behavior and one introduction level and
+  derive the per-family split from that table, replacing a nested ladder that restated
+  every point up to five times and admitted non-monotonic splits. The table is
+  validated at import, and an always-stated point can no longer be withheld silently.
+- Resolve a request's source packet once per batch instead of once per validation and
+  again per generation. Prepared batches are byte-identical to before the refactor.
+
 - Make task preparation streaming and source-referencing: `iter_requests` and
   `build_request` yield one request at a time, each derivable from its index and seeded
   per-key permutations instead of shared RNG state, so a batch can resume mid-way.

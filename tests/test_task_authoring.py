@@ -27,7 +27,7 @@ from writing_agent.paid import (
 )
 from writing_agent.suite import load_scenarios
 from writing_agent.task_authoring import REVIEW_GATES, author_tasks, resolve_packet, validate_task
-from writing_agent.task_generation import prepare_task_requests
+from writing_agent.task_generation import Sampler, prepare_task_requests
 
 
 def fixture():
@@ -46,7 +46,13 @@ def fixture():
         for k in ("genres", "styles", "tropes", "situations", "continuity_challenges")
     }
     request = prepare_task_requests(
-        [source], ["book"], excluded_source_groups=set(), variation_catalog=variations, count=1
+        Sampler.build(
+            [source],
+            ["book"],
+            excluded_source_groups=set(),
+            variation_catalog=variations,
+            count=1,
+        )
     )["requests"][0]
     request["assignment"]["family"] = "F1"
     request["assignment"]["stage_families"] = ["F1"]
