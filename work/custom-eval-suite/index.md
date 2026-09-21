@@ -18,6 +18,7 @@ Five-case run: [E2B-IT five-case pilot](pilot-e2b.md), with saved artifacts and 
 
 ## Read this work item
 
+- [Long-form final suite](longform-suite.md): six held-out long-project cases, the anchor-verification and holdout mechanism, and the circularity caveat that makes the external anchor necessary.
 - [Inference and checkpoint evaluation](../../docs/local-inference.md): direct Python runtime, harness protocol, and future training integration.
 - [Current coverage](coverage.md): existing genre/style, naming, narrative, instruction, and KB variation; final-generation review checklist.
 - [Suite design](design.md): task families, experiments, runner boundaries, and record contracts.

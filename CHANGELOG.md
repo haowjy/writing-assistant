@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Add the held-out long-form final-evaluation suite: six cases over three public-domain
+  works that supply a multi-chapter manuscript and ask for more, so the axis is long-range
+  continuity, plan adherence, revision propagation and arc closure rather than short
+  single-scenario capability. `longform_suite.py` and
+  `scripts/build_longform_suite.py` compile deterministic slices into the shared scenario
+  contract, refuse to build when a check cites a fact its supplied text lacks, and refuse
+  to build when a work is already in use by training or by the development suite.
+
 - Bind the pinned EQ-Bench Longform Writing release as the external long-form anchor.
   `longform.py` renders the upstream 13-step plan-then-eight-chapters protocol,
   compiles twelve `final_eval` scenarios through the existing compile contract, and

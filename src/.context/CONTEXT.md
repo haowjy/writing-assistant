@@ -167,6 +167,16 @@ local sampling and context differ. `faithful` mode keeps generation reply-only s
 score stays comparable; `workspace` mode adds file delivery and is therefore not
 comparable. Quote a score with its mode and chapter count, never alone.
 
+`longform_suite.py` compiles the held-out long-form benchmark into that same scenario
+contract. Supplied manuscripts are deterministic slices of three public-domain works,
+and every case declares anchors that the build verifies occur in the text it supplies,
+so a private check cannot cite a fact the candidate was never given. `holdout_audit`
+refuses to build when a benchmark work is already claimed, by content hash, by training
+or by a source a development case references. This suite is authored from the same
+taxonomy as the training tasks and the reward, so it can show that a policy moved and
+not that it improved; the external anchor is the half that can falsify. Do not run it
+for checkpoint selection.
+
 `CodexGrader` replaces built-in coding instructions with `grader_instructions.md`,
 starts a fresh ephemeral session outside the repository, suppresses project/skill
 instruction loading, and preserves launch evidence. Packet/cache identity includes

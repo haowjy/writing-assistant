@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "benchmark": "longform-v1",
+  "frozen": "2026-09-21",
+  "role": "final_eval",
+  "note": "Long-form final-evaluation cases. Supplied manuscripts are deterministic slices of public-domain works that no training source or development case uses. Every anchor listed on a case is verified to occur in that case's supplied text at build time, so a label cannot cite a fact the candidate was never given. Reserved before any policy result was seen; do not tune against these cases and do not use them for checkpoint selection.",
+  "works": {
+    "gutenberg-84": {
+      "gutenberg": 84,
+      "title": "Frankenstein; or, The Modern Prometheus",
+      "author": "Mary Wollstonecraft Shelley",
+      "headings": "^(?:LETTER|Letter|CHAPTER|Chapter)\\s+[IVXLCDM0-9]+\\.?[^\\n]*$"
+    },
+    "gutenberg-11": {
+      "gutenberg": 11,
+      "title": "Alice's Adventures in Wonderland",
+      "author": "Lewis Carroll",
+      "headings": "^CHAPTER\\s+[IVXLCDM]+\\.?[^\\n]*$"
+    },
+    "gutenberg-1661": {
+      "gutenberg": 1661,
+      "title": "The Adventures of Sherlock Holmes",
+      "author": "Arthur Conan Doyle",
+      "headings": "^(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\\.\\s+[A-Z][^\\n]{3,60}$"
+    }
+  },
+  "cases": [
+    {
+      "id": "LF-01",
+      "axis": "chaptered_continuation",
+      "title": "Continue Frankenstein from the letters",
+      "work": "gutenberg-84",
+      "supplied": [0, 1, 2, 3, 4],
+      "write": ["chapter-2", "chapter-3", "chapter-4"],
+      "family": "F2",
+      "genre": "gothic",
+      "specificity": "L3",
+      "style": "restrained, concrete prose",
+      "context_target_tokens": 16000,
+      "anchors": ["Walton", "Saville", "Archangel", "St. Petersburgh", "Elizabeth", "Geneva"],
+      "brief": "I have the opening of my novel in manuscript/. Walton's letters frame the story and then Victor takes over the narration in chapter-1. I need the next three chapters. Write chapters 2, 3 and 4, saving each to manuscript/chapter-2.md, manuscript/chapter-3.md and manuscript/chapter-4.md. Keep Victor's first-person retrospective voice and keep Walton's frame intact underneath it. Each chapter should run 800-1200 words. Respect what the letters and chapter 1 already establish about who these people are and what they have already done. Return only the prose in each file, with no title and no commentary.",
+      "followups": [],
+      "checks": [
+        {"id": "delivery-2", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-2.md"},
+        {"id": "delivery-3", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-3.md"},
+        {"id": "delivery-4", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-4.md"},
+        {"id": "length-2", "metric": "Q1", "kind": "word_range", "method": "deterministic", "required": false, "path": "manuscript/chapter-2.md", "min": 800, "max": 1200},
+        {"id": "length-3", "metric": "Q1", "kind": "word_range", "method": "deterministic", "required": false, "path": "manuscript/chapter-3.md", "min": 800, "max": 1200},
+        {"id": "length-4", "metric": "Q1", "kind": "word_range", "method": "deterministic", "required": false, "path": "manuscript/chapter-4.md", "min": 800, "max": 1200},
+        {"id": "letters-protected", "metric": "Q3", "kind": "protected", "method": "deterministic", "required": true, "path": "manuscript/letter-1.md"},
+        {"id": "continuity", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": true, "text": "The new chapters must not contradict the supplied letters or chapter 1 about who the characters are, where they are, or what has already happened. Walton writes to Saville from the Arctic; the stranger is taken aboard; Victor narrates his own history. Do not invent an ending for a story the author has not reached. Accept any plausible continuation."},
+        {"id": "voice", "metric": "Q1", "kind": "semantic", "method": "llm_judge", "required": false, "text": "Sustained first-person retrospective narration in the established voice, with Walton's framing preserved. Restrained, concrete prose rather than emotional explanation."},
+        {"id": "longform-staging", "metric": "Q2", "kind": "semantic", "method": "llm_judge", "required": false, "text": "Each chapter advances the story rather than restating the supplied material. Reward concrete staging and consequences; penalise recap and repeated emotional summary."}
+      ]
+    },
+    {
+      "id": "LF-02",
+      "axis": "chaptered_continuation",
+      "title": "Continue Alice with almost no direction",
+      "work": "gutenberg-11",
+      "supplied": [0, 1, 2],
+      "write": ["chapter-iv", "chapter-v"],
+      "family": "F2",
+      "genre": "childrens_fantasy",
+      "specificity": "L0",
+      "style": "unspecified",
+      "context_target_tokens": 14000,
+      "anchors": ["Alice", "White Rabbit", "Dinah", "Mouse", "the pool"],
+      "brief": "The first three chapters are in manuscript/. Continue the story.",
+      "followups": ["Keep going for another chapter after that one."],
+      "checks": [
+        {"id": "delivery-4", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-iv.md"},
+        {"id": "delivery-5", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-v.md"},
+        {"id": "supplied-protected", "metric": "Q3", "kind": "protected", "method": "deterministic", "required": true, "path": "manuscript/chapter-i.md"},
+        {"id": "continuity", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": true, "text": "Respect the supplied chapters: who Alice is, that Dinah is her cat, and what has already happened to her. Do not contradict them and do not restart the story. The brief is deliberately open, so any coherent continuation is acceptable; do not require a specific plot."},
+        {"id": "no-invented-constraints", "metric": "Q1", "kind": "semantic", "method": "llm_judge", "required": false, "text": "The request states no length, viewpoint, style or ending. Do not penalise the absence of a requirement the author never made, and do not reward inventing one."},
+        {"id": "longform-staging", "metric": "Q2", "kind": "semantic", "method": "llm_judge", "required": false, "text": "The two chapters continue the same story and do not simply repeat each other. Penalise recap of the supplied chapters and repeated emotional summary."}
+      ]
+    },
+    {
+      "id": "LF-03",
+      "axis": "sustained_plan",
+      "title": "Draft two chapters against a supplied outline",
+      "work": "gutenberg-84",
+      "supplied": [4, 5, 6, 7, 8],
+      "write": ["chapter-6", "chapter-7"],
+      "family": "F2",
+      "genre": "gothic",
+      "specificity": "L3",
+      "style": "restrained, concrete prose",
+      "context_target_tokens": 24000,
+      "anchors": ["Ingolstadt", "Clerval", "Geneva", "Elizabeth", "Agrippa", "natural philosophy"],
+      "extra_files": {
+        "notes/outline.md": "# Outline, chapters 6 and 7\n\nTwo new people enter the story here. William is Victor's younger brother, still a child. Justine is the servant who has raised the household's children and is trusted by all of them.\n\n## Chapter 6\nVictor returns to Geneva after the news from home. The chapter stays close to his arrival and to what he sees and is told. Elizabeth is present and speaks plainly. Do not reveal who the killer is. End with Victor's private certainty, not with a public accusation.\n\n## Chapter 7\nJustine is accused. The chapter covers the arrest and its immediate aftermath inside the household. Victor holds back what he knows. William's death stays a fact the family has to live with rather than a mystery the chapter solves. End unresolved, before any trial.\n\n## Constraints\n- First person, Victor.\n- Nothing supernatural is confirmed to anyone but Victor.\n- Justine is innocent and the text must not imply otherwise.\n"
+      },
+      "brief": "I have five chapters in manuscript/ and the outline for the next two in notes/outline.md. Draft chapters 6 and 7 from that outline, saving them to manuscript/chapter-6.md and manuscript/chapter-7.md. Follow the outline's beats and its constraints; if a beat is genuinely unworkable, keep the consequence and change only the mechanism. 900-1300 words per chapter. Return only prose in each file.",
+      "followups": [],
+      "checks": [
+        {"id": "delivery-6", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-6.md"},
+        {"id": "delivery-7", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-7.md"},
+        {"id": "length-6", "metric": "Q1", "kind": "word_range", "method": "deterministic", "required": false, "path": "manuscript/chapter-6.md", "min": 900, "max": 1300},
+        {"id": "length-7", "metric": "Q1", "kind": "word_range", "method": "deterministic", "required": false, "path": "manuscript/chapter-7.md", "min": 900, "max": 1300},
+        {"id": "outline-protected", "metric": "Q3", "kind": "protected", "method": "deterministic", "required": true, "path": "notes/outline.md"},
+        {"id": "plan-adherence", "metric": "Q1", "kind": "semantic", "method": "llm_judge", "required": true, "text": "Both chapters must deliver the outline's beats: chapter 6 is Victor's return and his private certainty, with no public accusation; chapter 7 is the arrest and its aftermath inside the household, ending before any trial. Report required beats as covered or not, and name any forbidden beat that appears."},
+        {"id": "outline-constraints", "metric": "Q1", "kind": "semantic", "method": "llm_judge", "required": true, "text": "The outline's constraints must hold: first person from Victor; nothing supernatural confirmed to anyone but Victor; Justine is innocent and the text must not imply she is guilty."},
+        {"id": "continuity", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": true, "text": "Respect the five supplied chapters about who these people are and what has already happened, including events at Ingolstadt and the family's situation in Geneva. Do not contradict them."}
+      ]
+    },
+    {
+      "id": "LF-04",
+      "axis": "long_range_revision",
+      "title": "Change an established fact and propagate it",
+      "work": "gutenberg-11",
+      "supplied": [0, 1, 2, 3, 4, 5],
+      "write": ["chapter-vii"],
+      "family": "F2",
+      "genre": "childrens_fantasy",
+      "specificity": "L3",
+      "style": "unspecified",
+      "context_target_tokens": 28000,
+      "anchors": ["Alice", "Dinah", "the pool", "Mouse", "golden key", "Duchess"],
+      "brief": "A change to the opening. The afternoon must be a cold winter night, not a hot summer day, and the riverbank in chapter-i must become a frozen riverbank. Revise manuscript/chapter-i.md so it establishes the winter night, then work through the rest of the manuscript and fix anything that now contradicts it. Keep everything else about the story as it is: do not rewrite passages that the change does not affect, and do not alter the other five files beyond what the change requires. When the manuscript is consistent, write the next chapter to manuscript/chapter-vii.md so that it matches the revised setting. Save the file list you changed and what you changed in each to notes/revision-log.md.",
+      "followups": [],
+      "checks": [
+        {"id": "delivery-7", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/chapter-vii.md"},
+        {"id": "delivery-log", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "notes/revision-log.md"},
+        {"id": "setting-revised", "metric": "Q11", "kind": "contains", "method": "deterministic", "required": true, "path": "manuscript/chapter-i.md", "text": "winter"},
+        {"id": "summer-removed", "metric": "Q11", "kind": "excludes", "method": "deterministic", "required": true, "path": "manuscript/chapter-i.md", "text": "hot summer day"},
+        {"id": "unrelated-protected", "metric": "Q11", "kind": "protected", "method": "deterministic", "required": true, "path": "manuscript/chapter-ii.md", "text": "the Mouse"},
+        {"id": "revision-local", "metric": "Q11", "kind": "semantic", "method": "llm_judge", "required": true, "text": "The change is a setting change, not a licence to rewrite the book. Only passages that the winter setting actually affects should differ from the supplied text. Report changed passages that the change did not require."},
+        {"id": "propagation", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": true, "text": "After the revision, no remaining passage may still assert a hot summer day, and the new chapter must be consistent with a cold winter night. The revision log must name the files changed and what changed in each."},
+        {"id": "continuity", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": false, "text": "The new chapter must preserve who these characters are and what has already happened to them."}
+      ]
+    },
+    {
+      "id": "LF-05",
+      "axis": "kb_bootstrapped_novel",
+      "title": "Build a reference from one story, then write a new one",
+      "work": "gutenberg-1661",
+      "supplied": [0],
+      "write": [],
+      "names": {"0": "scandal-in-bohemia"},
+      "family": "F4",
+      "genre": "detective_fiction",
+      "specificity": "L1",
+      "style": "unspecified",
+      "context_target_tokens": 20000,
+      "anchors": ["Holmes", "Watson", "Baker Street", "Irene Adler", "Bohemia", "photograph", "Briony Lodge"],
+      "entrypoints": ["kb/index.md"],
+      "brief": "Read manuscript/scandal-in-bohemia.md and build me a reference I can write from: a linked Markdown wiki under kb/ covering the people, places, methods and standing facts of this world. It should be navigable from kb/index.md and no longer than 1200 words in total. Then write one new case for these characters, saved to manuscript/new-case.md, in 900-1400 words. It must be a case they could plausibly take, and it must be consistent with the reference you just built.",
+      "followups": [],
+      "checks": [
+        {"id": "kb-navigable", "metric": "Q10", "kind": "wiki_links", "method": "deterministic", "required": true},
+        {"id": "kb-budget", "metric": "Q1", "kind": "kb_word_budget", "method": "deterministic", "required": true, "max": 1200},
+        {"id": "delivery-case", "metric": "Q3", "kind": "nonempty", "method": "deterministic", "required": true, "path": "manuscript/new-case.md"},
+        {"id": "case-length", "metric": "Q1", "kind": "word_range", "method": "deterministic", "required": false, "path": "manuscript/new-case.md", "min": 900, "max": 1400},
+        {"id": "source-read", "metric": "Q12", "kind": "evidence_exposed", "method": "deterministic", "required": true, "text": "Briony Lodge"},
+        {"id": "kb-faithfulness", "metric": "Q7", "kind": "semantic", "method": "llm_judge", "required": true, "text": "The reference must be faithful to the supplied story. Report any entry that asserts something the story does not support, and any important element of the story the reference omits."},
+        {"id": "kb-interpretation", "metric": "Q9", "kind": "semantic", "method": "llm_judge", "required": false, "text": "Judge whether the reference selects and organizes what a writer would actually need, rather than transcribing the plot. Reward qualified statements about what characters believe or know."},
+        {"id": "new-case-consistency", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": true, "text": "The new case must be consistent with the supplied story and with the reference built here: same characters, same world, no contradiction of established facts, and no reuse of the supplied story's actual resolution."}
+      ]
+    },
+    {
+      "id": "LF-06",
+      "axis": "divergent_branch",
+      "title": "Diverge at a declared point and land the arc",
+      "work": "gutenberg-84",
+      "supplied": [4, 5, 6, 7],
+      "write": [],
+      "replies": true,
+      "family": "F1",
+      "genre": "gothic",
+      "specificity": "L0",
+      "style": "unspecified",
+      "context_target_tokens": 18000,
+      "anchors": ["Ingolstadt", "Clerval", "natural philosophy", "Agrippa", "Geneva"],
+      "brief": "Four chapters are in manuscript/. In chapter-1, Victor's studies at Ingolstadt take a different turn: he never completes the work he began there. Write the closing chapter that follows from that change, on its own, under 1500 words. This is an alternate branch, so events in the supplied chapters that depend on him finishing are no longer binding, but everything else about him and the people around him still is. Reply with the chapter only.",
+      "followups": [],
+      "checks": [
+        {"id": "divergence", "metric": "Q13", "kind": "semantic", "method": "llm_judge", "required": true, "text": "Judge whether the closing chapter actually follows from the declared divergence. Events that the supplied chapters made depend on Victor finishing his work may be set aside; everything else about the characters and the world must still hold. Do not treat the authorised departure as a continuity error."},
+        {"id": "no-unauthorised-invention", "metric": "Q1", "kind": "semantic", "method": "llm_judge", "required": true, "text": "Only the declared change is authorised. Report unauthorised departures, such as changing who the characters are, where the story is set, or inventing an outcome unrelated to the divergence."},
+        {"id": "lands-the-arc", "metric": "Q2", "kind": "semantic", "method": "llm_judge", "required": false, "text": "As a closing chapter, judge whether the piece reaches a real ending rather than stopping. Penalise a summary of consequences it never dramatised."}
+      ]
+    }
+  ]
+}

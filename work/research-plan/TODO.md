@@ -99,6 +99,15 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   Report completion, Astra rubric scores, and numerical prose profiles separately;
   include a small coding/instruction-following regression check. Choose cadence from
   measured training and evaluation time, rather than an arbitrary epoch interval.
+- [ ] Validate the [reward adapter](../../src/writing_agent/reward.py) on controlled
+  failures and matched good/weak examples before its first policy update. It is
+  implemented and unit-tested; version 0 weights are a hypothesis, and nothing has been
+  optimized against them. Check the pointwise-vs-pairwise question alongside it.
+- [ ] Keep the [long-form final suite](../custom-eval-suite/longform-suite.md) out of
+  checkpoint selection. It is built and frozen, and running it to see how a change looks
+  converts it into a development set. Report it beside the
+  [external EQ-Bench anchor](../external-benchmarks/longform-eqbench.md); agreement
+  between the two is the result, and disagreement is the more informative one.
 
 Astra remains the primary subjective evaluator; human grading is optional. Fix its
 model, rubric, and grading settings across checkpoints. Occasional repeated grading
