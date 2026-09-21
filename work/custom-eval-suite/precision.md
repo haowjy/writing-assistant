@@ -74,12 +74,45 @@ For a model this small on a 24 GB card, the quantized path bought memory we were
 and cost both fidelity and wall time. Quantization is for fitting a model that does not
 otherwise fit.
 
+## The 50-case rerun, and what it could not settle
+
+The same 50 cases were regenerated in bf16 — same seeds, same generation settings, same
+context limit, one field flipped. Both arms were then scored identically, using only the
+deterministic metrics, so nothing further was paid for. Paired on the cases where both
+arms produced the metric:
+
+| Metric | Paired | nf4 | bf16 | Δ | nf4 scored | bf16 scored |
+|---|---|---|---|---|---|---|
+| Q1 instruction adherence | 9 | 0.7407 | 0.8519 | **+0.1111** | 9 | 9 |
+| Q3 task completion | 13 | 0.5385 | 0.5385 | 0.0000 | 17 | 13 |
+| Q4 tool correctness | 24 | 1.0000 | 1.0000 | 0.0000 | 24 | 24 |
+| Q13 continuity | 0 | — | — | — | 0 | 0 |
+| R1 latency (seconds) | 49 | 82.376 | 57.790 | **−24.586** | 49 | 49 |
+
+**The one solid result is latency.** On the real 50-case workload bf16 is 30% faster,
+paired across 49 cases. That corroborates the single-prompt measurement above and makes the
+same point: the quantized path was slower as well as less faithful.
+
+**The quality half is not settled, and this comparison is not able to settle it.** The
+paired counts are 9, 13 and 24 against 50 cases, and the reason is structural: 115 of the
+development checks are `semantic` and stay `pending` until a judge runs, so a case only
+resolves a metric when all of its checks happen to be deterministic. Comparing means over
+different case subsets would have produced a number for Q1 and Q3 that looks like a result
+and is not one — the first version of this comparison did exactly that, and reported Q3 as
++0.127 from 17 nf4 cases against 13 bf16 cases. The numbers above are paired on the
+intersection of the two subsets instead.
+
+Q1's +0.111 across 9 cases is suggestive and nothing more. It is not comparable to the
+published baseline's Q1 of 0.794, because that figure comes from a graded run where the
+semantic checks had resolved, and so covers a different and much larger case set. **The
+`Q2` prose-quality figure of 2.20 and the semantic rubrics remain unmeasured on the bf16
+arm**, and they are where a precision difference would show up if it affects writing rather
+than throughput.
+
 ## Still open
 
-- The 50-case rerun in bf16 is in progress to move the deterministic baseline metrics
-  (`Q1`, `Q3`, `Q4`, `Q13`, `R1`) onto the faithful arm. `scripts/rerun_precision.py` flips
-  only the precision field and carries the context limit over verbatim, because a rerun
-  that also moves the window would attribute two changes to one cause.
+- The 50-case rerun in bf16 is done, and it settled throughput while failing to settle
+  quality; see above. The regeneration itself is complete and its cards are scored.
 - **The judged metrics are the gap.** `Q2` prose quality (2.20) and the semantic rubrics
   need a paid grading pass on the bf16 arm, and the `$2` Sonnet 4.6 approval was scoped to
   `CWv3`. Until that runs, the *quality* half of the confound is unmeasured; the
