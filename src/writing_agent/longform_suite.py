@@ -202,6 +202,14 @@ def holdout_audit(catalog: list[dict], *, claimed: dict[str, set[str]]) -> dict:
     available source but never referenced is still free to reserve for final evaluation.
     """
     hashes = {record["sha256"] for record in catalog}
+    # With nothing claimed, the audit proves nothing and would still report held_out. That
+    # happens on a fresh checkout, because the catalogs it reads are gitignored artifacts.
+    unclaimed = sorted(label for label, values in claimed.items() if not values)
+    if unclaimed:
+        raise ValueError(
+            f"Cannot prove holdout: no hashes claimed for {unclaimed}. "
+            "Build the catalogs first, or name the referenced ids explicitly."
+        )
     disputed = {
         label: sorted(hashes & set(values))
         for label, values in claimed.items()

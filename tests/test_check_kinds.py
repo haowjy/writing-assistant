@@ -87,6 +87,37 @@ class ExcludesAllTests(unittest.TestCase):
         card = mechanical_score(scenario([check]), result("no ledger here"))
         self.assertEqual(card["scores"]["Q13"]["value"], 1.0)
 
+    def test_a_prohibition_check_cannot_pass_on_an_absent_path(self):
+        # Empty text excludes every forbidden string, so a deliverable that was never
+        # written used to earn full credit for not containing them.
+        absent = {"status": "completed", "output": "", "turns": [], "after": {}, "before": {}}
+        card = mechanical_score(scenario([forbidden("deleted", ["no longer"])]), absent)
+        entry = card["checks"][0]
+        self.assertIs(entry["passed"], False)
+        self.assertNotEqual(entry["status"], "ok")
+        self.assertNotEqual(card["scores"]["Q13"].get("value"), 1.0)
+
+    def test_a_single_string_prohibition_is_guarded_too(self):
+        check = {
+            "id": "one",
+            "metric": "Q13",
+            "kind": "excludes",
+            "method": "deterministic",
+            "required": False,
+            "path": KEY,
+            "text": "brass ledger",
+        }
+        absent = {"status": "completed", "output": "", "turns": [], "after": {}, "before": {}}
+        card = mechanical_score(scenario([check]), absent)
+        self.assertIs(card["checks"][0]["passed"], False)
+
+    def test_an_absent_required_deliverable_stops_task_completion(self):
+        card = mechanical_score(
+            scenario([{**forbidden("deleted", ["no longer"]), "required": True}]),
+            {"status": "completed", "output": "", "turns": [], "after": {}, "before": {}},
+        )
+        self.assertEqual(card["scores"]["Q3"]["value"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -195,6 +195,21 @@ class HoldoutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not held out"):
             holdout_audit(catalog, claimed={"development_used": {"aaa"}})
 
+    def test_nothing_claimed_is_not_a_proof_of_holdout(self):
+        # The catalogs this reads are gitignored, so on a fresh checkout every claimed set
+        # is empty and the audit used to report held_out having compared nothing.
+        catalog = [{"id": "a", "sha256": "aaa"}]
+        with self.assertRaisesRegex(ValueError, "Cannot prove holdout"):
+            holdout_audit(catalog, claimed={"training": set(), "development_used": {"zzz"}})
+
+    def test_a_missing_catalog_makes_the_build_refuse_rather_than_pass(self):
+        tmp = tempfile.TemporaryDirectory()
+        absent = Path(tmp.name) / "catalog.json"
+        self.assertEqual(claimed_hashes(absent), set())
+        with self.assertRaisesRegex(ValueError, "Cannot prove holdout"):
+            holdout_audit([{"id": "a", "sha256": "aaa"}], claimed={"training": set()})
+        tmp.cleanup()
+
     def test_claimed_hashes_can_be_taken_from_a_subset(self):
         tmp = tempfile.TemporaryDirectory()
         path = Path(tmp.name) / "catalog.json"

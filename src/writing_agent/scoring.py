@@ -113,6 +113,12 @@ def aggregate_checks(
     return scores
 
 
+# Check kinds an empty subject satisfies for free. Without this guard, a declared path
+# that was never written wins its own prohibition check: absent text trivially excludes
+# every forbidden string.
+_PASSES_ON_ABSENT = frozenset({"excludes", "excludes_all", "exact"})
+
+
 def mechanical_score(scenario: dict, result: dict) -> dict:
     labels = scenario["labels"]
     artifacts = extract_prose(result, scenario["visible"]["prose"])
@@ -130,7 +136,16 @@ def mechanical_score(scenario: dict, result: dict) -> dict:
         kind = check["kind"]
         text = result.get("output", "")
         if "path" in check:
+            present = check["path"] in result.get("after", {})
             text = result.get("after", {}).get(check["path"], "")
+            if not present and kind in _PASSES_ON_ABSENT:
+                entry.update(
+                    status="unscored",
+                    passed=False,
+                    reason="Declared path was never written; the check has no subject",
+                )
+                checks.append(entry)
+                continue
         if "artifact" in check:
             matches = [a for a in artifacts if a["id"] == check["artifact"] and a["status"] == "ok"]
             if not matches:

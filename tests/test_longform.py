@@ -187,6 +187,25 @@ class ScoringTests(unittest.TestCase):
             0.0,
         )
 
+    def test_a_judge_that_invents_a_criterion_does_not_get_to_reweight_the_rubric(self):
+        # The undeclared metric used to be weighted at the default and renormalised in,
+        # so "Coherent: 0, Vibes: 20" scored 10 rather than failing as unusable.
+        with self.assertRaisesRegex(ValueError, "undeclared criteria"):
+            judge_score({"Coherent": 0, "Vibes": 20}, negative=[], criteria=["Coherent"])
+
+    def test_a_judge_that_omits_a_declared_criterion_is_not_usable(self):
+        with self.assertRaisesRegex(ValueError, "omitted declared criteria"):
+            judge_score({"Coherent": 5}, negative=[], criteria=["Coherent", "Pacing"])
+
+    def test_declared_criteria_that_are_all_present_still_score(self):
+        score = judge_score(
+            {"Coherent": 10, "Pacing": 10}, negative=[], criteria=["coherent", "PACING"]
+        )
+        self.assertEqual(score, 10.0)
+
+    def test_omitting_the_criteria_keeps_the_old_behaviour(self):
+        self.assertEqual(judge_score({"Coherent": 10}, negative=[]), 10.0)
+
     def test_staccato_is_free_below_the_threshold(self):
         self.assertEqual(staccato_factor(0), 1.0)
         self.assertEqual(staccato_factor(4.9), 1.0)

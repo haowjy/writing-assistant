@@ -242,6 +242,7 @@ def prose_profile(
     references: list[dict] | None = None,
     sigma: float | None = None,
     repeated_prompt: bool = False,
+    samples: int | None = None,
     prompt_tokens: list | None = None,
     source_tokens: list | None = None,
 ) -> dict:
@@ -356,6 +357,13 @@ def prose_profile(
             profile[key] = measurement(
                 status="not_applicable", reason="No task-paired reference supplied"
             )
+    if repeated_prompt:
+        # The floors belong wherever a distributional number is produced, not only in the
+        # pooled caller, so a direct `repeated_prompt=True` cannot return an unmarked
+        # under-powered value. The caller supplies the count of independent attempts when
+        # it knows it; otherwise the number of outputs is the only available proxy.
+        count = len(features) if samples is None else samples
+        profile.update({name: sample_power(name, profile[name], count) for name in DISTRIBUTIONAL})
     return {
         "version": 2,
         "metrics": profile,
@@ -453,6 +461,17 @@ def sample_distribution(
     scenarios = {card["scenario_id"] for card in cards}
     if len(scenarios) != 1:
         raise ValueError(f"Pool attempts of one scenario; got {sorted(scenarios)}")
+    # One scenario id can be run by several models or conditions. Those outputs belong to
+    # different distributions, and the feature-config guard cannot catch it because a
+    # single extractor produces every feature record.
+    settings = {
+        (fingerprint(card.get("model", {})), card.get("condition", "unspecified")) for card in cards
+    }
+    if len(settings) > 1:
+        raise ValueError(
+            "Pool attempts of one model and condition; got "
+            f"{len(settings)} distinct settings for {sorted(scenarios)[0]}"
+        )
     texts = [a["text"] for card in cards for a in card["artifacts"] if a["status"] == "ok"]
     features = [
         extractor.extract(text, tokens=True, embeddings=embeddings, allow_download=allow_download)
@@ -464,17 +483,18 @@ def sample_distribution(
         references=references,
         sigma=sigma,
         repeated_prompt=True,
+        samples=len(cards),
     )
-    metrics = {
-        name: sample_power(name, entry, len(texts)) if name in DISTRIBUTIONAL else entry
-        for name, entry in profile["metrics"].items()
-    }
     return {
         "scenario_id": scenarios.pop(),
+        # `attempts` is the independent unit the floors are about. `outputs` can exceed it
+        # when one attempt writes several prose files, which are correlated rather than
+        # independent draws and must not be counted toward a sample floor.
         "attempts": len(cards),
-        "samples": len(texts),
+        "outputs": len(texts),
+        "samples": len(cards),
         "reference_samples": profile["reference_samples"],
-        "metrics": metrics,
+        "metrics": profile["metrics"],
     }
 
 

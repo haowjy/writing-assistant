@@ -313,8 +313,23 @@ def _processed(metric: str, value: float, negative) -> float:
     return score
 
 
-def judge_score(scores: dict, *, negative, weights=None) -> float | None:
-    """One judge's weighted mean over its criteria, or None if none were usable."""
+def judge_score(scores: dict, *, negative, criteria=(), weights=None) -> float | None:
+    """One judge's weighted mean over its criteria, or None if none were usable.
+
+    When the declared criteria are supplied, a judge that invents a criterion or omits a
+    declared one has not answered the question it was asked. Re-normalising over whatever
+    came back silently changes the rubric, so an unknown metric or a missing one raises
+    rather than quietly reweighting the rest. `parse_scores` already filters to the
+    declared criteria, so this is the backstop for a caller that skips that step.
+    """
+    if criteria:
+        missing = missing_criteria(scores, criteria)
+        if missing:
+            raise ValueError(f"Judge omitted declared criteria: {missing}")
+        wanted = _normalized(criteria)
+        undeclared = [name for name in scores if name.strip().lower() not in wanted]
+        if undeclared:
+            raise ValueError(f"Judge returned undeclared criteria: {undeclared}")
     return _weighted(dict(scores), negative=negative, weights=weights)
 
 

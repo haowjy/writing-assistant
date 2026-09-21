@@ -16,6 +16,7 @@ from writing_agent.prose import (
     FeatureConfig,
     bandwidth,
     lexical_features,
+    prose_profile,
     sample_distribution,
     sample_power,
     sampling_plan,
@@ -146,6 +147,71 @@ class SamplingPlanTests(unittest.TestCase):
         for samples in (0, -1, 1.5, "4", None):
             with self.subTest(samples=samples), self.assertRaises(ValueError):
                 sampling_plan(samples)
+
+
+class IndependentUnitTests(unittest.TestCase):
+    """The floors are about independent draws, not about how many files were written."""
+
+    def setUp(self):
+        self.extractor = FakeExtractor()
+
+    def card(self, index, outputs):
+        artifacts = [
+            {"id": f"a{step}", "status": "ok", "text": prose(index * 10 + step)}
+            for step in range(outputs)
+        ]
+        return {
+            "scenario_id": "LF-01",
+            "model": {"id": "one-model"},
+            "condition": "chaptered",
+            "artifacts": artifacts,
+        }
+
+    def test_several_outputs_from_one_attempt_do_not_clear_a_floor(self):
+        cards = [self.card(index, outputs=3) for index in range(4)]
+        result = sample_distribution(cards, self.extractor)
+        self.assertEqual(result["attempts"], 4)
+        self.assertEqual(result["outputs"], 12)
+        self.assertEqual(result["samples"], 4)
+        # Twelve outputs is above D4's floor of eight; four attempts is not.
+        self.assertEqual(result["metrics"]["D4"]["status"], "insufficient_samples")
+        self.assertIn("4", result["metrics"]["D4"]["reason"])
+
+    def test_a_pooled_run_reports_attempts_as_the_sample_count(self):
+        result = sample_distribution([self.card(i, outputs=1) for i in range(9)], self.extractor)
+        self.assertEqual(result["metrics"]["D4"]["samples"], 9)
+        self.assertEqual(result["metrics"]["D4"]["status"], "ok")
+
+    def test_outputs_from_two_models_are_not_one_distribution(self):
+        cards = [self.card(0, 1), {**self.card(1, 1), "model": {"id": "another-model"}}]
+        with self.assertRaisesRegex(ValueError, "one model and condition"):
+            sample_distribution(cards, self.extractor)
+
+    def test_outputs_from_two_conditions_are_not_one_distribution(self):
+        cards = [self.card(0, 1), {**self.card(1, 1), "condition": "sustained"}]
+        with self.assertRaisesRegex(ValueError, "one model and condition"):
+            sample_distribution(cards, self.extractor)
+
+    def test_repeated_prompt_profiles_carry_their_floors_without_a_pooler(self):
+        # A direct caller used to get an unmarked number below the floor.
+        texts = [prose(index) for index in range(3)]
+        features = [self.extractor.extract(text, tokens=True, embeddings=True) for text in texts]
+        profile = prose_profile(texts, features, repeated_prompt=True)
+        self.assertEqual(profile["metrics"]["D4"]["status"], "insufficient_samples")
+        self.assertEqual(profile["metrics"]["D6"]["status"], "insufficient_samples")
+
+    def test_a_caller_supplied_count_overrides_the_output_count(self):
+        texts = [prose(index) for index in range(9)]
+        features = [self.extractor.extract(text, tokens=True, embeddings=True) for text in texts]
+        profile = prose_profile(texts, features, repeated_prompt=True, samples=2)
+        self.assertEqual(profile["metrics"]["D4"]["status"], "insufficient_samples")
+        self.assertIn("has 2", profile["metrics"]["D4"]["reason"])
+
+    def test_a_profile_without_repeated_prompt_is_untouched(self):
+        texts = [prose(index) for index in range(3)]
+        features = [self.extractor.extract(text, tokens=True, embeddings=True) for text in texts]
+        profile = prose_profile(texts, features)
+        self.assertNotIn("power", profile["metrics"]["D6"])
 
 
 class SampleFloorTests(unittest.TestCase):
