@@ -33,6 +33,20 @@ PROBE_CONTEXTS = (8192, 32768, 65536)
 OPTIMIZER_STEPS = 20
 GRADIENT_ACCUMULATION = 8
 
+# NF4 weights plus double-quantization overhead, as a fraction of bf16 parameters.
+NF4_BYTES_PER_PARAM = 0.53
+DEVICE_BYTES = 24_576 * 1024**2  # RTX 3090
+ACTIVATION_BYTES = 2  # bf16
+RUNTIME_OVERHEAD_BYTES = 2 * 1024**3  # CUDA context, fragmentation, LoRA grads and optimiser
+
+# Named targets that are not cached locally. Layer and hidden counts are estimates
+# from published configs; they are labelled as such wherever they are reported.
+UNCACHED = {
+    "gemma-4-31B": {"layers": 72, "hidden": 5376, "params": 31e9, "full_layers": 12},
+    "qwen3.8-27B": {"layers": 64, "hidden": 5120, "params": 27e9, "full_layers": 64},
+}
+LADDER_CONTEXTS = (8192, 32768, 65536)
+
 
 def cached_config() -> dict:
     """The pinned checkpoint's text config, from the local cache only."""
@@ -70,6 +84,85 @@ def measure_layer(seq: int, *, heads: int, kv_heads: int, dim: int, dtype) -> di
         "seconds": time.perf_counter() - started,
         "peak_bytes": torch.cuda.max_memory_allocated(),
     }
+
+
+def training_envelope(layers: int, hidden: int, params: float, context: int) -> dict:
+    """QLoRA memory floor for one sequence, and the headroom left for attention transients.
+
+    The floor is quantised weights plus one checkpointed activation boundary per layer.
+    That boundary is what gradient checkpointing retains, so it scales with layers and
+    context and does not shrink with batch size. The remaining headroom has to cover the
+    recomputed attention block, whose measured cost is the layer probe above, plus runtime
+    overhead. A model whose floor already exceeds the device cannot be trained at that
+    length by any configuration.
+    """
+    weights = params * NF4_BYTES_PER_PARAM
+    checkpoints = layers * context * hidden * ACTIVATION_BYTES
+    floor = weights + checkpoints
+    return {
+        "context": context,
+        "weights_bytes": int(weights),
+        "checkpointed_bytes": int(checkpoints),
+        "floor_bytes": int(floor),
+        "headroom_bytes": int(DEVICE_BYTES - floor - RUNTIME_OVERHEAD_BYTES),
+        "fits": floor + RUNTIME_OVERHEAD_BYTES < DEVICE_BYTES,
+    }
+
+
+def ladder() -> int:
+    """Report the training envelope for every model we could plausibly use."""
+    rows = {}
+    hub = Path.home() / ".cache/huggingface/hub"
+    for directory in sorted(hub.glob("models--google--gemma-4-*")):
+        configs = list(directory.glob("snapshots/*/config.json"))
+        if not configs:
+            continue
+        text = json.loads(configs[0].read_text()).get("text_config", {})
+        weights = sum(f.stat().st_size for f in directory.glob("snapshots/*/*.safetensors"))
+        rows[directory.name.split("models--google--")[-1]] = {
+            "layers": len(text.get("layer_types", [])),
+            "hidden": text.get("hidden_size"),
+            "params": (weights / 2) or None,
+            "measured": weights > 0,
+            "max_context": text.get("max_position_embeddings"),
+        }
+        if rows[directory.name.split("models--google--")[-1]]["params"] is None:
+            del rows[directory.name.split("models--google--")[-1]]
+    rows.update({k: {**v, "measured": False, "max_context": None} for k, v in UNCACHED.items()})
+
+    report = []
+    for name, row in rows.items():
+        for context in LADDER_CONTEXTS:
+            envelope = training_envelope(row["layers"], row["hidden"], row["params"], context)
+            report.append(
+                {
+                    "model": name,
+                    "params": round(row["params"] / 1e9, 1),
+                    "measured": row["measured"],
+                    **{
+                        k: (round(v / 1024**3, 1) if k.endswith("bytes") else v)
+                        for k, v in envelope.items()
+                        if k != "context"
+                    },
+                    "context": context,
+                }
+            )
+    print(f"device: {DEVICE_BYTES / 1024**3:.0f} GiB, floor excludes the attention transient")
+    print(
+        f"{'model':<24}{'ctx':>7}{'params':>8}{'wt':>7}{'ckpt':>7}{'floor':>7}{'head':>7}  verdict"
+    )
+    for row in report:
+        verdict = "fits" if row["fits"] else "EXCEEDS"
+        label = row["model"] if row["measured"] else row["model"] + " (est.)"
+        size = (
+            f"{row['weights_bytes']:>7}{row['checkpointed_bytes']:>7}"
+            f"{row['floor_bytes']:>7}{row['headroom_bytes']:>7}"
+        )
+        print(f"{label:<22}{row['context']:>7}{row['params']:>8}{size}  {verdict}")
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    (OUTPUT.parent / "training-ladder.json").write_text(json.dumps(report, indent=1) + "\n")
+    print(f"\nwritten: {(OUTPUT.parent / 'training-ladder.json').relative_to(ROOT)}")
+    return 0
 
 
 def main() -> int:
@@ -152,4 +245,4 @@ def _cuda_available() -> bool:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(ladder() if "--ladder" in sys.argv else main())

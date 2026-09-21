@@ -42,6 +42,43 @@ are short. A 64K window only means something once long trajectories exist to fil
 Use the same probe before claiming any length, and record peak VRAM, step time,
 attention backend, quantization and gradient accumulation together.
 
+## Which model can be trained here at all
+
+The second question is scale. `scripts/probe_context_budget.py --ladder` computes the
+QLoRA memory floor for every candidate: quantised weights plus one checkpointed activation
+boundary per layer, which is what gradient checkpointing retains and what does not shrink
+with batch size. The remaining headroom has to cover the recomputed attention block.
+
+| Model | Parameters | 8K | 32K | 64K |
+|---|---:|---|---|---|
+| Gemma-4-E2B-IT | 5.1B | fits (18.7 GiB free) | fits (16.2) | **fits (12.9)** |
+| Gemma-4-E4B-IT | 8.0B | fits (16.4) | fits (11.5) | marginal (4.9) |
+| Gemma-4-12B | ~12B | marginal | exceeds | exceeds |
+| Gemma-4-31B | 31B | marginal (0.8) | **exceeds** | **exceeds** |
+| Qwen3.8-27B | 27B | marginal (3.7) | **exceeds** | **exceeds** |
+
+E2B and E4B figures use the cached checkpoints. 12B, 31B and 27B are estimates from
+published configurations and are labelled as such in the artifact; the 12B weights are not
+cached. The 64K column for E4B and the 8K column for the two large models show a floor
+that fits while leaving too little room for the attention transient and runtime overhead,
+so they should be read as unusable rather than as candidates.
+
+**This is the concrete bottleneck the rental decision was waiting for.** A 27B or 31B
+policy cannot be trained on one RTX 3090 at any useful sequence length, and the constraint
+is the checkpointed activation term, which grows with layers x context and is unaffected
+by quantising the weights harder. Training a model at that scale is a cloud decision, not
+an optimisation problem on this device.
+
+The same arithmetic carries an architectural argument in the other direction. Gemma-4's
+sliding-window design makes long context cheap for a small model: 28 of 35 E2B layers cap
+their cache at 512 tokens, so a 5B model gets a 128K window at 1.9 GB and a 64K training
+step. That is why E2B is a legitimate long-form feasibility target rather than a toy.
+
+A staged read of the same evidence: develop the pipeline on E2B at 64K, confirm it on
+E4B at 32K on the same device, and treat any 27B-or-larger policy as a separate rental
+run with its own measured requirements. E4B is already cached and is the natural next
+rung; nothing larger is available locally.
+
 For RL, separately measure rollout generation, workspace execution, feedback generation,
 reward evaluation, and policy updates. Avoid simultaneous policy/judge/simulator
 residency until measured. Use bounded connected task sessions and test compaction to
