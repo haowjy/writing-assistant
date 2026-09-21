@@ -22,6 +22,7 @@ Three design choices are load-bearing enough to state here:
   asking a clarifying question. Rewarding the act invites an always-ask policy.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from writing_agent.catalog import fingerprint
@@ -100,7 +101,14 @@ def declared_check_set(checks: list[dict]) -> dict:
 
 
 def critical_failures(declared, observed) -> list[str]:
-    """Declared criteria that actually failed. Undeclared failures never count."""
+    """Declared criteria that actually failed. Undeclared failures never count.
+
+    Accepts the frozen set from `declared_check_set` directly. Passing that dict where an
+    iterable of ids is expected iterates its keys, which matches nothing and silently
+    reports no critical failure at all.
+    """
+    if isinstance(declared, Mapping):
+        declared = declared.get("ids", ())
     return sorted(set(declared) & set(observed))
 
 
@@ -178,13 +186,19 @@ def session_reward(
         + (1 - STAGE_WEIGHT) * final_state.value
     )
     failed = critical_failures(declared_critical, unresolved)
-    if failed:
+    # A stage already capped for a critical failure must not be diluted by a clean final
+    # state. Requiring the caller to restate the same failure through `unresolved` made
+    # the cap depend on remembering to say it twice.
+    capped = [f"stage {index}" for index, reward in enumerate(stages) if reward.critical]
+    if final_state.critical:
+        capped.append("final state")
+    if failed or capped:
         return Reward(
             status=SCORED,
             value=min(combined, CRITICAL_CAP),
             components={"stages": [r.value for r in stages], "final": final_state.value},
             critical=True,
-            reason="Unresolved mandatory failure: " + ", ".join(failed),
+            reason="Unresolved mandatory failure: " + ", ".join([*capped, *failed]),
         )
     return Reward(
         status=SCORED,
@@ -213,15 +227,17 @@ def group_advantages(rewards: list[Reward]) -> dict:
     mean = sum(values) / len(values)
     variance = sum((value - mean) ** 2 for value in values) / len(values)
     std = variance**0.5
-    if std == 0.0:
-        advantages = [0.0] * len(values)
-    else:
-        advantages = [(value - mean) / std for value in values]
+    # Variance is zero exactly when every reward is equal, so test the rewards rather than
+    # the derived deviation. Three rewards of 0.1 average to 0.10000000000000002, leaving
+    # a std near 1.4e-17; dividing that residue by itself yields a spurious advantage of
+    # +-1, so a tied group looks like a strong uniform signal instead of no signal at all.
+    zero_variance = max(values) == min(values)
+    advantages = [0.0] * len(values) if zero_variance else [(v - mean) / std for v in values]
     return {
         "status": "ok",
         "advantages": [advantage + 0.0 for advantage in advantages],
         "mean": mean,
         "std": std,
-        "zero_variance": std == 0.0,
-        "frac_zero_std": 1.0 if std == 0.0 else 0.0,
+        "zero_variance": zero_variance,
+        "frac_zero_std": 1.0 if zero_variance else 0.0,
     }

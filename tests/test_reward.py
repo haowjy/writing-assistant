@@ -80,6 +80,14 @@ class CriticalCriteriaTests(unittest.TestCase):
         self.assertEqual(critical_failures(["canon"], ["weak-dialogue"]), [])
         self.assertEqual(critical_failures([], ["missing-artifact"]), [])
 
+    def test_a_frozen_check_set_can_be_passed_directly(self):
+        # Passing the frozen dict where ids were expected used to iterate its keys, match
+        # nothing, and report no critical failure at all.
+        frozen = declared_check_set(
+            [check("canon", True), check("delivery", False, applicable=False)]
+        )
+        self.assertEqual(critical_failures(frozen, ["canon"]), ["canon"])
+
 
 class RolloutRewardTests(unittest.TestCase):
     def test_weighted_sum_of_the_four_components(self):
@@ -171,6 +179,19 @@ class SessionRewardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least one"):
             session_reward([], self._scored(1.0))
 
+    def test_a_capped_stage_survives_a_perfect_final_state(self):
+        capped = Reward(status=SCORED, value=CRITICAL_CAP, critical=True, reason="stage cap")
+        reward = session_reward([capped], self._scored(1.0))
+        self.assertEqual(reward.value, CRITICAL_CAP)
+        self.assertTrue(reward.critical)
+        self.assertIn("stage 0", reward.reason)
+
+    def test_a_capped_final_state_survives_a_perfect_stage(self):
+        capped = Reward(status=SCORED, value=0.0, critical=True, reason="state cap")
+        reward = session_reward([self._scored(1.0)], capped)
+        self.assertEqual(reward.value, CRITICAL_CAP)
+        self.assertIn("final state", reward.reason)
+
 
 class GroupAdvantageTests(unittest.TestCase):
     def _scored(self, value):
@@ -189,6 +210,25 @@ class GroupAdvantageTests(unittest.TestCase):
         self.assertEqual(result["advantages"], [0.0, 0.0, 0.0, 0.0])
         self.assertTrue(result["zero_variance"])
         self.assertEqual(result["frac_zero_std"], 1.0)
+
+    def test_a_tie_is_found_whenever_the_mean_does_not_round_back(self):
+        # The tie test must not depend on the arithmetic landing exactly. Groups of three
+        # used to divide a residue of ~1e-17 by itself and report +-1 per member.
+        for value in (0.1, 0.7, 0.3, 0.05, 1.0, 0.0):
+            for count in (2, 3, 4, 5, 7):
+                with self.subTest(value=value, count=count):
+                    result = group_advantages([self._scored(value)] * count)
+                    self.assertEqual(result["advantages"], [0.0] * count)
+                    self.assertTrue(result["zero_variance"])
+
+    def test_a_tied_group_is_never_advantaged_uniformly(self):
+        for value in (0.1, 0.7, 0.05):
+            with self.subTest(value=value):
+                advantages = group_advantages([self._scored(value)] * 3)["advantages"]
+                self.assertFalse(
+                    any(advantage != 0.0 for advantage in advantages),
+                    f"tied group produced a uniform signal: {advantages}",
+                )
 
     def test_a_pending_member_blocks_the_group(self):
         result = group_advantages([self._scored(0.0), Reward(status=UNAVAILABLE, reason="x")])
