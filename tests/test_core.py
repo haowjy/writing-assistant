@@ -130,6 +130,78 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result.usage["prompt_tokens"], 5)
         self.assertNotIn("extra", result.message)
 
+    def test_router_request_options_reach_the_payload(self):
+        import io
+
+        response = {
+            "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}]
+        }
+        captured = {}
+
+        def urlopen(request, timeout=None):
+            captured["body"] = json.loads(request.data.decode())
+            return io.BytesIO(json.dumps(response).encode())
+
+        pin = {"provider": {"order": ["DeepInfra"], "allow_fallbacks": False}}
+        with patch("urllib.request.urlopen", urlopen):
+            backend = ChatServerBackend(
+                {"model": "qwen/qwen3.8-27b", "base_url": "http://x/v1", "extra_body": pin}
+            )
+            backend.complete([], [])
+        self.assertEqual(captured["body"]["provider"], pin["provider"])
+
+    def test_serving_provider_is_recorded_in_the_trace(self):
+        import io
+
+        response = {
+            "provider": "DeepInfra",
+            "choices": [
+                {"finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}
+            ],
+        }
+        events = []
+        with patch(
+            "urllib.request.urlopen", return_value=io.BytesIO(json.dumps(response).encode())
+        ):
+            ChatServerBackend({"model": "m", "base_url": "http://x/v1"}).complete(
+                [], [], emit=events.append
+            )
+        self.assertEqual(
+            [e for e in events if e["type"] == "serving_provider"][0]["provider"], "DeepInfra"
+        )
+
+    def test_a_provider_mismatch_refuses_rather_than_mixing_precisions(self):
+        import io
+
+        response = {
+            "provider": "Darkbloom",
+            "choices": [
+                {"finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}
+            ],
+        }
+        with patch(
+            "urllib.request.urlopen", return_value=io.BytesIO(json.dumps(response).encode())
+        ):
+            backend = ChatServerBackend(
+                {"model": "m", "base_url": "http://x/v1", "expected_provider": "DeepInfra"}
+            )
+            with self.assertRaisesRegex(ValueError, "requires 'DeepInfra'"):
+                backend.complete([], [])
+
+    def test_an_unreported_provider_is_not_a_mismatch(self):
+        import io
+
+        response = {
+            "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "x"}}]
+        }
+        with patch(
+            "urllib.request.urlopen", return_value=io.BytesIO(json.dumps(response).encode())
+        ):
+            backend = ChatServerBackend(
+                {"model": "m", "base_url": "http://x/v1", "expected_provider": "DeepInfra"}
+            )
+            self.assertEqual(backend.complete([], []).message["content"], "x")
+
     def test_truncated_generation_is_not_success(self):
         import io
 

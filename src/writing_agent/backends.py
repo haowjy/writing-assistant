@@ -55,6 +55,8 @@ class ChatServerBackend:
         }
         if tools:
             payload.update(tools=tools, tool_choice="auto")
+        # Router-specific request options (provider pinning, routing preferences).
+        payload.update(self.config.get("extra_body") or {})
         headers = {"Content-Type": "application/json"}
         api_key = os.environ.get(self.config.get("api_key_env", "CWA_API_KEY"))
         if api_key:
@@ -67,6 +69,17 @@ class ChatServerBackend:
         )
         with urllib.request.urlopen(request, timeout=self.config.get("timeout", 120)) as response:
             result = json.load(response)
+        # A router may serve the same model id from providers with different quantization.
+        # Record which one answered, and refuse a mismatch when a run pins a provider, since
+        # a batch split across precisions is not a measurement.
+        served = result.get("provider")
+        emit({"type": "serving_provider", "provider": served, "model": result.get("model")})
+        expected = self.config.get("expected_provider")
+        if expected and served and served != expected:
+            raise ValueError(
+                f"Served by {served!r} but this run requires {expected!r}; "
+                "quantization is not comparable across providers"
+            )
         choice = result["choices"][0]
         if choice.get("finish_reason") not in ("stop", "tool_calls"):
             raise ValueError(f"Incomplete generation: {choice.get('finish_reason')}")
