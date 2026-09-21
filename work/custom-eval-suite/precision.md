@@ -9,7 +9,8 @@ rather than permanent, and measuring it changed the answer in an inconvenient di
 
 One prompt (`F1-01`), twenty-five attempts, twice: once in nf4 and once in bf16. Same
 model revision, same seeds 4200–4224, same generation settings, one field flipped. Because
-the seeds match, the two arms are paired attempt by attempt.
+the seeds match, the two arms are paired attempt by attempt. Each arm ran all 25 attempts in
+one process, nf4 in 16m04s and bf16 in 11m47s.
 
 Twenty-five attempts is the count that clears the sample floors described in
 [the long-form suite](longform-suite.md#sampling-and-the-measurement-this-suite-cannot-make):
@@ -62,10 +63,16 @@ training run has to move.
 
 ## A side effect worth knowing
 
-**bf16 is about twice as fast as nf4 here** — roughly 20s per attempt against 40s — and it
-uses 11.6 GB against 8.4 GB. For a model this small on a 24 GB card, the quantized path
-buys memory we were not short of and costs both fidelity and wall time. Quantization is
-for fitting a model that does not otherwise fit.
+**bf16 is about 1.4× faster than nf4 here** — 27.7s per attempt against 39.7s, medians 28.0
+and 39.4 — while using 11.6 GB against 8.4 GB. Completion lengths are near-identical (733 and
+759 tokens), so this is throughput rather than bf16 simply writing less. An earlier draft of
+this section claimed roughly twice as fast, from polling attempt counts while the runs were in
+flight; the realized latencies do not support that, and the per-attempt figure is the one to
+quote.
+
+For a model this small on a 24 GB card, the quantized path bought memory we were not short of
+and cost both fidelity and wall time. Quantization is for fitting a model that does not
+otherwise fit.
 
 ## Still open
 
