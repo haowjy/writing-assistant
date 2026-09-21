@@ -198,6 +198,17 @@ introduction level, and derives each family's stated and withheld split from tha
 table; an inconsistent table is rejected at import. Coverage reports the level and
 withheld points.
 Prepared requests are not generated or accepted training tasks.
+
+`reward.py` is the training-side scalar, and it is the only place a combined writing
+score is computed; `scoring.py` must keep computing none. Version 0 weights quality,
+intent and continuity as anchored 1-5 ratings and mechanics as the mean of the task's
+applicable mechanical checks, so an inapplicable check earns no free credit and a
+repeated check counts once. A withheld judgment leaves the reward unavailable rather
+than zero, because a judge timeout and a bad draft are different events. A critical
+criterion counts only when it was declared before sampling, so a rubric weakness cannot
+be promoted after the answer is seen. Group advantages are the within-group
+standardised rewards; they cancel a per-prompt judge offset but not rank flips or
+length bias, and an all-tie group yields no signal and is reported rather than hidden.
 The research script binds their hashes to source inventory and generator instructions.
 Variation vocabulary is caller-supplied data.
 Source-preserving continuations receive no genre blend and retain source style.

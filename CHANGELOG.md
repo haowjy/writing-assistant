@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add `reward.py`, the training-side RL scalar. Version 0 combines anchored 1-5 quality,
+  intent and continuity judgments with deterministic mechanics, applies a declared
+  critical-failure cap, composes stages with the final project state, and computes
+  within-group advantages with a zero-variance report. A withheld judgment makes the
+  reward unavailable rather than zero, and only pre-declared criteria can be critical.
+
 - Restructure task preparation around one validated `Sampler` value: `Sampler.build`
   checks the selection and derives its index-addressable content, and
   `iter_requests` / `build_request` / `prepare_task_requests` each take it. This removes
