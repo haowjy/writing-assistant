@@ -51,17 +51,19 @@ target wiki. Flat and linked Markdown are different assigned formats. State the
 KB's purpose and intended detail level; selection of relevant information is part
 of the task and need not be exhaustive.
 
-Give short, coherent follow-ups that use the current workspace. A fixed follow-up
-may request a changed direction or an edit, but may not assert that the assistant
-made an error you have not observed. Do not prewrite tool observations. List the
-stage families in order and say which output each stage consumes. Do not assume
-context compaction exists.
+Give short, coherent follow-ups only for stages after the first. The follow-up
+count is `len(stage_families) - 1`; a single-stage task has an empty `followups`
+list. A fixed follow-up may request a changed direction or an edit, but may not
+assert that the assistant made an error you have not observed. Do not prewrite
+tool observations. List the stage families in order and say which output each
+stage consumes. Do not assume context compaction exists.
 
 ## Private evidence
 
 List source-backed claims with exact supporting quotations. Distinguish narrator
 facts, character beliefs, unresolved questions, author decisions and invented branch
-events. Quotes must come from the supplied packet. Quote presence is not sufficient
+events. Copy each quote verbatim from the supplied source text; do not reflow,
+re-indent, paraphrase, or reconstruct from memory. Quote presence is not sufficient
 evidence of a claim's interpretation; leave that for review.
 
 Record accepted departures separately from source facts. Offer defensible alternative
@@ -84,29 +86,34 @@ characters are specific.
 
 ## Response contract
 
-Return one JSON object with these fields:
+Return one JSON object. Use exactly these seven top-level keys and no others:
+`visible`, `labels`, `branch_contract`, `evidence`, `stage_families`,
+`realized_variation`, `review_notes`. Do not add `type`, `review_notes_extra`,
+or any other top-level key.
 
 - `visible`: `brief` (string), `initial_files` (path-to-text object), `followups`
   (list of strings), `tools` (names from the supplied harness schema), `budgets`
   (`max_steps`, `max_tool_calls`, `max_read_tokens`, `max_total_bytes`), and `prose`
   (selectors for designated reply or file prose, with stage/turn locations).
+- `labels`: the private grading specification below.
 - `branch_contract`: `source_invariants`, `accepted_departures`, `open_questions`,
   and `allowed_alternatives`, each a list of strings.
-- `evidence`: list of objects with `claim`, `quote`, and `source_id`.
+- `evidence`: list of objects with `claim`, `quote`, and `source_id`. Copy each
+  `quote` verbatim from the supplied source text.
 - `stage_families`: ordered list matching the assignment.
+- `realized_variation`: an object describing the actual implemented genre blend,
+  style, trope, situation and continuity challenge.
 - `review_notes`: why the task tests the intended skill, possible ambiguities,
   and any requested coverage dimension that could not be satisfied.
+
+`len(visible.followups)` must equal `len(stage_families) - 1`. A single-stage
+task therefore has `followups: []`. Do not emit follow-ups for unused later
+families.
 
 All files must use safe relative paths. Keep private evidence, branch grading rules
 and review notes outside `visible`. Do not set an acceptance status, fabricate a
 passing trace, or claim that a generated KB has been independently verified.
 The caller records source lineage, provenance, model/provider identity and hashes.
-
-The object also requires `realized_variation` (an object describing the actual
-implemented genre blend, style, trope, situation and continuity challenge) and
-`labels` (the private grading specification below). Use exactly these seven top-level
-fields: visible, labels, branch_contract, evidence, stage_families, realized_variation,
-review_notes.
 
 Use positive `max_steps` up to 48 and `max_total_bytes` up to 262144; nonnegative
 `max_tool_calls` up to 64 and `max_read_tokens` up to 20000. File tasks need usable
@@ -118,11 +125,22 @@ A later F5 stage can consume the KB produced by an earlier F4 stage.
 Each prose selector has a unique `id`, `kind` (`reply` or `file`), `selection`
 (`whole` or `delimited`) and zero-based `turn`. Files also need `path`. Delimited
 selections need literal nonempty `start` and `end` markers requested visibly.
-Use a whole reply only when that turn requests prose alone. Every F1, F2 and F5
-stage needs its own extraction selector. Do not mark planning or KB text as prose.
+Use a whole reply only when that turn requests prose alone. Include exactly one
+`visible.prose` selector for each stage whose family is F1, F2, or F5, with
+`turn` equal to that stage's index. Do not skip a prose stage. Do not mark
+planning or KB text as prose.
 
 `labels.checks` is a list. Every check needs unique `id`, a metric ID, `method`,
-`kind`, and boolean `required`. Deterministic methods support:
+`kind`, and boolean `required`. `method` names the mechanism:
+`method ∈ {"deterministic", "llm_judge"}`. For deterministic checks,
+`kind ∈ {"nonempty", "protected", "contains", "excludes", "word_range",
+"wiki_links"}`. For `llm_judge`, `kind` is `"semantic"`. Do not swap `method`
+and `kind`.
+
+Correct: `{"method": "deterministic", "kind": "nonempty"}`
+Incorrect: `{"method": "nonempty", "kind": "deterministic"}`
+
+Deterministic methods support:
 
 - `nonempty`: require delivery; target `artifact` (selector ID), or `path` (file).
   Without either, this checks the final reply. Include a required delivery check.

@@ -48,7 +48,7 @@ def prepare():
         requests_hash=fingerprint(batch["requests"]),
         generator_instructions_hash=fingerprint(instruction_text),
         generation_context_hash=fingerprint(context),
-        generator={"transport": "openrouter", "provider": "reka", "model": "z-ai/glm-5.3"},
+        generator={"transport": "deepseek", "provider": "deepseek", "model": "deepseek-flash"},
         training_use_permission="settled_by_user",
         generation_executed=False,
         approved_budget_usd=10,

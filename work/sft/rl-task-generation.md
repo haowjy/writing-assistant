@@ -1,12 +1,15 @@
 # Branching fiction tasks and task-specific RL rewards
 
-Selected direction, 2026-09-15. GLM-5.3 through Reka is the preferred training judge,
-task generator, and simulated author, using separate role-specific calls. The user
-has settled training-use permission; literary calibration remains unverified. Train on
+Selected direction, 2026-09-15; provider updated 2026-09-19. DeepSeek V4.1 Flash
+(direct API, model `deepseek-flash`) is the training judge, task generator, and
+simulated author, using separate role-specific calls. Its terms permit training-use;
+literary calibration remains unverified. Train on
 the same five task families and harness capabilities as the benchmark, using separate
 source works, task instances, and derivatives. Share scoring implementations where
 appropriate; keep held-out benchmark examples and private evaluation labels out of
-training. See the [SFT/RL research](rl-bootstrap-research.md).
+training. See the [SFT/RL research](rl-bootstrap-research.md). Instruction specificity is
+the primary variation axis; the full axis set and its reward rules are in the
+[training-distribution axes](training-distribution-axes.md).
 
 The [multi-turn session design](multi-turn-rl.md) composes these families through
 author feedback, revisions, shared project state, and eventual context compaction.
@@ -27,9 +30,9 @@ not validated experimental findings or an implemented RL reward adapter.
 
 | Component | Initial scorer | Meaning |
 |---|---|---|
-| Quality | GLM-5.3/Reka | Literary effectiveness for prose; useful distinct alternatives for planning; useful selection and organization for KB tasks |
-| Intent | GLM-5.3/Reka | Achieves the requested transformation, revision or other author goal; excludes mechanical delivery checks |
-| Continuity | GLM-5.3/Reka with source evidence | Respects applicable source/KB facts, character knowledge and accepted decisions; allows authorized divergences |
+| Quality | DeepSeek V4.1 Flash | Literary effectiveness for prose; useful distinct alternatives for planning; useful selection and organization for KB tasks |
+| Intent | DeepSeek V4.1 Flash | Achieves the requested transformation, revision or other author goal; excludes mechanical delivery checks |
+| Continuity | DeepSeek V4.1 Flash with source evidence | Respects applicable source/KB facts, character knowledge and accepted decisions; allows authorized divergences |
 | Mechanics | Existing deterministic checks | Correct delivery, protected content, paths, tools and navigation where applicable |
 
 Use anchored 1–5 semantic ratings mapped by `(rating - 1) / 4`: failed, major issues,
@@ -117,7 +120,8 @@ source spans, extraction provenance, and confidence. Verify reconstructed notes 
 source passages before treating them as reference material.
 
 An on-demand task generator chooses a training work, checkpoint, transformation, task
-family, delivery mode, style, and instruction specificity. It emits:
+family, delivery mode, style, and instruction specificity (the primary axis; see the
+[training-distribution axes](training-distribution-axes.md)). It emits:
 
 - **Visible task:** the author's actual request, relevant source context, initial files,
   available tools, and budgets. A vague request must permit reasonable interpretations.
@@ -200,7 +204,7 @@ recycling failures from final evaluation into training examples.
 1. Specify the source packet and branch contract, using independently grounded examples.
 2. Create mechanically checkable training tasks for delivery, protected edits, and wiki
    navigation, plus semantic tasks that remain separate until a judge is validated.
-3. Validate GLM-5.3 through Reka on source-backed comparisons, deliberate continuity
+3. Validate DeepSeek V4.1 Flash on source-backed comparisons, deliberate continuity
    errors, ineffective transformations, and near-copying; test order sensitivity and
    misleading instructions embedded in candidate text. Keep Astra as the held-out evaluator.
 4. Verify task replay and group isolation, then propose a bounded RL feasibility run.

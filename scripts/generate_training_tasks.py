@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scripts.prepare_training_tasks import CATALOG, DESTINATION, INSTRUCTIONS, MANIFEST
 from writing_agent.catalog import fingerprint
-from writing_agent.openrouter import from_env
+from writing_agent.paid import from_env
 from writing_agent.task_authoring import author_tasks
 
 ROOT = Path(__file__).resolve().parents[1]

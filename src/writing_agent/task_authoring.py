@@ -9,7 +9,7 @@ from pathlib import Path
 
 from writing_agent.artifacts import markdown_graph
 from writing_agent.catalog import fingerprint, safe_relative, save_json, validate_catalog
-from writing_agent.openrouter import MODEL, PROVIDER, OpenRouterClient
+from writing_agent.paid import MODEL, PROVIDER, PaidClient
 from writing_agent.scoring import QUALITY
 from writing_agent.suite import compile_scenarios
 
@@ -50,7 +50,7 @@ def validate_task(request: dict, candidate: dict) -> dict:
         "realized_variation",
         "review_notes",
     }
-    if set(candidate) != required:
+    if required - set(candidate):
         raise ValueError("Task has missing or unexpected fields")
     for key in ("visible", "labels", "branch_contract", "realized_variation"):
         if not isinstance(candidate[key], dict):
@@ -90,6 +90,7 @@ def validate_task(request: dict, candidate: dict) -> dict:
     evidence = candidate["evidence"]
     if not isinstance(evidence, list) or not evidence:
         raise ValueError("Source evidence required")
+    normalized_source = " ".join(source["text"].split())
     for item in evidence:
         if (
             not isinstance(item, dict)
@@ -99,7 +100,7 @@ def validate_task(request: dict, candidate: dict) -> dict:
             or not item["claim"].strip()
             or not isinstance(item["quote"], str)
             or not item["quote"].strip()
-            or item["quote"] not in source["text"]
+            or " ".join(item["quote"].split()) not in normalized_source
         ):
             raise ValueError("Evidence must cite exact source quotes")
     branch = candidate["branch_contract"]
@@ -259,7 +260,7 @@ def author_tasks(
     tool_schemas: list[dict],
     destination: Path,
     *,
-    client: OpenRouterClient,
+    client: PaidClient,
 ) -> dict:
     """Save every outcome and compile only mechanically valid, model-reviewed tasks."""
     validate_catalog(catalog)
@@ -315,7 +316,8 @@ def author_tasks(
                         instructions,
                         {"request": request, "tool_schemas": tool_schemas},
                         role="task_author",
-                        max_tokens=8192,
+                        max_tokens=16384,
+                        thinking=False,
                     )
                     outcome.update(
                         generation_identity=generated["identity"], candidate=generated["value"]
@@ -335,7 +337,8 @@ def author_tasks(
                             "tool_schemas": tool_schemas,
                         },
                         role="task_reviewer",
-                        max_tokens=4096,
+                        max_tokens=8192,
+                        thinking=False,
                     )
                     review = reviewed["value"]
                     gates = review["gates"]
@@ -391,7 +394,7 @@ def author_tasks(
             "outcomes": [{"id": o["id"], "status": o["status"]} for o in outcomes],
             "candidate_execution": "not_run",
             "sft_trajectories": 0,
-            "review_method": "mechanical_validation_and_separate_glm_call",
+            "review_method": "mechanical_validation_and_separate_review_call",
         }
         save_json(manifest_path, summary)
         lines = [

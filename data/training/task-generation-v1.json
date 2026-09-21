@@ -292,12 +292,12 @@
     "tmas-train-example_046-story"
   ],
   "requests_hash": "bfcf4e8059edf302a0939ec977c3c4152543fe38a15ccd58fd60e2e4e99b8de4",
-  "generator_instructions_hash": "2289e0ee89869ad1e35ffce1a5e4ab08f3f138c131a63d5ff977fb65fe201a54",
-  "generation_context_hash": "37c30ac4be157118538b9462047835c1095bc60a6130bd99d610b79035b216e9",
+  "generator_instructions_hash": "c64af8814a05e5032f0f419de56116cd6acba4d356a78269e80fce7329432d28",
+  "generation_context_hash": "04e42f29dc7d816c152723ae48129f0884077a4c0fd534b16d14eafb4c6d3822",
   "generator": {
-    "transport": "openrouter",
-    "provider": "reka",
-    "model": "z-ai/glm-5.3"
+    "transport": "deepseek",
+    "provider": "deepseek",
+    "model": "deepseek-flash"
   },
   "training_use_permission": "settled_by_user",
   "generation_executed": false,

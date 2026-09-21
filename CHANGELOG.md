@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+- Specify the training-distribution axes (task variables vs nuisance variables, reward
+  invariance across nuisance axes) and treat underspecified requests as the primary case:
+  clarify when a decision is consequential and undetermined, proceed when it is not, and
+  reward the outcome against the author's hidden preference rather than the act of asking.
+  Specify the simulated-author loop (deterministic environment gate, scripted controller,
+  cached paid user model) that supplies author turns without a human.
+
+- Record the first 100-task generation result: 54 of 100 admitted, 5 needs_revision, 41
+  invalid on mechanical contract checks, $3.79 of the $10 cap spent.
+
+- Pin the task-generator output schema (exact top-level keys, follow-up count,
+  check `method`/`kind`, one prose selector per F1/F2/F5 stage, verbatim quotes),
+  admit evidence quotes that match after whitespace collapsing, and ignore extra
+  top-level keys. Enable thinking on author (`max_tokens=32768`) and reviewer
+  (`max_tokens=16384`) calls.
+
+- Allow explicit reconciliation of interrupted paid-call reservations to a terminal
+  `abandoned` accounting key that retains the charge without blocking later calls.
+
+- Switch the paid task author, reviewer, and output judge to DeepSeek V4.1 Flash
+  (`deepseek-flash`) over its direct OpenAI-compatible API. Replace the GLM-5.3/Reka
+  OpenRouter client with a provider-neutral `PaidClient` plus an isolated DeepSeek
+  transport; update pricing to the direct route with cache-hit accounting. Verified by
+  a live smoke call (valid JSON, `deepseek-flash`, $0.000024).
+
+- Settle the RL optimizer as a critic-free group method (GRPO-family, not PPO) and
+  reject a staged GRPO → critic-warmup → PPO pipeline; record the reward the algorithm
+  consumes and flag pointwise-vs-pairwise judge output as the next reward decision.
+  Add retrieval-coverage and reward-format validation tasks to the RL preparation plan.
+
+- Add deferred final-base candidates (Gemma 4 12B, Qwen3.8-27B, Qwen3.5-9B,
+  Qwen3-Coder-Next) with size, license, and local-fitness notes; base choice waits on
+  the mini-eval subset.
+
 - Add Python-driven GLM/Reka task generation and independent review with a shared
   $10 budget, resumable calls, source and schema checks, and visible/private export.
   Add a GLM output-grader adapter using existing rubrics; live calls await credentials.

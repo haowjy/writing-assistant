@@ -6,6 +6,11 @@ KB construction, drafting, correction, and revision in one bounded training sess
 The [task generator](rl-task-generation.md) should compose these stages around a
 shared project state rather than merely concatenate unrelated prompts.
 
+The primary situation is an **underspecified author request**, where the correct behavior
+is to clarify before acting; its reward rules are in the
+[training-distribution axes](training-distribution-axes.md). The environment that supplies
+the author's turns when no human is present is the [simulated author](simulated-author.md).
+
 ## Existing strategies
 
 [MUA-RL (2025)](https://arxiv.org/html/2508.18669v1) puts simulated users and real tool
@@ -85,6 +90,11 @@ combination of applicable stage outcomes and final-state consistency; weights re
 to be selected and tested against a terminal-only baseline. A final average alone can
 hide a failed crucial stage, while an all-or-nothing score can be too sparse.
 
+Score the outcome against the author's **actual hidden preference**, not against whether
+the writer asked a clarifying question. Rewarding the act of asking invites an always-ask
+policy; rewarding convergence to the author's real choice makes clarification pay off
+instrumentally. See the [training-distribution axes](training-distribution-axes.md).
+
 Check persistence: a wiki still works after a later edit, accepted facts remain
 consistent with the manuscript, and unrelated material survives. When the author
 changes a requirement, mark the old requirement superseded instead of scoring both
@@ -147,8 +157,9 @@ the 3090 first, defer rentals, and add optional qualitative/quantitative W&B tra
 
 ## Next work
 
-Specify the composed-session schema and grounded follow-up controller; validate a
-short mixed-family session with stage snapshots and final-state checks. Then measure
+Specify the composed-session schema and grounded follow-up controller (see the
+[simulated author](simulated-author.md)); validate a short mixed-family session with
+stage snapshots and final-state checks. Then measure
 the bounded training memory budget, implement one reproducible compaction boundary,
 and compare downstream success with full-context and fixed-summary controls. A learned
 summarizer and long sessions follow only after those components are reliable.

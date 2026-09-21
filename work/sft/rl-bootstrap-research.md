@@ -7,10 +7,11 @@ that direction. Whether our 24-record seed is sufficient remains untested; only 
 records are assigned to train, and their synthetic content needs a provider-terms
 review before acceptance. No training or judge inference ran during this research.
 
-The selected remote training judge and task generator is now GLM-5.3 through Reka;
-the user has settled permission for that route. Local judge candidates below remain
-alternatives. See the [compiled data-generation guide](training-data-research.md)
-for the approved first 100 task assignments and their preparation status.
+The selected remote training judge and task generator is now DeepSeek V4.1 Flash
+(direct API, model `deepseek-flash`); its terms permit training-use. It replaced the
+earlier GLM-5.3/Reka route. Local judge candidates below remain alternatives. See the
+[compiled data-generation guide](training-data-research.md) for the approved first 100
+task assignments and their preparation status.
 
 ## Evidence from papers
 

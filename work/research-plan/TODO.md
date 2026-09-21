@@ -11,11 +11,28 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 
 - [ ] Complete the approved first 100 training tasks using the
   [compiled research and generation workflow](../sft/training-data-research.md).
-  Source packets and coverage assignments are prepared; actual generated requests,
-  starting drafts/KBs, branch contracts, semantic review and admission remain.
-  Use GLM-5.3 through Reka; training-use permission is settled. The user approved $10 total for generation and
-  task review; `OPENROUTER_API_KEY` is pending. The Python generation pipeline and
-  GLM output-grader adapter are implemented; live API verification remains. Generate SFT demonstrations separately.
+  Use DeepSeek V4.1 Flash (direct API, model `deepseek-flash`); its terms permit
+  training-use. The user approved $10 total for generation and task review;
+  `DEEPSEEK_API_KEY` is set. The Python generation pipeline and DeepSeek
+  output-grader adapter are implemented and live-verified. The batch has run once:
+  54 of 100 tasks admitted (5 needs_revision, 41 invalid), $3.79 of the cap spent.
+  The invalid tasks failed mechanical contract checks rather than review, so tightening
+  the generator instructions and re-running is the open step. Generate SFT
+  demonstrations separately.
+- [ ] Specify the [training-distribution axes](../sft/training-distribution-axes.md) and
+  check reward behavior across them. Separate task variables (content, starting point,
+  instruction specificity, thinking level) from nuisance variables (phrasing, tool
+  envelope, partner identity); confirm the reward is conditioned on the first set and
+  invariant to the second. Treat underspecified requests as the primary case: clarify
+  when a decision is consequential and undetermined, proceed when it is not.
+- [ ] Specify the [simulated author](../sft/simulated-author.md) that supplies author
+  turns without a human: a deterministic environment gate, a scripted/lookup controller
+  for common turns, and a cached paid user model for unanticipated questions. Keep the
+  partner grounded in the author's hidden decisions and never the rubric, and freeze its
+  version per experiment.
+- [ ] Probe a stronger task author (Claude Sonnet) against the DeepSeek baseline on a
+  bounded batch, keeping DeepSeek as reviewer, and compare admitted yield and realized
+  variation before changing the author role.
 - [ ] Review realized genre blends, tropes, situations and KB constraints against the
   [variation catalog](../../data/training/variation-catalog-v1.json). Adapt incompatible
   combinations, record actual labels, and keep source fidelity and prose quality
@@ -48,9 +65,24 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 - [ ] Design [composed multi-turn sessions](../sft/multi-turn-rl.md): grounded adaptive
   author feedback, shared project state, stage and final rewards, and reproducible
   compaction. Measure practical training context before expanding session length.
-- [ ] Validate the selected GLM-5.3/Reka judge and informative
+- [ ] Validate the selected DeepSeek V4.1 Flash judge and informative
   rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
-  preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite.
+  preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite. The RL
+  optimizer is fixed as a critic-free group method (not PPO) by the
+  [algorithm decision](../sft/rl-algorithm-decision.md); the pointwise-vs-pairwise reward
+  question remains open there.
+- [ ] Validate retrieval coverage for the semantic judge on KB and long-form cases, since
+  the judge sees retrieved evidence, not the whole wiki. Build cases with known continuity
+  and knowledge errors plus their supporting source passages; measure whether the current
+  retrieval surfaces those passages, and report each real error as caught, unscorable, or
+  silently missed. Record the pass bar (e.g. no silent misses on the validation set) and
+  produce a retrieval-coverage number used when interpreting judge scores.
+- [ ] Decide the reward format by comparing pointwise 1–5 scalars against pairwise/rank
+  judgments on matched good/weak and deliberately constraint-violating candidates. Check
+  score spread across a rollout group (zero-variance rate), length/explanation inflation,
+  and rank disagreement with the pointwise mode. Report which format avoids rewarding
+  violations and gives usable within-group variance, and freeze the chosen format and
+  prompt for RL.
 - [ ] Validate the [information-value profile](../sft/information-value.md) with
   concise-but-incomplete, accurate-but-irrelevant, redundant and useful-detailed
   outputs. Keep statistical quality rewards inactive until checked; scope a small

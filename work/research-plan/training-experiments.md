@@ -15,6 +15,24 @@ feasibility test.
 The [branching authorship plan](branching-authorship.md) describes collecting
 harness-backed sessions across plot directions and prose styles for this training.
 
+### Final-base candidates (deferred)
+
+The E2B feasibility run does not choose the production base. Decide the base only after
+the mini-eval subset exists and has been run on the E2B checkpoint. Candidates:
+
+| Base | Params / type | License | Notes |
+|---|---|---|---|
+| Gemma 4 E2B-IT | ~2B dense | Gemma terms | Feasibility only; template/mask integration already verified. |
+| Gemma 4 12B | 12B dense | Gemma terms | Same family; reuses verified integration. |
+| Qwen3.8-27B | 27B dense VLM | Apache-2.0 | Current popular general model; ~14 GB at 4-bit, tight on 24 GB; full-context QLoRA likely needs a rented GPU. |
+| Qwen3.5-9B | 9B dense VLM | Apache-2.0 | Comfortable local QLoRA size. |
+| Qwen3-Coder-Next | 80B / 3B MoE | Apache-2.0 | Agentic-coding strength; ~40 GB at 4-bit, inference-only locally. |
+
+Selection criteria: harness/tool reliability, long-context behavior, measured rollout
+quality, QLoRA fit, and license. The Qwen Coder cards do not claim creative writing, and
+the 3.5/3.6/3.8 line are VLMs whose vision bulk is unused here. Switching family requires
+re-verifying tokenizer, chat template, loss masks, and rendering before training.
+
 ## Untuned Baseline
 
 Run the official checkpoint matrix and selected community derivatives described

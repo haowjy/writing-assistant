@@ -1,9 +1,11 @@
 # Training data and task generation: research to implementation
 
 Prepare 100 source-backed training tasks before generating a larger SFT answer set.
-Use GLM-5.3 through Reka for task authoring, semantic review, and simulated authors
-in separate calls. The user has settled training-use permission. The approved cap is $10 total for generating and reviewing this batch, excluding
-SFT answer trajectories. Credentials remain pending; no paid calls have run.
+Use DeepSeek V4.1 Flash (direct API, model `deepseek-flash`) for task authoring,
+semantic review, and simulated authors in separate calls. Its terms permit
+training-use. The approved cap is $10 total for generating and reviewing this batch,
+excluding SFT answer trajectories. The API key is configured; no paid batch calls
+have run yet.
 
 This guide joins the earlier [SFT/RL research](rl-bootstrap-research.md),
 [branching-fiction design](rl-task-generation.md), [multi-turn design](multi-turn-rl.md),
@@ -182,7 +184,7 @@ Those are integration points, not proof that our native Gemma multi-turn RL loop
 implemented. Keep provider transport, task generation, environment execution and
 reward calculation separate so that cloud GPU migration does not change the tasks.
 
-Run the writer locally first. Remote Reka calls can author tasks and score semantic
+Run the writer locally first. Remote DeepSeek calls can author tasks and score semantic
 outcomes without sharing GPU memory with training. Judge and simulated-author prompts
 have separate visibility: the judge may see private evidence; the simulated author
 gets their goals and conversation, not reward keys. Do not leak the judge's preferred
@@ -206,19 +208,21 @@ later work. W&B is an optional mirror of local scores, critiques and artifacts.
   [admission pipeline](../../src/writing_agent/task_authoring.py): source-bound requests,
   generated-task validation, independent semantic review, saved outcomes and compilation
   into the existing visible/private scenario format. Default execution only inspects.
-- [GLM transport and output grader](../../src/writing_agent/openrouter.py): pinned
-  OpenRouter/Reka route, shared persistent budget, saved reasoning and usage, hashed
-  response cache, and the existing evidence-backed rubric/scorecard interface.
+- [DeepSeek transport and output grader](../../src/writing_agent/paid.py): pinned
+  DeepSeek direct route (`deepseek-flash`), shared persistent budget, saved reasoning and
+  usage, hashed response cache, and the existing evidence-backed rubric/scorecard
+  interface.
   Task review and assistant-output grading use separate fresh system/user contexts.
-- Live API verification and the 100 generated tasks remain pending credentials.
+- Live API verification passed for the DeepSeek transport; the 100 generated tasks
+  remain unrun pending the approved batch execution.
   Scripted tests verify accounting and admission, not provider availability or task quality.
   The prepared requests are not 100 completed training tasks.
 
-Reka's [public direct-API model list](https://docs.reka.ai/chat/models) names its own
-Flash and Edge models and allows account-specific availability. GLM-5.3 access is
-confirmed through the OpenRouter listing, not through that direct API. Use an
-OpenRouter key for the confirmed route; a Reka key requires checking the account's
-available models first. Do not infer direct access from OpenRouter provider identity.
+The DeepSeek [OpenAI-compatible API](https://api-docs.deepseek.com/) exposes V4.1 Flash
+as model id `deepseek-flash` at `https://api.deepseek.com`, authenticated with
+`DEEPSEEK_API_KEY`. Its Open Platform Terms assign outputs to the customer and permit
+using them to train other models, which covers judge scores used as RL reward. A live
+smoke call verified auth, model identity, and JSON output.
 
 Reproduce preparation with `.venv/bin/python -m scripts.prepare_training_tasks`.
 This performs no inference, training or paid calls. The source catalog is rebuilt
@@ -226,19 +230,19 @@ through the documented [SFT seed workflow](dataset-starter.md) when absent.
 
 Inspect with `.venv/bin/python -m scripts.generate_training_tasks`. To execute the
 approved batch, call `generate(execute=True)` from that module. The key belongs in
-ignored `.env` as `OPENROUTER_API_KEY`. Calls and their shared ledger live under
+ignored `.env` as `DEEPSEEK_API_KEY`. Calls and their shared ledger live under
 `data/processed/training-tasks-v1/paid-calls/`; generated outcomes, review materials
 and compiled tasks live in the sibling `generated/` directory. Resume with the same
 inputs and call directory. An unresolved transport reservation stops new calls until
 its charge is reconciled; never delete the ledger to retry a paid batch.
 
-The cap includes a 5.5% platform-fee allowance and uses routing price ceilings for
-preflight reservation. Those ceilings are not a current-price quotation. Rejected or
+The cap uses DeepSeek peak-price ceilings for preflight reservation and applies no
+platform fee. Those ceilings are not a current-price quotation. Rejected or
 malformed outputs still consume budget and remain available for inspection. The
 requested count is 100 proposals; admitted count can be lower. Revisions require a
 new input/output version while retaining the same paid-call ledger and cap.
 
-`GLMGrader(client).grade(packet)` accepts the existing `grading_packet` format;
+`OutputGrader(client).grade(packet)` accepts the existing `grading_packet` format;
 `apply_judgment` applies its validated result to a scorecard. Invalid or unavailable
 judgments leave scores pending. This supplies semantic ratings, not an implemented
 RL reward loop or calibrated reward model. No writer rollout, SFT answer generation,

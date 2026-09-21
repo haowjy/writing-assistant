@@ -199,12 +199,26 @@ Structural admission and an independent task-review call precede compilation; mo
 review is not human acceptance or a successful writer trajectory. Outcomes retain
 raw candidates and review evidence. Resume rejects changed inputs or cached outcomes.
 
-`openrouter.OpenRouterClient` owns the shared paid-call ledger for task authors,
-reviewers and `GLMGrader`. Each call has fresh messages; response identity includes
-instructions, payload, role and routing. Uncertain charges retain reservations and
-block new requests. Keep the same ledger when revising a batch. Raw responses retain
-reasoning separately from candidate prose. `GLMGrader` uses the existing blinded
-packet and judgment application; failed judgments leave scores pending.
+`paid.PaidClient` owns the shared paid-call ledger for task authors, reviewers and
+`OutputGrader`. Each call has fresh messages over the DeepSeek Flash direct route;
+response identity includes instructions, payload, role and thinking. Task author
+JSON calls disable thinking with a 16384-token budget; reviewer calls disable
+thinking with 8192. Thinking stays off because reasoning shared the output budget
+and truncated larger multi-stage tasks. Evidence quotes match after collapsing whitespace,
+including newlines. Admission requires the seven named task fields; extra
+top-level keys are ignored. Uncertain charges retain reservations and block new
+requests. Interrupted reservations stay blocking until explicitly reconciled
+to a terminal `abandoned` accounting key that keeps the charge and frees the
+identity for a new reservation. Overrun still halts. Accounted spend never
+decreases.
+Keep the same ledger when revising a batch. Charges come from DeepSeek token usage at the
+peak cache-miss ceiling, never from a provider cost field; missing cache
+breakdown treats prompt tokens as misses, and incomplete usage keeps the
+reservation. Transport failures write an inspectable error artifact beside the
+reservation and halt. Cache-hit tokens are charged at the cache price when usage
+reports them. Raw responses retain reasoning separately from candidate prose. `OutputGrader` uses
+the existing blinded packet and judgment application; failed judgments leave
+scores pending.
 
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.

@@ -66,12 +66,15 @@ a separate unresolved data decision. This path does not claim to teach reasoning
 
 The [research review](rl-bootstrap-research.md) proposes direct RL from Gemma-IT versus
 a short SFT warm-up followed by RL. SFT-only remains a control, not the intended final
-approach. A large SFT target collection is not a prerequisite; reward quality and
+approach. The RL optimizer is a critic-free group method, not PPO; see the
+[algorithm decision](rl-algorithm-decision.md). A large SFT target collection is not a prerequisite; reward quality and
 useful policy rollouts determine readiness. Resolve training-source and judge-output
 permissions before accepting the current synthetic seed.
 
 ## Next TODO
 
+- [ ] Design the training distribution and the simulated author: [axis set and reward
+  rules](training-distribution-axes.md), [multi-turn loop](simulated-author.md).
 - [ ] Establish permitted bootstrap demonstrations and an independent RL task pool.
   Test warm-up size from behavior; expand SFT only for observed gaps.
 - [ ] Validate candidate training rewards/judges separately from held-out evaluation.

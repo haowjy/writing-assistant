@@ -89,7 +89,7 @@ claims length matching but its statistics table lists appreciably different mean
 lengths for chosen and rejected responses. Audit actual pairs before relying on
 that control or comparing judge accuracy.
 
-## Use with GLM-5.3 through Reka
+## Use with the remote judge (DeepSeek V4.1 Flash)
 
 1. Group shared prompts and stories in an eligible training release, then separate
    judge-development data from a reserved check set before selecting examples.
