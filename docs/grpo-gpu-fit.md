@@ -6,6 +6,12 @@ downloads or writes. Preparation creates fresh evidence; execution requires both
 `--phase fit` and `--execute`. There is no retry, alternate profile, elapsed cutoff,
 or production launch.
 
+The recorded RTX 3090 attempt is terminal: native 32767+1 generation passed, while
+controlled training OOMed during the first backward pass before an optimizer update
+or checkpoint. See the [measured result](../work/research-plan/gemma-full48-fit-result.md).
+Production remains blocked; these commands describe the preserved qualification
+contract, not permission to rerun the failed profile.
+
 Use the already qualified Python environment and cached model only:
 
 ```bash
@@ -25,9 +31,11 @@ source refuses before runtime. An exclusive attempt marker prevents repeating an
 execution, including an ownership rejection. After the user resolves a rejection,
 prepare a fresh evidence directory; preserve the rejected directory.
 
-The unchanged display allowlist and limits apply to the complete NVML inventory,
-including graphics processes: at most 256 MiB per allowed process, 768 MiB total,
-and at least 22000 MiB free. Unknown or unaccounted consumers refuse. This check runs
+The approved desktop allowlist and unchanged limits apply to the complete NVML
+inventory, including graphics processes. Xwayland and Ghostty are approved desktop
+consumers. Each allowed process may use at most 256 MiB, all listed processes at most
+768 MiB total, and the GPU must have at least 22000 MiB free. Unknown or unaccounted
+consumers refuse. This check runs
 before the initial execution and in each fresh generation/training process, before
 model loading. Processes are never terminated. It is an admission snapshot, not a
 GPU reservation.

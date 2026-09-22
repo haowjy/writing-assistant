@@ -35,14 +35,16 @@ projects, supported by a maintained wiki, with better prose alongside it.
   CPU proof verifies pass-one pause/resume and exact optimizer/token state.
 - [x] Add the inspect-first [production GPU fit gate](docs/grpo-gpu-fit.md), with
   complete-process ownership admission shared by fit and full48 train/resume.
-- [ ] Verify native Gemma BF16 training and generation fit at the enforced 32,768-token
-  full48 context envelope. The first gate stopped before model load at GPU ownership.
-  Steam was explicitly terminated; the user approved Xwayland/Ghostty as desktop
-  consumers without changing memory limits. Run the same profile in fresh evidence.
+- [x] Execute the one-attempt native Gemma 32,768-token controlled fit after approved
+  desktop admission. Native 32,767+1 generation passed; training OOMed during the
+  first backward pass before an optimizer update or checkpoint. Preserve the terminal
+  [fit result](work/research-plan/gemma-full48-fit-result.md); do not retry or alter it.
+- [ ] Select and separately qualify a memory strategy for intact 32,768-token training.
+  The fixed RTX 3090 profile is proven not to fit under the admitted desktop load.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
-  **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until the
-  readiness blockers are resolved. No new GPU run has started.
+  **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until a new
+  qualification contract passes. Production remains at 0 groups / 0 attempts.
 
 ## Completed: short-context GRPO engineering proof
 

@@ -1,12 +1,11 @@
 # DAPO full-round readiness
 
-**The DAPO configuration and CPU proof pass; the intact 48-task GPU run has not
-started.** Tied-group continuation and the separate full48 mechanical reward are
-implemented. A dedicated full48 scheduler now admits the original budgets,
-reserves collision-free seeds and verifies pass-one pause/resume on a tiny CPU
-fixture. Source-pinned streaming integration passes CPU qualification; native
-long-trajectory GPU memory remains unresolved. Raising the old probe's step count alone
-would not produce the requested experiment.
+**The fixed 32768-token RTX 3090 fit failed during training backward; the intact
+48-task GPU run has not started.** Native 32767+1 generation passed, but controlled
+training OOMed before an optimizer update or checkpoint. Tied-group continuation,
+the separate full48 mechanical reward, scheduler, pass-one recovery, and source-pinned
+streaming CPU qualification pass. They do not override the failed memory gate. Raising
+the old probe's step count alone would not produce the requested experiment.
 
 ## Intended workload
 
@@ -231,22 +230,32 @@ The first v2 invocation stopped at ownership before either production model load
 The RTX 3090 had 22676 MiB free, but total listed process allocation was 1079 MiB
 against the unchanged 768 MiB cap. The user then explicitly requested termination
 of Steam and approved Xwayland/Ghostty as ordinary desktop consumers. Steam and its
-web helpers exited; a fresh inventory reported 679 MiB allocated and 23205 MiB free.
-The allowlist expansion does not change the 256 MiB per-process, 768 MiB total or
-22000 MiB free-memory limits. The original rejection remains in
-`gpu-fit-v2/runtime/ownership-before/`; rerun the same profile in a fresh directory.
+web helpers exited. The allowlist expansion did not change the 256 MiB per-process,
+768 MiB total or 22000 MiB free-memory limits. The original rejection remains in
+`gpu-fit-v2/runtime/ownership-before/`.
 
-The committed command and CPU checks are complete: 357 repository tests (two skips),
+The one permitted fresh attempt then passed ownership with 681 MiB listed and 23203
+MiB free. Native 32767+1 generation passed in 42.906 seconds, peaking at 16.767 GiB
+Torch allocated and 20.072 GiB reserved. Controlled training reached a finite first
+microbatch loss with the expected 32768 total / 8192 active tokens, then OOMed during
+activation-checkpoint recomputation in backward while requesting another 768 MiB.
+Peak Torch allocation was 21.379 GiB and reservation 22.223 GiB; PyTorch reported
+114 MiB free at failure. No optimizer update or full checkpoint completed. The
+profile was not retried or changed. See the
+[measured fit result](gemma-full48-fit-result.md).
+
+The committed command and CPU checks remain valid: 357 repository tests (two skips),
 12 focused tests in the qualified environment, cached-tokenizer lengths, and a live
 tiny BF16 six-update/exact-resume check through the shared trainer configuration.
-Those checks do not clear the GPU fit blocker.
+They do not clear the failed GPU fit blocker.
 
 ## Next gate and evidence
 
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
-whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Prove native
-Gemma long-trajectory memory fit before committing to the full run. Do not silently
-truncate, shorten, omit or resample tasks to make the schedule finish.
+whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
+remains at 0 of 96 groups and 0 of 384 attempts. Do not start it unless a separately
+reviewed memory strategy and new qualification contract pass. Do not silently truncate,
+shorten, omit or resample tasks to make the schedule fit or finish.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
@@ -261,10 +270,13 @@ Numerical evidence: `memory-qualification-v1/cpu-gate/{report.md,results.json,*.
 and `memory-qualification-v1/primary-verification.json`. Source-pinned compatibility:
 `runtime-compat/report.md`, `runtime-compat/raw-summary.json`,
 `runtime-compat/cpu/{summary.json,observations-full.json,observations-resumed.json}`
-and the adjacent test/live-command logs. A failed postprocessing
-hook assumption is preserved; correction required no package changes or model reruns.
-Original data and previous GPU runs were not modified. Only the two approved package
-archives were downloaded; no new GPU training, model download or paid judge call occurred.
+and the adjacent test/live-command logs. The terminal fit evidence is in
+`gpu-fit-v2/approved-desktop-v1/`, with its raw log at
+`gpu-fit-v2/approved-runtime.log`; the durable summary is
+[gemma-full48-fit-result.md](gemma-full48-fit-result.md). A failed postprocessing hook
+assumption is preserved; correction required no package changes or model reruns.
+Original data and previous GPU runs were not modified. The controlled GPU fit ran,
+but production training, model downloads and paid judge calls did not.
 
 See [current work order](../../TODO.md), [GRPO usage](../../docs/grpo.md), and the
 [previous short-run result](gemma-microbatch-result.md).
