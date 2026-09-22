@@ -140,7 +140,7 @@ def smoke(output):
     settings = GRPOSettings(
         model_id="caller-owned/tiny-random-llama",
         revision="a" * 40,
-        max_steps=2,
+        max_steps=3,
         group_size=4,
         context_tokens=128,
         max_tokens=4,
@@ -192,6 +192,12 @@ def smoke(output):
         resume_from_checkpoint=Path(partial["checkpoint"]),
         **common,
     )
+    assert resumed["global_step"] == 3 and resumed["resumed_step"] == 1
+    assert not Path(partial["checkpoint"]).exists(), "Step 1 should be pruned by retention=2"
+    assert resumed["trainable_before"] == partial["trainable_after"], (
+        "Before-state was not restored"
+    )
+    assert resumed["trainable_changed"], "Resume only loaded weights without updating them"
     quarantine = Path(resumed["quarantined"][0])
     assert (quarantine / "optimizer.pt").read_bytes() == b"interrupted optimizer save"
     assert (quarantine / "complete.json").read_text() == "{"
@@ -226,7 +232,7 @@ def smoke(output):
     def step_tokens(root):
         return [
             json.loads(p.read_text())
-            for p in sorted(root.glob("groups/step-000001-*/attempt-*/tokens.json"))
+            for p in sorted(root.glob("groups/step-00000[12]-*/attempt-*/tokens.json"))
         ]
 
     assert step_tokens(output / "full") == step_tokens(output / "resumed")
@@ -236,6 +242,9 @@ def smoke(output):
         "lora_B_l1_after_step1": delta,
         "adapter_reload_exact": True,
         "partial_checkpoint_quarantined_exact": True,
+        "resume_steps": [1, 3],
+        "old_checkpoint_pruned": True,
+        "restored_before_state_exact": True,
         "sampled_resume_tokens_exact": True,
         "environment_tokens_masked": True,
         "resume_max_abs_difference": max_diff,

@@ -38,6 +38,8 @@ class GRPOSettings:
     lora_rank: int = 8
     seed: int = 42
     enable_thinking: bool = True
+    gradient_checkpointing: bool = True
+    gradient_checkpointing_use_reentrant: bool = False
 
     def validate(self):
         checkpoint_identity(self.model_id, self.revision)
@@ -49,6 +51,10 @@ class GRPOSettings:
             raise ValueError("Probe invocations must be bounded to 1..8")
         if self.lora_rank < 1 or not 0 < self.learning_rate <= 0.01:
             raise ValueError("Invalid optimizer/LoRA settings")
+        if not isinstance(self.gradient_checkpointing, bool) or not isinstance(
+            self.gradient_checkpointing_use_reentrant, bool
+        ):
+            raise ValueError("Activation-checkpointing settings must be explicit booleans")
 
 
 def inspect_grpo(tasks, output, *, settings, reward_spec, admission, system_prompt=SYSTEM_PROMPT):
@@ -328,6 +334,26 @@ def train_grpo(
         if isinstance(module, torch.nn.Dropout):
             module.p = 0.0
     tokenizer.padding_side = "left"
+
+    def trainable_evidence():
+        tensors = {
+            name: value.detach().float().cpu()
+            for name, value in model.named_parameters()
+            if value.requires_grad
+        }
+        digest = hashlib.sha256()
+        for name, value in sorted(tensors.items()):
+            digest.update(name.encode())
+            digest.update(value.numpy().tobytes())
+        lora_b = [value for name, value in tensors.items() if "lora_B" in name]
+        return {
+            "sha256": digest.hexdigest(),
+            "tensor_count": len(tensors),
+            "lora_B_tensor_count": len(lora_b),
+            "lora_B_l1": sum(value.abs().sum().item() for value in lora_b),
+        }
+
+    trainable_before = None
     invocation = output / "invocations" / uuid4().hex
     invocation.mkdir(parents=True)
     save_json(
@@ -364,6 +390,12 @@ def train_grpo(
     )
 
     class CheckpointLifecycle(TrainerCallback):
+        def on_train_begin(self, args, state, control, **kwargs):
+            nonlocal trainable_before
+            # Trainer restores resumed adapter weights before this callback.
+            trainable_before = trainable_evidence()
+            return control
+
         def on_save(self, args, state, control, **kwargs):
             checkpoint = output / f"checkpoint-{state.global_step}"
             seal_directory(
@@ -388,7 +420,10 @@ def train_grpo(
         data_seed=settings.seed,
         use_cpu=next(model.parameters()).device.type == "cpu",
         bf16=next(model.parameters()).dtype == torch.bfloat16,
-        gradient_checkpointing=False,
+        gradient_checkpointing=settings.gradient_checkpointing,
+        gradient_checkpointing_kwargs={
+            "use_reentrant": settings.gradient_checkpointing_use_reentrant
+        },
         optim="adamw_torch",
         beta=0.0,
         num_iterations=1,
@@ -424,6 +459,8 @@ def train_grpo(
         result = trainer.train(
             resume_from_checkpoint=str(resume_from_checkpoint) if resume_from_checkpoint else None
         )
+        if trainable_before is None:
+            raise RuntimeError("Trainer did not capture the pre-update adapter state")
         adapter = invocation / "adapter"
         trainer.save_model(str(adapter))
         tokenizer.save_pretrained(adapter)
@@ -438,8 +475,13 @@ def train_grpo(
             "checkpoint": str(checkpoint),
             "adapter": str(adapter),
             "metrics": result.metrics,
+            "trainable_before": trainable_before,
+            "trainable_after": trainable_evidence(),
             "retention": plan["retention"],
         }
+        metadata["trainable_changed"] = (
+            metadata["trainable_before"]["sha256"] != metadata["trainable_after"]["sha256"]
+        )
         save_json(invocation / "complete.json", metadata)
         return metadata
     except BaseException as exc:

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Enable explicit non-reentrant activation checkpointing for GRPO. Record adapter
+  state after checkpoint restoration and before updates. Extend the real CPU check
+  through step 3, verifying exact resume after the step-1 checkpoint is pruned.
+
 - Freeze a reproducible Gemma engineering probe: three training tasks and six
   development cases with separate source groups. Add completion-gated mechanical
   scoring and 91 valid/invalid fixture cases. Preserve original inputs and disclose
