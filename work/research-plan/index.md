@@ -1,10 +1,12 @@
 # Research work plan
 
-- [Next TODO: first supervised fine-tuning run](TODO.md): baseline failure analysis,
-  separate training data, QLoRA setup, and checkpoint evaluation.
+- [Current training plan](training-experiments.md): direct GRPO on Qwen3.8-27B;
+  E2B tests the machinery, and SFT is only a conditional fallback.
+- [Next TODO](TODO.md): reward validation, task review, training integration, and
+  checkpoint evaluation.
 
-These documents describe experiments to consider. Choose models, data sizes,
-metrics, and execution order for the active research task.
+The current training plan sets the active direction. The other documents include
+later experiments to consider, not additional prerequisites.
 
 The [custom evaluation suite](../custom-eval-suite/index.md) owns the current
 five-family evaluation design, data inventory, and delivery order. Start with its

@@ -1,6 +1,13 @@
-# First SFT preparation
+# Optional SFT preparation
 
-Prepare one supervised QLoRA adapter on `google/gemma-4-E2B-it`, revision
+This is a fallback procedure, not the next scheduled training stage. The
+[current training plan](../research-plan/training-experiments.md) starts directly
+with GRPO on Qwen3.8-27B. E2B is an engineering test model; its failures do not establish
+that Qwen needs SFT. Use this procedure only after a demonstrated target-model gap
+justifies learning from demonstrations. The readiness notes and proposed run below
+describe the earlier SFT preparation, not current GRPO readiness.
+
+If that experiment is approved, prepare one supervised QLoRA adapter on `google/gemma-4-E2B-it`, revision
 `3e22461f65e89153144f8adb70e3b8c2cc9845a7`. E2B is the feasibility checkpoint;
 this does not select the final model size. The [next-experiment TODO](../research-plan/TODO.md)
 tracks the broader sequence.
@@ -62,16 +69,20 @@ and literal special-token input are rejected in this first preparation path. Nat
 thinking mode remains enabled in rendering and evaluation; supervising reasoning is
 a separate unresolved data decision. This path does not claim to teach reasoning.
 
-## SFT as an RL bootstrap
+## When to reconsider SFT
 
-The [research review](rl-bootstrap-research.md) proposes direct RL from Gemma-IT versus
-a short SFT warm-up followed by RL. SFT-only remains a control, not the intended final
-approach. The RL optimizer is a critic-free group method, not PPO; see the
-[algorithm decision](rl-algorithm-decision.md). A large SFT target collection is not a prerequisite; reward quality and
-useful policy rollouts determine readiness. Resolve training-source and judge-output
-permissions before accepting the current synthetic seed.
+The [research review](rl-bootstrap-research.md) discusses SFT warm-up as an alternative,
+not a required stage. Reconsider it if a needed Qwen behavior remains too rare after
+checking task feasibility, instructions, and judging. SFT can make a rare behavior
+reliable; it is not limited to teaching behavior absent from every sample. No SFT-only
+or SFT-then-RL comparison is currently scheduled. Resolve training-source and
+judge-output permissions before accepting any demonstrations.
 
-## Next TODO
+The RL optimizer remains a critic-free group method, not PPO; see the
+[algorithm decision](rl-algorithm-decision.md). Reward reliability and useful Qwen
+attempts determine readiness, not completion of the pending SFT seed.
+
+## Conditional SFT checklist (not the active work order)
 
 - [ ] Design the training distribution and the simulated author: [axis set and reward
   rules](training-distribution-axes.md), [multi-turn loop](simulated-author.md).

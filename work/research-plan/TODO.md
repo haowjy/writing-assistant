@@ -1,13 +1,30 @@
-# Next experiment: SFT bootstrap and RL preparation
+# Next experiment: direct GRPO preparation
 
-The next priority is to prepare training tasks, validate rewards, and verify the
-bounded SFT/RL pipeline, using completed baselines to identify learning objectives. The
+The target is direct GRPO on instruction-tuned Qwen3.8-27B, with no planned SFT stage.
+Use E2B only to test the training machinery locally; use Qwen attempts to establish
+reward reliability and target-model readiness. See the [current training decision](training-experiments.md).
+The
 [Grok comparison](../grok-pilot/results.md) provides examples of stronger outputs;
 it compares different models and harnesses, so it does not isolate model capability.
 
 This list sets the work order. It does not authorize training, new paid generation,
 or larger evaluation runs. Agree on the bounded training test before executing it;
 keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
+
+## Immediate order
+
+1. Agree on success criteria and unacceptable regressions for Qwen.
+2. Inspect grouped Qwen attempts and validate the judge's rankings; authorize any new
+   inference or grading spend separately.
+3. Correct conflicting task-balance requirements and specify system-prompt variation
+   and the simulated writer's behavior before generating a larger collection.
+4. Connect the environment and reward adapter to GRPO and verify a bounded E2B run.
+5. Size Qwen training compute, freeze the evaluation protocol, and approve a bounded run.
+
+The checklist below contains supporting work, not a requirement to finish every item
+before the engineering test. Demonstrations and SFT are conditional, not on the critical path.
+
+## Supporting work
 
 - [ ] Complete the approved first 100 training tasks using the
   [compiled research and generation workflow](../sft/training-data-research.md).
@@ -17,8 +34,8 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   output-grader adapter are implemented and live-verified. The batch has run once:
   54 of 100 tasks admitted (5 needs_revision, 41 invalid), $3.79 of the cap spent.
   The invalid tasks failed mechanical contract checks rather than review, so tightening
-  the generator instructions and re-running is the open step. Generate SFT
-  demonstrations separately.
+  the generator instructions and re-running is the open step. Do not generate SFT
+  demonstrations unless a target-model behavior gap justifies them.
 - [ ] Specify the [training-distribution axes](../sft/training-distribution-axes.md) and
   check reward behavior across them. Separate task variables (content, starting point,
   instruction specificity, thinking level) from nuisance variables (phrasing, tool
@@ -50,11 +67,11 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   prose weaknesses, continuity errors, failed file delivery, and KB navigation.
   Aggregate counts are recorded in the [SFT plan](../sft/plan.md); retain representative
   cases and use the findings to select training examples.
-- [ ] Establish permitted demonstrations and an independent RL task collection using
-  the [bootstrap research](../sft/rl-bootstrap-research.md). Treat the
-  [24-record seed](../sft/dataset-starter.md) as pending; determine SFT size by readiness, mixing
-  vague and explicit requests, genres, and prose styles. Include successful tool
-  trajectories, local revisions, and handling of proposals versus accepted canon.
+- [ ] Establish an independent RL task collection using the
+  [bootstrap research](../sft/rl-bootstrap-research.md), mixing vague and explicit
+  requests, genres, prose styles, local revisions, and proposals versus accepted canon.
+  The [24-record SFT seed](../sft/dataset-starter.md) remains pending and is not a blocker
+  for GRPO. Curate demonstrations only if a Qwen behavior gap warrants them.
   Preserve provenance and group related sources before splitting. Keep evaluation
   cases and related derivatives out of training; the five Grok outputs are comparison
   evidence, not an approved training dataset.
@@ -64,21 +81,21 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   API budget. A large gap makes human-target data construction the highest-leverage
   change available, ahead of reward work; a small gap retires the idea. Record the
   configuration with the number.
-- [ ] Verify the [prepared supervised QLoRA pipeline](../sft/plan.md) for Gemma E2B-IT on the RTX 3090,
-  using Transformers, PEFT, TRL, and bitsandbytes. Verify the native conversation/tool
-  template and loss masking: train the intended assistant responses and tool calls,
-  while excluding system/user messages and tool observations. Decide explicitly
-  whether any reasoning data belongs in the training targets.
+- [ ] Implement the direct-GRPO training connection and verify it with E2B on the RTX 3090.
+  Validate the native conversation/tool template and which generated tokens receive
+  training loss; exclude system/user messages and tool observations. Decide explicitly
+  how reasoning tokens are handled. The [prepared SFT pipeline](../sft/plan.md) is an
+  optional fallback, not this engineering test.
 - [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):
   grounded source packets, permitted divergences, task-specific rewards, private judge
   evidence, coverage tracking, and reproducible per-group initial states.
 - [ ] Design [composed multi-turn sessions](../sft/multi-turn-rl.md): grounded adaptive
   author feedback, shared project state, stage and final rewards, and reproducible
   compaction. Measure practical training context before expanding session length.
-- [ ] Validate the selected DeepSeek V4.1 Flash judge and informative
-  rollout rewards. Propose IT → RL versus IT → short SFT → RL with matched budgets;
-  preserve SFT-only and IT controls. A large SFT corpus is not a prerequisite. The RL
-  optimizer is fixed as a critic-free group method (not PPO) by the
+- [ ] Validate the selected DeepSeek V4.1 Flash judge on Qwen attempts, including
+  meaningful quality differences and instruction violations. Compare unchanged Qwen
+  with direct-GRPO Qwen; no SFT comparison is scheduled. E2B failures alone do not justify
+  SFT for Qwen. The RL optimizer is fixed as a critic-free group method (not PPO) by the
   [algorithm decision](../sft/rl-algorithm-decision.md); the pointwise-vs-pairwise reward
   question remains open there.
 - [ ] Validate retrieval coverage for the semantic judge on KB and long-form cases, since
@@ -104,8 +121,10 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
   VRAM and processed tokens per second; verify checkpoint save, resume, and inference
   loading. Use measured throughput and the actual token count to estimate a full run.
 - [ ] Freeze a mini-evaluation subset and run it at baseline and selected checkpoints
-  once its execution scope is approved. Use the same Gemma harness, prompts, and
-  generation settings. Record harness/provider/model, checkpoint identity, and step.
+  once its execution scope is approved. Compare each model with its own unchanged
+  checkpoint using the same harness, prompts, precision, and generation settings.
+  Keep E2B engineering results separate from Qwen quality results. Record
+  harness/provider/model, checkpoint identity, and step.
   Report completion, Astra rubric scores, and numerical prose profiles separately;
   include a small coding/instruction-following regression check. Choose cadence from
   measured training and evaluation time, rather than an arbitrary epoch interval.

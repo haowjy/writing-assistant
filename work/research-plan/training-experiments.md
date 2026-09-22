@@ -1,24 +1,54 @@
 # Training experiments
 
-## Starting point
+## Current decision: direct GRPO on Qwen3.8-27B
 
-The first feasibility checkpoint is Gemma 4 E2B-IT with QLoRA SFT; the final
-training model size remains open. See [SFT preparation](../sft/plan.md).
-The intended training direction is SFT bootstrapping followed by RL, with direct RL
-from the IT checkpoint as a comparison. The [research review](../sft/rl-bootstrap-research.md)
-separates bootstrap demonstrations, RL tasks, judge data, and held-out evaluation.
-Training scope depends on rollout behavior and the reliability of rewards.
-The [baseline comparison](baseline-comparison.md) covers Gemma 4 12B and E4B,
-pretrained and instruction-tuned, on an RTX 3090. The broader checkpoint comparison remains separate from the initial training
-feasibility test.
+Use the instruction-tuned Qwen3.8-27B checkpoint as the intended writing model and
+train it directly with GRPO. GRPO compares several attempts at the same task and
+updates the model toward the better-scoring attempts. There is no planned supervised
+fine-tuning (SFT) stage. SFT trains by imitating demonstrations; it remains an optional
+remedy for a demonstrated gap in Qwen, not a prerequisite for reward training.
 
-The [branching authorship plan](branching-authorship.md) describes collecting
-harness-backed sessions across plot directions and prose styles for this training.
+Gemma 4 E2B-IT is only a cheap local test of the machinery: generating attempts,
+judging them, applying updates, saving checkpoints, resuming, and loading the result.
+Its failures do not establish that Qwen needs demonstrations. Its successes do not
+establish that training will improve Qwen. Do not simplify the target task collection
+merely to make E2B succeed.
 
-### Final-base candidates (deferred)
+Qwen's size is a working choice, not a measured minimum for usable writing. Pin its
+exact checkpoint and training configuration before execution. Hosted Qwen inference
+can support a baseline and judge calibration; training its weights requires separate
+compute. The target is at least 64K training context, ideally 128K, subject to a
+Qwen-specific feasibility measurement. E2B memory and timing estimates do not transfer.
 
-The E2B feasibility run does not choose the production base. Decide the base only after
-the mini-eval subset exists and has been run on the E2B checkpoint. Candidates:
+The reward adapter exists, but an end-to-end GRPO training loop is not implemented.
+The main unresolved readiness question is whether Qwen produces meaningfully different
+attempts and whether the judge ranks them reliably. Reconsider targeted SFT only if a
+needed behavior remains too rare after checking the tasks, instructions, and rewards.
+A few stronger-model examples may help validate the judge without becoming SFT data.
+
+## Decisions still needed before the first substantive run
+
+- Define success: which writing and collaboration improvements matter, and which
+  regressions would disqualify a checkpoint.
+- Validate the reward, including its handling of instruction violations, missing
+  evidence, and weak versus strong prose. The current weights are provisional.
+- Correct the task-balance proposal's contradictory requirements before expanding the
+  collection. The 300-task target is an estimate, not a proven minimum.
+- Define system-prompt variation. Separate paraphrases, amount of guidance, and different
+  behavioral requirements; keep the prompt identical within each GRPO comparison group.
+  Record the exact prompt and give it to the judge. Variation is not implemented yet.
+- Choose how the simulated writer responds to questions and revisions in multi-turn tasks.
+- Freeze development comparisons, final-test separation, compute budget, and stopping rules.
+
+The [next-experiment TODO](TODO.md) tracks execution. The [task and reward design](../sft/rl-task-generation.md)
+and [simulated author](../sft/simulated-author.md) provide the supporting proposals.
+No training run or additional paid work is authorized by this plan update.
+
+## Other model options and later experiments
+
+The remaining sections are possible follow-up experiments, not prerequisites for the
+direct-GRPO run. Reopen model selection only with evidence; the earlier candidate list
+is retained for comparison:
 
 | Base | Params / type | License | Notes |
 |---|---|---|---|
@@ -139,11 +169,16 @@ After each major stage, test ordinary instruction following, QA, summarization, 
 
 ## Recommended First Experiment
 
-Compare the unchanged IT checkpoint, SFT-only, direct RL from IT, and short SFT → RL.
-Use matched RL task pools and rollout budgets for the two RL conditions. The SFT
-warm-up should address demonstrated sampling or tool-use gaps; do not impose a fixed
-500–1,000-example prerequisite. Separate planner/writer adapters remain later ablations.
-Validate rewards, source permissions, and a bounded runtime test before scaling.
+Compare the unchanged Qwen3.8-27B instruction-tuned checkpoint with the same checkpoint
+trained directly using GRPO. Hold evaluation tasks, system prompts, tools, generation
+settings, and precision fixed between the two. Keep final tests out of checkpoint
+selection and report writing quality separately from instruction and tool correctness.
+
+Before that comparison, use E2B for a bounded engineering test and Qwen inference for
+judge validation on actual target-model attempts. No SFT-only or SFT-then-RL arm is
+required. Add one only if a demonstrated Qwen behavior gap justifies that experiment.
+Separate planner/writer adapters remain later options. Validate rewards, source
+permissions, save/resume, and measured runtime before scaling.
 
 ## Supervision setup
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Set the active training plan to direct GRPO on instruction-tuned Qwen3.8-27B.
+  Use E2B only for engineering verification; make SFT conditional on a demonstrated
+  Qwen behavior gap. Align the work order and initial evaluation comparison, and
+  list unresolved reward, task, system-prompt, compute, and success criteria.
+
 - Make the across-output prose measures computable. `prose.sample_distribution` pools
   every attempt of one scenario, which is what MMD, self-BLEU and dispersion require; a
   per-attempt profile could only ever report them as insufficient samples. `MINIMUM_SAMPLES`

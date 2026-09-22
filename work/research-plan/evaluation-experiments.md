@@ -231,7 +231,22 @@ Record dataset version, seed, base checkpoint, LoRA config, objective, LR, steps
 
 Vary the factor under study while holding the other conditions fixed.
 
-### Recommended Initial Matrix
+### Current first comparison
+
+Compare unchanged instruction-tuned Qwen3.8-27B with the same checkpoint trained
+directly using GRPO. Keep evaluation tasks, system prompts, tools, precision, and
+generation settings fixed. Use development cases for checkpoint selection; reserve
+final tests for the final comparison. Judge calibration must include Qwen outputs,
+not only easy-to-detect errors from a smaller model.
+
+E2B runs verify the training machinery and are not evidence of Qwen writing quality.
+There is no scheduled SFT arm. See the [training decision](training-experiments.md)
+for readiness gates and decisions still open.
+
+### Deferred alternatives, not the initial matrix
+
+The following SFT and specialist comparisons are options only if a demonstrated
+problem justifies them. They are not required before direct GRPO.
 
 | ID | Model | Training |
 |---|---|---|
