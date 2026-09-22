@@ -233,6 +233,14 @@ Vary the factor under study while holding the other conditions fixed.
 
 ### Current first comparison
 
+The primary outcome is long-form project memory and effective use of large writing
+projects. Test whether the agent preserves author decisions, retrieves relevant facts,
+updates its wiki after accepted changes, and uses that information correctly in later
+work. A well-linked wiki alone is insufficient evidence. Better prose is a companion
+outcome, measured with pre-existing external benchmarks and our own task-and-judging
+suite. Report both, including regressions; do not equate higher training reward with
+success. Exact gain thresholds remain open.
+
 Compare unchanged instruction-tuned Qwen3.8-27B with the same checkpoint trained
 directly using GRPO. Keep evaluation tasks, system prompts, tools, precision, and
 generation settings fixed. Use development cases for checkpoint selection; reserve

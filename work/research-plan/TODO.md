@@ -13,13 +13,19 @@ keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 
 ## Immediate order
 
-1. Agree on success criteria and unacceptable regressions for Qwen.
+1. Define measurements and unacceptable regressions for the agreed primary goal:
+   long-form project memory and effective use of large writing projects. Wiki maintenance
+   supports that goal; better prose is a companion goal. Compare on external benchmarks
+   and our own tasks.
 2. Inspect grouped Qwen attempts and validate the judge's rankings; authorize any new
    inference or grading spend separately.
-3. Correct conflicting task-balance requirements and specify system-prompt variation
-   and the simulated writer's behavior before generating a larger collection.
+3. Correct conflicting task-balance requirements. Include the full task mix and broad,
+   coherent variation of system prompts and user instructions. Specify the simulated
+   writer's behavior before generating a larger collection.
 4. Connect the environment and reward adapter to GRPO and verify a bounded E2B run.
-5. Size Qwen training compute, freeze the evaluation protocol, and approve a bounded run.
+5. Keep local engineering runs within measured RTX 3090 capacity. Clarify whether the
+   desired 256K Qwen context means training length or usable context, obtain a cost
+   estimate, freeze the evaluation protocol, and approve a bounded run.
 
 The checklist below contains supporting work, not a requirement to finish every item
 before the engineering test. Demonstrations and SFT are conditional, not on the critical path.

@@ -17,8 +17,13 @@ merely to make E2B succeed.
 Qwen's size is a working choice, not a measured minimum for usable writing. Pin its
 exact checkpoint and training configuration before execution. Hosted Qwen inference
 can support a baseline and judge calibration; training its weights requires separate
-compute. The target is at least 64K training context, ideally 128K, subject to a
-Qwen-specific feasibility measurement. E2B memory and timing estimates do not transfer.
+compute. For now, bound engineering experiments by measured RTX 3090 memory and
+runtime. For Qwen, the desired context is at least 256K, subject to cost and verified
+model support. Clarify whether this requires training on 256K sequences or reliable
+256K use after training on a shorter length mix; these are different requirements.
+Do not assume every rollout must fill the context window. E2B memory and timing
+estimates do not transfer to Qwen. Obtain a compute quote before committing to long-
+context Qwen training; the target is not authorization for rented GPUs.
 
 The reward adapter exists, but an end-to-end GRPO training loop is not implemented.
 The main unresolved readiness question is whether Qwen produces meaningfully different
@@ -26,19 +31,66 @@ attempts and whether the judge ranks them reliably. Reconsider targeted SFT only
 needed behavior remains too rare after checking the tasks, instructions, and rewards.
 A few stronger-model examples may help validate the judge without becoming SFT data.
 
-## Decisions still needed before the first substantive run
+## Success and training coverage
 
-- Define success: which writing and collaboration improvements matter, and which
-  regressions would disqualify a checkpoint.
-- Validate the reward, including its handling of instruction violations, missing
-  evidence, and weak versus strong prose. The current weights are provisional.
-- Correct the task-balance proposal's contradictory requirements before expanding the
-  collection. The 300-task target is an estimate, not a proven minimum.
-- Define system-prompt variation. Separate paraphrases, amount of guidance, and different
-  behavioral requirements; keep the prompt identical within each GRPO comparison group.
-  Record the exact prompt and give it to the judge. Variation is not implemented yet.
-- Choose how the simulated writer responds to questions and revisions in multi-turn tasks.
-- Freeze development comparisons, final-test separation, compute budget, and stopping rules.
+The primary goal is better long-form project memory and the ability to work with large
+writing projects over time. The agent should preserve the author's decisions, retrieve
+relevant facts from substantial project files, carry accepted revisions forward, and
+maintain continuity across chapters and conversations. Project facts belong in external
+files that the model uses through tools, not facts memorized into its weights.
+
+A well-structured wiki is a means to that goal: navigable pages, useful links, accurate
+content, clear distinctions between proposals and accepted story facts, and consistent
+updates after revisions. Judge the wiki by whether it supports later retrieval and
+writing, not just its appearance, page count, or number of tool calls. Better prose is
+an important companion goal; prettier isolated scenes do not establish better project
+memory.
+
+Measure improvement over the unchanged target model on both pre-existing external
+benchmarks and our own task-and-judging suite. External writing benchmarks assess prose;
+our tasks must also exercise retaining, retrieving, updating, and using information
+across a long project. Higher training reward alone does not qualify. Use development cases for iteration and checkpoint selection; keep final tests
+held out. Report the separate scores and regressions rather than hiding tradeoffs in
+one average. Exact minimum gains and acceptable regressions remain to be agreed.
+
+Train on the full task mix: drafting, revision, planning and alternatives, project-file
+and knowledge-base maintenance, retrieval-grounded writing, and multi-turn collaboration.
+All are in scope; this does not imply equal counts.
+
+Include code-grounded writing as a task type within this mix, not a separate training
+stage. Examples are reading a small code project to write or update its documentation,
+or turning a simulation's rules and state into a story. These tasks exercise finding,
+understanding, and using project information across formats. Documentation must not
+invent implemented behavior; story tasks must distinguish source-defined rules from
+permitted fictional invention. Judge source fidelity and writing usefulness, with
+later retrieval or revision where appropriate. The initial tasks use the existing file
+tools only; code execution is not available and must not be implied by the task or the
+answer. The proportion and concrete examples remain to be specified.
+
+Correct the balance proposal's contradictory requirements before expanding it. The
+300-task target remains an estimate, not a proven minimum.
+
+Vary instructions broadly, including system prompts and user requests. Cover different
+wording, amounts of guidance, and compatible behavioral requirements. Diversity must
+still produce coherent, feasible tasks with clear judging criteria. Keep system-prompt
+variation separate from task difficulty, preserve the exact prompt in run records, and
+use identical prompts within a GRPO comparison group. The judge must see the instructions
+that applied to that attempt. Reserve unfamiliar wording and combinations for evaluation.
+This variation is a robustness objective, not a prerequisite of fine-tuning, and is not
+yet implemented in the runner.
+
+## What remains to validate or decide
+
+The existing mixed reward design remains the starting point; do not restart reward
+research by default. Validate its rankings on actual Qwen attempts, including better
+versus weaker prose, instruction violations, and missing evidence. Unit tests verify
+score calculation, not literary judgment. The current weights and pointwise-versus-
+pairwise judging choice remain provisional; change them if the validation reveals a
+problem. Keep training judgment separate from final evaluation.
+
+Still resolve the simulated writer's responses to questions and revisions, exact
+success thresholds, development comparison schedule, training budget, stopping rules,
+and the scope and cost of the 256K context target.
 
 The [next-experiment TODO](TODO.md) tracks execution. The [task and reward design](../sft/rl-task-generation.md)
 and [simulated author](../sft/simulated-author.md) provide the supporting proposals.
