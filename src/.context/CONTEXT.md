@@ -342,3 +342,14 @@ scores pending.
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.
 Prose quality still uses only designated prose selections.
+
+`grpo_full48_runner.py` selects intact release/reward bindings and an explicit
+`intact-full48-v1` admission profile. The default probe profile keeps its original
+limits and 32-seed stride. Full48 reserves 48 seeds per slot, validates ordered
+visits before sampling, pauses at pass one, and refuses recovery with uncommitted
+sampled groups (generic trainer recovery may resample; this recipe may not).
+Coverage counts optimizer progress only from complete hash-verified checkpoints.
+`grpo_full48_supervisor.py` owns the inherited writer lease and advisory process
+progress; quiet output never triggers termination. Preparation/preflight import no
+model stack. See [full48 usage](../../docs/grpo-full48.md) for frozen allocations
+and their limits; CPU schedule proof does not establish native training fit.

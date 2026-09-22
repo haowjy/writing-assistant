@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add a dedicated intact full48 runner: 96 ordered groups, 384 disjoint-seed attempts,
+  pass-one checkpoint pause, exact boundary recovery, coverage accounting and an
+  inherited single-writer lease. Preserve historical probe limits and original data.
+  Verify six real tiny CPU updates against uninterrupted state; native full48 memory
+  fit and streaming compatibility integration remain launch gates.
+
 - Record approved isolated TRL/Liger installation and eight CPU softcap comparisons.
   Verify imports, dependencies and archive hashes; preserve the original environment.
   Report BF16 numerical differences without declaring parity. Remaining qualification

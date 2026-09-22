@@ -10,6 +10,7 @@ execution step; no SFT demonstrations are required.
 ## Inspect first
 
 For the frozen three-task experiment, use the [prepared Gemma probe](grpo-probe.md).
+For the intact two-pass experiment, use the separate [full48 runner](grpo-full48.md).
 The generic entrypoint below remains unconfigured for other experiments.
 
 Run from the repository root using the existing training environment. These commands

@@ -29,8 +29,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
   trainer comparisons measured BF16 LoRA gradient differences of 0.79–1.58% by norm;
   this is not a formula-bug finding or accepted parity. Train-entry patch checks,
   accumulation/resume and repository compatibility remain unverified. See readiness.
-- [ ] Build the full48 runtime with faithful token budgets, collision-free seeds,
-  finite-work supervision and checkpoint recovery; verify native long-trajectory fit.
+- [x] Build the separate [full48 runtime](docs/grpo-full48.md) with intact-task budgets,
+  collision-free seeds, finite-work supervision and fail-closed checkpoint recovery.
+  CPU proof verifies pass-one pause/resume and exact optimizer/token state.
+- [ ] Integrate qualified streaming compatibility and verify native long-trajectory
+  training fit at the frozen full48 limits before launch.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until the

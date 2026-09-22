@@ -1,8 +1,8 @@
 # Intact full48 preparation
 
-**This prepares data and mechanical rewards; it does not launch training.**
-The 48 original wave1 training tasks remain unchanged. The full-round runner,
-larger runtime budgets and native training-memory fit are not yet verified.
+**The dedicated full48 runner preserves all 48 original tasks and mechanical rewards.**
+CPU scheduling and recovery are verified. Native long-trajectory training-memory
+fit and source-pinned streaming integration remain separate launch gates.
 See [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
@@ -50,9 +50,9 @@ reward_spec = release["reward_spec"]
 reward_callback = mechanical_full48_reward
 ```
 
-These are inputs to the [trainer interface](grpo.md), not an executable full48
-recipe: its existing admission limits still reject the original task envelopes.
-Do not work around that rejection by shortening tasks or reusing the probe scorer.
+These are inputs to the [trainer interface](grpo.md). The dedicated runner below
+selects the explicit full48 admission profile; the default probe limits remain
+unchanged. Do not shorten tasks or reuse the probe scorer.
 
 Reward is zero unless execution and the complete declared turn sequence are
 supported by saved evidence, and every required final artifact is delivered in its
@@ -74,3 +74,114 @@ preserved. Protected sentences must survive verbatim; the originals do not
 unambiguously require their final position, so the scorer adds no suffix gate.
 Fixtures deliberately expose these limitations. Neither passing fixtures nor a
 higher mechanical scalar establishes better writing or project memory.
+
+## Dedicated finite runner
+
+`scripts/run_grpo_full48.py` composes the original release and this reward with
+public TRL training. Inspection, preparation and preflight never load a model,
+query a GPU, install packages, or download anything. Use a fresh run directory:
+
+```bash
+export CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src
+"$PYTHON" scripts/run_grpo_full48.py "$RELEASE" /absolute/new/full48-run
+"$PYTHON" scripts/run_grpo_full48.py "$RELEASE" /absolute/new/full48-run --phase prepare
+"$PYTHON" scripts/run_grpo_full48.py "$RELEASE" /absolute/new/full48-run --phase preflight
+```
+
+Preparation binds the release, ordered schedule, recipe and source hashes.
+Preflight proves data/settings/recovery admission only. It does not certify
+trainer compatibility or native GPU memory fit. Those launch prerequisites must
+be qualified separately. This checkout still enforces the TRL 1.13 guard;
+the source-pinned streaming compatibility integration is a separate change.
+
+After compatibility and native memory qualification, in the qualified execution
+environment with the intended GPU visible, explicitly execute each invocation:
+
+```bash
+"$PYTHON" scripts/run_grpo_full48.py "$RELEASE" /absolute/new/full48-run --phase train --execute
+"$PYTHON" scripts/run_grpo_full48.py "$RELEASE" /absolute/new/full48-run --phase resume --execute
+"$PYTHON" scripts/run_grpo_full48.py "$RELEASE" /absolute/new/full48-run --phase coverage
+```
+
+The first invocation stops after verified checkpoint 48. Explicit resume selects
+only the latest complete checkpoint and finishes at 96. Recovery from an earlier
+clean boundary still stops at 48 first. A group sampled beyond the latest complete
+checkpoint blocks recovery: this recipe never resamples or retries it. Preserve
+that partial run for inspection. Missing, altered or unavailable evidence also
+halts. Later incomplete checkpoint directories can be quarantined by the trainer
+only when there is no uncommitted sampled work. Keep all attempt files and the
+latest two full checkpoints. Up to eight invocation exports allow the two planned
+invocations plus clean-boundary recovery, without unbounded adapter copies.
+
+The supervisor holds an exclusive file lock inherited by its child. Ownership
+survives supervisor death while the worker remains alive. It records process CPU,
+RSS and IO snapshots plus group/result/checkpoint progress every 15 seconds, with
+worker logs saved separately. Quiet logs have no termination meaning. There is no
+elapsed-time deadline or automatic retry. An explicit interrupt signals only its
+own child process group. No GPU ownership or memory-fit measurement is implied by
+these CPU/process observations.
+
+### Frozen recipe and budgets
+
+| Setting | Value |
+|---|---|
+| Base | Fresh `google/gemma-4-E2B-it`, revision `3e22461f65e89153144f8adb70e3b8c2cc9845a7` |
+| Schedule | Original 001–048 in order, twice; 96 groups, 384 fresh attempts |
+| Objective/ties | Public DAPO; ordinary TRL continuation through ties; unavailable halts |
+| Batch | Group 4, microbatch 1, accumulation 4; one group per optimizer update |
+| LoRA | BF16 base, rank 8, alpha 16, all-linear, dropout 0, bias none |
+| Optimizer | AdamW, learning rate `1e-5`, constant scheduler, weight decay 0, beta 0 |
+| Generation | Thinking on; temperature/top-p 1, top-k 0 |
+| Checkpointing | Every update, latest two retained; nonreentrant activation checkpointing |
+| Native token caps | 8192 per decision, 65536 sampled total, 131072 complete trajectory/context |
+| Original task maxima admitted | 48 decisions, 64 tools, 12000 whitespace read units; original storage ≤262144 bytes |
+| Seeds | `42 + (group * 4 + slot) * 48 + decision`, all indices zero-based |
+
+Each slot reserves 48 seeds, covering the largest unchanged decision envelope.
+The 384 intervals reserve seeds 42–18473 without overlap. Tasks with fewer allowed
+decisions leave unused seeds; no seed is reassigned. Settings and this policy are
+part of experiment identity.
+
+The per-call allocation allows a 1200-word deliverable at an explicit planning
+allowance of four tokens/word (4800) plus 3392 reasoning/framing tokens. A maximal
+final three-file delivery uses 14400 tokens at that allowance. Reserving another
+512 tokens for each of 48 decisions uses 24576, leaving 26560 sampled tokens for
+revisions. Context reserves all 65536 sampled tokens, 48000 for 12000 read units at
+four tokens/unit, the measured 850-token initial prompt and 222-token followups,
+leaving 16464 for observation framing and other external content. The pinned model
+configuration declares 131072 positions.
+
+These are finite engineering allocations, **not token-per-word upper bounds**.
+They admit every original task and a full final delivery without shortening any
+brief, followup or budget. They do not guarantee arbitrary repeated full drafts,
+unbounded reasoning or adversarial tokenization will fit. The earlier constructed
+native paths measured at most 951 tokens per action, 3014 sampled tokens and 4066
+trajectory tokens; compressible filler and short intermediate replies make those
+existence checks, not realistic writing forecasts. Context overflow fails explicitly;
+ordinary candidate exhaustion retains its failure evidence and mechanical reward
+semantics. Training fit at these caps remains unverified.
+
+Coverage reports retain expected group/pass/task/slot identities in the prepared
+schedule and validate them against observed evidence, including seeds and invocation
+lineage. They distinguish started/scored groups, ties, relative-signal groups,
+checkpointed optimizer boundaries, missing/duplicate slots and uncommitted work.
+Physical attempt-directory counts remain visible even when identity evidence is
+corrupt. A complete report requires all 384 identities and checkpoint 96. Mechanical
+reward and tie counts establish no semantic or literary improvement.
+
+### Live CPU schedule proof
+
+This creates random tiny CPU weights, uses explicitly engineered task/reward
+fixtures, and runs the same full48 scheduling and recovery lifecycle:
+
+```bash
+CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src \
+  "$PYTHON" -m scripts.smoke_grpo_full48_cpu --execute --output /absolute/new/full48-cpu
+```
+
+Three fixture tasks visited twice produce six updates and 24 attempts. The lifecycle
+pauses after pass one/update 3, then resumes through update 6. The check compares
+adapter, optimizer, scheduler, RNG and sampled token ledgers exactly with an
+uninterrupted run; checks four tied and two signal groups; verifies all seeds,
+ordering, accounting and two-checkpoint retention. This proves the schedule shape
+without claiming 96 production updates or native Gemma/BF16 memory fit.

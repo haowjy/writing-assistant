@@ -44,17 +44,26 @@ class GRPOSettings:
     gradient_checkpointing: bool = True
     gradient_checkpointing_use_reentrant: bool = False
 
+    runtime_profile: str = "probe"  # Explicit admission/seed policy; not a TRL backend.
+
+    @property
+    def decision_seed_stride(self):
+        return 48 if self.runtime_profile == "intact-full48-v1" else 32
+
     @property
     def gradient_accumulation_steps(self):
         return self.group_size // (self.microbatch_size or self.group_size)
 
     def validate(self):
+        if self.runtime_profile not in ("probe", "intact-full48-v1"):
+            raise ValueError("Unknown runtime admission profile")
+        full48 = self.runtime_profile == "intact-full48-v1"
         if self.loss_type not in ("grpo", "dapo"):
             raise ValueError("Loss type must be grpo or dapo")
         if self.tie_policy not in ("halt", "continue"):
             raise ValueError("Tie policy must be halt or continue")
         checkpoint_identity(self.model_id, self.revision)
-        if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= 20):
+        if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= (96 if full48 else 20)):
             raise ValueError("Serial probe requires group size 2..8 and optimizer steps 1..20")
         if self.microbatch_size is not None and (
             type(self.microbatch_size) is not int
@@ -62,8 +71,13 @@ class GRPOSettings:
             or self.group_size % self.microbatch_size != 0
         ):
             raise ValueError("Training microbatch must be a positive integer dividing group size")
-        if not (1 <= self.max_tokens <= self.max_generated_tokens < self.context_tokens <= 4096):
-            raise ValueError("Require bounded generated tokens < context <= 4096")
+        ceiling = 131072 if full48 else 4096
+        if not (1 <= self.max_tokens <= self.max_generated_tokens < self.context_tokens <= ceiling):
+            raise ValueError(f"Require bounded generated tokens < context <= {ceiling}")
+        if type(self.seed) is not int or not 0 <= self.seed < 2**32 - (
+            self.max_steps * self.group_size * self.decision_seed_stride
+        ):
+            raise ValueError("Seed ranges must fit unsigned 32-bit RNG space")
         if not 1 <= self.max_invocations <= 8:
             raise ValueError("Probe invocations must be bounded to 1..8")
         if self.lora_rank < 1 or not 0 < self.learning_rate <= 0.01:
@@ -88,10 +102,11 @@ def inspect_grpo(tasks, output, *, settings, reward_spec, admission, system_prom
         if set(visible["tools"]) - {s["function"]["name"] for s in TOOL_SCHEMAS}:
             raise ValueError("Only the five workspace tools are supported")
         b = visible["budgets"]
+        full48 = settings.runtime_profile == "intact-full48-v1"
         if not (
-            1 <= b["max_steps"] <= 16
-            and 0 <= b["max_tool_calls"] <= 32
-            and 0 <= b["max_read_tokens"] <= 8192
+            1 <= b["max_steps"] <= (48 if full48 else 16)
+            and 0 <= b["max_tool_calls"] <= (64 if full48 else 32)
+            and 0 <= b["max_read_tokens"] <= (12000 if full48 else 8192)
             and 0 < b["max_total_bytes"] <= 1_000_000
         ):
             raise ValueError("Task exceeds bounded probe budgets")
@@ -116,13 +131,18 @@ def inspect_grpo(tasks, output, *, settings, reward_spec, admission, system_prom
         "temperature": 1.0,
         "top_p": 1.0,
         "top_k": 0,
-        "seed_policy": "run_seed + (global_step * group_size + slot) * 32 + decision",
+        "seed_policy": (
+            "run_seed + (global_step * group_size + slot) * "
+            f"{settings.decision_seed_stride} + decision"
+        ),
         "dropout": 0,
         "weight_decay": 0,
         "retention": {
             "trainer_checkpoints": 2,
             "inference_adapters": settings.max_invocations,
-            "attempts": settings.max_steps * settings.group_size * settings.max_invocations,
+            "attempts": settings.max_steps
+            * settings.group_size
+            * (1 if settings.runtime_profile == "intact-full48-v1" else settings.max_invocations),
             "policy": "Keep every attempt; refuse after max_invocations",
         },
         "evaluation": "none",
@@ -404,7 +424,13 @@ def train_grpo(
             )
 
     rollouts = RolloutGroups(
-        tasks, settings, output, reward_callback, backend_factory, system_prompt
+        tasks,
+        settings,
+        output,
+        reward_callback,
+        backend_factory,
+        system_prompt,
+        invocation_id=invocation.name,
     )
 
     class CheckpointLifecycle(TrainerCallback):
