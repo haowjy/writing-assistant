@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add a separate inspect-first 32768-token production Gemma controlled GPU fit gate,
+  native long-prefix generation check, finite update/full-checkpoint evidence, and
+  complete NVML ownership admission before fit and full48 train/resume model loads.
+
 - Propagate host workspace failures as unavailable infrastructure instead of candidate
   rewards. Bind the intact runner to a practical 32,768-token context and 16,384-token
   sampled-action envelope; remove the known-impossible 131K dense-mask contract before

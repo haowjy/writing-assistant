@@ -217,6 +217,30 @@ storage budgets and every task/output remain unchanged. The context cap does not
 promise that an attempt can spend the entire optional read allowance alongside the
 maximum output; overflow remains explicit failure, never truncation.
 
+## Production fit command
+
+The [inspect-first GPU fit command](../../docs/grpo-gpu-fit.md) binds one fixed
+32768-token controlled training profile and a separate native 32767+1 generation
+check. Full48 train/resume share its complete graphics/compute ownership admission,
+with the existing display allowlist and memory limits unchanged. Source/profile
+and prepared-data checks precede model loading. A passing CPU suite or prepared
+profile is not a passing GPU fit; production remains blocked until live evidence
+passes. The fit command never starts production.
+
+The first v2 invocation stopped at ownership before either production model load.
+The RTX 3090 had 22676 MiB free, but total listed process allocation was 1079 MiB
+against the unchanged 768 MiB cap. Unknown consumers were Xwayland (PID 6706,
+6 MiB), ghostty (1264841, 124 MiB; 3230837, 117 MiB), Steam (1330160, 8 MiB),
+and steamwebhelper (1330493, 49 MiB; 1330518, 171 MiB). No consumer was terminated;
+no generation, GPU update or production launch occurred. Full XML and rejection
+are in `gpu-fit-v2/runtime/ownership-before/` in the shared work item. Ownership
+must be resolved by the user; rerun the unchanged profile in a fresh directory.
+
+The committed command and CPU checks are complete: 357 repository tests (two skips),
+12 focused tests in the qualified environment, cached-tokenizer lengths, and a live
+tiny BF16 six-update/exact-resume check through the shared trainer configuration.
+Those checks do not clear the GPU fit blocker.
+
 ## Next gate and evidence
 
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),

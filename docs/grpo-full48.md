@@ -193,3 +193,18 @@ adapter, optimizer, scheduler, RNG and sampled token ledgers exactly with an
 uninterrupted run; checks four tied and two signal groups; verifies all seeds,
 ordering, accounting and two-checkpoint retention. This proves the schedule shape
 without claiming 96 production updates or native Gemma/BF16 memory fit.
+
+## Production GPU fit gate
+
+The separate [fit command](grpo-gpu-fit.md) freezes one controlled memory profile
+at 32768 tokens and exercises cached-base native generation before one DAPO update.
+Its deterministic tokens and diagnostic rewards do not establish sampled success.
+Pass this gate before launching full48; the fit command never launches production.
+
+Both full48 `train` and `resume` now verify the prepared identity and pinned runtime,
+then admit the complete `nvidia-smi -q -x` inventory before model loading. Graphics
+and compute consumers are included. The existing display allowlist is unchanged:
+unknown consumers, more than 256 MiB per process, more than 768 MiB in total, or
+less than 22000 MiB free refuse execution. Each admission retains raw XML and a
+structured result under `ownership/`. No consumer is terminated. This is a current
+inventory check, not a reservation against applications starting later.

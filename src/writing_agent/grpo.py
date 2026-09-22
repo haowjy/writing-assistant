@@ -472,43 +472,13 @@ def train_grpo(
             return control
 
     args = GRPOConfig(
-        **(verified_runtime["config"] if verified_runtime else {}),
-        output_dir=str(output),
-        max_steps=settings.max_steps,
-        per_device_train_batch_size=settings.microbatch_size or settings.group_size,
-        gradient_accumulation_steps=settings.gradient_accumulation_steps,
-        generation_batch_size=settings.group_size,
-        num_generations=settings.group_size,
-        learning_rate=settings.learning_rate,
-        lr_scheduler_type="constant",
-        weight_decay=0.0,
-        seed=settings.seed,
-        data_seed=settings.seed,
-        use_cpu=next(model.parameters()).device.type == "cpu",
-        bf16=next(model.parameters()).dtype == torch.bfloat16,
-        gradient_checkpointing=settings.gradient_checkpointing,
-        gradient_checkpointing_kwargs={
-            "use_reentrant": settings.gradient_checkpointing_use_reentrant
-        },
-        optim="adamw_torch",
-        beta=0.0,
-        num_iterations=1,
-        disable_dropout=True,
-        temperature=1.0,
-        top_p=1.0,
-        top_k=0,
-        max_completion_length=settings.max_generated_tokens,
-        scale_rewards="group",
-        loss_type=settings.loss_type,
-        mask_truncated_completions=False,
-        shuffle_dataset=False,
-        report_to="none",
-        logging_steps=1,
-        save_steps=1,
-        save_total_limit=2,
-        eval_strategy="no",
-        dataloader_num_workers=0,
-        dataloader_pin_memory=False,
+        **trainer_config(
+            settings,
+            output,
+            use_cpu=next(model.parameters()).device.type == "cpu",
+            bf16=next(model.parameters()).dtype == torch.bfloat16,
+            implementation_config=verified_runtime["config"] if verified_runtime else None,
+        )
     )
     try:
         trainer = GRPOTrainer(
@@ -553,3 +523,46 @@ def train_grpo(
     except BaseException as exc:
         save_json(invocation / "stopped.json", {"error": f"{type(exc).__name__}: {exc}"})
         raise
+
+
+def trainer_config(settings, output, *, use_cpu, bf16, implementation_config=None):
+    """Public TRL configuration shared by native training and controlled memory sizing."""
+    return dict(
+        **(implementation_config or {}),
+        output_dir=str(output),
+        max_steps=settings.max_steps,
+        per_device_train_batch_size=settings.microbatch_size or settings.group_size,
+        gradient_accumulation_steps=settings.gradient_accumulation_steps,
+        generation_batch_size=settings.group_size,
+        num_generations=settings.group_size,
+        learning_rate=settings.learning_rate,
+        lr_scheduler_type="constant",
+        weight_decay=0.0,
+        seed=settings.seed,
+        data_seed=settings.seed,
+        use_cpu=use_cpu,
+        bf16=bf16,
+        gradient_checkpointing=settings.gradient_checkpointing,
+        gradient_checkpointing_kwargs={
+            "use_reentrant": settings.gradient_checkpointing_use_reentrant
+        },
+        optim="adamw_torch",
+        beta=0.0,
+        num_iterations=1,
+        disable_dropout=True,
+        temperature=1.0,
+        top_p=1.0,
+        top_k=0,
+        max_completion_length=settings.max_generated_tokens,
+        scale_rewards="group",
+        loss_type=settings.loss_type,
+        mask_truncated_completions=False,
+        shuffle_dataset=False,
+        report_to="none",
+        logging_steps=1,
+        save_steps=1,
+        save_total_limit=2,
+        eval_strategy="no",
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
+    )

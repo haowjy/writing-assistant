@@ -8,6 +8,7 @@ import json
 from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
+from uuid import uuid4
 
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.grpo import (
@@ -19,8 +20,9 @@ from writing_agent.grpo import (
 )
 from writing_agent.grpo_full48 import load_full48_release, mechanical_full48_reward
 from writing_agent.grpo_full48_supervisor import verify_lease, writer_lease
+from writing_agent.grpo_gpu import admit_gpu
 from writing_agent.grpo_rollout import verify_tokens
-from writing_agent.grpo_runtime import STREAMING
+from writing_agent.grpo_runtime import STREAMING, verify_runtime
 
 SETTINGS = GRPOSettings(
     revision="3e22461f65e89153144f8adb70e3b8c2cc9845a7",
@@ -376,6 +378,8 @@ def execute_training(release, run_dir, *, lease_fd, resume=False):
     """Caller must hold the supervisor lease; CLI workers inherit its locked descriptor."""
     verify_lease(run_dir, lease_fd)
     preflight(release, run_dir, resume=resume)
+    verify_runtime(STREAMING)
+    admit_gpu(Path(run_dir) / "ownership" / uuid4().hex)
     data = load_full48_release(Path(release))
     return run_training(
         Path(run_dir) / "trainer",

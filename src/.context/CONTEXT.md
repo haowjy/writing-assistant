@@ -361,3 +361,12 @@ Coverage counts optimizer progress only from complete hash-verified checkpoints.
 progress; quiet output never triggers termination. Preparation/preflight import no
 model stack. See [full48 usage](../../docs/grpo-full48.md) for frozen allocations
 and their limits; CPU schedule proof does not establish native training fit.
+
+`grpo_gpu.py` admits the complete graphics/compute NVML inventory for production
+fit and full48 train/resume, reusing the unchanged probe display policy. Prepared
+identity and pinned source admission precede ownership; ownership precedes model
+loading. `grpo_gpu_fit.py` owns a separate single-attempt controlled token-ledger
+profile and native prefill check. Generation and training use sequential fresh
+processes so ownership never exempts an existing CUDA context. Controlled ledgers
+are memory evidence only; production rollouts remain native sampling. See
+[fit usage](../../docs/grpo-gpu-fit.md) for coverage and limits.
