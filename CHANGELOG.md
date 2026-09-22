@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Connect file-tool task attempts and rewards to gated TRL GRPO updates. Preserve
+  exact sampled tokens, mask environment text, and stop unavailable or tied groups.
+  Separate inference adapters from hash-checked resumable trainer checkpoints.
+  Add usage/recovery methodology and an offline CPU check proving adapter changes,
+  reload, and exact resume. Gemma GPU execution remains unverified.
+
 - Add a root `TODO.md` linked from the README as the active work order. Put the
   cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
   download; point older work checklists to it.

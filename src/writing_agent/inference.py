@@ -116,6 +116,10 @@ def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     return message
 
 
+class ContextBudgetExceeded(ValueError):
+    """An explicit context limit, with no history truncation."""
+
+
 class TransformersBackend:
     """A session over caller-owned weights; no conversation or KV cache persists."""
 
@@ -138,11 +142,7 @@ class TransformersBackend:
         self.config["enable_thinking"] = thinking
         self.calls = 0
 
-    def complete(
-        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
-    ) -> Completion:
-        import torch
-
+    def prepare_inputs(self, messages: list[dict], tools: list[dict]):
         rendered = render_messages(messages)
         if self.config["prompt_format"] == "chat":
             prompt = self.tokenizer.apply_chat_template(
@@ -161,6 +161,14 @@ class TransformersBackend:
             prompt = "\n\n".join(f"{m['role'].upper()}:\n{m['content']}" for m in rendered)
             prompt += "\n\nASSISTANT:\n"
             inputs = self.tokenizer(prompt, return_tensors="pt")
+        return prompt, inputs
+
+    def complete(
+        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
+    ) -> Completion:
+        import torch
+
+        prompt, inputs = self.prepare_inputs(messages, tools)
         inputs = inputs.to(self.model.device)
         input_tokens = inputs["input_ids"].shape[-1]
         emit(
@@ -173,7 +181,7 @@ class TransformersBackend:
         )
         limit = self.config["max_tokens"]
         if input_tokens + limit > self.config["context_tokens"]:
-            raise ValueError("Context budget exceeded; history was not truncated")
+            raise ContextBudgetExceeded("Context budget exceeded; history was not truncated")
         temperature = self.config["temperature"]
         generation = {
             "max_new_tokens": limit,

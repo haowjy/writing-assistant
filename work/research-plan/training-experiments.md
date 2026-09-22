@@ -25,8 +25,10 @@ Do not assume every rollout must fill the context window. E2B memory and timing
 estimates do not transfer to Qwen. Obtain a compute quote before committing to long-
 context Qwen training; the target is not authorization for rented GPUs.
 
-The reward adapter exists, but an end-to-end GRPO training loop is not implemented.
-The main unresolved readiness question is whether Qwen produces meaningfully different
+The [GRPO connection and checkpoint lifecycle](../../docs/grpo.md) are implemented.
+A tiny CPU model verifies optimizer updates and exact save/reload/resume; Gemma GPU
+execution remains unverified and comes next in the [root work order](../../TODO.md).
+The main unresolved research question is whether Qwen produces meaningfully different
 attempts and whether the judge ranks them reliably. Reconsider targeted SFT only if a
 needed behavior remains too rare after checking the tasks, instructions, and rewards.
 A few stronger-model examples may help validate the judge without becoming SFT data.

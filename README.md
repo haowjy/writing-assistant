@@ -1,7 +1,7 @@
 # Creative Writing Agent
 
-This research harness runs tool-use evaluations and prepares conversational training
-data for [creative-writing agents](wiki/project-goals.md).
+This research harness evaluates and trains tool-using
+[creative-writing agents](wiki/project-goals.md).
 
 **What to do next: [TODO.md](TODO.md)** — the short, active checklist.
 
@@ -74,6 +74,13 @@ uv run cwa export-sft path/to/trajectories.jsonl data/processed/train.jsonl
 Export produces TRL-style `messages` and `tools` columns and refuses to overwrite
 an existing file.
 
+## Training
+
+[GRPO usage and checkpoint methodology](docs/grpo.md) covers the inspect-first training
+entrypoint, candidate-token masks, separate inference adapters, and resumable checkpoints.
+A tiny offline CPU model verifies optimizer updates and exact resume; Gemma GPU execution
+remains a separately approved probe. No SFT demonstrations are required for GRPO.
+
 ## Limits
 
 The filesystem tools block absolute paths, traversal, symlinks, oversized files,
@@ -84,6 +91,6 @@ Current scorers check literal output constraints, file outcomes, tool errors, an
 edit scope. Literary quality is unscored. There is no automatic canon
 commit policy: the prompt teaches the distinction, and tests check file outcomes.
 
-GPU training and a held-out benchmark are not implemented.
+Gemma GPU training is unverified. Held-out long-form tasks exist but have not been run.
 See the [research wiki](wiki/index.md) for project concepts and the
 [research work plan](work/research-plan/index.md) for proposed experiments.

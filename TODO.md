@@ -13,8 +13,9 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [ ] Prepare a bounded **Gemma E2B short-context GRPO probe**, initially around
   2–4K total tokens per attempt. Use a few mechanically scored tasks, several attempts
   per task, and an explicit step/time budget. No SFT stage or Qwen download is needed.
-- [ ] Connect generation, workspace tools, reward calculation, and GRPO updates.
-  Check that learning applies to candidate-generated actions, not user or tool text.
+- [x] Connect generation, workspace tools, rewards, and GRPO updates. Verify candidate
+  token masks, real tiny-CPU adapter updates, save/reload, and exact checkpoint resume.
+  See [GRPO usage and checkpoint methodology](docs/grpo.md); Gemma execution is still pending.
 - [ ] After the probe scope is approved, run it on the **RTX 3090**. Verify actual
   adapter updates, checkpoint save/reload and resume; record peak GPU/RAM use, runtime,
   and disk growth. A successful load alone is not a passing training probe.
@@ -24,8 +25,9 @@ projects, supported by a maintained wiki, with better prose alongside it.
 
 Gemma readiness checked: `google/gemma-4-E2B-it` at revision
 `3e22461f65e89153144f8adb70e3b8c2cc9845a7` has its weights (about 10.25GB), tokenizer,
-and configuration cached locally. No trained adapter was found under `runs/` in the
-bounded inventory. The SFT dataset is unprepared; it is not required for this GRPO probe.
+and configuration cached locally. The connection has trained only a tiny random CPU
+model for engineering verification, not Gemma. The SFT dataset is unprepared; it is not
+required for this GRPO probe.
 
 ## Then: establish the Qwen experiment
 

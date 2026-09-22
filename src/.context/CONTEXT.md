@@ -231,7 +231,19 @@ assistant text/tool calls/endings, and mask embedded observations. Preparation
 rejects overlength data, reasoning fields, special-token input, and known evaluation
 source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
-the trainer. GPU training and checkpoint restore remain unverified.
+the trainer. SFT GPU training and checkpoint restore remain unverified.
+
+`grpo.py` connects fresh task groups to TRL's public rollout callback; it does not
+reuse SFT preparation or implement another RL loss. `grpo_rollout.py` owns append-only
+sampled tokens and external suffix masks. Do not rebuild training actions by rendering
+parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
+Training identity includes private scoring labels, unlike evaluation's rescorable
+identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
+before resume can mutate the model; engineered fixtures use separate, explicit admission.
+Unavailable or tied groups stop before updates; inference adapters and full trainer
+checkpoints are different artifacts. CPU optimizer/resume verification does
+not establish Gemma GPU fit. See [GRPO methodology](../../docs/grpo.md) for the bounded
+execution, recovery, and caller-owned reward contracts.
 
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the

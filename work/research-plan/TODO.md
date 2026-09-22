@@ -73,11 +73,12 @@ test. Demonstrations and SFT are conditional, not on the critical path.
   API budget. A large gap makes human-target data construction the highest-leverage
   change available, ahead of reward work; a small gap retires the idea. Record the
   configuration with the number.
-- [ ] Implement the direct-GRPO training connection and verify it with E2B on the RTX 3090.
-  Validate the native conversation/tool template and which generated tokens receive
-  training loss; exclude system/user messages and tool observations. Decide explicitly
-  how reasoning tokens are handled. The [prepared SFT pipeline](../sft/plan.md) is an
-  optional fallback, not this engineering test.
+- [x] Implement the [GRPO training connection](../../docs/grpo.md). Preserve sampled
+  actions, including generated reasoning, and mask user/tool observations. Native
+  tokenizer tests and real tiny-CPU optimizer/save/reload/resume checks pass.
+- [ ] Verify that connection with E2B on the RTX 3090 after scoped approval; CPU
+  results do not establish Gemma execution or memory fit. The
+  [prepared SFT pipeline](../sft/plan.md) remains an optional fallback.
 - [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):
   grounded source packets, permitted divergences, task-specific rewards, private judge
   evidence, coverage tracking, and reproducible per-group initial states.
