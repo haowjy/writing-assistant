@@ -25,8 +25,10 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Install approved pinned TRL `6c5f135` and Liger `0.8.3` in an isolated CPU
   qualification environment. Imports, declared dependencies and archive hashes pass;
   the original TRL 1.13 environment remains unchanged.
-- [ ] Qualify native softcap numerics and disable unrelated model-kernel patches.
-  Installation is not numerical qualification, repository compatibility or GPU fit.
+- [ ] Resolve numerical acceptance before continuing CPU qualification. Eight public
+  trainer comparisons measured BF16 LoRA gradient differences of 0.79–1.58% by norm;
+  this is not a formula-bug finding or accepted parity. Train-entry patch checks,
+  accumulation/resume and repository compatibility remain unverified. See readiness.
 - [ ] Build the full48 runtime with faithful token budgets, collision-free seeds,
   finite-work supervision and checkpoint recovery; verify native long-trajectory fit.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =

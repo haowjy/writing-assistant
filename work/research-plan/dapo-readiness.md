@@ -115,15 +115,40 @@ installation targeted only its own site-packages. This is not a self-contained c
 or a filesystem sandbox. Original package inventory and checked
 source hashes remain unchanged. No dependency upgrades or model downloads occurred.
 
-Numerical qualification remains open. Native Gemma softcaps in BF16 before promotion;
-upstream streams that operation in FP32. Measure
-probability/gradient differences rather than declaring equivalence. Also explicitly
+Numerical acceptance remains open after eight CPU comparisons. Native Gemma softcaps
+in BF16 before promotion; upstream streams that operation in FP32. Also explicitly
 disable unrelated Liger model-kernel replacements through public configuration;
 `use_liger_kernel=True` alone can enable those patches at train entry. The current
 repository deliberately accepts only TRL 1.13.0; do not bypass that gate or spoof
 metadata to claim compatibility. CPU qualification must precede a reviewed opt-in
-integration and native GPU fit test. No production model weights or GPU were used
-for installation/import checks; those checks do not establish numerical correctness.
+integration and native GPU fit test. No production model weights or GPU were used.
+
+The first finite numerical probe used public `GRPOTrainer.compute_loss` on identical
+small random Gemma4 text models with PLE/shared KV, LoRA8/alpha16, synthetic tokens,
+softcap30 and masked observations. It used evaluation mode with autograd, not a
+training loop. BF16 action-token differences were:
+
+| Head regime | Temperature | Maximum logprob difference | LoRA gradient norm-relative difference |
+|---|---:|---:|---:|
+| Ordinary random head | 1 | 5.72e-6 | 1.02% |
+| Ordinary random head | 0.7 | 7.63e-6 | 1.58% |
+| Artificially saturated head (weights ×300) | 1 | 0.08098 | 0.79% |
+| Artificially saturated head (weights ×300) | 0.7 | 0.11961 | 1.55% |
+
+These are synthetic stress measurements, not cached E2B estimates. FP32 controls
+had gradient norm-relative differences below 5.57e-7, although saturated cases
+exceeded some absolute 1e-6 smoke diagnostics. That old FP32 smoke threshold is not
+an established BF16 acceptance tolerance. No threshold was relaxed or precision
+policy silently accepted; these results do not establish a formula bug.
+
+Primary recomputation of all eight saved tensor pairs confirms identical parameters,
+backbone states and direct loss-mask gradients. Streaming bypassed `lm_head.forward`;
+no completion-wide vocabulary activation was saved. Trainer initialization preserved
+model methods with kernel-replacement flags disabled. **Train-entry dispatch remains
+untested**, as do the token-chunk boundary, changed-observation counterfactual,
+conversation ledgers, group4 accumulation, Adam/scheduler, ties and checkpoint resume
+on this stack. The probe stopped for numerical-policy review rather than promoting
+installation success into full qualification.
 
 The user approved ordinary TRL continuation without resampling. Explicit,
 identity-bound `tie_policy="continue"` is implemented; the default remains `"halt"`
@@ -146,7 +171,7 @@ belongs to the unimplemented full-round recipe.
 
 ## Next gate and evidence
 
-Complete the approved CPU memory-path qualification, then implement
+Resolve the measured numerical-policy difference, complete CPU qualification, then implement
 the full48 runtime with faithful token budgets, collision-free seeds, finite-work
 supervision and coverage-aware recovery. Prove native long-trajectory memory fit
 before committing to the full run. Do not silently truncate, shorten, omit or
@@ -161,6 +186,9 @@ Key files are `data-readiness.md`, `readiness-matrix.{md,json,csv}`,
 `integrated-suite.log`, `integrated-ties-cpu/smoke.json`, `memory-path-options.md`
 and `memory-primary-notes.md`. Installation evidence is in `memory-install.log` and
 `memory-qualification-v1/{installation.md,environment.json,installed-source-hashes.json}`.
+Numerical evidence: `memory-qualification-v1/cpu-gate/{report.md,results.json,*.pt}`
+and `memory-qualification-v1/primary-verification.json`. A failed postprocessing
+hook assumption is preserved; correction required no package changes or model reruns.
 Original data and previous GPU runs were not modified. Only the two approved package
 archives were downloaded; no new GPU training, model download or paid judge call occurred.
 

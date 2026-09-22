@@ -2,9 +2,10 @@
 
 ## [Unreleased]
 
-- Record approved isolated TRL/Liger installation. Verify imports, dependencies and
-  archive hashes; preserve the original environment. Numerical qualification and
-  full48 GPU execution remain pending.
+- Record approved isolated TRL/Liger installation and eight CPU softcap comparisons.
+  Verify imports, dependencies and archive hashes; preserve the original environment.
+  Report BF16 numerical differences without declaring parity. Remaining qualification
+  and full48 GPU execution stay pending.
 
 - Prepare the intact full48 mechanical reward with frozen release bindings, real
   sequence/write evidence and offline counterexamples. Reject unchanged or missing
