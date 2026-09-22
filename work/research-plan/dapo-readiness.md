@@ -99,24 +99,31 @@ observations. With Gemma's 262144-word vocabulary, one FP32 logits tensor costs
 8 GiB at 8192 positions or 16 GiB at 16384 positions, before other tensors. These
 are allocation calculations, not measured peak memory or fit.
 
-The installed fused route is gated on absent Liger and does not pass/apply Gemma's
-configured logit softcap. Installing a package and switching that flag is therefore
-not an established correct solution. A supported memory-efficient path needs
-model-specific probability/gradient verification and measured fit. No installation,
-download, precision change or model replacement has been authorized by this report.
+The original TRL 1.13 environment's fused route is gated on absent Liger and does
+not pass/apply Gemma's configured logit softcap. Installing Liger into that environment
+and switching the flag would not establish correctness. A supported memory-efficient
+path needs model-specific probability/gradient verification and measured fit.
 
 There is now a concrete upstream option: [TRL PR #7077](https://github.com/huggingface/trl/pull/7077)
 streams log probabilities with softcap support while retaining the native loss.
-Proposed **but not authorized or executed**: isolated CPU qualification of TRL
-`6c5f1350488e9bba9a71242c47db45f2869796fa` (`1.14.0.dev0`) plus Liger `0.8.3`, reusing
-existing dependencies and leaving the current environment untouched. Native Gemma
-softcaps in BF16 before promotion; upstream streams that operation in FP32. Measure
+The user approved isolated installation and CPU qualification of TRL
+`6c5f1350488e9bba9a71242c47db45f2869796fa` (`1.14.0.dev0`) plus Liger `0.8.3`.
+**Installation is complete:** both packages import, their declared requirements are
+satisfied, and all 140 TRL / 278 Liger Python files match the approved archives.
+The fresh environment inherits existing dependencies through a `.pth` entry;
+installation targeted only its own site-packages. This is not a self-contained copy
+or a filesystem sandbox. Original package inventory and checked
+source hashes remain unchanged. No dependency upgrades or model downloads occurred.
+
+Numerical qualification remains open. Native Gemma softcaps in BF16 before promotion;
+upstream streams that operation in FP32. Measure
 probability/gradient differences rather than declaring equivalence. Also explicitly
 disable unrelated Liger model-kernel replacements through public configuration;
 `use_liger_kernel=True` alone can enable those patches at train entry. The current
 repository deliberately accepts only TRL 1.13.0; do not bypass that gate or spoof
 metadata to claim compatibility. CPU qualification must precede a reviewed opt-in
-integration and native GPU fit test. No package or model download has occurred.
+integration and native GPU fit test. No production model weights or GPU were used
+for installation/import checks; those checks do not establish numerical correctness.
 
 The user approved ordinary TRL continuation without resampling. Explicit,
 identity-bound `tie_policy="continue"` is implemented; the default remains `"halt"`
@@ -139,7 +146,7 @@ belongs to the unimplemented full-round recipe.
 
 ## Next gate and evidence
 
-Qualify the maintained memory path after scoped dependency approval, then implement
+Complete the approved CPU memory-path qualification, then implement
 the full48 runtime with faithful token budgets, collision-free seeds, finite-work
 supervision and coverage-aware recovery. Prove native long-trajectory memory fit
 before committing to the full run. Do not silently truncate, shorten, omit or
@@ -152,9 +159,10 @@ Key files are `data-readiness.md`, `readiness-matrix.{md,json,csv}`,
 `primary-tests.log`, `primary-dapo/smoke.json`, `ties-corrected-{cpu,grpo,dapo}/smoke.json`,
 `ties-rereview.md`, `primary-contract-audit.json`, `primary-full48-fixtures/`,
 `integrated-suite.log`, `integrated-ties-cpu/smoke.json`, `memory-path-options.md`
-and `memory-primary-notes.md`. Original data and previous GPU
-runs were not modified. No new GPU training, package install, download or paid call
-occurred during this readiness work.
+and `memory-primary-notes.md`. Installation evidence is in `memory-install.log` and
+`memory-qualification-v1/{installation.md,environment.json,installed-source-hashes.json}`.
+Original data and previous GPU runs were not modified. Only the two approved package
+archives were downloaded; no new GPU training, model download or paid judge call occurred.
 
 See [current work order](../../TODO.md), [GRPO usage](../../docs/grpo.md), and the
 [previous short-run result](gemma-microbatch-result.md).

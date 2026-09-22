@@ -22,9 +22,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Prepare a separately bound [full48 mechanical reward](docs/grpo-full48.md),
   preserving originals and closing unchanged/missing-delivery shortcuts. Offline
   fixtures cover all 48; semantic quality and intermediate faithfulness remain unjudged.
-- [ ] Obtain approval for isolated CPU qualification of pinned upstream TRL `6c5f135`
-  plus Liger `0.8.3`; verify native softcap numerics and disable unrelated model-kernel
-  patches. Do not modify the current environment or claim GPU fit from source inspection.
+- [x] Install approved pinned TRL `6c5f135` and Liger `0.8.3` in an isolated CPU
+  qualification environment. Imports, declared dependencies and archive hashes pass;
+  the original TRL 1.13 environment remains unchanged.
+- [ ] Qualify native softcap numerics and disable unrelated model-kernel patches.
+  Installation is not numerical qualification, repository compatibility or GPU fit.
 - [ ] Build the full48 runtime with faithful token budgets, collision-free seeds,
   finite-work supervision and checkpoint recovery; verify native long-trajectory fit.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =

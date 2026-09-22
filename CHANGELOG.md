@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Record approved isolated TRL/Liger installation. Verify imports, dependencies and
+  archive hashes; preserve the original environment. Numerical qualification and
+  full48 GPU execution remain pending.
+
 - Prepare the intact full48 mechanical reward with frozen release bindings, real
   sequence/write evidence and offline counterexamples. Reject unchanged or missing
   delivery; normalize valid tool-path aliases without mutating evidence. Preserve
