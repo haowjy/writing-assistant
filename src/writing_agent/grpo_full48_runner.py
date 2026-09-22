@@ -20,7 +20,12 @@ from writing_agent.grpo import (
 )
 from writing_agent.grpo_full48 import load_full48_release, mechanical_full48_reward
 from writing_agent.grpo_full48_supervisor import verify_lease, writer_lease
-from writing_agent.grpo_gpu import admit_gpu
+from writing_agent.grpo_gpu import (
+    CUDA_ALLOCATOR_CONF,
+    HEADLESS_POLICY,
+    admit_gpu,
+    configure_cuda_allocator,
+)
 from writing_agent.grpo_rollout import verify_tokens
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 
@@ -139,6 +144,10 @@ def frozen_plan(release, run_dir):
         "total_updates": 96,
         "total_attempts": 384,
         "elapsed_cutoff": None,
+        "resources": {
+            "allocator": CUDA_ALLOCATOR_CONF,
+            "ownership_policy": HEADLESS_POLICY,
+        },
         "budget_rationale": BUDGET_RATIONALE,
         "source_hashes": {
             str(p.relative_to(root)): fingerprint(p.read_bytes())
@@ -379,7 +388,8 @@ def execute_training(release, run_dir, *, lease_fd, resume=False):
     verify_lease(run_dir, lease_fd)
     preflight(release, run_dir, resume=resume)
     verify_runtime(STREAMING)
-    admit_gpu(Path(run_dir) / "ownership" / uuid4().hex)
+    configure_cuda_allocator()
+    admit_gpu(Path(run_dir) / "ownership" / uuid4().hex, policy=HEADLESS_POLICY)
     data = load_full48_release(Path(release))
     return run_training(
         Path(run_dir) / "trainer",

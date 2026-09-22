@@ -6,11 +6,12 @@ downloads or writes. Preparation creates fresh evidence; execution requires both
 `--phase fit` and `--execute`. There is no retry, alternate profile, elapsed cutoff,
 or production launch.
 
-The recorded RTX 3090 attempt is terminal: native 32767+1 generation passed, while
+The desktop-admitted v2 attempt is terminal: native 32767+1 generation passed, while
 controlled training OOMed during the first backward pass before an optimizer update
 or checkpoint. See the [measured result](../work/research-plan/gemma-full48-fit-result.md).
-Production remains blocked; these commands describe the preserved qualification
-contract, not permission to rerun the failed profile.
+The current command prepares the separately identity-bound v3 contract. V3 retains
+all training and token settings while requiring a headless GPU and expandable allocator
+segments; it does not retry or reinterpret v2. Production remains blocked until v3 passes.
 
 Use the already qualified Python environment and cached model only:
 
@@ -31,14 +32,16 @@ source refuses before runtime. An exclusive attempt marker prevents repeating an
 execution, including an ownership rejection. After the user resolves a rejection,
 prepare a fresh evidence directory; preserve the rejected directory.
 
-The approved desktop allowlist and unchanged limits apply to the complete NVML
-inventory, including graphics processes. Xwayland and Ghostty are approved desktop
-consumers. Each allowed process may use at most 256 MiB, all listed processes at most
-768 MiB total, and the GPU must have at least 22000 MiB free. Unknown or unaccounted
-consumers refuse. This check runs
-before the initial execution and in each fresh generation/training process, before
-model loading. Processes are never terminated. It is an admission snapshot, not a
-GPU reservation.
+V3 requires a headless RTX 3090: the complete NVML inventory must contain no graphics
+or compute consumers and report at least 24000 MiB free. Unplugging a monitor does not
+satisfy this policy while the graphical session remains active. The check runs before
+the initial execution and again in each fresh generation/training process, before model
+loading. Processes are never terminated. It is an admission snapshot, not a reservation.
+
+Before Torch import, the runner sets both supported allocator environment names to
+`expandable_segments:True` and refuses conflicting values or an already imported Torch
+module. The allocator setting, headless policy, source, and recipe are part of fit and
+production identity. Full48 train/resume enforce the same contract.
 
 The only profile uses pinned `google/gemma-4-E2B-it` revision
 `3e22461f65e89153144f8adb70e3b8c2cc9845a7`, BF16 base, SDPA,

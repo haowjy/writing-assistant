@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add a fresh headless 32768-token fit contract after the desktop-admitted profile
+  OOMed: require an empty GPU process inventory, at least 24000 MiB free, and bind
+  PyTorch expandable allocator segments before Torch import. Apply the same resource
+  contract to full48 train/resume without changing model, tokens, precision, LoRA,
+  objective, or task requirements.
+
 - Add user-approved Xwayland and Ghostty GPU desktop allowlist entries while preserving
   the existing 256 MiB per-process, 768 MiB total and 22,000 MiB free-memory limits.
 

@@ -1,6 +1,7 @@
 """CPU-only identity, exact-token envelope and complete-inventory admission contracts."""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -8,7 +9,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from writing_agent.grpo_gpu import admit_gpu, ownership_report
+from writing_agent.grpo_gpu import (
+    CUDA_ALLOCATOR_CONF,
+    HEADLESS_POLICY,
+    admit_gpu,
+    configure_cuda_allocator,
+    ownership_report,
+)
 from writing_agent.grpo_gpu_fit import (
     execute_fit,
     generation_prefix,
@@ -47,6 +54,39 @@ class OwnershipTests(unittest.TestCase):
                     self.assertTrue(result["admitted"])
                     self.assertEqual(result["consumers"][0]["type"], kind)
         self.assertFalse(ownership_report(xml([(1, "python", "C", 0)]))["admitted"])
+
+    def test_headless_policy_requires_empty_inventory_and_24000_mib_free(self):
+        self.assertTrue(ownership_report(xml(free=24000), policy=HEADLESS_POLICY)["admitted"])
+        self.assertFalse(ownership_report(xml(free=23999), policy=HEADLESS_POLICY)["admitted"])
+        self.assertFalse(
+            ownership_report(xml([(1, "cosmic-comp", "G", 1)], free=24000), policy=HEADLESS_POLICY)[
+                "admitted"
+            ]
+        )
+
+    def test_expandable_allocator_is_set_before_torch_import(self):
+        env = {k: v for k, v in os.environ.items() if k not in CUDA_ALLOCATOR_CONF["environment"]}
+        code = (
+            "import os; "
+            "from writing_agent.grpo_gpu import CUDA_ALLOCATOR_CONF, configure_cuda_allocator; "
+            "assert configure_cuda_allocator() == CUDA_ALLOCATOR_CONF; "
+            "assert all(os.environ[k] == CUDA_ALLOCATOR_CONF['value'] "
+            "for k in CUDA_ALLOCATOR_CONF['environment'])"
+        )
+        subprocess.run([sys.executable, "-c", code], check=True, env=env)
+        conflict = {**env, "PYTORCH_CUDA_ALLOC_CONF": "max_split_size_mb:64"}
+        rejected = subprocess.run(
+            [sys.executable, "-c", code],
+            env=conflict,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        with (
+            patch.dict(sys.modules, {"torch": object()}),
+            self.assertRaisesRegex(RuntimeError, "before importing torch"),
+        ):
+            configure_cuda_allocator()
 
     def test_incomplete_or_unknown_inventory_refuses_and_preserves(self):
         for data in (
@@ -108,6 +148,9 @@ class FitTests(unittest.TestCase):
             output = Path(tmp) / "fresh"
             record = prepare_fit(output)
             self.assertEqual(preflight_fit(output), record)
+            self.assertEqual(inspect_fit()["profile"], "gemma-full48-controlled-fit-v3")
+            self.assertEqual(inspect_fit()["allocator"], CUDA_ALLOCATOR_CONF)
+            self.assertEqual(inspect_fit()["ownership_policy"], HEADLESS_POLICY)
             changed = inspect_fit()
             changed["training"]["active_tokens_each"] -= 1
             with patch("writing_agent.grpo_gpu_fit.inspect_fit", return_value=changed):
@@ -126,6 +169,10 @@ class FitTests(unittest.TestCase):
                         side_effect=ValueError("source") if reject == "source" else None,
                     ),
                     patch(
+                        "writing_agent.grpo_gpu_fit.configure_cuda_allocator",
+                        return_value=CUDA_ALLOCATOR_CONF,
+                    ) as configure_allocator,
+                    patch(
                         "writing_agent.grpo_gpu_fit.admit_gpu",
                         side_effect=RuntimeError("ownership"),
                     ) as admit,
@@ -136,6 +183,7 @@ class FitTests(unittest.TestCase):
                     with self.assertRaisesRegex((ValueError, RuntimeError), reject):
                         execute_fit(output)
                     self.assertFalse(spawn.called)
+                    self.assertEqual(configure_allocator.called, reject == "ownership")
                     self.assertEqual(admit.called, reject == "ownership")
                     with self.assertRaises(FileExistsError):
                         execute_fit(output)
@@ -147,7 +195,12 @@ class FitTests(unittest.TestCase):
         from writing_agent.grpo_full48_runner import execute_training
 
         for resume in (False, True):
-            for reject in ("preflight", "verify_runtime", "admit_gpu"):
+            for reject in (
+                "preflight",
+                "verify_runtime",
+                "configure_cuda_allocator",
+                "admit_gpu",
+            ):
                 with self.subTest(resume=resume, reject=reject):
                     events = []
 
@@ -170,6 +223,10 @@ class FitTests(unittest.TestCase):
                             side_effect=boundary("verify_runtime"),
                         ),
                         patch(
+                            "writing_agent.grpo_full48_runner.configure_cuda_allocator",
+                            side_effect=boundary("configure_cuda_allocator"),
+                        ),
+                        patch(
                             "writing_agent.grpo_full48_runner.admit_gpu",
                             side_effect=boundary("admit_gpu"),
                         ),
@@ -178,7 +235,7 @@ class FitTests(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, reject):
                             execute_training("release", "run", lease_fd=1, resume=resume)
                         self.assertFalse(train.called)
-                    order = ["preflight", "verify_runtime", "admit_gpu"]
+                    order = ["preflight", "verify_runtime", "configure_cuda_allocator", "admit_gpu"]
                     self.assertEqual(events, order[: order.index(reject) + 1])
 
 

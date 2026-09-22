@@ -43,9 +43,12 @@ success, writing quality, or the fit of a modified recipe.
 ## Consequence
 
 The terminal fit result is preserved. The production schedule remains at **0 of 96
-groups and 0 of 384 attempts**. Any future path requires a separately reviewed memory
-strategy and new qualification contract; this failed profile must not be retried,
-weakened, or represented as passing.
+groups and 0 of 384 attempts**. The selected next path is a separately identity-bound
+v3 contract requiring an empty GPU process inventory, at least 24000 MiB free, and
+PyTorch expandable allocator
+segments before import. It retains the same model, 32768-token ledgers, precision,
+all-linear LoRA, objective, and task requirements. That new attempt does not alter or
+retry this v2 result; this failed profile must not be weakened or represented as passing.
 
 Raw evidence is local at:
 

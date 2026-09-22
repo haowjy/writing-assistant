@@ -1,12 +1,37 @@
 """Complete NVML inventory admission shared by production fit and full48 execution."""
 
+import os
 import re
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from writing_agent.catalog import save_json
 from writing_agent.grpo_probe import DISPLAY_POLICY
+
+CUDA_ALLOCATOR_CONF = {
+    "environment": ["PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF"],
+    "value": "expandable_segments:True",
+}
+HEADLESS_POLICY = {
+    "names": [],
+    "per_process_mib": 0,
+    "total_mib": 0,
+    "minimum_free_mib": 24000,
+}
+
+
+def configure_cuda_allocator():
+    """Bind expandable segments before Torch can initialize the CUDA allocator."""
+    if "torch" in sys.modules:
+        raise RuntimeError("Configure the CUDA allocator before importing torch")
+    for name in CUDA_ALLOCATOR_CONF["environment"]:
+        configured = os.environ.get(name)
+        if configured not in (None, CUDA_ALLOCATOR_CONF["value"]):
+            raise RuntimeError(f"Conflicting CUDA allocator setting: {name}={configured}")
+        os.environ[name] = CUDA_ALLOCATOR_CONF["value"]
+    return CUDA_ALLOCATOR_CONF
 
 
 def inventory(xml):
@@ -61,20 +86,20 @@ def inventory(xml):
     }
 
 
-def ownership_report(xml):
+def ownership_report(xml, *, policy=DISPLAY_POLICY):
     result = inventory(xml)
     errors = []
     for process in result["consumers"]:
         executable = Path(process["name"].split(maxsplit=1)[0]).name.lower()
-        if executable not in DISPLAY_POLICY["names"]:
+        if executable not in policy["names"]:
             errors.append(f"Unknown consumer: {process}")
-        if process["memory_mib"] > DISPLAY_POLICY["per_process_mib"]:
+        if process["memory_mib"] > policy["per_process_mib"]:
             errors.append(f"Oversized consumer: {process}")
-    if result["process_total_mib"] > DISPLAY_POLICY["total_mib"]:
-        errors.append("Display GPU allocation exceeds total cap")
-    if result["free_mib"] < DISPLAY_POLICY["minimum_free_mib"]:
+    if result["process_total_mib"] > policy["total_mib"]:
+        errors.append("GPU process allocation exceeds total cap")
+    if result["free_mib"] < policy["minimum_free_mib"]:
         errors.append("Insufficient free GPU memory")
-    return {**result, "policy": DISPLAY_POLICY, "errors": errors, "admitted": not errors}
+    return {**result, "policy": policy, "errors": errors, "admitted": not errors}
 
 
 def capture_inventory(path):
@@ -90,11 +115,11 @@ def capture_inventory(path):
     return result.stdout
 
 
-def admit_gpu(directory):
+def admit_gpu(directory, *, policy=DISPLAY_POLICY):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
     try:
-        report = ownership_report(capture_inventory(directory / "nvml.xml"))
+        report = ownership_report(capture_inventory(directory / "nvml.xml"), policy=policy)
         save_json(directory / "ownership.json", report)
         if not report["admitted"]:
             raise RuntimeError("GPU ownership rejected: " + "; ".join(report["errors"]))

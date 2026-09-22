@@ -17,8 +17,13 @@ from pathlib import Path
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.grpo import file_hashes, seal_directory, trainer_config, verify_checkpoint
 from writing_agent.grpo_full48_runner import SETTINGS
-from writing_agent.grpo_gpu import admit_gpu, capture_inventory
-from writing_agent.grpo_probe import DISPLAY_POLICY
+from writing_agent.grpo_gpu import (
+    CUDA_ALLOCATOR_CONF,
+    HEADLESS_POLICY,
+    admit_gpu,
+    capture_inventory,
+    configure_cuda_allocator,
+)
 from writing_agent.grpo_runtime import (
     STREAMING,
     implementation_plan,
@@ -35,12 +40,13 @@ REWARDS = [0.0, 0.25, 0.75, 1.0]
 def inspect_fit():
     root = Path(__file__).resolve().parents[2]
     return {
-        "profile": "gemma-full48-controlled-fit-v2",
+        "profile": "gemma-full48-controlled-fit-v3",
         "scope": "controlled memory sizing; not sampled success or native rollout semantics",
         "settings": asdict(FIT_SETTINGS),
         "implementation": implementation_plan(STREAMING),
-        "ownership_policy": DISPLAY_POLICY,
-        "dtype": "bfloat16 base; ordinary PEFT adapter storage",
+        "ownership_policy": HEADLESS_POLICY,
+        "allocator": CUDA_ALLOCATOR_CONF,
+        "dtype": "bfloat16 base; ordinary FP32 PEFT adapter storage",
         "attention": "sdpa",
         "lora": {
             "rank": 8,
@@ -421,7 +427,8 @@ def _stage_worker(directory, stage, identity):
         if record["identity"] != identity:
             raise ValueError("Worker profile identity changed")
         runtime = verify_runtime(STREAMING)
-        admit_gpu(directory / f"ownership-{stage}")
+        configure_cuda_allocator()
+        admit_gpu(directory / f"ownership-{stage}", policy=HEADLESS_POLICY)
         import torch
 
         if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
@@ -469,10 +476,12 @@ def execute_fit(directory):
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         runtime = verify_runtime(STREAMING)
+        allocator = configure_cuda_allocator()
         save_json(
             directory / "runtime.json",
             {
                 "implementation": runtime,
+                "allocator": allocator,
                 "packages": {
                     p: version(p)
                     for p in ("torch", "transformers", "trl", "peft", "accelerate", "liger-kernel")
@@ -480,7 +489,7 @@ def execute_fit(directory):
             },
         )
         stage = "ownership"
-        report["ownership"] = admit_gpu(directory / "ownership-before")
+        report["ownership"] = admit_gpu(directory / "ownership-before", policy=HEADLESS_POLICY)
         for stage in ("generation", "training"):
             process = multiprocessing.get_context("spawn").Process(
                 target=_stage_worker, args=(str(directory), stage, record["identity"])

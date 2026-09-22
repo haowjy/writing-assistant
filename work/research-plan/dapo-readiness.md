@@ -1,11 +1,12 @@
 # DAPO full-round readiness
 
-**The fixed 32768-token RTX 3090 fit failed during training backward; the intact
-48-task GPU run has not started.** Native 32767+1 generation passed, but controlled
-training OOMed before an optimizer update or checkpoint. Tied-group continuation,
-the separate full48 mechanical reward, scheduler, pass-one recovery, and source-pinned
-streaming CPU qualification pass. They do not override the failed memory gate. Raising
-the old probe's step count alone would not produce the requested experiment.
+**The desktop-admitted 32768-token RTX 3090 fit failed during training backward;
+the intact 48-task GPU run has not started.** Native 32767+1 generation passed, but
+controlled training OOMed before an optimizer update or checkpoint. A separately
+identity-bound v3 contract now retains the same training recipe while requiring a
+headless GPU and expandable allocator segments. Tied-group continuation, the full48
+mechanical reward, scheduler, pass-one recovery, and source-pinned CPU qualification
+pass. They do not override either memory gate.
 
 ## Intended workload
 
@@ -220,11 +221,11 @@ maximum output; overflow remains explicit failure, never truncation.
 
 The [inspect-first GPU fit command](../../docs/grpo-gpu-fit.md) binds one fixed
 32768-token controlled training profile and a separate native 32767+1 generation
-check. Full48 train/resume share its complete graphics/compute ownership admission,
-with the existing display allowlist and memory limits unchanged. Source/profile
-and prepared-data checks precede model loading. A passing CPU suite or prepared
-profile is not a passing GPU fit; production remains blocked until live evidence
-passes. The fit command never starts production.
+check. V3 and full48 train/resume set PyTorch expandable allocator segments before
+Torch import, require an empty complete GPU process inventory, and require at least
+24000 MiB free. Source/profile and prepared-data checks precede model loading. A
+passing CPU suite or prepared profile is not a passing GPU fit; production remains
+blocked until live evidence passes. The fit command never starts production.
 
 The first v2 invocation stopped at ownership before either production model load.
 The RTX 3090 had 22676 MiB free, but total listed process allocation was 1079 MiB
@@ -241,21 +242,24 @@ microbatch loss with the expected 32768 total / 8192 active tokens, then OOMed d
 activation-checkpoint recomputation in backward while requesting another 768 MiB.
 Peak Torch allocation was 21.379 GiB and reservation 22.223 GiB; PyTorch reported
 114 MiB free at failure. No optimizer update or full checkpoint completed. The
-profile was not retried or changed. See the
+profile was not retried or changed. The failed 768 MiB allocation exactly matches a
+32768 × 6144 FP32 all-linear LoRA MLP projection. See the
 [measured fit result](gemma-full48-fit-result.md).
 
-The committed command and CPU checks remain valid: 357 repository tests (two skips),
-12 focused tests in the qualified environment, cached-tokenizer lengths, and a live
-tiny BF16 six-update/exact-resume check through the shared trainer configuration.
-They do not clear the failed GPU fit blocker.
+The v3 contract changes only resource admission and allocator behavior: no listed GPU
+consumer, at least 24000 MiB free, and `expandable_segments:True` bound before Torch
+import. Model, 32768-token ledgers, BF16 base, FP32 rank-8 all-linear LoRA, DAPO,
+checkpointing, and source pins remain unchanged. Unplugging a monitor without ending
+the graphical session does not meet headless admission. The committed CPU checks do
+not clear this new live GPU fit gate.
 
 ## Next gate and evidence
 
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
 whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
-remains at 0 of 96 groups and 0 of 384 attempts. Do not start it unless a separately
-reviewed memory strategy and new qualification contract pass. Do not silently truncate,
-shorten, omit or resample tasks to make the schedule fit or finish.
+remains at 0 of 96 groups and 0 of 384 attempts. Execute v3 exactly once from SSH/TTY
+after the graphical session exits; start production only if it passes. Do not silently
+truncate, shorten, omit or resample tasks to make the schedule fit or finish.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.

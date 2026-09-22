@@ -2,8 +2,9 @@
 
 **The dedicated full48 runner preserves all 48 original tasks and mechanical rewards.**
 CPU scheduling, recovery and the source-pinned streaming integration are verified.
-The fixed native training-memory profile failed on the RTX 3090, so production remains
-blocked. See [current readiness](../work/research-plan/dapo-readiness.md).
+The desktop-admitted native training-memory profile failed on the RTX 3090. A fresh
+headless/expandable-segments fit contract is prepared; production remains blocked until
+it passes. See [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
 
@@ -201,16 +202,16 @@ without claiming 96 production updates or native Gemma/BF16 memory fit.
 The separate [fit command](grpo-gpu-fit.md) freezes one controlled memory profile
 at 32768 tokens and exercises cached-base native generation before one DAPO update.
 Its deterministic tokens and diagnostic rewards do not establish sampled success.
-The single attempt passed native generation but OOMed during training backward before
-an optimizer update; see the [measured result](../work/research-plan/gemma-full48-fit-result.md).
-It must not be retried or treated as a pass. A new qualification contract must pass
-before full48 can launch; the fit command never launches production.
+The v2 attempt passed native generation but OOMed during training backward before an
+optimizer update; see the [measured result](../work/research-plan/gemma-full48-fit-result.md).
+It must not be retried or treated as a pass. The separately bound v3 contract retains
+the exact training recipe and 32768-token ledgers while requiring a headless GPU and
+expandable allocator segments. V3 must pass before full48 can launch; the fit command
+never launches production.
 
-Both full48 `train` and `resume` verify the prepared identity and pinned runtime,
-then admit the complete `nvidia-smi -q -x` inventory before model loading. Graphics
-and compute consumers are included. The approved desktop allowlist includes Xwayland
-and Ghostty, while its memory limits remain unchanged: unknown consumers, more than
-256 MiB per process, more than 768 MiB in total, or less than 22000 MiB free refuse
-execution. Each admission retains raw XML and a structured result under `ownership/`.
-No consumer is terminated. This is a current inventory check, not a reservation
-against applications starting later.
+Both full48 `train` and `resume` verify the prepared identity and pinned runtime, bind
+`expandable_segments:True` before Torch import, then admit the complete
+`nvidia-smi -q -x` inventory before model loading. The inventory must have no graphics
+or compute consumers and at least 24000 MiB free. Each admission retains raw XML and
+a structured result under `ownership/`. No consumer is terminated. This is a current
+inventory check, not a reservation against applications starting later.

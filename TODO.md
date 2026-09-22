@@ -39,8 +39,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
   desktop admission. Native 32,767+1 generation passed; training OOMed during the
   first backward pass before an optimizer update or checkpoint. Preserve the terminal
   [fit result](work/research-plan/gemma-full48-fit-result.md); do not retry or alter it.
-- [ ] Select and separately qualify a memory strategy for intact 32,768-token training.
-  The fixed RTX 3090 profile is proven not to fit under the admitted desktop load.
+- [x] Select a fresh headless qualification contract without changing training math:
+  require no listed GPU consumers, at least 24,000 MiB free, and PyTorch expandable
+  allocator segments set before import. Bind the same contract to full48 train/resume.
+- [ ] Execute that v3 32,768-token fit exactly once from SSH/TTY after the graphical
+  session exits. It is a new contract, not a retry or reinterpretation of failed v2.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until a new
