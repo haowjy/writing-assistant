@@ -52,6 +52,63 @@ This generic entrypoint does not enforce a wall-clock watchdog or measure GPU/RA
 The [prepared probe runner](grpo-probe.md) adds supervised stages, an aggregate time limit,
 resource records, and matched development evaluation.
 
+## Source-pinned streaming implementation
+
+The default `implementation="trl-1.13"` retains the legacy public TRL 1.13.0 path.
+For the separately qualified Gemma4 stack, Python callers explicitly pass
+`implementation="trl-6c5f135-streaming"` to both `inspect_grpo` and `train_grpo`.
+This selects TRL `1.14.0.dev0` commit
+`6c5f1350488e9bba9a71242c47db45f2869796fa` with Liger `0.8.3`.
+The standard training extra remains pinned to legacy TRL; the new route requires
+its own already-installed environment. It never installs or upgrades packages.
+
+Admission checks the installed version, active import location and a canonical
+SHA-256 digest over every Python source path and byte in both packages. The pins
+come from the approved archive comparison: 140 TRL and 278 Liger files. A version
+string, local archive name or editable metadata alone cannot satisfy this check.
+Inspection records the required source identity; execution verifies it before
+loading weights or changing the caller's model, tokenizer or RNG. The experiment
+manifest binds that identity and the public configuration; changes reject resume.
+The legacy plan/settings shape and probe recipe stay unchanged. Repository source
+hash changes still invalidate older checkpoints; existing sealed artifacts are not
+rewritten or migrated.
+
+The streaming route uses public `GRPOConfig(use_liger_kernel=True)` and
+`GRPOTrainer`, with `cast_lm_head_to_fp32=False`. Its public `liger_kernel_config`
+sets `rope`, `cross_entropy`, `fused_linear_cross_entropy`, `layer_norm`,
+`rms_norm`, `geglu` and `swiglu` to false. These disable unrelated model replacements
+at Transformers train entry, while TRL streams the log-probability projection.
+Admission is limited to dense Gemma4; other model families and Gemma MoE need
+separate qualification. No loss copy, trainer subclass or upstream monkeypatch is used.
+
+**The user accepted the maintained upstream numerical variant. Native BF16 parity
+is not claimed.** Native Gemma softcaps before FP32 promotion; the selected upstream
+projection softcaps in FP32 and accumulates projection gradients in FP32. The earlier
+finite stress measurements found BF16 LoRA gradient norm differences of 0.79–1.58%.
+No tolerance was introduced to call those results equivalent, and backbone precision,
+LoRA targets, observation masks and the ordinary DAPO/tie policy are unchanged.
+
+The live CPU script uses a newly initialized BF16 Gemma4 conditional-generation
+wrapper, with PLE/shared KV and a synthetic tokenizer. With the isolated environment's
+Python, from the checkout:
+
+```bash
+CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src \
+  /path/to/qualified-env/bin/python -m scripts.smoke_grpo_streaming_cpu \
+  --execute --output /absolute/new-directory
+```
+
+It exercises public train entry, group4/microbatch1/accum4, masked observations,
+heterogeneous action lengths, leading/middle/trailing ties, Adam and the scheduler,
+and exact step-2→6 pause/resume. Read-only observations check model/module and class
+method identities across trainer initialization and Liger train-entry dispatch,
+actual loss masks/denominators and zero direct masked gradients. A 2,050-token
+observation crosses the 2,048-token tile; vocabulary 8,209 crosses the 8,192-column
+tile. A changed-observation counterfactual checks later action conditioning.
+`summary.json` and `observations-*.json` retain the results and raw measurements.
+This finite CPU proof does not establish production GPU memory fit, writing quality,
+or native tokenizer/tool behavior; those have separate evidence and gates.
+
 ## Rewards and unavailable groups
 
 GRPO samples several attempts at the same task and trains toward its better attempts.

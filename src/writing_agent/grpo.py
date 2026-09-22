@@ -20,6 +20,12 @@ from writing_agent.agent import SYSTEM_PROMPT
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.grpo_identity import admission_identity, base_tensor_identity
 from writing_agent.grpo_rollout import NativeRolloutBackend, RolloutGroups, saved_rewards
+from writing_agent.grpo_runtime import (
+    LEGACY,
+    implementation_plan,
+    validate_streaming_model,
+    verify_runtime,
+)
 from writing_agent.inference import PROTOCOL, checkpoint_identity
 from writing_agent.workspace import TOOL_SCHEMAS
 
@@ -74,7 +80,17 @@ class GRPOSettings:
             raise ValueError("Activation-checkpointing settings must be explicit booleans")
 
 
-def inspect_grpo(tasks, output, *, settings, reward_spec, admission, system_prompt=SYSTEM_PROMPT):
+def inspect_grpo(
+    tasks,
+    output,
+    *,
+    settings,
+    reward_spec,
+    admission,
+    system_prompt=SYSTEM_PROMPT,
+    implementation=LEGACY,
+):
+    selected_implementation = implementation_plan(implementation)
     settings.validate()
     if not tasks or len({t["id"] for t in tasks}) != len(tasks):
         raise ValueError("Select explicit unique training tasks")
@@ -104,6 +120,7 @@ def inspect_grpo(tasks, output, *, settings, reward_spec, admission, system_prom
     if reward_spec["mode"] not in {"mixed", "mechanical-only-smoke"}:
         raise ValueError("Reward mode must be mixed or explicitly mechanical-only-smoke")
     return {
+        **({"implementation": selected_implementation} if selected_implementation else {}),
         "schema_version": 2,
         "admission": admitted,
         "settings": asdict(settings),
@@ -194,6 +211,7 @@ def train_grpo(
     resume_from_checkpoint=None,
     stop_after_steps=None,
     system_prompt=SYSTEM_PROMPT,
+    implementation=LEGACY,
 ):
     """Explicit execution over caller-owned weights, or a local-only Gemma LoRA load.
 
@@ -210,6 +228,7 @@ def train_grpo(
         reward_spec=reward_spec,
         admission=admission,
         system_prompt=system_prompt,
+        implementation=implementation,
     )
     if not execute:
         return plan
@@ -232,14 +251,13 @@ def train_grpo(
         raise ValueError("Caller-owned weights/tokenizer/backend need an explicit identity")
     if backend_factory is not None and not runtime_identity:
         raise ValueError("Custom backend requires an explicit identity")
+    verified_runtime = verify_runtime(implementation)
     import torch
     from datasets import Dataset
     from peft import LoraConfig, PeftModel, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, set_seed
     from trl import GRPOConfig, GRPOTrainer
 
-    if version("trl") != "1.13.0":
-        raise ValueError("This rollout/checkpoint seam is verified against TRL 1.13.0 only")
     caller_owned = model is not None
     if isinstance(model, PeftModel) or getattr(model, "peft_config", None):
         raise ValueError("Supply a fresh caller base model, not a PEFT model")
@@ -263,6 +281,8 @@ def train_grpo(
             "model": checkpoint_identity(settings.model_id, settings.revision),
             "backend": "NativeRolloutBackend-v1",
         }
+    if verified_runtime:
+        validate_streaming_model(model.config)
     devices = {str(p.device) for p in model.parameters()}
     if len(devices) != 1:
         raise ValueError("Model must reside on one device")
@@ -284,6 +304,7 @@ def train_grpo(
     )
     manifest = {
         "plan": plan,
+        **({"implementation": verified_runtime} if verified_runtime else {}),
         "runtime_identity": runtime_identity,
         "base_identity": base_identity,
         "reward_implementation": fingerprint(inspect.getsource(reward_callback)),
@@ -425,6 +446,7 @@ def train_grpo(
             return control
 
     args = GRPOConfig(
+        **(verified_runtime["config"] if verified_runtime else {}),
         output_dir=str(output),
         max_steps=settings.max_steps,
         per_device_train_batch_size=settings.microbatch_size or settings.group_size,

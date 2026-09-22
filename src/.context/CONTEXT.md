@@ -235,6 +235,14 @@ source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
 the trainer. SFT GPU training and checkpoint restore remain unverified.
 
+`grpo_runtime.py` owns explicit TRL implementation admission. Legacy TRL 1.13
+remains the default; opt-in `trl-6c5f135-streaming` verifies the exact approved
+TRL/Liger Python source trees before model loading or caller mutation and binds
+them into experiment identity. It admits dense Gemma4 only and disables unrelated
+Liger model replacements through public configuration. The maintained FP32
+streaming softcap is an accepted numerical variant, not native BF16 parity.
+See [GRPO usage](../../docs/grpo.md) for qualification scope and source pins.
+
 `grpo.py` connects fresh task groups to TRL's public rollout callback; it does not
 reuse SFT preparation or implement another RL loss. `grpo_rollout.py` owns append-only
 sampled tokens and external suffix masks. Do not rebuild training actions by rendering

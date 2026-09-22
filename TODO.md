@@ -25,10 +25,10 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Install approved pinned TRL `6c5f135` and Liger `0.8.3` in an isolated CPU
   qualification environment. Imports, declared dependencies and archive hashes pass;
   the original TRL 1.13 environment remains unchanged.
-- [ ] Resolve numerical acceptance before continuing CPU qualification. Eight public
-  trainer comparisons measured BF16 LoRA gradient differences of 0.79–1.58% by norm;
-  this is not a formula-bug finding or accepted parity. Train-entry patch checks,
-  accumulation/resume and repository compatibility remain unverified. See readiness.
+- [x] Accept the maintained upstream numerical variant explicitly; native BF16 parity
+  is not claimed. Add source-pinned opt-in compatibility and pass live BF16 CPU
+  Gemma4 train-entry, masked group4 accumulation, chunk boundaries, changed-observation
+  conditioning and exact pause/resume checks. See [runtime usage](docs/grpo.md).
 - [ ] Build the full48 runtime with faithful token budgets, collision-free seeds,
   finite-work supervision and checkpoint recovery; verify native long-trajectory fit.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =

@@ -115,17 +115,25 @@ installation targeted only its own site-packages. This is not a self-contained c
 or a filesystem sandbox. Original package inventory and checked
 source hashes remain unchanged. No dependency upgrades or model downloads occurred.
 
-Numerical acceptance remains open after eight CPU comparisons. Native Gemma softcaps
-in BF16 before promotion; upstream streams that operation in FP32. Also explicitly
-disable unrelated Liger model-kernel replacements through public configuration;
-`use_liger_kernel=True` alone can enable those patches at train entry. The current
-repository deliberately accepts only TRL 1.13.0; do not bypass that gate or spoof
-metadata to claim compatibility. CPU qualification must precede a reviewed opt-in
-integration and native GPU fit test. No production model weights or GPU were used.
+The user accepted the maintained upstream numerical variant: native Gemma softcaps
+in BF16 before promotion; upstream streams that operation in FP32. Native BF16 parity
+is not claimed, and no acceptance tolerance was invented. The repository now admits
+legacy TRL 1.13.0 by default and the exact source-pinned stack through explicit
+`implementation="trl-6c5f135-streaming"`. It verifies every TRL/Liger Python source
+against the approved archives before model loading or caller mutation, then binds
+the source identity and public configuration into the experiment manifest. Changing
+implementation rejects resume. The legacy settings/plan shape and sealed probe
+artifacts remain unchanged; repository source changes still invalidate older resumes.
+
+Public `liger_kernel_config` explicitly disables every unrelated Gemma4 replacement.
+The new live CPU train/resume proof observes unchanged module/class methods at trainer
+initialization and all three train entries. No upstream package was edited, no
+trainer was subclassed, and no custom loss or metadata spoofing was used. No
+production model weights or GPU were used.
 
 The first finite numerical probe used public `GRPOTrainer.compute_loss` on identical
-small random Gemma4 text models with PLE/shared KV, LoRA8/alpha16, synthetic tokens,
-softcap30 and masked observations. It used evaluation mode with autograd, not a
+small random Gemma4 text models with PLE/shared KV, LoRA rank 8 / alpha 16, synthetic tokens,
+softcap 30 and masked observations. It used evaluation mode with autograd, not a
 training loop. BF16 action-token differences were:
 
 | Head regime | Temperature | Maximum logprob difference | LoRA gradient norm-relative difference |
@@ -144,11 +152,8 @@ policy silently accepted; these results do not establish a formula bug.
 Primary recomputation of all eight saved tensor pairs confirms identical parameters,
 backbone states and direct loss-mask gradients. Streaming bypassed `lm_head.forward`;
 no completion-wide vocabulary activation was saved. Trainer initialization preserved
-model methods with kernel-replacement flags disabled. **Train-entry dispatch remains
-untested**, as do the token-chunk boundary, changed-observation counterfactual,
-conversation ledgers, group4 accumulation, Adam/scheduler, ties and checkpoint resume
-on this stack. The probe stopped for numerical-policy review rather than promoting
-installation success into full qualification.
+model methods with kernel-replacement flags disabled. Those direct-loss comparisons
+remain numerical evidence, separate from the later public train-loop qualification.
 
 The user approved ordinary TRL continuation without resampling. Explicit,
 identity-bound `tie_policy="continue"` is implemented; the default remains `"halt"`
@@ -169,10 +174,35 @@ now records this fractional case without altering ordinary TRL behavior. Saved g
 reports distinguish ties from optimizer progress; full48 coverage accounting still
 belongs to the unimplemented full-round recipe.
 
+## Source-pinned CPU train/resume qualification
+
+The live fixture uses random BF16 `Gemma4ForConditionalGeneration` with four text
+layers, PLE, shared KV, softcap 30, LoRA rank 8 / alpha 16 and ordinary FP32 adapter storage.
+It starts from empty output, takes six DAPO beta 0 optimizer steps over two passes,
+and compares uninterrupted training with an explicit step-2 pause/resume.
+Each visit samples four variable-length attempts, trains microbatch 1 / accumulation 4 and
+consumes every action exactly once. Four visits tie at reward 1; two have heterogeneous
+rewards. Adam and the constant scheduler advance through all six visits, without
+resampling. Adapter, optimizer, scheduler, RNG and all 24 sampled token ledgers match
+exactly after resume.
+
+The 2,050-token external observation stays in attention and has zero direct loss
+gradient. Actual streaming calls cross token 2048 and vocabulary 8192, including the
+17-column vocabulary tail, with softcap 30. Changing one masked observation changes
+a later action log-probability by `0.1126260757446289`, confirming conditioning in
+this finite fixture. Group action counts and DAPO denominators are 20 despite the
+long observation. Every trainer initialization and train-entry Liger dispatch
+preserves observed model/module/class methods and functional cross entropy.
+
+These results establish this CPU compatibility seam. They do not establish native
+BF16 parity, native tool-tokenizer semantics, dense-versus-streaming update equality,
+production GPU fit or writing quality. Existing native-token and legacy dense
+accumulation evidence remains separate. The new script is
+[scripts/smoke_grpo_streaming_cpu.py](../../scripts/smoke_grpo_streaming_cpu.py).
+
 ## Next gate and evidence
 
-Resolve the measured numerical-policy difference, complete CPU qualification, then implement
-the full48 runtime with faithful token budgets, collision-free seeds, finite-work
+Implement the full48 runtime with faithful token budgets, collision-free seeds, finite-work
 supervision and coverage-aware recovery. Prove native long-trajectory memory fit
 before committing to the full run. Do not silently truncate, shorten, omit or
 resample tasks to make the schedule finish.
@@ -187,7 +217,10 @@ Key files are `data-readiness.md`, `readiness-matrix.{md,json,csv}`,
 and `memory-primary-notes.md`. Installation evidence is in `memory-install.log` and
 `memory-qualification-v1/{installation.md,environment.json,installed-source-hashes.json}`.
 Numerical evidence: `memory-qualification-v1/cpu-gate/{report.md,results.json,*.pt}`
-and `memory-qualification-v1/primary-verification.json`. A failed postprocessing
+and `memory-qualification-v1/primary-verification.json`. Source-pinned compatibility:
+`runtime-compat/report.md`, `runtime-compat/raw-summary.json`,
+`runtime-compat/cpu/{summary.json,observations-full.json,observations-resumed.json}`
+and the adjacent test/live-command logs. A failed postprocessing
 hook assumption is preserved; correction required no package changes or model reruns.
 Original data and previous GPU runs were not modified. Only the two approved package
 archives were downloaded; no new GPU training, model download or paid judge call occurred.

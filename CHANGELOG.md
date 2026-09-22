@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Admit opt-in source-pinned TRL `6c5f135` / Liger `0.8.3` streaming through public
+  configuration, disabling unrelated Gemma4 kernel replacements. Bind verified
+  package source trees before mutation and reject changed implementation on resume.
+  Preserve legacy TRL 1.13 defaults. Qualify BF16 CPU train entry, masked DAPO
+  group4 accumulation, tied continuation, token/vocabulary chunk boundaries,
+  observation conditioning and exact adapter/optimizer/scheduler/RNG/ledger resume.
+  Accept the maintained numerical variant without claiming native BF16 parity;
+  production GPU fit and full48 execution remain separate gates.
+
 - Record approved isolated TRL/Liger installation and eight CPU softcap comparisons.
   Verify imports, dependencies and archive hashes; preserve the original environment.
   Report BF16 numerical differences without declaring parity. Remaining qualification
