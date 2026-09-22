@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Freeze a reproducible Gemma engineering probe: three training tasks and six
+  development cases with separate source groups. Add completion-gated mechanical
+  scoring and 91 valid/invalid fixture cases. Preserve original inputs and disclose
+  shorter probe budgets; semantic and literary judgments remain unprepared.
+
 - Connect file-tool task attempts and rewards to gated TRL GRPO updates. Preserve
   exact sampled tokens, mask environment text, and stop unavailable or tied groups.
   Separate inference adapters from hash-checked resumable trainer checkpoints.
