@@ -1,8 +1,8 @@
 # DAPO full-round readiness
 
 **The DAPO configuration and CPU proof pass; the intact 48-task GPU run has not
-started.** Full-task token budgets, reward gates, long-trajectory memory and
-zero-variance handling remain unresolved. Raising the old probe's step count alone
+started.** Tied-group continuation is approved and implemented. Full-task token
+budgets, reward gates and long-trajectory memory remain unresolved. Raising the old probe's step count alone
 would not produce the requested experiment.
 
 ## Intended workload
@@ -19,8 +19,9 @@ still stop execution; quiet logs alone do not establish a stall. The previous
 
 Checkpoint full training state at completed update boundaries, retain recoverable
 intermediate checkpoints, and deliberately test a pause/resume within the first
-pass. Final evaluation is separate. Scheduled groups are not guaranteed optimizer
-updates: the treatment of tied reward groups needs an explicit policy.
+pass. Final evaluation is separate. A completed schedule has 96 optimizer steps,
+including zero-advantage steps for tied groups. Those steps are not evidence of
+new learning signal. Failures can still stop the schedule before full coverage.
 
 The earlier approximately ten-hour estimate extrapolated three shortened training
 tasks. It is **not a measured ETA for these intact tasks**. Fourteen have nine
@@ -45,7 +46,7 @@ boundary. Those IDs share one toy brief; this is an engineering fixture.
 | Adam first / second moment differences | maximum `1.40e-09` / `1.82e-12` |
 | Interrupted versus uninterrupted | exact adapter, optimizer, scheduler, RNG and sampled token ledgers |
 | Changed loss on resume | rejected before caller-state or output mutation |
-| Primary integration suite | 324 tests run, one skipped, success |
+| Primary integration suite after tie-policy addition | 325 tests run, one skipped, success |
 | Primary DAPO CPU rerun, Ruff lint/format | passed |
 
 The implementation agent also reran the original GRPO CPU proof successfully.
@@ -88,22 +89,23 @@ not an established correct solution. A supported memory-efficient path needs
 model-specific probability/gradient verification and measured fit. No installation,
 download, precision change or model replacement has been authorized by this report.
 
-Current code halts on exactly tied groups before updating. This preserves evidence
-but can prevent visiting later tasks. The recommended alternative, **not yet
-approved or implemented**, is ordinary TRL behavior: record zero advantages and
-continue the round without resampling. Adam still takes its normal step and existing
-momentum can move weights; these must not be reported as skipped updates or as a
-learning signal from that group. Keep unavailable rewards fail-closed.
+The user approved ordinary TRL continuation without resampling. Explicit,
+identity-bound `tie_policy="continue"` is implemented; the default remains `"halt"`
+for the old probe. Tied groups return zero advantages, while Adam and the scheduler
+still step. Existing momentum can move weights, so these are not skipped updates
+or evidence of new relative reward information. Unavailable rewards still halt.
 
-A stricter alternative is to skip parameter and Adam-state updates entirely. That
-requires a separate integration and recovery proof; a zero loss alone does not
-achieve it. Whichever policy is chosen, report visits, tied groups and optimizer
-steps separately and verify recovery across tied groups.
+A separate tiny-model CPU proof covers six visits over two passes: four tied groups,
+two nonzero-advantage groups, six optimizer steps and no resampling. It verifies
+leading/middle/trailing ties, zero tied loss, moment decay and momentum-only movement,
+dense/accumulated agreement, and exact step-2→6 checkpoint resume. An all-tied run
+completes with unchanged parameters and advanced optimizer counters. Saved group
+reports distinguish ties from optimizer progress; full48 coverage accounting still
+belongs to the unimplemented full-round recipe.
 
 ## Next gate and evidence
 
-Resolve the tied-group policy, then implement and review a separately bound full48
-runtime/reward recipe with faithful token budgets, collision-free seeds, finite-work
+Implement and review a separately bound full48 runtime/reward recipe with faithful token budgets, collision-free seeds, finite-work
 supervision and coverage-aware recovery. Prove native long-trajectory memory fit
 before committing to the full run. Do not silently truncate, shorten, omit or
 resample tasks to make the schedule finish.
@@ -112,7 +114,9 @@ Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
 Key files are `data-readiness.md`, `readiness-matrix.{md,json,csv}`,
 `reward-counterexamples.json`, `runtime-study.md`, `core-report.md`,
-`primary-tests.log` and `primary-dapo/smoke.json`. Original data and previous GPU
+`primary-tests.log`, `primary-dapo/smoke.json`, `ties-suite.log`,
+`ties-cpu-verified/smoke.json` and `ties-regression-{grpo,dapo}/smoke.json`.
+Original data and previous GPU
 runs were not modified. No new GPU training, package install, download or paid call
 occurred during this readiness work.
 

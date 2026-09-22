@@ -36,6 +36,7 @@ class GRPOSettings:
     group_size: int = 2
     microbatch_size: int | None = None  # None retains full-group training.
     loss_type: str = "grpo"  # Public TRL objective, frozen in experiment identity.
+    tie_policy: str = "halt"  # "continue" allows ordinary zero-advantage optimizer steps.
     learning_rate: float = 1e-5
     lora_rank: int = 8
     seed: int = 42
@@ -50,6 +51,8 @@ class GRPOSettings:
     def validate(self):
         if self.loss_type not in ("grpo", "dapo"):
             raise ValueError("Loss type must be grpo or dapo")
+        if self.tie_policy not in ("halt", "continue"):
+            raise ValueError("Tie policy must be halt or continue")
         checkpoint_identity(self.model_id, self.revision)
         if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= 20):
             raise ValueError("Serial probe requires group size 2..8 and optimizer steps 1..20")

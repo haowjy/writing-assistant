@@ -4,6 +4,8 @@ import copy
 import json
 import tempfile
 import unittest
+from dataclasses import replace
+from itertools import product
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -83,6 +85,28 @@ class IntegrityTests(unittest.TestCase):
                         reward_spec=spec,
                         admission={"mode": "engineered-fixture", "label": "test-only"},
                         execute=True,
+                    )
+            self.assertFalse(output.exists())
+
+    def test_tie_policy_is_explicit_and_identity_bound(self):
+        settings = GRPOSettings(revision=REVISION)
+        self.assertEqual(settings.tie_policy, "halt")
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "absent"
+            common = dict(
+                tasks=[task()],
+                output=output,
+                reward_spec={"id": "fixture-v1", "config": {}, "mode": "mechanical-only-smoke"},
+                admission={"mode": "engineered-fixture", "label": "test-only"},
+            )
+            halted = inspect_grpo(settings=settings, **common)
+            continued = inspect_grpo(settings=replace(settings, tie_policy="continue"), **common)
+            self.assertEqual(continued["settings"]["tie_policy"], "continue")
+            self.assertNotEqual(fingerprint(halted), fingerprint(continued))
+            for policy in ("skip", "CONTINUE", "", None, True, [], {}):
+                with self.subTest(policy=policy), self.assertRaisesRegex(ValueError, "Tie policy"):
+                    train_grpo(
+                        settings=replace(settings, tie_policy=policy), execute=True, **common
                     )
             self.assertFalse(output.exists())
 
@@ -533,19 +557,15 @@ class NativeTests(unittest.TestCase):
         self.assertFalse(backend.completion_ids)
 
     def test_groups_keep_all_attempts_and_pending_is_not_zero(self):
-        settings = GRPOSettings(revision=REVISION, max_generated_tokens=512)
         trainer = SimpleNamespace(
             model=None, processing_class=None, state=SimpleNamespace(global_step=0)
         )
-        for variant in (
-            "mixed",
-            "tie",
-            "judge-error",
-            "infrastructure",
-            "candidate-invalid",
-            "malformed",
+        for policy, variant in product(
+            ("halt", "continue"),
+            ("mixed", "tie", "judge-error", "infrastructure", "candidate-invalid", "malformed"),
         ):
-            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as tmp:
+            settings = GRPOSettings(revision=REVISION, max_generated_tokens=512, tie_policy=policy)
+            with self.subTest(policy=policy, variant=variant), tempfile.TemporaryDirectory() as tmp:
 
                 def factory(model, tokenizer, seed, variant=variant):
                     output = (
@@ -572,12 +592,19 @@ class NativeTests(unittest.TestCase):
                 groups = RolloutGroups(
                     [task()], settings, Path(tmp), reward, factory, SYSTEM_PROMPT
                 )
-                if variant in {"tie", "judge-error", "infrastructure", "candidate-invalid"}:
+                pending = variant in {"judge-error", "infrastructure", "candidate-invalid"} or (
+                    variant == "tie" and policy == "halt"
+                )
+                if pending:
                     with self.assertRaises(GroupPending):
                         groups(["fixture"] * 2, trainer)
                 else:
                     output = groups(["fixture"] * 2, trainer)
-                    self.assertEqual(output["rollout_rewards"], [0.0, 1.0])
+                    self.assertEqual(
+                        output["rollout_rewards"], [1.0, 1.0] if variant == "tie" else [0.0, 1.0]
+                    )
+                self.assertEqual(bool(list(Path(tmp).glob("groups/*/complete.json"))), not pending)
+                self.assertEqual(bool(list(Path(tmp).glob("groups/*/stopped.json"))), pending)
                 attempts = sorted(Path(tmp).glob("groups/*/attempt-*"))
                 self.assertEqual(len(attempts), 2)
                 for attempt in attempts:
@@ -588,6 +615,10 @@ class NativeTests(unittest.TestCase):
                     self.assertNotIn("private-sentinel", events)
                     self.assertTrue((attempt / "reward.json").is_file())
                 stats = json.loads(next(Path(tmp).glob("groups/*/group.json")).read_text())
+                self.assertEqual(stats["tie_policy"], policy)
+                if variant == "tie":
+                    self.assertTrue(stats["zero_variance"])
+                    self.assertEqual(stats["trl_advantages"], [0.0, 0.0])
                 self.assertEqual(
                     stats["status"],
                     "pending"

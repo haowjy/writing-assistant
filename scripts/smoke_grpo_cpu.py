@@ -238,6 +238,22 @@ def tiny_model():
     return model, tokenizer
 
 
+def same_state(a, b):
+    """Exact equality for saved model/optimizer/scheduler and Python/NumPy/Torch RNG trees."""
+    import numpy as np
+    import torch
+
+    if isinstance(a, np.ndarray):
+        return np.array_equal(a, b)
+    if isinstance(a, torch.Tensor):
+        return torch.equal(a, b)
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(same_state(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)):
+        return len(a) == len(b) and all(same_state(x, y) for x, y in zip(a, b, strict=True))
+    return a == b
+
+
 def smoke(output, loss_type="grpo"):
     import numpy as np
     import torch
@@ -340,6 +356,7 @@ def smoke(output, loss_type="grpo"):
     rejected_changes = (
         replace(settings, microbatch_size=2),
         replace(settings, loss_type="grpo" if loss_type == "dapo" else "dapo"),
+        replace(settings, tie_policy="continue"),
     )
     for changed in rejected_changes:
         rejected_model, rejected_tokenizer = tiny_model()
@@ -360,7 +377,7 @@ def smoke(output, loss_type="grpo"):
         except ValueError as error:
             assert "Resume experiment identity changed" in str(error), error
         else:
-            raise AssertionError("Changed objective/microbatch was admitted on resume")
+            raise AssertionError("Changed objective/microbatch/tie policy was admitted on resume")
         assert not getattr(rejected_model, "peft_config", None)
         assert torch.equal(torch.get_rng_state(), rng_before_rejection)
         assert random.getstate() == python_rng_before
@@ -417,20 +434,7 @@ def smoke(output, loss_type="grpo"):
         left = torch.load(Path(full["checkpoint"]) / name, weights_only=False)
         right = torch.load(Path(resumed["checkpoint"]) / name, weights_only=False)
 
-        def equal(a, b):
-            import numpy as np
-
-            if isinstance(a, np.ndarray):
-                return np.array_equal(a, b)
-            if isinstance(a, torch.Tensor):
-                return torch.equal(a, b)
-            if isinstance(a, dict):
-                return a.keys() == b.keys() and all(equal(a[k], b[k]) for k in a)
-            if isinstance(a, (list, tuple)):
-                return len(a) == len(b) and all(equal(x, y) for x, y in zip(a, b, strict=True))
-            return a == b
-
-        assert equal(left, right), f"Resume state diverged: {name}"
+        assert same_state(left, right), f"Resume state diverged: {name}"
 
     def step_tokens(root):
         return [
@@ -536,6 +540,7 @@ def smoke(output, loss_type="grpo"):
         "loss_observer_files": [f"observer-{name}.json" for name in observers],
         "every_active_token_counted_once_with_aligned_masks": True,
         "changed_loss_type_resume_rejected_before_mutation": True,
+        "changed_tie_policy_resume_rejected_before_mutation": True,
         "full_batch_optimizer_moment_max_abs_differences": moments_diff,
         "microbatch_size": settings.microbatch_size,
         "changed_microbatch_resume_rejected_before_mutation": True,

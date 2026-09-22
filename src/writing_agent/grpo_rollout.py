@@ -230,7 +230,9 @@ class RolloutGroups:
     reward_callback(task, result) returns Reward, including rollout_reward or
     session_reward results. Its declared identity/config is frozen in the manifest.
     A callback exception or unavailable reward pends the entire group before TRL can
-    turn missing entries into zeros. Ties halt before Adam momentum can move weights.
+    turn missing entries into zeros. Ties halt by default; explicit continuation
+    returns their zero advantages to ordinary TRL/Adam without resampling. Adam
+    momentum can still move weights, so continuation is not a skipped update.
     """
 
     def __init__(self, tasks, settings, output, reward_callback, backend_factory, system_prompt):
@@ -274,6 +276,7 @@ class RolloutGroups:
                 rewards.append(reward)
                 save_json(attempt / "reward.json", asdict(reward))
             stats = group_advantages(rewards)
+            stats["tie_policy"] = self.settings.tie_policy
             if stats["status"] == "ok":
                 # TRL uses sample std + epsilon; retain both conventions explicitly.
                 sample_std = stats["std"] * (len(rewards) / (len(rewards) - 1)) ** 0.5
@@ -283,7 +286,7 @@ class RolloutGroups:
             save_json(group / "group.json", stats)
             if stats["status"] != "ok":
                 raise GroupPending("Unavailable reward/infrastructure: whole group pending")
-            if stats["zero_variance"]:
+            if stats["zero_variance"] and self.settings.tie_policy == "halt":
                 raise GroupPending(
                     "All-tie group: no learning signal; stopped before optimizer update"
                 )

@@ -111,7 +111,9 @@ has a single KV head, so 128K costs about 1.9 GB. `inference.kv_cache_bytes` com
 that from a checkpoint config, and `scripts/probe_context_budget.py` also measures the
 attention step cost. FlashAttention is unavailable for this model because the
 full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
-memory-efficient SDPA is the only O(n) path and the cost of length is time, not memory.
+SDPA is the configured alternative. These inference cache/attention estimates do not
+establish GRPO training fit: dense logits, activations and backward buffers also grow
+with trajectory length.
 `SFTSettings.max_length` is an acceptance bound that rejects overflow and never pads, so
 widening it costs nothing until long trajectories exist to fill it; a long window is a
 data problem before it is a compute problem.
@@ -240,7 +242,11 @@ parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
 Training identity includes private scoring labels, unlike evaluation's rescorable
 identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
 before resume can mutate the model; engineered fixtures use separate, explicit admission.
-Unavailable or tied groups stop before updates. `GRPOSettings.microbatch_size=None`
+Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
+also stops ties by default; explicit `"continue"` sends zero advantages through
+ordinary TRL/Adam without resampling. Momentum may still move weights; this is not
+update skipping. Saved groups record policy and zero variance separately from
+checkpointed optimizer progress. `GRPOSettings.microbatch_size=None`
 trains the full group with accumulation 1. An explicit microbatch must be a positive
 integer dividing `group_size`; `gradient_accumulation_steps` is derived as
 `group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one

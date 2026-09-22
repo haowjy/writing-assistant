@@ -68,14 +68,21 @@ source hashing alone cannot prove an external grader stayed unchanged.
 
 Unavailable judgments, callback errors, infrastructure failures—including observations
 that cannot fit the context—or attempts with no sampled actions stop the whole group
-before an update. They are not zero rewards. All
-attempts and failure evidence remain on disk. Exact ties also stop the invocation before
-optimizer momentum can move weights without new relative reward information. There is
-no automatic resampling until a favorable group appears.
+before an update. They are not zero rewards. All attempts and failure evidence remain
+on disk. `GRPOSettings.tie_policy="halt"` is the default and stops exact ties before
+updating, preserving the fixed probe's behavior. Explicit `tie_policy="continue"`
+returns tied groups to ordinary TRL with zero advantages. The optimizer and scheduler
+still step; Adam momentum can move weights after earlier nonzero gradients. This is
+not a skipped update or new relative reward information. Neither policy resamples.
+
+Tie policy is identity-bound and cannot change on resume. Each saved `group.json`
+records `tie_policy`, `zero_variance` and, when available, `trl_advantages`. Count tied
+groups separately from optimizer steps; a scored group is not proof that its optimizer
+step finished. Unavailable rewards still stop under either policy.
 
 The saved group report distinguishes the repository helper's population-standard-deviation
 statistics from TRL's sample-standard-deviation-plus-epsilon advantages. Training uses
-TRL's GRPO loss, one update per fresh group, no KL penalty (`beta=0`), no weight decay,
+the selected public TRL loss, one optimizer step per admitted fresh group, no KL penalty (`beta=0`), no weight decay,
 and no dropout. This is not a capability-preservation guarantee.
 
 ## Exact tokens during tool use
@@ -212,6 +219,24 @@ generation-group token counts and loss denominators, checking each sampled actio
 is consumed once and masks/advantages remain aligned. `tensor-differences.json` records
 per-tensor adapter and Adam-moment differences; `smoke.json` records objective identities,
 source hash, visits and mutation-free rejection of changed objectives on resume.
+
+For the tied-group continuation proof, run from the checkout with a fresh output path:
+
+```bash
+CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src \
+  uv run --no-sync python -m scripts.smoke_grpo_ties_cpu --execute \
+  --output /tmp/grpo-ties-cpu-check
+```
+
+Its predeclared diagnostic slot rewards create leading, middle and trailing ties:
+six visits over two passes, four tied groups, two nonzero-advantage groups, and six
+ordinary optimizer steps without resampling. It verifies zero tied advantages/loss,
+Adam moment decay and counter advancement, momentum-only parameter movement,
+dense/accumulated agreement, and exact step-2→6 resume through ties and a pass boundary.
+An all-tied run also completes with unchanged parameters but advanced optimizer counters.
+`states-*.pt` retains trusted-local state snapshots; `loss-*.json` and `smoke.json`
+record the observed losses and results. The original CPU check additionally verifies
+that changing tie policy on resume is rejected without mutating caller state.
 
 Native Gemma tokenizer tests separately exercise file tools and multi-turn suffixes with
 scripted outputs; those tests are not evidence of Gemma optimization or GPU fit.

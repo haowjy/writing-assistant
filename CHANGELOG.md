@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add explicit, identity-bound tied-group continuation without resampling. Keep
+  default halt and unavailable-reward refusal; ordinary zero-advantage steps may
+  still move weights through Adam momentum. Verify tied-group accounting, dense
+  accumulation, all-tied completion and exact checkpoint recovery on CPU. Clarify
+  that inference cache estimates do not establish long-trajectory training fit.
+
 - Record full48 DAPO readiness: CPU integration passes, but intact-task output
   budgets, reward shortcuts, long-trajectory memory and tied-group coverage block
   GPU launch. Track two complete passes with advisory timing, not a wall-clock cap.
