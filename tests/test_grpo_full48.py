@@ -2,6 +2,7 @@
 
 import copy
 import inspect
+import json
 import os
 import tempfile
 import unittest
@@ -85,6 +86,75 @@ class Full48EvidenceTests(unittest.TestCase):
         task, result = self.fixture(23, messages)
         result["trace"] = [e for e in result["trace"] if e["type"] != "tool"]
         self.assertEqual(mechanical_full48_reward(task, result).value, 0)
+
+    def test_equivalent_paths_preserve_real_actions_and_saved_evidence(self):
+        for number in (23, 43):
+            with self.subTest(task=number):
+                task = self.tasks[number - 1]
+                task, result = self.fixture(number, fixture_messages(task, "equivalent-paths"))
+                saved = copy.deepcopy(result)
+                events = [e for e in result["trace"] if e["type"] == "tool"]
+                self.assertTrue(all(e["observation"]["ok"] for e in events))
+                names = {e["call"]["function"]["name"] for e in events}
+                self.assertTrue(
+                    (
+                        {"read_file", "write_file", "patch_file"}
+                        if number == 23
+                        else {"search", "read_file"}
+                    )
+                    <= names
+                )
+                self.assertTrue(
+                    all("//" not in p and not p.startswith("./") for p in result["after"])
+                )
+                self.assertEqual(mechanical_full48_reward(task, result).value, 1)
+                self.assertEqual(result, saved)
+                # The tool API also accepts JSON argument strings. Normalization is local.
+                for event in events:
+                    function = event["call"]["function"]
+                    function["arguments"] = json.dumps(function["arguments"])
+                saved = copy.deepcopy(result)
+                self.assertEqual(mechanical_full48_reward(task, result).value, 1)
+                self.assertEqual(result, saved)
+
+                for invalidate in ("failed-action", "wrong-initial-content"):
+                    changed = copy.deepcopy(result)
+                    selected = next(
+                        e
+                        for e in reversed(changed["trace"])
+                        if e["type"] == "tool"
+                        and e["call"]["function"]["name"]
+                        == (
+                            "patch_file"
+                            if number == 23 and invalidate == "failed-action"
+                            else "read_file"
+                        )
+                    )
+                    if invalidate == "failed-action":
+                        selected["observation"]["ok"] = False
+                    else:
+                        selected["observation"]["result"] += " invented content"
+                    self.assertLess(mechanical_full48_reward(task, changed).value, 1)
+
+    def test_impossible_successful_paths_are_rejected_before_normalization(self):
+        task, result = self.fixture(23, fixture_messages(self.tasks[22], "equivalent-paths"))
+        tool_indices = [i for i, e in enumerate(result["trace"]) if e["type"] == "tool"]
+        for path in (
+            "../drafts/scene.md",
+            "drafts/../drafts/scene.md",
+            "drafts//./../scene.md",
+            "/drafts/scene.md",
+            "//drafts/scene.md",
+        ):
+            for index in tool_indices:
+                with self.subTest(path=path, event=index):
+                    forged = copy.deepcopy(result)
+                    forged["trace"][index]["call"]["function"]["arguments"]["path"] = path
+                    saved = copy.deepcopy(forged)
+                    reward = mechanical_full48_reward(task, forged)
+                    self.assertEqual(reward.value, 0)
+                    self.assertEqual(reward.reason, "Invalid saved action/turn evidence")
+                    self.assertEqual(forged, saved)
 
     def test_upper_length_failure_retains_signal_after_delivery(self):
         task = self.tasks[0]

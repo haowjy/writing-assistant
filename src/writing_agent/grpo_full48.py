@@ -5,7 +5,7 @@ remain unchanged. See the bound contract for exact source identity and ambiguiti
 """
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from writing_agent.artifacts import extract_prose, markdown_graph
 from writing_agent.catalog import fingerprint
@@ -160,6 +160,17 @@ def _actions(result):
         arguments = function["arguments"]
         if isinstance(arguments, str):
             arguments = json.loads(arguments)
+        # Workspace resolves these aliases to canonical snapshot paths. Copy first:
+        # saved trace arguments (including JSON-encoded arguments) remain immutable.
+        arguments = dict(arguments)
+        if "path" in arguments:
+            path = arguments["path"]
+            if not isinstance(path, str):
+                raise ValueError("Successful tool path must be a string")
+            relative = PurePosixPath(path)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("Successful tool path cannot be absolute or contain '..'")
+            arguments["path"] = relative.as_posix()
         actions.append((function["name"], arguments, event["observation"].get("result")))
     return actions
 

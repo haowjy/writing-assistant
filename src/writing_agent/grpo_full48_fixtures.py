@@ -94,6 +94,26 @@ def fixture_messages(task, case="positive"):
             actions.append(
                 {"name": "write_file", "arguments": {"path": "unrequested.md", "content": text}}
             )
+    if case == "equivalent-paths":
+        if task["family"] == "F2":
+            write = next(a for a in actions if a["name"] == "write_file")
+            body = write["arguments"]["content"]
+            actions.append(
+                {
+                    "name": "patch_file",
+                    "arguments": {
+                        "path": write["arguments"]["path"],
+                        "old": body,
+                        "new": body.replace("fixture", "revised", 1),
+                    },
+                }
+            )
+        for action in actions:
+            args = action["arguments"]
+            if action["name"] == "search":
+                args["path"] = "./kb//."
+            elif "path" in args:
+                args["path"] = "./" + args["path"].replace("/", "//./")
     messages = [{"role": "assistant", "content": "Done."} for _ in visible["followups"]]
     messages += [
         {
@@ -159,6 +179,8 @@ def validate_full48(release_directory, destination):
             cases += ["missing-sibling-link"]
         if task["family"] == "F2":
             cases += ["moved-protected-line"]
+        if task["id"] in {"wave1-train-023", "wave1-train-043"}:
+            cases += ["equivalent-paths"]
         candidates = {}
         for case in cases:
             root = destination / task["id"] / case
@@ -178,9 +200,19 @@ def validate_full48(release_directory, destination):
             else:
                 result["before"] = {"candidate-claimed.md": "Not authoritative"}
             candidates[case] = (result, None, "saved-evidence-counterfactual")
+        if task["id"] in {"wave1-train-023", "wave1-train-043"}:
+            for case, prefix in (("forged-absolute-path", "/"), ("forged-traversal-path", "./../")):
+                result = copy.deepcopy(positive)
+                event = next(e for e in reversed(result["trace"]) if e["type"] == "tool")
+                args = event["call"]["function"]["arguments"]
+                args["path"] = prefix + args["path"]
+                candidates[case] = (result, None, "impossible-successful-trace-counterfactual")
         for case, (result, messages, evidence_kind) in candidates.items():
+            before_scoring = fingerprint(result)
             reward = mechanical_full48_reward(task, result)
-            if case in {"positive", "forged-before", "moved-protected-line"}:
+            if fingerprint(result) != before_scoring:
+                raise ValueError("Reward mutated saved fixture evidence")
+            if case in {"positive", "forged-before", "moved-protected-line", "equivalent-paths"}:
                 expected = "one"
             elif case in {
                 "missing",
@@ -189,6 +221,8 @@ def validate_full48(release_directory, destination):
                 "failed",
                 "wrong-channel",
                 "missing-turn-evidence",
+                "forged-absolute-path",
+                "forged-traversal-path",
             }:
                 expected = "zero"
             elif case == "missing-tool-evidence" and task["family"] in {"F2", "F3", "F4"}:
