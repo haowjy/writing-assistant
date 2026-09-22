@@ -8,7 +8,25 @@ Optional ideas live in [work/FUTURE.md](work/FUTURE.md).
 The goal is better long-form project memory and effective use of large writing
 projects, supported by a maintained wiki, with better prose alongside it.
 
-## Short-context GRPO proof passed; next test longer memory tasks
+## Next: DAPO over two complete training passes
+
+- [x] Add identity-bound DAPO through public TRL. Verify unequal-length, masked CPU
+  accumulation against dense updates and Adam moments, plus exact checkpoint resume
+  across two passes. See [readiness and blockers](work/research-plan/dapo-readiness.md).
+- [x] Audit all 48 wave1 training tasks without shortening them. All pass release
+  identity checks, but seven cannot meet output requirements under the old token caps;
+  the generic smoke reward also grants credit to unchanged drafts.
+- [ ] Resolve tied-group handling: current behavior halts. Recommended, not approved:
+  ordinary TRL zero-advantage steps, with no resampling. Adam momentum may still move
+  weights; do not call these skipped updates. Keep unavailable rewards fail-closed.
+- [ ] Build and validate the faithful full48 runtime/reward contract, long-trajectory
+  memory path, collision-free attempt seeds, and intermediate checkpoint recovery.
+- [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
+  96 scheduled groups / 384 attempts. The user authorized overnight execution with
+  **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until the
+  readiness blockers are resolved. No new GPU run has started.
+
+## Completed: short-context GRPO engineering proof
 
 - [x] Prepare the bounded [Gemma E2B GRPO probe](docs/grpo-probe.md): three training
   tasks, six development cases at two seeds, four attempts per training group, three
@@ -30,9 +48,6 @@ projects, supported by a maintained wiki, with better prose alongside it.
   and 12 paired development attempts. Peak Torch allocation 18.249 GiB; total GPU-stage
   time 45.44 minutes. Mechanical mean 0.229→0.313, with mixed per-case changes and no
   semantic/literary improvement established.
-- [ ] Extend the passing probe to longer, multi-turn wiki tasks. Add declared Astra
-  author simulation only where needed, measure cache reuse, and test retention and
-  use of earlier decisions. Increase context gradually rather than jumping to 256K.
 
 Gemma readiness checked: `google/gemma-4-E2B-it` at revision
 `3e22461f65e89153144f8adb70e3b8c2cc9845a7` has its weights (about 10.25GB), tokenizer,
@@ -42,7 +57,7 @@ not fit, but microbatching completed real Gemma training, resume and adapter eva
 This proves the bounded engineering path, not writing or long-context effectiveness.
 Semantic/literary judging still needs
 calibration before substantive writing optimization. The SFT dataset is unprepared and
-is not required for this GRPO probe.
+is not required for the next mechanical-only DAPO experiment.
 
 ## Then: establish the Qwen experiment
 

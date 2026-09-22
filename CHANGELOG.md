@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Record full48 DAPO readiness: CPU integration passes, but intact-task output
+  budgets, reward shortcuts, long-trajectory memory and tied-group coverage block
+  GPU launch. Track two complete passes with advisory timing, not a wall-clock cap.
+
 - Add identity-bound DAPO loss selection through public TRL configuration; keep
   GRPO as the default and preserve the fixed probe limits. Verify variable-length,
   observation-masked CPU accumulation against dense adapter updates and Adam
