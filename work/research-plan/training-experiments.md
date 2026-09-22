@@ -86,9 +86,16 @@ score calculation, not literary judgment. The current weights and pointwise-vers
 pairwise judging choice remain provisional; change them if the validation reveals a
 problem. Keep training judgment separate from final evaluation.
 
-Still resolve the simulated writer's responses to questions and revisions, exact
-success thresholds, development comparison schedule, training budget, stopping rules,
-and the scope and cost of the 256K context target.
+Declare which tasks need a simulated author; use Astra for those tasks with a stable
+prompt prefix and exact-input response caching. Do not require a per-turn routing model.
+The [author design](../sft/simulated-author.md) separates that path from optional Jev
+routing and self-play. Training both conversation roles is not part of the initial run.
+
+Still resolve exact success thresholds, development comparison schedule, training
+budget, stopping rules, and the scope and cost of the 256K context target. Evaluate
+[Unsloth's Qwen support](../sft/local-compute-and-tracking.md#unsloth-is-a-training-stack-candidate)
+as a possible way to fit short local experiments; do not assume its documented 24GB
+QLoRA support establishes long-context multi-turn GRPO feasibility.
 
 The [next-experiment TODO](TODO.md) tracks execution. The [task and reward design](../sft/rl-task-generation.md)
 and [simulated author](../sft/simulated-author.md) provide the supporting proposals.

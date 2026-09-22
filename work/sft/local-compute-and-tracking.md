@@ -63,21 +63,22 @@ cached. The 64K column for E4B and the 8K column for the two large models show a
 that fits while leaving too little room for the attention transient and runtime overhead,
 so they should be read as unusable rather than as candidates.
 
-**This is the concrete bottleneck the rental decision was waiting for.** A 27B or 31B
-policy cannot be trained on one RTX 3090 at any useful sequence length, and the constraint
-is the checkpointed activation term, which grows with layers x context and is unaffected
-by quantising the weights harder. Training a model at that scale is a cloud decision, not
-an optimisation problem on this device.
+These estimates identify pressure in the modeled configuration, not a proof that a
+27B model cannot be trained on a 3090. Activation offload and different training kernels
+can change the resident-memory requirement. Unsloth now documents Qwen3.8 QLoRA with
+24GB; its example uses a 2,048-token sequence cap. That warrants a short-context test,
+not a claim that long-context GRPO fits. Quantizing weights alone does not remove
+activation, rollout-cache, or training overhead.
 
 The same arithmetic carries an architectural argument in the other direction. Gemma-4's
 sliding-window design makes long context cheap for a small model: 28 of 35 E2B layers cap
 their cache at 512 tokens, so a 5B model gets a 128K window at 1.9 GB and a 64K training
 step. That is why E2B is a legitimate long-form feasibility target rather than a toy.
 
-A staged read of the same evidence: develop the pipeline on E2B at 64K, confirm it on
-E4B at 32K on the same device, and treat any 27B-or-larger policy as a separate rental
-run with its own measured requirements. E4B is already cached and is the natural next
-rung; nothing larger is available locally.
+The active plan uses E2B for engineering verification and Qwen3.8-27B as the training
+target. An E4B intermediate run is optional, not a prerequisite. Measure Qwen with the
+chosen stack before deciding that rental is necessary. Short-context local feasibility
+would not settle the desired 256K context budget.
 
 For RL, separately measure rollout generation, workspace execution, feedback generation,
 reward evaluation, and policy updates. Avoid simultaneous policy/judge/simulator
@@ -90,6 +91,27 @@ rollout throughput, or a reward/simulator model that makes serial execution impr
 Move the same locked code, data/task manifests, checkpoint identity, and logging schema;
 compare cost per completed useful experiment, not GPU hourly rate alone. No cloud
 resource has been requested or provisioned.
+
+## Unsloth is a training-stack candidate
+
+The [Qwen3.8 training guide](https://unsloth.ai/docs/models/qwen3.8/train) documents
+4-bit QLoRA with 24GB, embedding offload, and gradient checkpointing. It also documents
+an RL path with `fast_inference=False`, rather than the fast vLLM path. Its advertised
+speed/memory savings are vendor measurements, not results from this checkout. Unsloth
+supports reward training; adopting it would not imply adding SFT.
+
+Before adopting it, use an isolated environment and a bounded probe of loading, one
+update, save/resume, and native tool-message rendering. Measure peak GPU/RAM/disk use
+and end-to-end rollout plus update time at short lengths before increasing context.
+Do not overwrite the existing locked environment or download weights without a scoped
+storage and execution budget. The official [Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B)
+states a native 262,144-token window; this is not evidence that 256K GRPO fits on 24GB.
+
+Use the official model or a traceable training-format quantization as the initial base.
+GGUF is primarily an inference/export format; the standard Unsloth QLoRA path loads
+Transformers weights, not the linked community GGUF. Community merges remain optional
+comparison models, separate from the training-framework decision. Save adapters and
+bounded checkpoints rather than every merged full-weight copy when managing storage.
 
 ## W&B recommendation, not yet integrated
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Plan task-declared simulated-author use with cache-aware Astra calls rather than
+  mandatory per-turn routing. Record Jev and self-play as optional ideas, distinguish
+  incomplete sessions from environment errors, and correct the blanket exclusion of
+  local 27B training in light of Unsloth's documented short-context 24GB QLoRA support.
+
 - Clarify the training goal: long-form project memory and effective use of large
   writing projects come first, supported by wiki maintenance, with prose quality as
   a companion outcome. Record the full task mix, broad instruction variation, local
