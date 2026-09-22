@@ -7,6 +7,9 @@ A tiny CPU model has passed adapter save/reload and interrupted-training resume 
 
 ## Inspect first
 
+For the frozen three-task experiment, use the [prepared Gemma probe](grpo-probe.md).
+The generic entrypoint below remains unconfigured for other experiments.
+
 Run from the repository root using the existing training environment. These commands
 do not install dependencies; execution requires the pinned optional training packages,
 including TRL 1.13.0.
@@ -43,8 +46,9 @@ PYTHONPATH=src uv run --no-sync python scripts/train_grpo.py \
   --execute --resume runs/grpo-probe/checkpoint-1
 ```
 
-This first connection does not enforce a wall-clock watchdog or automatically measure
-GPU/RAM peaks. Collect those measurements externally for the approved GPU probe.
+This generic entrypoint does not enforce a wall-clock watchdog or measure GPU/RAM peaks.
+The [prepared probe runner](grpo-probe.md) adds supervised stages, an aggregate time limit,
+resource records, and matched development evaluation.
 
 ## Rewards and unavailable groups
 
@@ -167,8 +171,9 @@ CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src \
 The check uses a clearly labeled artificial word-index reward, not writing-quality data.
 Its `smoke.json` reports a nonzero LoRA update, unchanged base weights, exact adapter
 reload, preserved partial-checkpoint recovery, and exact uninterrupted-versus-resumed
-adapter/optimizer/scheduler/RNG state. It also checks equal sampled histories after resume
-and masks the inserted user turn.
+adapter/optimizer/scheduler/RNG state through step 3. Checkpoint retention removes step 1;
+the restored pre-update state must still match the preserved step-1 export evidence.
+It also checks equal sampled histories after resume and masks the inserted user turn.
 Native Gemma tokenizer tests separately exercise file tools and multi-turn suffixes with
 scripted outputs; those tests are not evidence of Gemma optimization or GPU fit.
 

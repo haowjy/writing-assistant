@@ -76,7 +76,9 @@ test. Demonstrations and SFT are conditional, not on the critical path.
 - [x] Implement the [GRPO training connection](../../docs/grpo.md). Preserve sampled
   actions, including generated reasoning, and mask user/tool observations. Native
   tokenizer tests and real tiny-CPU optimizer/save/reload/resume checks pass.
-- [ ] Verify that connection with E2B on the RTX 3090 after scoped approval; CPU
+- [x] Freeze the [short Gemma probe](../../docs/grpo-probe.md): three training tasks,
+  six development cases, scorer fixtures, token preflight, and bounded supervised stages.
+- [ ] Verify that connection with E2B during an exclusive RTX 3090 window; CPU
   results do not establish Gemma execution or memory fit. The
   [prepared SFT pipeline](../sft/plan.md) remains an optional fallback.
 - [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):

@@ -130,6 +130,8 @@ class TransformersBackend:
             raise ValueError("Choose chat or transcript formatting explicitly")
         if config["max_tokens"] < 1 or config["context_tokens"] < 1:
             raise ValueError("Token budgets must be positive")
+        if config.get("max_generated_tokens", config["max_tokens"]) < config["max_tokens"]:
+            raise ValueError("Total generated-token budget must cover one complete call")
         if config["temperature"] < 0 or not 0 < config["top_p"] <= 1:
             raise ValueError("Invalid sampling configuration")
         thinking = config.get("enable_thinking", config["prompt_format"] == "chat")
@@ -141,6 +143,7 @@ class TransformersBackend:
         self.config = copy.deepcopy(config)
         self.config["enable_thinking"] = thinking
         self.calls = 0
+        self.generated_tokens = 0
 
     def prepare_inputs(self, messages: list[dict], tools: list[dict]):
         rendered = render_messages(messages)
@@ -180,6 +183,11 @@ class TransformersBackend:
             }
         )
         limit = self.config["max_tokens"]
+        if "max_generated_tokens" in self.config:
+            remaining = self.config["max_generated_tokens"] - self.generated_tokens
+            if remaining <= 0:
+                raise ValueError("Total generated-token budget exhausted")
+            limit = min(limit, remaining)
         if input_tokens + limit > self.config["context_tokens"]:
             raise ContextBudgetExceeded("Context budget exceeded; history was not truncated")
         temperature = self.config["temperature"]
@@ -217,6 +225,7 @@ class TransformersBackend:
         eos = self.model.generation_config.eos_token_id
         eos = eos if isinstance(eos, list) else [eos]
         text = self.tokenizer.decode(output, skip_special_tokens=False)
+        self.generated_tokens += len(output)
         emit({"type": "model_output", "text": text, "output_ids": output.tolist()})
         if len(output) >= limit and int(output[-1]) not in eos:
             raise ValueError(f"Generation token limit reached; incomplete output: {text}")

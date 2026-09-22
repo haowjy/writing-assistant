@@ -245,6 +245,15 @@ checkpoints are different artifacts. CPU optimizer/resume verification does
 not establish Gemma GPU fit. See [GRPO methodology](../../docs/grpo.md) for the bounded
 execution, recovery, and caller-owned reward contracts.
 
+`grpo_probe.py` is a fixed engineering recipe over that trainer, not a general experiment
+scheduler. `grpo_probe_data.py` owns its committed source packet, bounded derivatives,
+and mechanical-only scorer; fixture successes are not sampled model successes or
+literary judgments. Preparation and tokenizer evidence bind the package sources before
+any model phase. Source changes therefore require fresh preparation, not rescoring an
+old run. See the [probe guide](../../docs/grpo-probe.md) for phase admission and recovery.
+The ordinary inference backend applies a trajectory token cap only when explicitly
+configured; older callers retain their per-call budget.
+
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the
 one at an index, and `prepare_task_requests` materializes a batch with a coverage

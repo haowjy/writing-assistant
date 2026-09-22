@@ -317,11 +317,13 @@ class RolloutGroups:
             for path, content in visible["initial_files"].items():
                 workspace.write_file(path, content)
             backend = self.backend_factory(trainer.model, trainer.processing_class, seed)
+            trace_events = []
             with (attempt / "trace.jsonl").open("w") as stream:
 
                 def emit(event):
                     stream.write(json.dumps(event, ensure_ascii=False) + "\n")
                     stream.flush()
+                    trace_events.append(event)
 
                 result = run_agent(
                     backend,
@@ -333,6 +335,7 @@ class RolloutGroups:
                     system_prompt=self.system_prompt,
                     **{k: v for k, v in visible["budgets"].items() if k != "max_total_bytes"},
                 )
+            result["trace"] = trace_events
             result["failure_class"] = backend.failure or (
                 "candidate_invalid" if result["status"] != "completed" else None
             )

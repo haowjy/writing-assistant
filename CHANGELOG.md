@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Add the frozen Gemma probe runner: hash-bound preparation and token preflight,
+  matched mechanical development scoring, step-1→3 resume, and resident adapter checks.
+  Supervise GPU stages with a 60-minute aggregate cap, interruption accounting,
+  competing-process refusal, and explicit missing resource measurements.
+- Pass real rollout traces to training rewards. Keep trajectory generation limits
+  opt-in so existing per-call-only inference configurations retain their behavior.
+
 - Enable explicit non-reentrant activation checkpointing for GRPO. Record adapter
   state after checkpoint restoration and before updates. Extend the real CPU check
   through step 3, verifying exact resume after the step-1 checkpoint is pruned.

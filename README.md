@@ -78,8 +78,10 @@ an existing file.
 
 [GRPO usage and checkpoint methodology](docs/grpo.md) covers the inspect-first training
 entrypoint, candidate-token masks, separate inference adapters, and resumable checkpoints.
-A tiny offline CPU model verifies optimizer updates and exact resume; Gemma GPU execution
-remains a separately approved probe. No SFT demonstrations are required for GRPO.
+The [prepared Gemma probe](docs/grpo-probe.md) freezes three training tasks, six development
+cases, mechanical rewards, token budgets, and supervised execution. A tiny CPU model
+verifies exact step-1→3 resume after checkpoint pruning; actual Gemma GPU execution remains
+pending. No SFT demonstrations are required for GRPO.
 
 ## Limits
 
