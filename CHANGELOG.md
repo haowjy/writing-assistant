@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Prepare the intact full48 mechanical reward with frozen release bindings, real
+  sequence/write evidence and offline counterexamples. Reject unchanged or missing
+  delivery; normalize valid tool-path aliases without mutating evidence. Preserve
+  original tasks and explicitly unjudged semantics. Full-round GPU execution remains
+  blocked on runtime and memory qualification.
+
 - Distinguish saved Python advantage estimates from observed TRL tensors. Reproduce
   float32 residuals and fresh-Adam movement for fractional tied rewards without
   clipping, recentering or changing ordinary TRL behavior.

@@ -1,8 +1,9 @@
 # DAPO full-round readiness
 
 **The DAPO configuration and CPU proof pass; the intact 48-task GPU run has not
-started.** Tied-group continuation is approved and implemented. Full-task token
-budgets, reward gates and long-trajectory memory remain unresolved. Raising the old probe's step count alone
+started.** Tied-group continuation and the separate full48 mechanical reward are
+implemented. Full-task runtime budgets and long-trajectory memory remain unresolved.
+Raising the old probe's step count alone
 would not produce the requested experiment.
 
 ## Intended workload
@@ -46,7 +47,7 @@ boundary. Those IDs share one toy brief; this is an engineering fixture.
 | Adam first / second moment differences | maximum `1.40e-09` / `1.82e-12` |
 | Interrupted versus uninterrupted | exact adapter, optimizer, scheduler, RNG and sampled token ledgers |
 | Changed loss on resume | rejected before caller-state or output mutation |
-| Primary integration suite after tie-policy addition | 325 tests run, one skipped, success |
+| Primary integrated suite with full48 data tests enabled | 333 tests run, one skipped, success |
 | Primary DAPO CPU rerun, Ruff lint/format | passed |
 
 The implementation agent also reran the original GRPO CPU proof successfully.
@@ -66,14 +67,29 @@ unmeasured.
 | Task admission | All 48 exceed the generic 16-step ceiling; 14 exceed 32 tools and 38 exceed 8192 whitespace read units. Declared budgets are not measured consumption. |
 | Per-call output | Tasks 005, 010, 040 and 045 require 900–1200-word replies; the cached-tokenizer audit rules out delivery within the old 768-token call cap. |
 | Total output | Tasks 025, 029 and 030 require initially absent files totaling 2700, 1800 and 2700 words. Literal file tools cannot deliver them within the old 1536 sampled-token cap. |
-| Reward shortcuts | Fabricated unchanged F2 drafts plus “Done.” earn 0.8 under the generic smoke callback despite completion=0. “Done.” without retrieval earns 4/7 on F5. These are scorer counterexamples, not model results. |
-| Missing full-task contract | The three shortened probe goldens fail original word requirements. Their dedicated scorer requires contracts absent from the originals; the generic scalar ignores intermediate turns and semantic rubrics. |
+| Generic reward shortcuts | Unchanged F2 drafts plus “Done.” earn 0.8 under the generic smoke callback; F5 “Done.” without retrieval earns 4/7. The separate full48 contract now scores these counterexamples zero. Do not use the generic callback for this experiment. |
+| Probe derivatives are not originals | The three shortened probe goldens fail original word requirements. Use the new intact-release contract and fixtures, not the derivative scorer. |
 | Schedule and seeds | The generic ceiling is 20 updates. Its 32-decision seed stride can overlap adjacent attempts under the originals' 48-step envelope. |
 
-A faithful mechanical-only reward needs explicit delivery/change evidence,
-retrieval checks and intermediate-turn treatment. Existing nonempty files must not
-count as new writes. Semantic and literary judging remain uncalibrated; mechanical
-success cannot establish prose or nuanced continuity quality.
+The [full48 preparation interface](../../docs/grpo-full48.md) now binds all original
+task/release hashes, delivery/change evidence, required reads, reciprocal links and
+retrieval/quote checks. It checks the declared turn sequence without pretending to
+judge intermediate clarification. All required final artifacts must meet their
+original lower word bounds before partial mechanical credit is available. This is
+an explicit reward choice, not a tuned optimum. Existing nonempty files are not writes.
+
+The revised offline validator passes 592 fixture expectations across all 48 tasks;
+96 original missing/no-op counterexamples score zero. Primary review found and
+corrected equivalent-path handling, preserving valid `./` and repeated-separator
+read/write/patch operations without altering saved evidence. Protected text is
+preserved exactly, but the originals do not unambiguously require its final position;
+no suffix rule was invented. Semantic/literary quality and faithful use of intermediate
+decisions remain unjudged. Repetitive fixture prose can pass, an explicit limitation.
+
+All 48 complete constructed native paths were measured at 598–4066 total trajectory
+tokens and 135–3014 action tokens. They use compressible filler, fixed short thinking
+and short intermediate replies. These are not sampled successes, realistic length
+forecasts, worst-case bounds, or evidence that a chosen context cap fits.
 
 ## Memory and tied groups
 
@@ -88,6 +104,19 @@ configured logit softcap. Installing a package and switching that flag is theref
 not an established correct solution. A supported memory-efficient path needs
 model-specific probability/gradient verification and measured fit. No installation,
 download, precision change or model replacement has been authorized by this report.
+
+There is now a concrete upstream option: [TRL PR #7077](https://github.com/huggingface/trl/pull/7077)
+streams log probabilities with softcap support while retaining the native loss.
+Proposed **but not authorized or executed**: isolated CPU qualification of TRL
+`6c5f1350488e9bba9a71242c47db45f2869796fa` (`1.14.0.dev0`) plus Liger `0.8.3`, reusing
+existing dependencies and leaving the current environment untouched. Native Gemma
+softcaps in BF16 before promotion; upstream streams that operation in FP32. Measure
+probability/gradient differences rather than declaring equivalence. Also explicitly
+disable unrelated Liger model-kernel replacements through public configuration;
+`use_liger_kernel=True` alone can enable those patches at train entry. The current
+repository deliberately accepts only TRL 1.13.0; do not bypass that gate or spoof
+metadata to claim compatibility. CPU qualification must precede a reviewed opt-in
+integration and native GPU fit test. No package or model download has occurred.
 
 The user approved ordinary TRL continuation without resampling. Explicit,
 identity-bound `tie_policy="continue"` is implemented; the default remains `"halt"`
@@ -110,7 +139,8 @@ belongs to the unimplemented full-round recipe.
 
 ## Next gate and evidence
 
-Implement and review a separately bound full48 runtime/reward recipe with faithful token budgets, collision-free seeds, finite-work
+Qualify the maintained memory path after scoped dependency approval, then implement
+the full48 runtime with faithful token budgets, collision-free seeds, finite-work
 supervision and coverage-aware recovery. Prove native long-trajectory memory fit
 before committing to the full run. Do not silently truncate, shorten, omit or
 resample tasks to make the schedule finish.
@@ -119,9 +149,10 @@ Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
 Key files are `data-readiness.md`, `readiness-matrix.{md,json,csv}`,
 `reward-counterexamples.json`, `runtime-study.md`, `core-report.md`,
-`primary-tests.log`, `primary-dapo/smoke.json`, `ties-suite.log`,
-`ties-cpu-verified/smoke.json` and `ties-regression-{grpo,dapo}/smoke.json`.
-Original data and previous GPU
+`primary-tests.log`, `primary-dapo/smoke.json`, `ties-corrected-{cpu,grpo,dapo}/smoke.json`,
+`ties-rereview.md`, `primary-contract-audit.json`, `primary-full48-fixtures/`,
+`integrated-suite.log`, `integrated-ties-cpu/smoke.json`, `memory-path-options.md`
+and `memory-primary-notes.md`. Original data and previous GPU
 runs were not modified. No new GPU training, package install, download or paid call
 occurred during this readiness work.
 

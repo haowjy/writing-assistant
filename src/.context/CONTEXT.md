@@ -269,6 +269,14 @@ old run. See the [probe guide](../../docs/grpo-probe.md) for phase admission and
 The ordinary inference backend applies a trajectory token cap only when explicitly
 configured; older callers retain their per-call budget.
 
+`grpo_full48.py` admits the intact wave1 training release by frozen hashes and owns
+its separately bound mechanical-only reward. Delivery requires completed sequence
+and action evidence, all required artifacts at their lower word bounds, and actual
+file changes. Other mechanical failures can retain partial reward. Semantic rubrics
+and intermediate clarification faithfulness remain unjudged. Its fixture module
+constructs offline counterexamples; it never establishes sampled success or memory
+fit. See [full48 preparation](../../docs/grpo-full48.md); this is not a training runner.
+
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the
 one at an index, and `prepare_task_requests` materializes a batch with a coverage
