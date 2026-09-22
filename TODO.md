@@ -16,9 +16,9 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Audit all 48 wave1 training tasks without shortening them. All pass release
   identity checks, but seven cannot meet output requirements under the old token caps;
   the generic smoke reward also grants credit to unchanged drafts.
-- [x] Implement the approved tied-group policy: explicit ordinary TRL zero-advantage
-  continuation without resampling; keep default halt for the old probe. CPU proof
-  verifies momentum behavior and exact resume through ties. Unavailable rewards still halt.
+- [x] Implement approved ordinary TRL continuation through ties without resampling;
+  keep default halt for the old probe. CPU proof verifies exact resume, momentum and
+  float32 residual behavior. Tied groups are not skipped updates; unavailable rewards halt.
 - [ ] Build and validate the faithful full48 runtime/reward contract, long-trajectory
   memory path, collision-free attempt seeds, and intermediate checkpoint recovery.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =

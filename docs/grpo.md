@@ -71,12 +71,14 @@ that cannot fit the context—or attempts with no sampled actions stop the whole
 before an update. They are not zero rewards. All attempts and failure evidence remain
 on disk. `GRPOSettings.tie_policy="halt"` is the default and stops exact ties before
 updating, preserving the fixed probe's behavior. Explicit `tie_policy="continue"`
-returns tied groups to ordinary TRL with zero advantages. The optimizer and scheduler
-still step; Adam momentum can move weights after earlier nonzero gradients. This is
-not a skipped update or new relative reward information. Neither policy resamples.
+passes raw tied rewards to ordinary TRL. Their advantages are mathematically zero,
+but float32 mean/std reductions can leave nonzero residuals. The optimizer and
+scheduler still step; those residuals or existing Adam momentum can move weights.
+This is not a skipped update or new relative reward information. Neither policy resamples.
 
 Tie policy is identity-bound and cannot change on resume. Each saved `group.json`
-records `tie_policy`, `zero_variance` and, when available, `trl_advantages`. Count tied
+records `tie_policy`, `zero_variance` and, when available, `trl_advantages_estimate`.
+That Python-formula estimate is not an observation of TRL's float32 tensors. Count tied
 groups separately from optimizer steps; a scored group is not proof that its optimizer
 step finished. Unavailable rewards still stop under either policy.
 
@@ -229,11 +231,16 @@ CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src \
 ```
 
 Its predeclared diagnostic slot rewards create leading, middle and trailing ties:
-six visits over two passes, four tied groups, two nonzero-advantage groups, and six
-ordinary optimizer steps without resampling. It verifies zero tied advantages/loss,
+six visits over two passes, four groups tied at reward 1.0, two nonzero-advantage
+groups, and six ordinary optimizer steps without resampling. In that four-sample
+fixture it verifies zero tied advantages/loss,
 Adam moment decay and counter advancement, momentum-only parameter movement,
 dense/accumulated agreement, and exact step-2→6 resume through ties and a pass boundary.
-An all-tied run also completes with unchanged parameters but advanced optimizer counters.
+An all-tied reward-1.0 run also completes with unchanged parameters but advanced counters.
+A separate eight-sample reward-0.7 case records actual float32 advantages and fresh-Adam
+movement independently of the saved estimate. On the installed CPU stack, advantages
+are approximately `5.96e-4` despite zero estimated advantages; no clipping or recentering
+is added to hide this numerical behavior. Exact zeros are not a general tie guarantee.
 `states-*.pt` retains trusted-local state snapshots; `loss-*.json` and `smoke.json`
 record the observed losses and results. The original CPU check additionally verifies
 that changing tie policy on resume is rejected without mutating caller state.

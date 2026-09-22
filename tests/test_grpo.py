@@ -618,7 +618,8 @@ class NativeTests(unittest.TestCase):
                 self.assertEqual(stats["tie_policy"], policy)
                 if variant == "tie":
                     self.assertTrue(stats["zero_variance"])
-                    self.assertEqual(stats["trl_advantages"], [0.0, 0.0])
+                    self.assertEqual(stats["trl_advantages_estimate"], [0.0, 0.0])
+                    self.assertNotIn("trl_advantages", stats)
                 self.assertEqual(
                     stats["status"],
                     "pending"

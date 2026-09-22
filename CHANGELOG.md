@@ -2,9 +2,13 @@
 
 ## [Unreleased]
 
+- Distinguish saved Python advantage estimates from observed TRL tensors. Reproduce
+  float32 residuals and fresh-Adam movement for fractional tied rewards without
+  clipping, recentering or changing ordinary TRL behavior.
+
 - Add explicit, identity-bound tied-group continuation without resampling. Keep
-  default halt and unavailable-reward refusal; ordinary zero-advantage steps may
-  still move weights through Adam momentum. Verify tied-group accounting, dense
+  default halt and unavailable-reward refusal; ordinary steps may move weights
+  through Adam momentum or rounding residuals. Verify tied-group accounting, dense
   accumulation, all-tied completion and exact checkpoint recovery on CPU. Clarify
   that inference cache estimates do not establish long-trajectory training fit.
 

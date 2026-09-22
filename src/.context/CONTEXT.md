@@ -243,10 +243,11 @@ Training identity includes private scoring labels, unlike evaluation's rescorabl
 identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
 before resume can mutate the model; engineered fixtures use separate, explicit admission.
 Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
-also stops ties by default; explicit `"continue"` sends zero advantages through
-ordinary TRL/Adam without resampling. Momentum may still move weights; this is not
-update skipping. Saved groups record policy and zero variance separately from
-checkpointed optimizer progress. `GRPOSettings.microbatch_size=None`
+also stops ties by default; explicit `"continue"` passes raw tied rewards through
+ordinary TRL/Adam without resampling. Mathematically zero advantages can have
+float32 residuals; these or momentum may move weights. This is not update skipping.
+Saved `trl_advantages_estimate` values are Python-formula estimates, not observed
+trainer tensors. Groups record ties separately from checkpointed optimizer progress. `GRPOSettings.microbatch_size=None`
 trains the full group with accumulation 1. An explicit microbatch must be a positive
 integer dividing `group_size`; `gradient_accumulation_steps` is derived as
 `group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one

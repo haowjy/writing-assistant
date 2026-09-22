@@ -20,8 +20,8 @@ still stop execution; quiet logs alone do not establish a stall. The previous
 Checkpoint full training state at completed update boundaries, retain recoverable
 intermediate checkpoints, and deliberately test a pause/resume within the first
 pass. Final evaluation is separate. A completed schedule has 96 optimizer steps,
-including zero-advantage steps for tied groups. Those steps are not evidence of
-new learning signal. Failures can still stop the schedule before full coverage.
+including ordinary TRL steps for tied groups. Those steps are not evidence of
+new relative reward information; rounding residuals and momentum can still move weights. Failures can still stop the schedule before full coverage.
 
 The earlier approximately ten-hour estimate extrapolated three shortened training
 tasks. It is **not a measured ETA for these intact tasks**. Fourteen have nine
@@ -91,15 +91,20 @@ download, precision change or model replacement has been authorized by this repo
 
 The user approved ordinary TRL continuation without resampling. Explicit,
 identity-bound `tie_policy="continue"` is implemented; the default remains `"halt"`
-for the old probe. Tied groups return zero advantages, while Adam and the scheduler
-still step. Existing momentum can move weights, so these are not skipped updates
-or evidence of new relative reward information. Unavailable rewards still halt.
+for the old probe. Raw tied rewards pass to TRL, while Adam and the scheduler still
+step. Mathematically zero advantages can have float32 residuals; those or momentum
+can move weights. These are not skipped updates or new relative reward information.
+Unavailable rewards still halt. Saved advantage estimates are labeled separately
+from observed trainer values.
 
 A separate tiny-model CPU proof covers six visits over two passes: four tied groups,
 two nonzero-advantage groups, six optimizer steps and no resampling. It verifies
 leading/middle/trailing ties, zero tied loss, moment decay and momentum-only movement,
 dense/accumulated agreement, and exact step-2→6 checkpoint resume. An all-tied run
-completes with unchanged parameters and advanced optimizer counters. Saved group
+at reward 1.0 completes with unchanged parameters and advanced optimizer counters.
+Review also reproduced eight rewards of 0.7 yielding actual advantages about
+5.96e-4 and fresh-Adam movement despite zero estimated advantages. The CPU proof
+now records this fractional case without altering ordinary TRL behavior. Saved group
 reports distinguish ties from optimizer progress; full48 coverage accounting still
 belongs to the unimplemented full-round recipe.
 

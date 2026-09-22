@@ -21,9 +21,9 @@ from writing_agent.reward import Reward
 
 def diagnostic_reward(task, result):
     """Predeclared fixture: ties or [0, 1/3, 2/3, 1], independent of policy quality."""
-    value = (
-        1.0 if task["labels"]["reward_case"] == "tied" else ((result["seed"] - 42) // 32 % 4) / 3
-    )
+    value = task["labels"].get("tied_value")
+    if value is None:
+        value = ((result["seed"] - 42) // 32 % 4) / 3
     return Reward("ok", value, components={"diagnostic_only": value})
 
 
@@ -77,7 +77,7 @@ def smoke(output):
             "id": f"cpu-ties-{index}",
             "role": "train",
             "source_groups": ["engineered-only"],
-            "labels": {"checks": [], "reward_case": case},
+            "labels": {"checks": [], **({"tied_value": 1.0} if case == "tied" else {})},
             "visible": {
                 "brief": "word3 word4",
                 "initial_files": {},
@@ -124,7 +124,9 @@ def smoke(output):
         },
         execute=True,
     )
-    observers = {name: StateObserver() for name in ("full", "dense", "resumed", "all-tied")}
+    observers = {
+        name: StateObserver() for name in ("full", "dense", "resumed", "all-tied", "fractional")
+    }
     results = {}
     for name in ("full", "dense", "resumed"):
         model, tokenizer = tiny_model()
@@ -233,11 +235,40 @@ def smoke(output):
     for state in observer.states[2]["optimizer"]["state"].values():
         assert state["step"].item() == 2
         assert not state["exp_avg"].count_nonzero() and not state["exp_avg_sq"].count_nonzero()
+    # Float32 mean/std reductions can leave residuals even for exactly tied rewards.
+    fractional_task = copy.deepcopy(tasks[0])
+    fractional_task["labels"]["tied_value"] = 0.7
+    fractional_settings = replace(settings, max_steps=1, group_size=8)
+    model, tokenizer = tiny_model()
+    fractional_result = observers["fractional"].train(
+        output=output / "fractional",
+        model=model,
+        tokenizer=tokenizer,
+        **{**common, "tasks": [fractional_task], "settings": fractional_settings},
+    )
+    observer = observers["fractional"]
+    accounting = observer.verify(output / "fractional", fractional_settings)
+    save_json(output / "loss-fractional.json", {"batches": observer.batches, "tokens": accounting})
+    group = next((output / "fractional" / "groups").iterdir())
+    stats = json.loads((group / "group.json").read_text())
+    assert stats["zero_variance"] and "trl_advantages" not in stats
+    assert stats["trl_advantages_estimate"] == [0.0] * 8
+    actual_advantages = [a for batch in observer.batches for a in batch["advantages"]]
+    parameter_change = max(
+        (observer.states[1]["adapter"][k] - observer.states[0]["adapter"][k]).abs().max().item()
+        for k in observer.states[0]["adapter"]
+    )
+    if all(a == 0 for a in actual_advantages):
+        assert parameter_change == 0
+    else:
+        assert parameter_change > 0 and fractional_result["trainable_changed"]
     for name, observer in observers.items():
         torch.save(observer.states, output / f"states-{name}.pt")
     report = {
         "kind": "engineered CPU optimizer-policy proof, not quality evidence",
         "tie_policy": "continue",
+        "group_size": 4,
+        "tied_reward": 1.0,
         "passes": 2,
         "visits": 6,
         "attempts": 24,
@@ -252,7 +283,15 @@ def smoke(output):
         "resume_states_and_rng_exact": True,
         "all_token_ledgers_match": True,
         "dense_adapter_max_difference": max((full[k] - dense[k]).abs().max().item() for k in full),
-        "all_tied": {"visits": 2, "optimizer_steps": 2, "parameter_change": False},
+        "all_tied": {"reward": 1.0, "visits": 2, "optimizer_steps": 2, "parameter_change": False},
+        "fractional_tie": {
+            "reward": 0.7,
+            "group_size": 8,
+            "estimated_advantages": stats["trl_advantages_estimate"],
+            "actual_advantages": actual_advantages,
+            "residual_reproduced": any(a != 0 for a in actual_advantages),
+            "fresh_adam_adapter_max_change": parameter_change,
+        },
         "results": results,
     }
     save_json(output / "smoke.json", report)

@@ -231,8 +231,9 @@ class RolloutGroups:
     session_reward results. Its declared identity/config is frozen in the manifest.
     A callback exception or unavailable reward pends the entire group before TRL can
     turn missing entries into zeros. Ties halt by default; explicit continuation
-    returns their zero advantages to ordinary TRL/Adam without resampling. Adam
-    momentum can still move weights, so continuation is not a skipped update.
+    passes raw tied rewards to ordinary TRL/Adam without resampling. Advantages
+    are mathematically zero but float32 reductions can leave residuals. Those
+    residuals or Adam momentum can move weights; continuation is not skipping.
     """
 
     def __init__(self, tasks, settings, output, reward_callback, backend_factory, system_prompt):
@@ -278,9 +279,10 @@ class RolloutGroups:
             stats = group_advantages(rewards)
             stats["tie_policy"] = self.settings.tie_policy
             if stats["status"] == "ok":
-                # TRL uses sample std + epsilon; retain both conventions explicitly.
+                # Python formula estimate, not observed TRL tensors. Float32 reductions
+                # can differ, including nonzero residuals for exactly tied rewards.
                 sample_std = stats["std"] * (len(rewards) / (len(rewards) - 1)) ** 0.5
-                stats["trl_advantages"] = [
+                stats["trl_advantages_estimate"] = [
                     (r.value - stats["mean"]) / (sample_std + 1e-4) for r in rewards
                 ]
             save_json(group / "group.json", stats)

@@ -36,7 +36,7 @@ class GRPOSettings:
     group_size: int = 2
     microbatch_size: int | None = None  # None retains full-group training.
     loss_type: str = "grpo"  # Public TRL objective, frozen in experiment identity.
-    tie_policy: str = "halt"  # "continue" allows ordinary zero-advantage optimizer steps.
+    tie_policy: str = "halt"  # "continue" passes tied rewards to ordinary TRL/Adam.
     learning_rate: float = 1e-5
     lora_rank: int = 8
     seed: int = 42

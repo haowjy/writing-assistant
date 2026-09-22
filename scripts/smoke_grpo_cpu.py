@@ -139,6 +139,8 @@ class LossObserver:
 
     def verify(self, root, settings):
         """Match every consumed row to its immutable ledger, including padding and masks."""
+        import torch
+
         evidence = []
         for step, group in enumerate(sorted((root / "groups").iterdir())):
             tokens = [
@@ -148,7 +150,16 @@ class LossObserver:
                 (tuple(t["prompt_ids"]), tuple(t["completion_ids"]), tuple(t["env_mask"]))
                 for t in tokens
             )
-            advantages = json.loads((group / "group.json").read_text())["trl_advantages"]
+            # The saved Python estimate is not an observation of TRL's float32 reductions.
+            rewards = torch.tensor(
+                [
+                    json.loads(p.read_text())["value"]
+                    for p in sorted(group.glob("attempt-*/reward.json"))
+                ],
+                dtype=torch.float32,
+            )
+            advantages = ((rewards - rewards.mean()) / (rewards.std() + 1e-4)).tolist()
+            estimated = json.loads((group / "group.json").read_text())["trl_advantages_estimate"]
             expected_advantages = {
                 (tuple(t["prompt_ids"]), tuple(t["completion_ids"]), tuple(t["env_mask"])): a
                 for t, a in zip(tokens, advantages, strict=True)
@@ -196,6 +207,9 @@ class LossObserver:
                     "active_tokens": active,
                     "completion_lengths": [len(t["completion_ids"]) for t in tokens],
                     "action_lengths": [sum(t["env_mask"]) for t in tokens],
+                    "advantage_estimate_max_error": max(
+                        abs(a - b) for a, b in zip(advantages, estimated, strict=True)
+                    ),
                 }
             )
         return evidence
