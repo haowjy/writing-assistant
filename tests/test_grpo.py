@@ -54,6 +54,38 @@ def task():
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_objective_default_admission_and_identity(self):
+        self.assertEqual(GRPOSettings().loss_type, "grpo")
+        spec = {"id": "fixture-v1", "config": {}, "mode": "mechanical-only-smoke"}
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "absent"
+            plans = []
+            for loss_type in ("grpo", "dapo"):
+                plan = inspect_grpo(
+                    [task()],
+                    output,
+                    settings=GRPOSettings(revision=REVISION, loss_type=loss_type),
+                    reward_spec=spec,
+                    admission={"mode": "engineered-fixture", "label": "test-only"},
+                )
+                self.assertEqual(plan["settings"]["loss_type"], loss_type)
+                plans.append(fingerprint(plan))
+            self.assertNotEqual(*plans)
+            for loss_type in ("bnpo", "DAPO", "", None, True, [], {}):
+                with (
+                    self.subTest(loss_type=loss_type),
+                    self.assertRaisesRegex(ValueError, "Loss type"),
+                ):
+                    train_grpo(
+                        [task()],
+                        output,
+                        settings=GRPOSettings(revision=REVISION, loss_type=loss_type),
+                        reward_spec=spec,
+                        admission={"mode": "engineered-fixture", "label": "test-only"},
+                        execute=True,
+                    )
+            self.assertFalse(output.exists())
+
     def test_microbatch_preserves_one_group_per_optimizer_step(self):
         for size, accumulation in ((None, 1), (1, 4), (2, 2), (4, 1)):
             settings = GRPOSettings(revision=REVISION, group_size=4, microbatch_size=size)

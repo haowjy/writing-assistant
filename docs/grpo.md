@@ -140,6 +140,16 @@ the group only until its one optimizer update, never across updates. Rewards and
 advantages are computed for the full group before splitting. Changing the microbatch
 invalidates checkpoint identity, just like other training settings.
 
+`GRPOSettings.loss_type` defaults to `"grpo"` and accepts `"dapo"` explicitly. It is
+validated before execution, bound into resume identity, and passed to public TRL
+`GRPOConfig`; changing it requires a new experiment. GRPO averages each attempt's
+masked-token mean. DAPO divides the masked loss sum by the active token count across
+the complete generation group. TRL gathers that count before splitting the group;
+its accumulation/steps-per-generation factor is one under this schedule. Environment
+observations and padding contribute no loss or denominator tokens. This selects TRL's
+DAPO objective only; it does not add dynamic sampling or other DAPO-paper mechanisms.
+The frozen Gemma probe retains GRPO and its existing limits.
+
 `max_steps` is the total optimizer-step budget, not an extra budget granted on resume
 or a count of microbatches. The Python API's `stop_after_steps` permits a deliberate early
 stop without changing that total schedule.
@@ -188,6 +198,21 @@ three tasks in order, one sampled group per update, and 12 single-attempt loss f
 Against full-group training, adapter tensors agree within absolute tolerance `1e-6`;
 Adam moments agree within `rtol=1e-5, atol=1e-8`, which also checks gradient scaling.
 Resume within the microbatched configuration remains exactly equal, not approximate.
+Add `--loss-type dapo` and choose a fresh output directory for the DAPO check. It uses
+1–4 sampled tokens per turn, heterogeneous completion lengths, and a masked external
+user follow-up at different offsets. Six updates cover three ordered tasks twice with
+fresh seeds on every visit. Resume from step 1 crosses the epoch boundary and reaches
+step 6 with exact adapter, optimizer, scheduler and RNG state. The same dense-versus-
+accumulated tolerances apply to DAPO. Every token ledger, including step zero, must
+match across all three executions.
+
+A read-only Python profiler records the installed TRL loss calls without changing any
+trainer method. `observer-*.json` captures actual padded rows, masks, advantages,
+generation-group token counts and loss denominators, checking each sampled action
+is consumed once and masks/advantages remain aligned. `tensor-differences.json` records
+per-tensor adapter and Adam-moment differences; `smoke.json` records objective identities,
+source hash, visits and mutation-free rejection of changed objectives on resume.
+
 Native Gemma tokenizer tests separately exercise file tools and multi-turn suffixes with
 scripted outputs; those tests are not evidence of Gemma optimization or GPU fit.
 

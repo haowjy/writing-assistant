@@ -246,6 +246,9 @@ integer dividing `group_size`; `gradient_accumulation_steps` is derived as
 `group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one
 accumulation window, and updates once. Checkpoints occur only at that boundary; no
 partially consumed rollout buffer needs restoring. Microbatch settings are identity-bound.
+`loss_type` is also identity-bound: `grpo` remains the default, while explicit `dapo`
+uses public TRL's generation-group active-token denominator, excluding observations
+and padding. Neither selection changes sampling, reward admission, or safety budgets.
 Inference adapters and full trainer checkpoints are different artifacts. CPU optimizer/resume verification does
 not establish Gemma GPU fit. See [GRPO methodology](../../docs/grpo.md) for the bounded
 execution, recovery, and caller-owned reward contracts.

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add identity-bound DAPO loss selection through public TRL configuration; keep
+  GRPO as the default and preserve the fixed probe limits. Verify variable-length,
+  observation-masked CPU accumulation against dense adapter updates and Adam
+  moments, plus exact checkpoint resume across two passes over three tasks.
+
 - Verify the microbatched Gemma probe on the RTX 3090: three optimizer updates,
   checkpoint resume, exact resident adapter reload and all 12 paired development
   attempts. Peak Torch allocation 18.249 GiB; total GPU-stage time 45.44 minutes.

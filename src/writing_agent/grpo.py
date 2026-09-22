@@ -35,6 +35,7 @@ class GRPOSettings:
     max_invocations: int = 3
     group_size: int = 2
     microbatch_size: int | None = None  # None retains full-group training.
+    loss_type: str = "grpo"  # Public TRL objective, frozen in experiment identity.
     learning_rate: float = 1e-5
     lora_rank: int = 8
     seed: int = 42
@@ -47,6 +48,8 @@ class GRPOSettings:
         return self.group_size // (self.microbatch_size or self.group_size)
 
     def validate(self):
+        if self.loss_type not in ("grpo", "dapo"):
+            raise ValueError("Loss type must be grpo or dapo")
         checkpoint_identity(self.model_id, self.revision)
         if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= 20):
             raise ValueError("Serial probe requires group size 2..8 and optimizer steps 1..20")
@@ -445,7 +448,7 @@ def train_grpo(
         top_k=0,
         max_completion_length=settings.max_generated_tokens,
         scale_rewards="group",
-        loss_type="grpo",
+        loss_type=settings.loss_type,
         mask_truncated_completions=False,
         shuffle_dataset=False,
         report_to="none",
