@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add a root `TODO.md` linked from the README as the active work order. Put the
+  cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
+  download; point older work checklists to it.
+
 - Plan task-declared simulated-author use with cache-aware Astra calls rather than
   mandatory per-turn routing. Record Jev and self-play as optional ideas, distinguish
   incomplete sessions from environment errors, and correct the blanket exclusion of

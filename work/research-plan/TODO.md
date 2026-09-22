@@ -7,28 +7,14 @@ The
 [Grok comparison](../grok-pilot/results.md) provides examples of stronger outputs;
 it compares different models and harnesses, so it does not isolate model capability.
 
-This list sets the work order. It does not authorize training, new paid generation,
-or larger evaluation runs. Agree on the bounded training test before executing it;
-keep the existing [evaluation execution boundary](../custom-eval-suite/plan.md).
+The short, authoritative work order is **[the root TODO.md](../../TODO.md)**:
+Gemma short-context GRPO first, then longer Gemma sessions, then the Qwen experiment.
+This supporting list does not authorize training, new paid generation, or larger
+evaluation runs. Agree on the bounded training test before executing it; keep the
+existing [evaluation execution boundary](../custom-eval-suite/plan.md).
 
-## Immediate order
-
-1. Define measurements and unacceptable regressions for the agreed primary goal:
-   long-form project memory and effective use of large writing projects. Wiki maintenance
-   supports that goal; better prose is a companion goal. Compare on external benchmarks
-   and our own tasks.
-2. Inspect grouped Qwen attempts and validate the judge's rankings; authorize any new
-   inference or grading spend separately.
-3. Correct conflicting task-balance requirements. Include the full task mix and broad,
-   coherent variation of system prompts and user instructions. Specify the simulated
-   writer's behavior before generating a larger collection.
-4. Connect the environment and reward adapter to GRPO and verify a bounded E2B run.
-5. Keep local engineering runs within measured RTX 3090 capacity. Clarify whether the
-   desired 256K Qwen context means training length or usable context, obtain a cost
-   estimate, freeze the evaluation protocol, and approve a bounded run.
-
-The checklist below contains supporting work, not a requirement to finish every item
-before the engineering test. Demonstrations and SFT are conditional, not on the critical path.
+The checklist below is not a requirement to finish every item before the engineering
+test. Demonstrations and SFT are conditional, not on the critical path.
 
 ## Supporting work
 

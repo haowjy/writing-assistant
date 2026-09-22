@@ -3,6 +3,8 @@
 This research harness runs tool-use evaluations and prepares conversational training
 data for [creative-writing agents](wiki/project-goals.md).
 
+**What to do next: [TODO.md](TODO.md)** — the short, active checklist.
+
 ## Quick start
 
 Python 3.11+ and [uv](https://docs.astral.sh/uv/) are recommended. The core has no third-party runtime dependencies.

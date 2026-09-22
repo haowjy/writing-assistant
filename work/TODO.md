@@ -1,11 +1,12 @@
-# TODO — now
+# Evaluation follow-ups
 
-- [ ] Follow the [next training-experiment TODO](research-plan/TODO.md), beside the
-  full experimental plans. Start with failure analysis and separate training data.
+The active work order is now **[TODO.md at the repository root](../TODO.md)**.
+Start there; the Gemma short-context GRPO probe comes first.
 
-Near-term work for the current evaluation pilot. Move deferred items here from
-[FUTURE](FUTURE.md) when they become the next work to do. Keep detailed designs and
-completion evidence in the linked work item; remove completed entries from this list.
+The older evaluation checklist below is retained for reconciliation against saved
+results, not as the next work order. Unchecked historical run entries do not establish
+that those runs remain unexecuted. Keep current priorities in the root checklist and
+optional ideas in [FUTURE](FUTURE.md).
 
 - [ ] Review the [five-case E2B-IT pilot](custom-eval-suite/pilot-e2b.md) and its saved artifacts with the user. Check task realism, hidden requirements, prose selection, and expected outcomes.
 - [ ] Review the [five-case thinking rerun](custom-eval-suite/thinking-pilot.md): all workspace cases used tools. Inspect prose quality, single-page wiki interpretations, and the wiki-to-prose retrieval/word-budget failures.
