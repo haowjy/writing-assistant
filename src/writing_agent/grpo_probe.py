@@ -59,6 +59,7 @@ SETTINGS = GRPOSettings(
     max_steps=3,
     max_invocations=3,
     group_size=4,
+    microbatch_size=1,
     learning_rate=1e-5,
     lora_rank=8,
     seed=42,

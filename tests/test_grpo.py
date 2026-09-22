@@ -54,6 +54,15 @@ def task():
 
 
 class IntegrityTests(unittest.TestCase):
+    def test_microbatch_preserves_one_group_per_optimizer_step(self):
+        for size, accumulation in ((None, 1), (1, 4), (2, 2), (4, 1)):
+            settings = GRPOSettings(revision=REVISION, group_size=4, microbatch_size=size)
+            settings.validate()
+            self.assertEqual(settings.gradient_accumulation_steps, accumulation)
+        for size in (0, -1, 3, 5, True, 1.0):
+            with self.subTest(size=size), self.assertRaisesRegex(ValueError, "microbatch"):
+                GRPOSettings(revision=REVISION, group_size=4, microbatch_size=size).validate()
+
     def test_inspect_rejects_evaluation_and_needs_immutable_revision_without_execution(self):
         settings = GRPOSettings(revision=REVISION)
         spec = {"id": "fixture-v1", "config": {}, "mode": "mechanical-only-smoke"}

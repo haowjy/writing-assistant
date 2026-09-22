@@ -22,9 +22,12 @@ projects, supported by a maintained wiki, with better prose alongside it.
   [measured result](work/research-plan/gemma-probe-result.md): 12 baseline attempts,
   then CUDA OOM before the first optimizer update. The first training group had
   rewards [1, 0, 1, 1]. Total GPU-stage time was 14.68 minutes; no retry was made.
-- [ ] Scope a memory-reduced follow-up for the training output-conversion bottleneck.
-  Keep the failed run frozen. Actual Gemma adapter updates, checkpoint save/reload,
-  resume, and matched adapter evaluation remain unverified; a load is not a passing probe.
+- [x] Prepare a memory-reduced follow-up: retain four attempts per reward group,
+  train one at a time, accumulate four gradients per update. CPU checks verify
+  equivalent full-group updates and exact step-1→3 resume. The failed run stays frozen.
+- [ ] Execute the freshly prepared microbatch probe. Actual Gemma adapter updates,
+  checkpoint save/reload, resume, and matched adapter evaluation remain unverified;
+  a load is not a passing probe.
 - [ ] Extend the passing probe to longer, multi-turn wiki tasks. Add declared Astra
   author simulation only where needed, measure cache reuse, and test retention and
   use of earlier decisions. Increase context gradually rather than jumping to 256K.

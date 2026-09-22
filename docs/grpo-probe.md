@@ -61,6 +61,12 @@ The frozen model is local BF16 `google/gemma-4-E2B-it`, revision
 `1e-5`, no KL penalty, and non-reentrant activation checkpointing. Each task supplies
 four attempts and one optimizer step: three steps total. Thinking stays enabled.
 
+The memory-reduced profile keeps four attempts per reward group but processes one
+attempt per loss forward/backward, accumulating gradients four times before updating.
+This replaces the first run's four-attempt training batch without changing its tasks,
+rewards, precision or token budgets. Full-group advantages are computed before splitting.
+Use a fresh run directory; the original OOM run cannot resume under this profile.
+
 Limits are 4096 context tokens, 768 generated tokens per decision, and 1536 generated
 tokens per attempt. Evaluation uses the same BF16 precision and the same task conditions
 for base and adapter, with seeds `104729` and `130363`. Training uses seed `42`.
@@ -87,7 +93,7 @@ a paid judge.
 PYTHON=/path/to/existing/training-environment/bin/python
 export PYTHONPATH=src
 # Choose a stable absolute path if using a disposable worktree.
-RUN=/absolute/stable/path/grpo-gemma-probe-v1
+RUN=/absolute/stable/path/grpo-gemma-probe-microbatch-v1
 "$PYTHON" scripts/run_grpo_probe.py "$RUN"
 "$PYTHON" scripts/run_grpo_probe.py "$RUN" --phase prepare --execute
 "$PYTHON" scripts/run_grpo_probe.py "$RUN" --phase preflight --execute

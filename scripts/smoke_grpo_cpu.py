@@ -6,6 +6,7 @@ this samples a random tiny Llama and checks LoRA/optimizer resume, not Gemma qua
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from writing_agent.backends import Completion
@@ -142,6 +143,7 @@ def smoke(output):
         revision="a" * 40,
         max_steps=3,
         group_size=4,
+        microbatch_size=1,
         context_tokens=128,
         max_tokens=4,
         max_generated_tokens=8,
@@ -149,7 +151,7 @@ def smoke(output):
         learning_rate=0.001,
     )
     common = dict(
-        tasks=[task],
+        tasks=[dict(task, id=f"engineered-cpu-smoke-{i}") for i in range(3)],
         admission={
             "mode": "engineered-fixture",
             "label": "CPU toy feasibility, no useful-training evidence",
@@ -166,11 +168,59 @@ def smoke(output):
     )
     full_model, tokenizer = tiny_model()
     base_before = {k: p.detach().clone() for k, p in full_model.named_parameters()}
+    training_batches = []
+
+    def observe_batch(module, _args, kwargs):
+        if module.training and torch.is_grad_enabled():
+            training_batches.append(kwargs["input_ids"].shape[0])
+
+    # PEFT calls the outer model's forward directly, bypassing its __call__ hooks.
+    hook = full_model.model.register_forward_pre_hook(observe_batch, with_kwargs=True)
     full = train_grpo(output=output / "full", model=full_model, tokenizer=tokenizer, **common)
+    hook.remove()
+    assert training_batches == [1] * 12, training_batches
+    dense_model, tokenizer = tiny_model()
+    dense = train_grpo(
+        output=output / "full-batch",
+        model=dense_model,
+        tokenizer=tokenizer,
+        **{**common, "settings": replace(settings, microbatch_size=None)},
+    )
+    dense_weights = load_file(str(Path(dense["adapter"]) / "adapter_model.safetensors"))
+    accumulated_weights = load_file(str(Path(full["adapter"]) / "adapter_model.safetensors"))
+    for key in dense_weights:
+        torch.testing.assert_close(accumulated_weights[key], dense_weights[key], rtol=0, atol=1e-6)
+    # Adam updates alone can hide constant gradient mis-scaling; compare moments too.
+    accumulated_optimizer = torch.load(
+        Path(full["checkpoint"]) / "optimizer.pt", weights_only=False
+    )
+    dense_optimizer = torch.load(Path(dense["checkpoint"]) / "optimizer.pt", weights_only=False)
+    torch.testing.assert_close(
+        accumulated_optimizer["state"], dense_optimizer["state"], rtol=1e-5, atol=1e-8
+    )
+    microbatch_diff = max(
+        (accumulated_weights[k] - dense_weights[k]).abs().max().item() for k in dense_weights
+    )
     model, tokenizer = tiny_model()
     partial = train_grpo(
         output=output / "resumed", model=model, tokenizer=tokenizer, stop_after_steps=1, **common
     )
+    rejected_model, rejected_tokenizer = tiny_model()
+    rng_before_rejection = torch.get_rng_state().clone()
+    try:
+        train_grpo(
+            output=output / "resumed",
+            model=rejected_model,
+            tokenizer=rejected_tokenizer,
+            resume_from_checkpoint=Path(partial["checkpoint"]),
+            **{**common, "settings": replace(settings, microbatch_size=2)},
+        )
+    except ValueError as error:
+        assert "Resume experiment identity changed" in str(error), error
+    else:
+        raise AssertionError("Changed microbatch was admitted on resume")
+    assert not getattr(rejected_model, "peft_config", None)
+    assert torch.equal(torch.get_rng_state(), rng_before_rejection)
     saved = load_file(str(Path(partial["adapter"]) / "adapter_model.safetensors"))
     delta = sum(t.abs().sum().item() for k, t in saved.items() if "lora_B" in k)
     assert delta > 0, "No nonzero LoRA update"
@@ -232,13 +282,29 @@ def smoke(output):
     def step_tokens(root):
         return [
             json.loads(p.read_text())
-            for p in sorted(root.glob("groups/step-00000[12]-*/attempt-*/tokens.json"))
+            for p in sorted(root.glob("groups/step-00000[012]-*/attempt-*/tokens.json"))
         ]
 
+    for directory in ("full", "resumed", "full-batch"):
+        groups = sorted((output / directory / "groups").iterdir())
+        assert len(groups) == 3, "Expected exactly one sampled group per optimizer step"
+        assert [json.loads((g / "started.json").read_text())["task"] for g in groups] == [
+            t["id"] for t in common["tasks"]
+        ]
+        assert all(len(list(g.glob("attempt-*/tokens.json"))) == 4 for g in groups)
+    assert step_tokens(output / "full") == step_tokens(output / "full-batch")
     assert step_tokens(output / "full") == step_tokens(output / "resumed")
     assert all(e["env_mask"] == [1] * 4 + [0] + [1] * 4 for e in step_tokens(output / "full"))
     report = {
         "kind": "engineered CPU feasibility only",
+        "microbatch_size": settings.microbatch_size,
+        "changed_microbatch_resume_rejected_before_mutation": True,
+        "gradient_accumulation_steps": settings.gradient_accumulation_steps,
+        "training_forward_batch_sizes": training_batches,
+        "one_group_per_update_and_task_order_verified": True,
+        "full_batch_adapter_max_abs_difference": microbatch_diff,
+        "full_batch_adapter_atol": 1e-6,
+        "full_batch_optimizer_moments_close": {"rtol": 1e-5, "atol": 1e-8},
         "lora_B_l1_after_step1": delta,
         "adapter_reload_exact": True,
         "partial_checkpoint_quarantined_exact": True,

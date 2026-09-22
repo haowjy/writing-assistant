@@ -130,9 +130,16 @@ exports. Treat checkpoints as trusted local artifacts: hashes detect accidental 
 not malicious replacement of both files and their markers; optimizer/RNG loading uses
 Python serialization.
 
-The initial scope uses one process/device, fixed task order, no rollout-buffer reuse, and
-saves at optimizer boundaries. `max_steps` is the total experiment budget, not an extra
-budget granted on resume. The Python API's `stop_after_steps` permits a deliberate early
+The scope uses one process/device, fixed task order, and saves at optimizer boundaries.
+`microbatch_size=None` trains the complete reward group together. A positive integer
+that divides `group_size` instead splits that same scored group into smaller training
+batches; gradient accumulation is derived as `group_size / microbatch_size`. TRL buffers
+the group only until its one optimizer update, never across updates. Rewards and
+advantages are computed for the full group before splitting. Changing the microbatch
+invalidates checkpoint identity, just like other training settings.
+
+`max_steps` is the total optimizer-step budget, not an extra budget granted on resume
+or a count of microbatches. The Python API's `stop_after_steps` permits a deliberate early
 stop without changing that total schedule.
 
 Keep the latest two trainer checkpoints and all attempt evidence. Separate inference
@@ -174,6 +181,11 @@ reload, preserved partial-checkpoint recovery, and exact uninterrupted-versus-re
 adapter/optimizer/scheduler/RNG state through step 3. Checkpoint retention removes step 1;
 the restored pre-update state must still match the preserved step-1 export evidence.
 It also checks equal sampled histories after resume and masks the inserted user turn.
+The check uses group size 4, microbatch size 1, and four accumulation steps. It verifies
+three tasks in order, one sampled group per update, and 12 single-attempt loss forwards.
+Against full-group training, adapter tensors agree within absolute tolerance `1e-6`;
+Adam moments agree within `rtol=1e-5, atol=1e-8`, which also checks gradient scaling.
+Resume within the microbatched configuration remains exactly equal, not approximate.
 Native Gemma tokenizer tests separately exercise file tools and multi-turn suffixes with
 scripted outputs; those tests are not evidence of Gemma optimization or GPU fit.
 

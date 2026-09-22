@@ -34,6 +34,7 @@ class GRPOSettings:
     max_steps: int = 2
     max_invocations: int = 3
     group_size: int = 2
+    microbatch_size: int | None = None  # None retains full-group training.
     learning_rate: float = 1e-5
     lora_rank: int = 8
     seed: int = 42
@@ -41,10 +42,20 @@ class GRPOSettings:
     gradient_checkpointing: bool = True
     gradient_checkpointing_use_reentrant: bool = False
 
+    @property
+    def gradient_accumulation_steps(self):
+        return self.group_size // (self.microbatch_size or self.group_size)
+
     def validate(self):
         checkpoint_identity(self.model_id, self.revision)
         if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= 20):
             raise ValueError("Serial probe requires group size 2..8 and optimizer steps 1..20")
+        if self.microbatch_size is not None and (
+            type(self.microbatch_size) is not int
+            or not 1 <= self.microbatch_size <= self.group_size
+            or self.group_size % self.microbatch_size != 0
+        ):
+            raise ValueError("Training microbatch must be a positive integer dividing group size")
         if not (1 <= self.max_tokens <= self.max_generated_tokens < self.context_tokens <= 4096):
             raise ValueError("Require bounded generated tokens < context <= 4096")
         if not 1 <= self.max_invocations <= 8:
@@ -90,6 +101,7 @@ def inspect_grpo(tasks, output, *, settings, reward_spec, admission, system_prom
         "schema_version": 2,
         "admission": admitted,
         "settings": asdict(settings),
+        "gradient_accumulation_steps": settings.gradient_accumulation_steps,
         "tasks": copy.deepcopy(tasks),
         "reward": copy.deepcopy(reward_spec),
         "system_prompt": system_prompt,
@@ -409,8 +421,8 @@ def train_grpo(
     args = GRPOConfig(
         output_dir=str(output),
         max_steps=settings.max_steps,
-        per_device_train_batch_size=settings.group_size,
-        gradient_accumulation_steps=1,
+        per_device_train_batch_size=settings.microbatch_size or settings.group_size,
+        gradient_accumulation_steps=settings.gradient_accumulation_steps,
         generation_batch_size=settings.group_size,
         num_generations=settings.group_size,
         learning_rate=settings.learning_rate,

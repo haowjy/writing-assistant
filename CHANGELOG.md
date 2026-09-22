@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Separate GRPO reward groups from training microbatches. The Gemma probe now scores
+  four attempts together and accumulates four single-attempt gradients per update;
+  generic callers retain full-group training by default. Bind microbatch size to
+  resume identity and verify CPU update/moment equivalence, task order, masks, and
+  exact checkpoint resume without changing rewards, precision, or token budgets.
+
 - Record the first real Gemma GPU probe: 12 baseline attempts, training rewards
   [1, 0, 1, 1], and CUDA OOM during loss-forward output conversion before any update.
   Preserve the failed run, 14.68 minutes of resource accounting, and the remaining

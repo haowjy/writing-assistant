@@ -41,6 +41,8 @@ class ProbeRunnerTests(unittest.TestCase):
 
     def test_frozen_settings_and_matched_evaluation_conditions(self):
         assert SETTINGS.group_size == 4
+        assert SETTINGS.microbatch_size == 1
+        assert SETTINGS.gradient_accumulation_steps == 4
         assert SETTINGS.max_steps == 3
         assert SETTINGS.max_tokens == 768
         assert SETTINGS.max_generated_tokens == 1536
