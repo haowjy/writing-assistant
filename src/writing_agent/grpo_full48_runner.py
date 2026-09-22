@@ -25,9 +25,9 @@ from writing_agent.grpo_runtime import STREAMING
 SETTINGS = GRPOSettings(
     revision="3e22461f65e89153144f8adb70e3b8c2cc9845a7",
     runtime_profile="intact-full48-v1",
-    context_tokens=131072,
+    context_tokens=32768,
     max_tokens=8192,
-    max_generated_tokens=65536,
+    max_generated_tokens=16384,
     max_steps=96,
     max_invocations=8,
     group_size=4,
@@ -52,21 +52,29 @@ BUDGET_RATIONALE = {
         "source": "primary-full48-fixtures/native-token-evidence.json",
         "qualification": "compressible constructions, not sampled or worst-case bounds",
     },
+    "tokenizer_accounting": {
+        "all_initial_file_tokens_max": 2699,
+        "contract_required_read_tokens_max": 210,
+        "followup_tokens_max": 141,
+        "source": "full48-budget-token-audit.json in the experiment work item",
+        "qualification": "cached-tokenizer counts, not sampled behavior or an upper bound",
+    },
     "per_decision": "8192: 1200-word deliverable at 4 tokens/word + 3392 reasoning/framing",
     "sampled_total": (
-        "65536: final 3600-word multi-file delivery at 4 tokens/word (14400), "
-        "48 decisions with 512 reasoning/framing tokens (24576), and 26560 revision headroom"
+        "16384: final 3600-word multi-file delivery at 4 tokens/word (14400) "
+        "plus 1984 tokens for other sampled actions; files may be delivered across decisions"
     ),
     "context": (
-        "131072: 65536 actions + 12000 whitespace read units at 4 tokens/unit (48000) "
-        "+ 850 initial + 222 followup tokens leaves 16464 for tool framing and other observations"
+        "32768: 16384 sampled actions + measured 850-token initial prompt + at most "
+        "2699 tokens for every initial file + 141 followup tokens leaves 12694 tokens "
+        "for tool framing, repeated reads and other observations"
     ),
     "limits": (
         "Engineering allocation, not a token-per-word theorem or GPU fit proof. "
         "Allows all unchanged tasks and final-pass full delivery; does not promise arbitrary "
-        "maximal rewriting, long reasoning, or adversarial tokenization fits. "
-        "Context overflow halts; candidate exhaustion retains failure evidence without retry. "
-        "Original per-task step/tool/read/storage budgets apply."
+        "maximal rewriting, long reasoning, adversarial tokenization, or spending the entire "
+        "read allowance in one trajectory. Context overflow halts; candidate exhaustion retains "
+        "failure evidence without retry. Original per-task step/tool/read/storage budgets apply."
     ),
 }
 

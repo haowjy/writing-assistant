@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Propagate host workspace failures as unavailable infrastructure instead of candidate
+  rewards. Bind the intact runner to a practical 32,768-token context and 16,384-token
+  sampled-action envelope; remove the known-impossible 131K dense-mask contract before
+  GPU fit qualification.
+
 - Admit opt-in source-pinned TRL `6c5f135` / Liger `0.8.3` streaming through public
   configuration, disabling unrelated Gemma4 kernel replacements. Bind verified
   package source trees before mutation and reject changed implementation on resume.

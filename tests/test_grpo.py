@@ -1,6 +1,7 @@
 """Token/mask and group availability contracts; no downloaded or GPU models."""
 
 import copy
+import errno
 import json
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ from dataclasses import replace
 from itertools import product
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from writing_agent.agent import SYSTEM_PROMPT, run_agent
 from writing_agent.catalog import fingerprint
@@ -626,6 +628,52 @@ class NativeTests(unittest.TestCase):
                     if variant in {"judge-error", "infrastructure", "candidate-invalid"}
                     else "ok",
                 )
+
+    def test_workspace_host_failures_pend_group_instead_of_becoming_rewards(self):
+        trainer = SimpleNamespace(
+            model=None, processing_class=None, state=SimpleNamespace(global_step=0)
+        )
+        tool = '<|tool_call>call:read_file{path:<|"|>note.txt<|"|>}<tool_call|><|tool_response>'
+        original = Workspace.read_file
+        for failure in (
+            RuntimeError("unexpected harness failure"),
+            OSError(errno.EIO, "disk I/O failure"),
+        ):
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as tmp:
+                remaining = [failure]
+                called = []
+
+                def fail_first_slot(workspace, path, failures=remaining):
+                    if failures and "attempt-000" in str(workspace.root):
+                        raise failures.pop()
+                    return original(workspace, path)
+
+                def reward(task, result, calls=called):
+                    calls.append(result["seed"])
+                    return Reward("ok", 1.0)
+
+                groups = RolloutGroups(
+                    [task()],
+                    GRPOSettings(revision=REVISION, max_generated_tokens=512),
+                    Path(tmp),
+                    reward,
+                    lambda model, tokenizer, seed: self.backend([tool, "Done<turn|>"], seed=seed),
+                    SYSTEM_PROMPT,
+                )
+                with (
+                    patch.object(Workspace, "read_file", fail_first_slot),
+                    self.assertRaises(GroupPending),
+                ):
+                    groups(["fixture"] * 2, trainer)
+                attempts = sorted(Path(tmp).glob("groups/*/attempt-*"))
+                results = [json.loads((p / "result.json").read_text()) for p in attempts]
+                rewards = [json.loads((p / "reward.json").read_text()) for p in attempts]
+                self.assertEqual(results[0]["failure_class"], "infrastructure")
+                self.assertEqual(rewards[0]["status"], "unavailable")
+                self.assertEqual(rewards[1]["status"], "ok")
+                self.assertEqual(called, [74])
+                self.assertTrue(list(Path(tmp).glob("groups/*/stopped.json")))
+                self.assertFalse(list(Path(tmp).glob("groups/*/complete.json")))
 
     def test_oversized_valid_tool_observation_pends_group_without_reward(self):
         selected = task()

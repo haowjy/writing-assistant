@@ -133,7 +133,7 @@ these CPU/process observations.
 | Optimizer | AdamW, learning rate `1e-5`, constant scheduler, weight decay 0, beta 0 |
 | Generation | Thinking on; temperature/top-p 1, top-k 0 |
 | Checkpointing | Every update, latest two retained; nonreentrant activation checkpointing |
-| Native token caps | 8192 per decision, 65536 sampled total, 131072 complete trajectory/context |
+| Native token caps | 8192 per decision, 16384 sampled total, 32768 complete trajectory/context |
 | Original task maxima admitted | 48 decisions, 64 tools, 12000 whitespace read units; original storage ≤262144 bytes |
 | Seeds | `42 + (group * 4 + slot) * 48 + decision`, all indices zero-based |
 
@@ -144,22 +144,27 @@ part of experiment identity.
 
 The per-call allocation allows a 1200-word deliverable at an explicit planning
 allowance of four tokens/word (4800) plus 3392 reasoning/framing tokens. A maximal
-final three-file delivery uses 14400 tokens at that allowance. Reserving another
-512 tokens for each of 48 decisions uses 24576, leaving 26560 sampled tokens for
-revisions. Context reserves all 65536 sampled tokens, 48000 for 12000 read units at
-four tokens/unit, the measured 850-token initial prompt and 222-token followups,
-leaving 16464 for observation framing and other external content. The pinned model
-configuration declares 131072 positions.
+final three-file delivery uses 14400 tokens at that allowance and may be spread over
+several decisions; the sampled total leaves 1984 additional action tokens. Cached
+Gemma tokenizer accounting measured at most 2699 tokens for every initial file in a
+task, 210 for all contract-required reads, 141 for followups, and 850 for the initial
+rendered prompt. After reserving the full sampled total, every initial file, followups
+and initial prompt, the 32768 context leaves 12694 tokens for tool framing, repeated
+reads and other observations.
 
 These are finite engineering allocations, **not token-per-word upper bounds**.
 They admit every original task and a full final delivery without shortening any
-brief, followup or budget. They do not guarantee arbitrary repeated full drafts,
-unbounded reasoning or adversarial tokenization will fit. The earlier constructed
+brief, followup or task budget. The original 12000-unit read allowance remains, but
+the context cap does not promise that an attempt can spend all of it alongside the
+maximum output. Nor do the caps guarantee arbitrary repeated full drafts, unbounded
+reasoning or adversarial tokenization. The earlier constructed
 native paths measured at most 951 tokens per action, 3014 sampled tokens and 4066
 trajectory tokens; compressible filler and short intermediate replies make those
 existence checks, not realistic writing forecasts. Context overflow fails explicitly;
 ordinary candidate exhaustion retains its failure evidence and mechanical reward
-semantics. Training fit at these caps remains unverified.
+semantics. The prior 131072-token cap was removed before launch because the installed
+SDPA mask path requires dense quadratic boolean masks. Training fit at the enforced
+32768-token cap remains unverified.
 
 Coverage reports retain expected group/pass/task/slot identities in the prepared
 schedule and validate them against observed evidence, including seeds and invocation
@@ -172,11 +177,14 @@ reward and tie counts establish no semantic or literary improvement.
 ### Live CPU schedule proof
 
 This creates random tiny CPU weights, uses explicitly engineered task/reward
-fixtures, and runs the same full48 scheduling and recovery lifecycle:
+fixtures, and runs the same full48 scheduling and recovery lifecycle. It deliberately
+uses the legacy TRL 1.13 environment; the separate streaming CPU proof is documented
+in [GRPO usage](grpo.md), and the production composition is exercised by the GPU fit gate.
 
 ```bash
 CUDA_VISIBLE_DEVICES='' HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONPATH=src \
-  "$PYTHON" -m scripts.smoke_grpo_full48_cpu --execute --output /absolute/new/full48-cpu
+  /path/to/original-trl-1.13/python -m scripts.smoke_grpo_full48_cpu \
+  --execute --output /absolute/new/full48-cpu
 ```
 
 Three fixture tasks visited twice produce six updates and 24 attempts. The lifecycle

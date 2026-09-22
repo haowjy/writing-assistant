@@ -4,8 +4,8 @@
 started.** Tied-group continuation and the separate full48 mechanical reward are
 implemented. A dedicated full48 scheduler now admits the original budgets,
 reserves collision-free seeds and verifies pass-one pause/resume on a tiny CPU
-fixture. Native long-trajectory memory and streaming integration remain unresolved.
-Raising the old probe's step count alone
+fixture. Source-pinned streaming integration passes CPU qualification; native
+long-trajectory GPU memory remains unresolved. Raising the old probe's step count alone
 would not produce the requested experiment.
 
 ## Intended workload
@@ -200,6 +200,22 @@ BF16 parity, native tool-tokenizer semantics, dense-versus-streaming update equa
 production GPU fit or writing quality. Existing native-token and legacy dense
 accumulation evidence remains separate. The new script is
 [scripts/smoke_grpo_streaming_cpu.py](../../scripts/smoke_grpo_streaming_cpu.py).
+
+Integration review found that unexpected workspace and host filesystem exceptions
+could be returned as candidate rewards. The shared agent/rollout path now preserves
+an explicit infrastructure classification: EIO and unexpected harness failures make
+the whole reward group unavailable, while candidate path/schema/missing-file errors
+remain ordinary tool observations. Focused regressions reproduce both host failures.
+
+The same review rejected the 131072-token production cap before GPU execution. The
+installed Gemma/SDPA mask path constructs quadratic dense boolean masks; one 131K mask
+alone is 16 GiB. The enforced full48 envelope is now 8192 tokens per decision, 16384
+sampled action tokens and 32768 total trajectory tokens. Cached-tokenizer accounting
+measured maxima of 2699 tokens for every initial file, 210 for contract-required reads,
+141 for followups and 850 for the rendered initial prompt. Original step/tool/read/
+storage budgets and every task/output remain unchanged. The context cap does not
+promise that an attempt can spend the entire optional read allowance alongside the
+maximum output; overflow remains explicit failure, never truncation.
 
 ## Next gate and evidence
 

@@ -33,7 +33,8 @@ projects, supported by a maintained wiki, with better prose alongside it.
   collision-free seeds, finite-work supervision and fail-closed checkpoint recovery.
   Bind production preparation/execution to the qualified streaming implementation;
   CPU proof verifies pass-one pause/resume and exact optimizer/token state.
-- [ ] Verify native Gemma BF16 long-trajectory training fit at the frozen full48 limits.
+- [ ] Verify native Gemma BF16 training and generation fit at the enforced 32,768-token
+  full48 context envelope. The prior 131K cap was removed after dense-mask review.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until the

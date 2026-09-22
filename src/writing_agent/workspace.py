@@ -4,7 +4,12 @@ This is a path-constrained filesystem interface, not an OS security sandbox.
 Only the harness should have write access while a task runs.
 """
 
+import errno
 from pathlib import Path
+
+
+class WorkspaceInfrastructureError(RuntimeError):
+    """Host filesystem failure, not a candidate tool mistake."""
 
 
 class Workspace:
@@ -153,5 +158,11 @@ def dispatch(workspace: Workspace, name: str, arguments: dict) -> dict:
         return {"ok": False, "valid": False, "error": str(exc)}
     try:
         return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
-    except (OSError, ValueError, TypeError) as exc:
+    except OSError as exc:
+        if exc.errno in {errno.ENOENT, errno.ENOTDIR, errno.EISDIR}:
+            return {"ok": False, "valid": True, "error": str(exc)}
+        raise WorkspaceInfrastructureError(
+            f"Workspace filesystem failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    except (ValueError, TypeError) as exc:
         return {"ok": False, "valid": True, "error": str(exc)}

@@ -385,8 +385,10 @@ class RolloutGroups:
                     **{k: v for k, v in visible["budgets"].items() if k != "max_total_bytes"},
                 )
             result["trace"] = trace_events
-            result["failure_class"] = backend.failure or (
-                "candidate_invalid" if result["status"] != "completed" else None
+            result["failure_class"] = (
+                backend.failure
+                or result.get("failure_class")
+                or ("candidate_invalid" if result["status"] != "completed" else None)
             )
             tokens = backend.evidence()
             verify_tokens(tokens)
@@ -412,8 +414,16 @@ class RolloutGroups:
             raise
         finally:
             result.update(before=visible["initial_files"], seed=seed)
-            # Persist even interrupted generation/setup; the group is never marked complete.
-            result["after"] = workspace.snapshot() if workspace is not None else {}
+            # Persist even interrupted generation/setup; snapshot failure is infrastructure.
+            try:
+                result["after"] = workspace.snapshot() if workspace is not None else {}
+            except Exception as exc:
+                result.update(
+                    after={},
+                    status="error",
+                    failure_class="infrastructure",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             save_json(attempt / "result.json", result)
             save_json(attempt / "tokens.json", tokens)
         return tokens, result

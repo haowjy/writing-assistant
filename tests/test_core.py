@@ -1,4 +1,5 @@
 import copy
+import errno
 import json
 import tempfile
 import unittest
@@ -9,7 +10,7 @@ from writing_agent.agent import run_agent
 from writing_agent.backends import ChatServerBackend, ScriptedBackend
 from writing_agent.data import export_sft, read_records, validate_records
 from writing_agent.evaluation import evaluate, score
-from writing_agent.workspace import Workspace, dispatch
+from writing_agent.workspace import Workspace, WorkspaceInfrastructureError, dispatch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,6 +47,14 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.workspace.search("MARA")[0]["path"], "notes/facts.md")
         self.assertFalse(dispatch(self.workspace, "resolve", {"path": "."})["ok"])
         self.assertFalse(dispatch(self.workspace, "read_file", {"path": 42})["ok"])
+        self.assertTrue(dispatch(self.workspace, "read_file", {"path": "missing"})["valid"])
+        with (
+            patch.object(
+                self.workspace, "read_file", side_effect=OSError(errno.EIO, "disk failed")
+            ),
+            self.assertRaises(WorkspaceInfrastructureError),
+        ):
+            dispatch(self.workspace, "read_file", {"path": "notes/facts.md"})
         with self.assertRaises(ValueError):
             self.workspace.write_file("huge", "x" * 128_001)
 
@@ -69,6 +78,18 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["tool_errors"], 1)
         self.assertEqual(result["messages"][-2]["role"], "tool")
+
+    def test_unexpected_tool_failure_is_explicit_infrastructure(self):
+        message = {
+            "role": "assistant",
+            "tool_calls": [{"id": "1", "function": {"name": "list_dir", "arguments": {}}}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            with patch.object(workspace, "list_dir", side_effect=RuntimeError("host failed")):
+                result = run_agent(ScriptedBackend([message]), workspace, [])
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["failure_class"], "infrastructure")
 
     def test_step_limit_and_backend_error(self):
         tool_message = {
