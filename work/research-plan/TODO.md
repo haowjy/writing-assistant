@@ -81,9 +81,10 @@ test. Demonstrations and SFT are conditional, not on the critical path.
 - [x] Execute the frozen E2B probe on the RTX 3090: baseline and grouped rollouts ran,
   then loss-forward output conversion exhausted GPU memory before the first update.
   See the [measured result](gemma-probe-result.md).
-- [ ] Scope a memory-reduced follow-up and verify actual Gemma updates and checkpoint
-  recovery. Do not retry or alter the failed run. This memory failure does not establish
-  a need for the optional [SFT pipeline](../sft/plan.md).
+- [x] Run the separate [microbatch follow-up](gemma-microbatch-result.md): three Gemma
+  updates, checkpoint recovery, verified resident adapter reload and paired development
+  evaluation. Preserve both runs. Mechanical outcomes are mixed; semantic/literary
+  effectiveness remains unverified. No [SFT stage](../sft/plan.md) was required.
 - [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):
   grounded source packets, permitted divergences, task-specific rewards, private judge
   evidence, coverage tracking, and reproducible per-group initial states.

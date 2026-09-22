@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Verify the microbatched Gemma probe on the RTX 3090: three optimizer updates,
+  checkpoint resume, exact resident adapter reload and all 12 paired development
+  attempts. Peak Torch allocation 18.249 GiB; total GPU-stage time 45.44 minutes.
+  Preserve mixed mechanical outcomes (mean 0.229→0.313), generation-limit failures,
+  and the original OOM run without claiming writing improvement.
+
 - Separate GRPO reward groups from training microbatches. The Gemma probe now scores
   four attempts together and accumulates four single-attempt gradients per update;
   generic callers retain full-group training by default. Bind microbatch size to

@@ -80,10 +80,10 @@ an existing file.
 entrypoint, candidate-token masks, separate inference adapters, and resumable checkpoints.
 The [prepared Gemma probe](docs/grpo-probe.md) freezes three training tasks, six development
 cases, mechanical rewards, token budgets, and supervised execution. A tiny CPU model
-verifies exact step-1→3 resume after checkpoint pruning. The real Gemma probe completed
-its baseline but ran out of GPU memory before the first optimizer update; see the
-[measured result](work/research-plan/gemma-probe-result.md). No SFT demonstrations are
-required for GRPO.
+verifies exact step-1→3 resume after checkpoint pruning. The real Gemma
+[microbatch probe](work/research-plan/gemma-microbatch-result.md) completed three updates,
+checkpoint resume, verified adapter reload, and matched development evaluation on the
+3090. No SFT demonstrations are required for GRPO.
 
 ## Limits
 
@@ -95,6 +95,7 @@ Current scorers check literal output constraints, file outcomes, tool errors, an
 edit scope. Literary quality is unscored. There is no automatic canon
 commit policy: the prompt teaches the distinction, and tests check file outcomes.
 
-Gemma GPU training is unverified. Held-out long-form tasks exist but have not been run.
+Short-context Gemma GRPO mechanics are verified; writing improvement is not.
+Held-out long-form tasks exist but have not been run.
 See the [research wiki](wiki/index.md) for project concepts and the
 [research work plan](work/research-plan/index.md) for proposed experiments.

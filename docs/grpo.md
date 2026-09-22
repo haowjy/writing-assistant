@@ -2,8 +2,10 @@
 
 The harness now connects task attempts, file tools, rewards, and TRL optimizer updates.
 A tiny CPU model has passed adapter save/reload and interrupted-training resume checks.
-**Gemma GPU training and writing improvement are not yet verified.** The
-[root TODO](../TODO.md) sets the next execution step; no SFT demonstrations are required.
+The bounded [Gemma GPU probe](../work/research-plan/gemma-microbatch-result.md) also passed
+three updates, checkpoint resume, and resident adapter verification. **Writing improvement
+and longer-context fit remain unverified.** The [root TODO](../TODO.md) sets the next
+execution step; no SFT demonstrations are required.
 
 ## Inspect first
 
@@ -189,8 +191,9 @@ Resume within the microbatched configuration remains exactly equal, not approxim
 Native Gemma tokenizer tests separately exercise file tools and multi-turn suffixes with
 scripted outputs; those tests are not evidence of Gemma optimization or GPU fit.
 
-The next real-model check must measure runtime, peak GPU/RAM, and disk growth; verify
-adapter change, save/reload/resume, and task outcomes; and report tied or unavailable
-groups. Loading alone is not success. Longer contexts, adaptive authors, Qwen, and
-literary gains remain later experiments. See the [training plan](../work/research-plan/training-experiments.md)
+The bounded Gemma probe measured runtime, peak GPU/RAM and disk growth, verified
+adapter change and save/reload/resume, and retained all task outcomes. Future real-model
+runs must repeat these checks and report tied or unavailable groups. The
+[root TODO](../TODO.md) makes longer memory tasks the next experiment; writing improvement
+remains unverified. See the [training plan](../work/research-plan/training-experiments.md)
 and the separate [optional SFT path](sft.md).

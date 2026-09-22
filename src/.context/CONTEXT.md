@@ -240,8 +240,10 @@ parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
 Training identity includes private scoring labels, unlike evaluation's rescorable
 identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
 before resume can mutate the model; engineered fixtures use separate, explicit admission.
-Unavailable or tied groups stop before updates. Reward-group size is distinct from
-training microbatch size: TRL scores the complete group, consumes its slices within one
+Unavailable or tied groups stop before updates. `GRPOSettings.microbatch_size=None`
+trains the full group with accumulation 1. An explicit microbatch must be a positive
+integer dividing `group_size`; `gradient_accumulation_steps` is derived as
+`group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one
 accumulation window, and updates once. Checkpoints occur only at that boundary; no
 partially consumed rollout buffer needs restoring. Microbatch settings are identity-bound.
 Inference adapters and full trainer checkpoints are different artifacts. CPU optimizer/resume verification does

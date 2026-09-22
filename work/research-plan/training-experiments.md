@@ -31,8 +31,11 @@ The [prepared Gemma probe](../../docs/grpo-probe.md) now freezes three training 
 six two-seed development cases, tested mechanical rewards, native-token budgets, and
 supervised execution. The [first GPU run](gemma-probe-result.md) completed its baseline
 and a non-tied training group, then exhausted GPU memory during loss-forward output
-conversion before any optimizer update. A separately scoped memory-fit follow-up is
-next in the [root work order](../../TODO.md).
+conversion before any optimizer update. The separate
+[microbatch follow-up](gemma-microbatch-result.md) then completed three GPU updates,
+checkpoint resume, resident adapter verification, and paired development evaluation.
+Longer memory tasks are next in the [root work order](../../TODO.md); the short probe
+establishes engineering feasibility, not literary or semantic effectiveness.
 The main unresolved research question is whether Qwen produces meaningfully different
 attempts and whether the judge ranks them reliably. Reconsider targeted SFT only if a
 needed behavior remains too rare after checking the tasks, instructions, and rewards.

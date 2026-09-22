@@ -8,7 +8,7 @@ Optional ideas live in [work/FUTURE.md](work/FUTURE.md).
 The goal is better long-form project memory and effective use of large writing
 projects, supported by a maintained wiki, with better prose alongside it.
 
-## Next: prove GRPO works with the Gemma already on disk
+## Short-context GRPO proof passed; next test longer memory tasks
 
 - [x] Prepare the bounded [Gemma E2B GRPO probe](docs/grpo-probe.md): three training
   tasks, six development cases at two seeds, four attempts per training group, three
@@ -25,9 +25,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Prepare a memory-reduced follow-up: retain four attempts per reward group,
   train one at a time, accumulate four gradients per update. CPU checks verify
   equivalent full-group updates and exact step-1→3 resume. The failed run stays frozen.
-- [ ] Execute the freshly prepared microbatch probe. Actual Gemma adapter updates,
-  checkpoint save/reload, resume, and matched adapter evaluation remain unverified;
-  a load is not a passing probe.
+- [x] Execute the fresh [microbatch probe](work/research-plan/gemma-microbatch-result.md):
+  three real Gemma updates, step-1→3 checkpoint resume, exact resident adapter reload,
+  and 12 paired development attempts. Peak Torch allocation 18.249 GiB; total GPU-stage
+  time 45.44 minutes. Mechanical mean 0.229→0.313, with mixed per-case changes and no
+  semantic/literary improvement established.
 - [ ] Extend the passing probe to longer, multi-turn wiki tasks. Add declared Astra
   author simulation only where needed, measure cache reuse, and test retention and
   use of earlier decisions. Increase context gradually rather than jumping to 256K.
@@ -35,8 +37,9 @@ projects, supported by a maintained wiki, with better prose alongside it.
 Gemma readiness checked: `google/gemma-4-E2B-it` at revision
 `3e22461f65e89153144f8adb70e3b8c2cc9845a7` has its weights (about 10.25GB), tokenizer,
 and configuration cached locally. A tiny random CPU model passed exact step-1→3
-resume even after checkpoint 1 was pruned. Real Gemma inference and grouped rollouts
-ran, but the frozen training configuration did not fit; no trained adapter exists.
+resume even after checkpoint 1 was pruned. The original full-group training batch did
+not fit, but microbatching completed real Gemma training, resume and adapter evaluation.
+This proves the bounded engineering path, not writing or long-context effectiveness.
 Semantic/literary judging still needs
 calibration before substantive writing optimization. The SFT dataset is unprepared and
 is not required for this GRPO probe.

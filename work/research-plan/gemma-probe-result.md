@@ -6,10 +6,15 @@ but no checkpoint or trained adapter. Resume and adapter evaluation therefore di
 not run. This is a memory-fit failure of this configuration, not evidence that
 Gemma cannot learn the tasks or that Qwen requires SFT.
 
+The separately prepared [microbatch follow-up](gemma-microbatch-result.md) subsequently
+passed training and resume. This report preserves the original full-batch failure.
+
 ## Measured outcomes
 
 Executed on 2026-09-22 from source commit `c47a18c`, using the
-[frozen probe](../../docs/grpo-probe.md), without changing its settings or rewards.
+[probe protocol](../../docs/grpo-probe.md), without changing its settings or rewards.
+This run trained all four attempts together with accumulation 1; the current guide
+instead describes the later microbatch-1, accumulation-4 profile.
 The Qwen server exited before execution; no desktop process was stopped. GPU
 admission passed with about 22.1 GiB free.
 
@@ -79,9 +84,8 @@ Key evidence:
 - Meridian work item `grpo-gemma-probe`, `gpu-base-eval.log` and `gpu-train.log`:
   console output and full traceback.
 
-The [root TODO](../../TODO.md) keeps the missing optimizer/checkpoint proof open.
-A follow-up should first examine the public TRL/Accelerate memory controls for
-this output-conversion path. Any changed execution profile requires a separately
-scoped run and fresh preparation; this result stays frozen. Increasing context
-now would skip the failed short-context fit gate. These measurements do not
-establish an SFT need or a reason to redesign the reward.
+The missing optimizer/checkpoint proof was subsequently obtained in the separately
+prepared [microbatch run](gemma-microbatch-result.md), using public TRL controls.
+This failed run stays frozen. The [root TODO](../../TODO.md) tracks work beyond that
+short-context gate. This memory failure did not establish an SFT need or a reason
+to redesign the reward.
