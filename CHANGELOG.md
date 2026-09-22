@@ -6,8 +6,8 @@
   writing projects come first, supported by wiki maintenance, with prose quality as
   a companion outcome. Record the full task mix, broad instruction variation, local
   3090 limits, and a cost-dependent 256K Qwen context target whose training/inference
-  scope remains open. Include code-to-documentation and code-to-story tasks using
-  the existing file tools, without adding code execution.
+  scope remains open. Keep code-to-documentation and code-to-story as optional ideas,
+  not required coverage or authorization for additional datasets or execution.
 
 - Set the active training plan to direct GRPO on instruction-tuned Qwen3.8-27B.
   Use E2B only for engineering verification; make SFT conditional on a demonstrated

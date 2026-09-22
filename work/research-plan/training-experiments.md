@@ -57,15 +57,13 @@ Train on the full task mix: drafting, revision, planning and alternatives, proje
 and knowledge-base maintenance, retrieval-grounded writing, and multi-turn collaboration.
 All are in scope; this does not imply equal counts.
 
-Include code-grounded writing as a task type within this mix, not a separate training
-stage. Examples are reading a small code project to write or update its documentation,
-or turning a simulation's rules and state into a story. These tasks exercise finding,
-understanding, and using project information across formats. Documentation must not
-invent implemented behavior; story tasks must distinguish source-defined rules from
-permitted fictional invention. Judge source fidelity and writing usefulness, with
-later retrieval or revision where appropriate. The initial tasks use the existing file
-tools only; code execution is not available and must not be implied by the task or the
-answer. The proportion and concrete examples remain to be specified.
+Code-to-documentation and code-to-story are optional ideas, not required coverage or
+approved collection work. If explored later, small code fixtures could test finding,
+understanding, and using project information across formats. Documentation would need
+to reflect implemented behavior; stories would distinguish source-defined rules from
+permitted invention. No additional datasets, downloads, or code execution are needed
+for the initial experiment. Decide whether these tasks add useful evidence before
+spending storage or compute on them.
 
 Correct the balance proposal's contradictory requirements before expanding it. The
 300-task target remains an estimate, not a proven minimum.
