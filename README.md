@@ -80,8 +80,10 @@ an existing file.
 entrypoint, candidate-token masks, separate inference adapters, and resumable checkpoints.
 The [prepared Gemma probe](docs/grpo-probe.md) freezes three training tasks, six development
 cases, mechanical rewards, token budgets, and supervised execution. A tiny CPU model
-verifies exact step-1→3 resume after checkpoint pruning; actual Gemma GPU execution remains
-pending. No SFT demonstrations are required for GRPO.
+verifies exact step-1→3 resume after checkpoint pruning. The real Gemma probe completed
+its baseline but ran out of GPU memory before the first optimizer update; see the
+[measured result](work/research-plan/gemma-probe-result.md). No SFT demonstrations are
+required for GRPO.
 
 ## Limits
 

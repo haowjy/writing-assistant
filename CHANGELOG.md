@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Record the first real Gemma GPU probe: 12 baseline attempts, training rewards
+  [1, 0, 1, 1], and CUDA OOM during loss-forward output conversion before any update.
+  Preserve the failed run, 14.68 minutes of resource accounting, and the remaining
+  checkpoint/adapter verification gap; no retry or profile change was made.
+
 - Add the frozen Gemma probe runner: hash-bound preparation and token preflight,
   matched mechanical development scoring, step-1→3 resume, and resident adapter checks.
   Supervise GPU stages with a 60-minute aggregate cap, interruption accounting,

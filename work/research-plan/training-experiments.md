@@ -29,8 +29,10 @@ The [GRPO connection and checkpoint lifecycle](../../docs/grpo.md) are implement
 A tiny CPU model verifies optimizer updates and exact step-1→3 save/reload/resume.
 The [prepared Gemma probe](../../docs/grpo-probe.md) now freezes three training tasks,
 six two-seed development cases, tested mechanical rewards, native-token budgets, and
-supervised execution. Gemma GPU execution remains unverified and comes next in the
-[root work order](../../TODO.md).
+supervised execution. The [first GPU run](gemma-probe-result.md) completed its baseline
+and a non-tied training group, then exhausted GPU memory during loss-forward output
+conversion before any optimizer update. A separately scoped memory-fit follow-up is
+next in the [root work order](../../TODO.md).
 The main unresolved research question is whether Qwen produces meaningfully different
 attempts and whether the judge ranks them reliably. Reconsider targeted SFT only if a
 needed behavior remains too rare after checking the tasks, instructions, and rewards.

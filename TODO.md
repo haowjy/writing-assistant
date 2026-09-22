@@ -17,21 +17,24 @@ projects, supported by a maintained wiki, with better prose alongside it.
   No SFT stage, semantic judge, download, or paid call is required for this engineering run.
 - [x] Connect generation, workspace tools, rewards, and GRPO updates. Verify candidate
   token masks, real tiny-CPU adapter updates, save/reload, and exact checkpoint resume.
-  See [GRPO usage and checkpoint methodology](docs/grpo.md); Gemma execution is still pending.
-- [ ] Obtain an exclusive GPU window and run the prepared probe on the **RTX 3090**.
-  A separately restarted Qwen server currently occupies the GPU; it has not been stopped.
-  Verify actual
-  adapter updates, checkpoint save/reload and resume; record peak GPU/RAM use, runtime,
-  and disk growth. A successful load alone is not a passing training probe.
+  See [GRPO usage and checkpoint methodology](docs/grpo.md).
+- [x] Run the frozen probe on the **RTX 3090** and preserve the
+  [measured result](work/research-plan/gemma-probe-result.md): 12 baseline attempts,
+  then CUDA OOM before the first optimizer update. The first training group had
+  rewards [1, 0, 1, 1]. Total GPU-stage time was 14.68 minutes; no retry was made.
+- [ ] Scope a memory-reduced follow-up for the training output-conversion bottleneck.
+  Keep the failed run frozen. Actual Gemma adapter updates, checkpoint save/reload,
+  resume, and matched adapter evaluation remain unverified; a load is not a passing probe.
 - [ ] Extend the passing probe to longer, multi-turn wiki tasks. Add declared Astra
   author simulation only where needed, measure cache reuse, and test retention and
   use of earlier decisions. Increase context gradually rather than jumping to 256K.
 
 Gemma readiness checked: `google/gemma-4-E2B-it` at revision
 `3e22461f65e89153144f8adb70e3b8c2cc9845a7` has its weights (about 10.25GB), tokenizer,
-and configuration cached locally. Only a tiny random CPU model has trained: exact
-step-1→3 resume passed even after checkpoint 1 was pruned. Gemma GPU training and matched
-base/adapter development evaluation have not run. Semantic/literary judging still needs
+and configuration cached locally. A tiny random CPU model passed exact step-1→3
+resume even after checkpoint 1 was pruned. Real Gemma inference and grouped rollouts
+ran, but the frozen training configuration did not fit; no trained adapter exists.
+Semantic/literary judging still needs
 calibration before substantive writing optimization. The SFT dataset is unprepared and
 is not required for this GRPO probe.
 

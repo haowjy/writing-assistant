@@ -78,9 +78,12 @@ test. Demonstrations and SFT are conditional, not on the critical path.
   tokenizer tests and real tiny-CPU optimizer/save/reload/resume checks pass.
 - [x] Freeze the [short Gemma probe](../../docs/grpo-probe.md): three training tasks,
   six development cases, scorer fixtures, token preflight, and bounded supervised stages.
-- [ ] Verify that connection with E2B during an exclusive RTX 3090 window; CPU
-  results do not establish Gemma execution or memory fit. The
-  [prepared SFT pipeline](../sft/plan.md) remains an optional fallback.
+- [x] Execute the frozen E2B probe on the RTX 3090: baseline and grouped rollouts ran,
+  then loss-forward output conversion exhausted GPU memory before the first update.
+  See the [measured result](gemma-probe-result.md).
+- [ ] Scope a memory-reduced follow-up and verify actual Gemma updates and checkpoint
+  recovery. Do not retry or alter the failed run. This memory failure does not establish
+  a need for the optional [SFT pipeline](../sft/plan.md).
 - [ ] Specify the [on-demand branching task generator](../sft/rl-task-generation.md):
   grounded source packets, permitted divergences, task-specific rewards, private judge
   evidence, coverage tracking, and reproducible per-group initial states.

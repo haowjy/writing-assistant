@@ -4,6 +4,9 @@ This is the prepared three-task engineering experiment, not a full writing-train
 Its scores measure mechanical compliance, not writing quality or semantic continuity.
 CPU and tokenizer checks do not establish Gemma GPU fit. See the [root TODO](../TODO.md)
 for execution status and the general [GRPO guide](grpo.md) for checkpoint contracts.
+The [first GPU result](../work/research-plan/gemma-probe-result.md) is a completed baseline
+followed by CUDA OOM before the first optimizer update. The failed run remains frozen;
+the commands below describe the protocol, not a retry instruction.
 
 ## The task set
 
