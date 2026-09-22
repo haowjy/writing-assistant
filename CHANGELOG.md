@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add user-approved Xwayland and Ghostty GPU desktop allowlist entries while preserving
+  the existing 256 MiB per-process, 768 MiB total and 22,000 MiB free-memory limits.
+
 - Add a separate inspect-first 32768-token production Gemma controlled GPU fit gate,
   native long-prefix generation check, finite update/full-checkpoint evidence, and
   complete NVML ownership admission before fit and full48 train/resume model loads.

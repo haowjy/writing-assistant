@@ -36,9 +36,9 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Add the inspect-first [production GPU fit gate](docs/grpo-gpu-fit.md), with
   complete-process ownership admission shared by fit and full48 train/resume.
 - [ ] Verify native Gemma BF16 training and generation fit at the enforced 32,768-token
-  full48 context envelope. The implemented gate stopped before model load: complete
-  NVML inventory has unknown consumers and 1079 MiB allocated against the 768 MiB
-  display cap. Resolve ownership, then run the same profile in fresh evidence.
+  full48 context envelope. The first gate stopped before model load at GPU ownership.
+  Steam was explicitly terminated; the user approved Xwayland/Ghostty as desktop
+  consumers without changing memory limits. Run the same profile in fresh evidence.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until the

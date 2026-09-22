@@ -41,9 +41,11 @@ class OwnershipTests(unittest.TestCase):
         self.assertFalse(ownership_report(xml(consumers + [(4, "cursor", "C", 1)]))["admitted"])
         self.assertFalse(ownership_report(xml([(1, "chrome", "G", 257)]))["admitted"])
         for kind in ("G", "C", "C+G"):
-            result = ownership_report(xml([(1, "/usr/bin/Xwayland", kind, 1)]))
-            self.assertFalse(result["admitted"])
-            self.assertEqual(result["consumers"][0]["type"], kind)
+            for name in ("/usr/bin/Xwayland", "/usr/bin/ghostty"):
+                with self.subTest(kind=kind, name=name):
+                    result = ownership_report(xml([(1, name, kind, 1)]))
+                    self.assertTrue(result["admitted"])
+                    self.assertEqual(result["consumers"][0]["type"], kind)
         self.assertFalse(ownership_report(xml([(1, "python", "C", 0)]))["admitted"])
 
     def test_incomplete_or_unknown_inventory_refuses_and_preserves(self):

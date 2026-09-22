@@ -42,6 +42,8 @@ DISPLAY_POLICY = {
         "cosmic-settings",
         "cosmic-files",
         "xdg-desktop-portal-cosmic",
+        "xwayland",
+        "ghostty",
         "chrome",
         "cursor",
     ],

@@ -229,12 +229,12 @@ passes. The fit command never starts production.
 
 The first v2 invocation stopped at ownership before either production model load.
 The RTX 3090 had 22676 MiB free, but total listed process allocation was 1079 MiB
-against the unchanged 768 MiB cap. Unknown consumers were Xwayland (PID 6706,
-6 MiB), ghostty (1264841, 124 MiB; 3230837, 117 MiB), Steam (1330160, 8 MiB),
-and steamwebhelper (1330493, 49 MiB; 1330518, 171 MiB). No consumer was terminated;
-no generation, GPU update or production launch occurred. Full XML and rejection
-are in `gpu-fit-v2/runtime/ownership-before/` in the shared work item. Ownership
-must be resolved by the user; rerun the unchanged profile in a fresh directory.
+against the unchanged 768 MiB cap. The user then explicitly requested termination
+of Steam and approved Xwayland/Ghostty as ordinary desktop consumers. Steam and its
+web helpers exited; a fresh inventory reported 679 MiB allocated and 23205 MiB free.
+The allowlist expansion does not change the 256 MiB per-process, 768 MiB total or
+22000 MiB free-memory limits. The original rejection remains in
+`gpu-fit-v2/runtime/ownership-before/`; rerun the same profile in a fresh directory.
 
 The committed command and CPU checks are complete: 357 repository tests (two skips),
 12 focused tests in the qualified environment, cached-tokenizer lengths, and a live
