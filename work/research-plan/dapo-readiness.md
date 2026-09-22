@@ -2,7 +2,9 @@
 
 **The DAPO configuration and CPU proof pass; the intact 48-task GPU run has not
 started.** Tied-group continuation and the separate full48 mechanical reward are
-implemented. Full-task runtime budgets and long-trajectory memory remain unresolved.
+implemented. A dedicated full48 scheduler now admits the original budgets,
+reserves collision-free seeds and verifies pass-one pause/resume on a tiny CPU
+fixture. Native long-trajectory memory and streaming integration remain unresolved.
 Raising the old probe's step count alone
 would not produce the requested experiment.
 
@@ -19,8 +21,7 @@ still stop execution; quiet logs alone do not establish a stall. The previous
 60-minute probe policy and sealed run artifacts stay unchanged.
 
 Checkpoint full training state at completed update boundaries, retain recoverable
-intermediate checkpoints, and deliberately test a pause/resume within the first
-pass. Final evaluation is separate. A completed schedule has 96 optimizer steps,
+intermediate checkpoints, and deliberately stop at pass one/update 48 and explicitly resume to update 96. Final evaluation is separate. A completed schedule has 96 optimizer steps,
 including ordinary TRL steps for tied groups. Those steps are not evidence of
 new relative reward information; rounding residuals and momentum can still move weights. Failures can still stop the schedule before full coverage.
 
@@ -172,7 +173,7 @@ Review also reproduced eight rewards of 0.7 yielding actual advantages about
 5.96e-4 and fresh-Adam movement despite zero estimated advantages. The CPU proof
 now records this fractional case without altering ordinary TRL behavior. Saved group
 reports distinguish ties from optimizer progress; full48 coverage accounting still
-belongs to the unimplemented full-round recipe.
+is implemented in the separate full-round recipe and CPU proof.
 
 ## Source-pinned CPU train/resume qualification
 
@@ -202,10 +203,10 @@ accumulation evidence remains separate. The new script is
 
 ## Next gate and evidence
 
-Implement the full48 runtime with faithful token budgets, collision-free seeds, finite-work
-supervision and coverage-aware recovery. Prove native long-trajectory memory fit
-before committing to the full run. Do not silently truncate, shorten, omit or
-resample tasks to make the schedule finish.
+The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
+whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Prove native
+Gemma long-trajectory memory fit before committing to the full run. Do not silently
+truncate, shorten, omit or resample tasks to make the schedule finish.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.

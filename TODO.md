@@ -29,8 +29,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
   is not claimed. Add source-pinned opt-in compatibility and pass live BF16 CPU
   Gemma4 train-entry, masked group4 accumulation, chunk boundaries, changed-observation
   conditioning and exact pause/resume checks. See [runtime usage](docs/grpo.md).
-- [ ] Build the full48 runtime with faithful token budgets, collision-free seeds,
-  finite-work supervision and checkpoint recovery; verify native long-trajectory fit.
+- [x] Build the separate [full48 runtime](docs/grpo-full48.md) with intact-task budgets,
+  collision-free seeds, finite-work supervision and fail-closed checkpoint recovery.
+  Bind production preparation/execution to the qualified streaming implementation;
+  CPU proof verifies pass-one pause/resume and exact optimizer/token state.
+- [ ] Verify native Gemma BF16 long-trajectory training fit at the frozen full48 limits.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until the

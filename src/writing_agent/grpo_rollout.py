@@ -236,19 +236,53 @@ class RolloutGroups:
     residuals or Adam momentum can move weights; continuation is not skipping.
     """
 
-    def __init__(self, tasks, settings, output, reward_callback, backend_factory, system_prompt):
+    def __init__(
+        self,
+        tasks,
+        settings,
+        output,
+        reward_callback,
+        backend_factory,
+        system_prompt,
+        *,
+        invocation_id=None,
+    ):
         self.tasks = {t["id"]: t for t in copy.deepcopy(tasks)}
         self.settings, self.output = settings, Path(output)
         self.reward_callback, self.backend_factory = reward_callback, backend_factory
         self.system_prompt = system_prompt
+        self.invocation_id = invocation_id
 
     def __call__(self, prompts, trainer):
         if len(prompts) != self.settings.group_size or len(set(prompts)) != 1:
             raise ProtocolError("Expected exactly one complete same-task group per serial rollout")
         task = self.tasks[prompts[0]]
+        step = trainer.state.global_step
+        scheduled = self.settings.runtime_profile == "intact-full48-v1"
+        if scheduled:
+            expected = list(self.tasks)[step % len(self.tasks)]
+            if not 0 <= step < self.settings.max_steps or task["id"] != expected:
+                raise ProtocolError("Rollout does not match frozen ordered schedule")
+            if any((self.output / "groups").glob(f"step-{step:06d}-*")):
+                raise ProtocolError("Scheduled group already attempted; resampling forbidden")
         group = self.output / "groups" / f"step-{trainer.state.global_step:06d}-{uuid4().hex}"
         group.mkdir(parents=True)
-        save_json(group / "started.json", {"task": task["id"], "task_hash": fingerprint(task)})
+        started = {"task": task["id"], "task_hash": fingerprint(task)}
+        if scheduled:
+            started.update(
+                invocation=self.invocation_id,
+                invocation_hash=fingerprint(
+                    json.loads(
+                        (
+                            self.output / "invocations" / self.invocation_id / "started.json"
+                        ).read_text()
+                    )
+                ),
+                group=step,
+                pass_index=step // len(self.tasks),
+                task_index=step % len(self.tasks),
+            )
+        save_json(group / "started.json", started)
         rewards, evidence = [], []
         try:
             for index in range(self.settings.group_size):
@@ -256,9 +290,19 @@ class RolloutGroups:
                 attempt.mkdir()
                 seed = (
                     self.settings.seed
-                    + (trainer.state.global_step * self.settings.group_size + index) * 32
+                    + (trainer.state.global_step * self.settings.group_size + index)
+                    * self.settings.decision_seed_stride
                 )
-                save_json(attempt / "started.json", {"seed": seed, "status": "started"})
+                attempt_start = {"seed": seed, "status": "started"}
+                if scheduled:
+                    attempt_start.update(
+                        group=step,
+                        slot=index,
+                        task=task["id"],
+                        pass_index=step // len(self.tasks),
+                        decision_seed_stride=self.settings.decision_seed_stride,
+                    )
+                save_json(attempt / "started.json", attempt_start)
                 tokens, result = self._attempt(task, trainer, attempt, seed)
                 if evidence and tokens["prompt_ids"] != evidence[0]["prompt_ids"]:
                     result["failure_class"] = "infrastructure"
