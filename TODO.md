@@ -48,8 +48,14 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Select a 24,576-token v4 contract on the RTX 3090. Keep the 8,192 per-decision /
   16,384 sampled-action limits and exact FP32 all-linear recipe; reduce only complete
   trajectory headroom. Original tasks and output requirements remain unchanged.
-- [ ] Execute the fresh v4 headless fit exactly once. Constructed complete paths fit,
-  but sampled attempts above 24,576 must fail explicitly without truncation or resampling.
+- [x] Execute v4 once headless. Ownership and native 24,575+1 generation passed, but
+  a faulty evidence assertion stopped after the first training forward: public DAPO's
+  group-active-token denominator was 32,768, not one trajectory's 24,576 tokens.
+  Preserve the terminal [v4 result](work/research-plan/gemma-full48-fit-v4-result.md);
+  it is neither an OOM nor a pass.
+- [ ] Execute the corrected fresh v5 fit exactly once after separate authorization.
+  It changes only the observer assertion. Constructed complete paths fit, but sampled
+  attempts above 24,576 must fail explicitly without truncation or resampling.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until a new

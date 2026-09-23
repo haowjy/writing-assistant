@@ -43,7 +43,7 @@ REWARDS = [0.0, 0.25, 0.75, 1.0]
 def inspect_fit():
     root = Path(__file__).resolve().parents[2]
     return {
-        "profile": "gemma-full48-controlled-fit-v4",
+        "profile": "gemma-full48-controlled-fit-v5",
         "scope": "controlled memory sizing; not sampled success or native rollout semantics",
         "settings": asdict(FIT_SETTINGS),
         "implementation": implementation_plan(STREAMING),
@@ -67,6 +67,7 @@ def inspect_fit():
             "observation_text": OBSERVATION,
             "action_text": ACTION,
             "rewards": REWARDS,
+            "dapo_group_active_tokens": len(REWARDS) * FIT_ACTIVE_TOKENS,
             "optimizer_steps": 1,
             "beta": 0,
         },
@@ -327,6 +328,7 @@ def training_check(directory, identity, runtime):
     )
     observations = []
     expected = {fingerprint(r["completion_ids"]): r for r in rows}
+    expected_normalizer = sum(sum(r["env_mask"]) for r in rows)
     loss_code = GRPOTrainer._compute_loss.__code__
 
     def observe(frame, event, result):
@@ -345,7 +347,7 @@ def training_check(directory, identity, runtime):
             or mask.detach().cpu().tolist() != [row["env_mask"]]
             or not bool(local["attention_mask"].all())
             or int(local["attention_mask"].shape[1]) != FIT_CONTEXT_TOKENS
-            or float(local["normalizer"]) != FIT_CONTEXT_TOKENS
+            or float(local["normalizer"]) != expected_normalizer
         ):
             raise ValueError("TRL consumed different token/mask/denominator geometry")
         observation = {

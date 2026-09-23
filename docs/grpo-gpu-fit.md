@@ -13,10 +13,13 @@ The separately identity-bound v3 attempt is also terminal. It retained all train
 and token settings while requiring a headless GPU and expandable allocator segments.
 Ownership and native generation passed, but training OOMed in the FP32 MLP LoRA path
 before an optimizer update. See the [v3 result](../work/research-plan/gemma-full48-fit-v3-result.md).
-Neither failed profile may be rerun. The current v4 profile instead reduces only the
-complete trajectory/context to 24576 tokens while preserving FP32 all-linear LoRA,
-8192 active fit actions, production action limits, and every task/output requirement.
-Production remains blocked until v4 passes.
+Neither failed profile may be rerun. The v4 profile reduced only the complete
+trajectory/context to 24576 tokens, but its evidence observer stopped after the first
+training forward because it incorrectly equated DAPO's group-wide active-token
+denominator with one attempt's trajectory length. See the [v4 result](../work/research-plan/gemma-full48-fit-v4-result.md).
+V4 is terminal and is neither an OOM nor a pass. The corrected v5 profile preserves
+all recipe and token settings and changes only that evidence assertion. Production
+remains blocked until v5 passes.
 
 Use the already qualified Python environment and cached model only:
 
@@ -37,7 +40,7 @@ source refuses before runtime. An exclusive attempt marker prevents repeating an
 execution, including an ownership rejection. After the user resolves a rejection,
 prepare a fresh evidence directory; preserve the rejected directory.
 
-V4 requires a headless RTX 3090: the complete NVML inventory must contain no graphics
+V5 requires a headless RTX 3090: the complete NVML inventory must contain no graphics
 or compute consumers and report at least 24000 MiB free. Unplugging a monitor does not
 satisfy this policy while the graphical session remains active. The check runs before
 the initial execution and again in each fresh generation/training process, before model
@@ -58,9 +61,11 @@ builder; there is no copied loss or trainer subclass.
 
 Each of four deterministic real-token ledgers contains exactly **24576 model
 input tokens**, including its native initial prompt. A 16384-token prompt/observation
-prefix fills the space before exactly **8192 active action tokens**. Diagnostic rewards
-are `[0, 0.25, 0.75, 1]`; rotated token sequences avoid assigning different rewards
-to identical action rows. These are controlled memory inputs, not sampled actions,
+prefix fills the space before exactly **8192 active action tokens**. DAPO's observed
+microbatch denominator is the complete generation group's active-token count,
+`4 × 8192 = 32768`; it is not one attempt's 24576-token trajectory length. Diagnostic
+rewards are `[0, 0.25, 0.75, 1]`; rotated token sequences avoid assigning different
+rewards to identical action rows. These are controlled memory inputs, not sampled actions,
 successful tasks, or native tool-rollout semantics. Production continues to sample
 natively and retains its 8192 decision / 16384 total sampled / 24576 context caps.
 The fit has 8192 active tokens per attempt; it is not an exhaustive stress test of

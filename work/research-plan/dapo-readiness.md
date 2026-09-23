@@ -3,10 +3,12 @@
 **Both 32768-token RTX 3090 fits failed during training backward; the intact 48-task
 GPU run has not started.** Native 32767+1 generation passed under desktop-admitted v2
 and headless/expandable-segments v3, but controlled FP32 all-linear LoRA training
-OOMed before an optimizer update or checkpoint. The approved v4 contract reduces only
+OOMed before an optimizer update or checkpoint. The approved v4 contract reduced only
 complete trajectory/context to 24576 tokens, preserving action limits and the training
-recipe. Tied-group continuation, reward, scheduling, recovery, and source-pinned CPU
-qualification pass. They do not override the pending v4 memory gate.
+recipe, but its observer stopped after the first forward on an incorrect denominator
+assertion. The corrected v5 contract changes only that assertion. Tied-group
+continuation, reward, scheduling, recovery, and source-pinned CPU qualification pass.
+They do not override the pending v5 memory gate.
 
 ## Intended workload
 
@@ -223,7 +225,7 @@ maximum output; overflow remains explicit failure, never truncation.
 
 The [inspect-first GPU fit command](../../docs/grpo-gpu-fit.md) binds one fixed
 24576-token controlled training profile and a separate native 24575+1 generation
-check. V4 and full48 train/resume set PyTorch expandable allocator segments before
+check. V5 and full48 train/resume set PyTorch expandable allocator segments before
 Torch import, require an empty complete GPU process inventory, and require at least
 24000 MiB free. Source/profile and prepared-data checks precede model loading. A
 passing CPU suite or prepared profile is not a passing GPU fit; production remains
@@ -260,12 +262,21 @@ the [v3 result](gemma-full48-fit-v3-result.md).
 
 ## Next gate and evidence
 
+The v4 24576-token attempt passed headless ownership and native 24575+1 generation.
+Its first training forward also completed at 17.097 GiB allocated / 17.711 GiB
+reserved, but the observer then rejected the correct DAPO denominator: four ledgers
+with 8192 active tokens produce a group denominator of 32768, not one ledger's 24576
+total trajectory tokens. Backward, the remaining microbatches, optimizer step, and
+checkpoint did not run. V4 is terminal, is not an OOM, and is not a fit pass. See the
+[v4 result](gemma-full48-fit-v4-result.md).
+
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
 whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
-remains at 0 of 96 groups and 0 of 384 attempts. Qualify v4 exactly once while the GPU
-remains headless. The known constructed complete paths measured only 598–4066 tokens,
-but they are not sampled upper bounds; any sampled trajectory over 24576 must fail
-explicitly without truncation or resampling. Start production only if v4 passes.
+remains at 0 of 96 groups and 0 of 384 attempts. The corrected v5 identity changes
+only the evidence assertion and requires separate authorization for one fresh headless
+attempt. The known constructed complete paths measured only 598–4066 tokens, but they
+are not sampled upper bounds; any sampled trajectory over 24576 must fail explicitly
+without truncation or resampling. Start production only if v5 passes.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
@@ -281,10 +292,11 @@ and `memory-qualification-v1/primary-verification.json`. Source-pinned compatibi
 `runtime-compat/report.md`, `runtime-compat/raw-summary.json`,
 `runtime-compat/cpu/{summary.json,observations-full.json,observations-resumed.json}`
 and the adjacent test/live-command logs. The terminal fit evidence is in
-`gpu-fit-v2/approved-desktop-v1/` and `gpu-fit-v3/headless-expandable-v1/`, with raw
-logs in their adjacent runtime files. Durable summaries are
-[gemma-full48-fit-result.md](gemma-full48-fit-result.md) and
-[gemma-full48-fit-v3-result.md](gemma-full48-fit-v3-result.md). A failed postprocessing hook
+`gpu-fit-v2/approved-desktop-v1/`, `gpu-fit-v3/headless-expandable-v1/`, and
+`gpu-fit-v4/context-24576-v1/`, with raw logs in their adjacent runtime files. Durable
+summaries are [gemma-full48-fit-result.md](gemma-full48-fit-result.md),
+[gemma-full48-fit-v3-result.md](gemma-full48-fit-v3-result.md), and
+[gemma-full48-fit-v4-result.md](gemma-full48-fit-v4-result.md). A failed postprocessing hook
 assumption is preserved; correction required no package changes or model reruns.
 Original data and previous GPU runs were not modified. The controlled GPU fit ran,
 but production training, model downloads and paid judge calls did not.

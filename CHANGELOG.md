@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Preserve the terminal v4 24576-token fit after its evidence observer rejected the
+  correct 32768 group-active-token DAPO denominator. Native generation and the first
+  training forward passed, but backward/update/checkpoint did not run. Correct the
+  observer under a fresh v5 identity without changing the training recipe.
+
 - Select a 24576-token v4 fit and production context after both 32768-token all-linear
   fits OOMed. Preserve 8192 tokens per decision, 16384 sampled actions, FP32 rank-8
   all-linear LoRA, original tasks and output requirements; reduce only observation/tool
