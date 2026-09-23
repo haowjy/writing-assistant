@@ -2,9 +2,9 @@
 
 **The dedicated full48 runner preserves all 48 original tasks and mechanical rewards.**
 CPU scheduling, recovery and the source-pinned streaming integration are verified.
-The desktop-admitted native training-memory profile failed on the RTX 3090. A fresh
-headless/expandable-segments fit contract is prepared; production remains blocked until
-it passes. See [current readiness](../work/research-plan/dapo-readiness.md).
+Both desktop-admitted and headless/expandable-segments training-memory profiles failed
+on the RTX 3090. Production remains blocked. See
+[current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
 
@@ -204,10 +204,11 @@ at 32768 tokens and exercises cached-base native generation before one DAPO upda
 Its deterministic tokens and diagnostic rewards do not establish sampled success.
 The v2 attempt passed native generation but OOMed during training backward before an
 optimizer update; see the [measured result](../work/research-plan/gemma-full48-fit-result.md).
-It must not be retried or treated as a pass. The separately bound v3 contract retains
+It must not be retried or treated as a pass. The separately bound v3 contract retained
 the exact training recipe and 32768-token ledgers while requiring a headless GPU and
-expandable allocator segments. V3 must pass before full48 can launch; the fit command
-never launches production.
+expandable allocator segments. V3 also OOMed during FP32 MLP LoRA backward before an
+optimizer update; see the [v3 result](../work/research-plan/gemma-full48-fit-v3-result.md).
+The fit command never launches production.
 
 Both full48 `train` and `resume` verify the prepared identity and pinned runtime, bind
 `expandable_segments:True` before Torch import, then admit the complete

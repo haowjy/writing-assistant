@@ -1,12 +1,11 @@
 # DAPO full-round readiness
 
-**The desktop-admitted 32768-token RTX 3090 fit failed during training backward;
-the intact 48-task GPU run has not started.** Native 32767+1 generation passed, but
-controlled training OOMed before an optimizer update or checkpoint. A separately
-identity-bound v3 contract now retains the same training recipe while requiring a
-headless GPU and expandable allocator segments. Tied-group continuation, the full48
+**Both 32768-token RTX 3090 fits failed during training backward; the intact 48-task
+GPU run has not started.** Native 32767+1 generation passed under desktop-admitted v2
+and headless/expandable-segments v3, but controlled FP32 all-linear LoRA training
+OOMed before an optimizer update or checkpoint. Tied-group continuation, the full48
 mechanical reward, scheduler, pass-one recovery, and source-pinned CPU qualification
-pass. They do not override either memory gate.
+pass. They do not override the failed memory gates.
 
 ## Intended workload
 
@@ -246,20 +245,25 @@ profile was not retried or changed. The failed 768 MiB allocation exactly matche
 32768 × 6144 FP32 all-linear LoRA MLP projection. See the
 [measured fit result](gemma-full48-fit-result.md).
 
-The v3 contract changes only resource admission and allocator behavior: no listed GPU
+The v3 contract changed only resource admission and allocator behavior: no listed GPU
 consumer, at least 24000 MiB free, and `expandable_segments:True` bound before Torch
 import. Model, 32768-token ledgers, BF16 base, FP32 rank-8 all-linear LoRA, DAPO,
-checkpointing, and source pins remain unchanged. Unplugging a monitor without ending
-the graphical session does not meet headless admission. The committed CPU checks do
-not clear this new live GPU fit gate.
+checkpointing, and source pins remained unchanged. Ownership passed with zero consumers
+and 24085 MiB free; native generation passed. Training reached 22.785 GiB allocated
+and 23.043 GiB reserved, then the MLP `down_proj` LoRA path requested another 768 MiB
+with 336.62 MiB free. Reserved-but-unallocated memory was only 83.78 MiB, ruling out
+fragmentation as a sufficient fix. No optimizer update or checkpoint completed. See
+the [v3 result](gemma-full48-fit-v3-result.md).
 
 ## Next gate and evidence
 
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
 whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
-remains at 0 of 96 groups and 0 of 384 attempts. Execute v3 exactly once from SSH/TTY
-after the graphical session exits; start production only if it passes. Do not silently
-truncate, shorten, omit or resample tasks to make the schedule fit or finish.
+remains at 0 of 96 groups and 0 of 384 attempts. Preserving the exact recipe requires
+a larger GPU. Staying on the RTX 3090 requires a separately approved and qualified
+recipe change; FP32 attention-only LoRA is the direct candidate because rank reduction
+alone retains the failing full-width MLP tensors. Do not silently truncate, shorten,
+omit or resample tasks to make the schedule fit or finish.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
@@ -275,9 +279,10 @@ and `memory-qualification-v1/primary-verification.json`. Source-pinned compatibi
 `runtime-compat/report.md`, `runtime-compat/raw-summary.json`,
 `runtime-compat/cpu/{summary.json,observations-full.json,observations-resumed.json}`
 and the adjacent test/live-command logs. The terminal fit evidence is in
-`gpu-fit-v2/approved-desktop-v1/`, with its raw log at
-`gpu-fit-v2/approved-runtime.log`; the durable summary is
-[gemma-full48-fit-result.md](gemma-full48-fit-result.md). A failed postprocessing hook
+`gpu-fit-v2/approved-desktop-v1/` and `gpu-fit-v3/headless-expandable-v1/`, with raw
+logs in their adjacent runtime files. Durable summaries are
+[gemma-full48-fit-result.md](gemma-full48-fit-result.md) and
+[gemma-full48-fit-v3-result.md](gemma-full48-fit-v3-result.md). A failed postprocessing hook
 assumption is preserved; correction required no package changes or model reruns.
 Original data and previous GPU runs were not modified. The controlled GPU fit ran,
 but production training, model downloads and paid judge calls did not.

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Record the terminal headless/expandable-segments 32768-token fit: ownership and
+  native generation passed, but FP32 all-linear LoRA training OOMed in the MLP
+  `down_proj` path before an optimizer update. Confirm the exact recipe does not fit
+  the 24 GiB RTX 3090; keep full48 production at zero groups and attempts.
+
 - Add a fresh headless 32768-token fit contract after the desktop-admitted profile
   OOMed: require an empty GPU process inventory, at least 24000 MiB free, and bind
   PyTorch expandable allocator segments before Torch import. Apply the same resource

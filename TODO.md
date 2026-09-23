@@ -42,8 +42,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Select a fresh headless qualification contract without changing training math:
   require no listed GPU consumers, at least 24,000 MiB free, and PyTorch expandable
   allocator segments set before import. Bind the same contract to full48 train/resume.
-- [ ] Execute that v3 32,768-token fit exactly once from SSH/TTY after the graphical
-  session exits. It is a new contract, not a retry or reinterpretation of failed v2.
+- [x] Execute v3 once from mosh with no GPU consumers and 24,085 MiB free. Generation
+  passed; training still OOMed in the FP32 MLP LoRA path before an update. Preserve the
+  [v3 result](work/research-plan/gemma-full48-fit-v3-result.md); do not retry it.
+- [ ] Choose between a larger GPU for the exact recipe and a separately qualified
+  FP32 attention-only LoRA recipe for this RTX 3090. Rank reduction alone is insufficient.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until a new

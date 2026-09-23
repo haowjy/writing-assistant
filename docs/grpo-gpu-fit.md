@@ -9,9 +9,12 @@ or production launch.
 The desktop-admitted v2 attempt is terminal: native 32767+1 generation passed, while
 controlled training OOMed during the first backward pass before an optimizer update
 or checkpoint. See the [measured result](../work/research-plan/gemma-full48-fit-result.md).
-The current command prepares the separately identity-bound v3 contract. V3 retains
-all training and token settings while requiring a headless GPU and expandable allocator
-segments; it does not retry or reinterpret v2. Production remains blocked until v3 passes.
+The separately identity-bound v3 attempt is also terminal. It retained all training
+and token settings while requiring a headless GPU and expandable allocator segments.
+Ownership and native generation passed, but training OOMed in the FP32 MLP LoRA path
+before an optimizer update. See the [v3 result](../work/research-plan/gemma-full48-fit-v3-result.md).
+Production remains blocked; the command describes preserved evidence, not permission
+to rerun either failed profile.
 
 Use the already qualified Python environment and cached model only:
 
