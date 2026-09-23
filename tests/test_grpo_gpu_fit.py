@@ -17,6 +17,9 @@ from writing_agent.grpo_gpu import (
     ownership_report,
 )
 from writing_agent.grpo_gpu_fit import (
+    FIT_ACTIVE_TOKENS,
+    FIT_CONTEXT_TOKENS,
+    FIT_PREFIX_TOKENS,
     execute_fit,
     generation_prefix,
     inspect_fit,
@@ -139,16 +142,25 @@ class FitTests(unittest.TestCase):
     def test_exact_ledger_masks_and_profile_identity(self):
         rows = token_ledgers(Tokenizer())
         self.assertEqual([r["reward"] for r in rows], [0, 0.25, 0.75, 1])
+        self.assertEqual(
+            (FIT_CONTEXT_TOKENS, FIT_PREFIX_TOKENS, FIT_ACTIVE_TOKENS),
+            (24576, 16384, 8192),
+        )
         for row in rows:
-            self.assertEqual(len(row["prompt_ids"]) + len(row["completion_ids"]), 32768)
-            self.assertEqual(row["env_mask"], [0] * (24576 - len(row["prompt_ids"])) + [1] * 8192)
+            self.assertEqual(
+                len(row["prompt_ids"]) + len(row["completion_ids"]), FIT_CONTEXT_TOKENS
+            )
+            self.assertEqual(
+                row["env_mask"],
+                [0] * (FIT_PREFIX_TOKENS - len(row["prompt_ids"])) + [1] * FIT_ACTIVE_TOKENS,
+            )
             self.assertEqual(len(row["env_mask"]), len(row["completion_ids"]))
-        self.assertEqual(len(generation_prefix(Tokenizer())), 32767)
+        self.assertEqual(len(generation_prefix(Tokenizer())), FIT_CONTEXT_TOKENS - 1)
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "fresh"
             record = prepare_fit(output)
             self.assertEqual(preflight_fit(output), record)
-            self.assertEqual(inspect_fit()["profile"], "gemma-full48-controlled-fit-v3")
+            self.assertEqual(inspect_fit()["profile"], "gemma-full48-controlled-fit-v4")
             self.assertEqual(inspect_fit()["allocator"], CUDA_ALLOCATOR_CONF)
             self.assertEqual(inspect_fit()["ownership_policy"], HEADLESS_POLICY)
             changed = inspect_fit()

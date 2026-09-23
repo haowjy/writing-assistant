@@ -32,6 +32,9 @@ from writing_agent.grpo_runtime import (
 )
 
 FIT_SETTINGS = replace(SETTINGS, max_steps=1, max_invocations=1)
+FIT_CONTEXT_TOKENS = FIT_SETTINGS.context_tokens
+FIT_ACTIVE_TOKENS = FIT_SETTINGS.max_tokens
+FIT_PREFIX_TOKENS = FIT_CONTEXT_TOKENS - FIT_ACTIVE_TOKENS
 OBSERVATION = "The archive records a quiet room, an open window, and a letter on the desk. "
 ACTION = "She reads the letter carefully and writes the next page of her story. "
 REWARDS = [0.0, 0.25, 0.75, 1.0]
@@ -40,7 +43,7 @@ REWARDS = [0.0, 0.25, 0.75, 1.0]
 def inspect_fit():
     root = Path(__file__).resolve().parents[2]
     return {
-        "profile": "gemma-full48-controlled-fit-v3",
+        "profile": "gemma-full48-controlled-fit-v4",
         "scope": "controlled memory sizing; not sampled success or native rollout semantics",
         "settings": asdict(FIT_SETTINGS),
         "implementation": implementation_plan(STREAMING),
@@ -57,10 +60,10 @@ def inspect_fit():
         },
         "training": {
             "attempts": 4,
-            "total_tokens_each": 32768,
-            "active_tokens_each": 8192,
-            "observation_tokens_each": "24576 minus native initial prompt length",
-            "mask": "zero for observation prefix, one for final 8192 actions",
+            "total_tokens_each": FIT_CONTEXT_TOKENS,
+            "active_tokens_each": FIT_ACTIVE_TOKENS,
+            "observation_tokens_each": (f"{FIT_PREFIX_TOKENS} minus native initial prompt length"),
+            "mask": (f"zero for observation prefix, one for final {FIT_ACTIVE_TOKENS} actions"),
             "observation_text": OBSERVATION,
             "action_text": ACTION,
             "rewards": REWARDS,
@@ -68,9 +71,9 @@ def inspect_fit():
             "beta": 0,
         },
         "generation": {
-            "input_tokens": 32767,
+            "input_tokens": FIT_CONTEXT_TOKENS - 1,
             "new_tokens": 1,
-            "total_tokens": 32768,
+            "total_tokens": FIT_CONTEXT_TOKENS,
             "native_chat": True,
             "use_cache": True,
             "separate_base_load": True,
@@ -124,7 +127,7 @@ def token_ledgers(tokenizer):
     action = tokenizer.encode(ACTION, add_special_tokens=False)
     if set(observation + action) & set(tokenizer.all_special_ids):
         raise ValueError("Sizing text unexpectedly contains special tokens")
-    masked = 24576 - len(prompt)
+    masked = FIT_PREFIX_TOKENS - len(prompt)
     rows = []
     for slot in range(4):
         # Rotate actual text-token pools to avoid identical reward/action rows.
@@ -133,8 +136,9 @@ def token_ledgers(tokenizer):
             {
                 "slot": slot,
                 "prompt_ids": prompt,
-                "completion_ids": repeat_tokens(observation, masked) + repeat_tokens(actions, 8192),
-                "env_mask": [0] * masked + [1] * 8192,
+                "completion_ids": repeat_tokens(observation, masked)
+                + repeat_tokens(actions, FIT_ACTIVE_TOKENS),
+                "env_mask": [0] * masked + [1] * FIT_ACTIVE_TOKENS,
                 "reward": REWARDS[slot],
             }
         )
@@ -157,7 +161,7 @@ def generation_prefix(tokenizer):
     prefix = tokenizer.encode(before, add_special_tokens=False)
     suffix = tokenizer.encode(after, add_special_tokens=False)
     pool = tokenizer.encode(OBSERVATION, add_special_tokens=False)
-    return prefix + repeat_tokens(pool, 32767 - len(prefix) - len(suffix)) + suffix
+    return prefix + repeat_tokens(pool, FIT_CONTEXT_TOKENS - 1 - len(prefix) - len(suffix)) + suffix
 
 
 def finite_state(value):
@@ -186,7 +190,7 @@ def load_base():
         attn_implementation="sdpa",
     )
     validate_streaming_model(model.config)
-    if model.config.get_text_config().max_position_embeddings < 32768:
+    if model.config.get_text_config().max_position_embeddings < FIT_CONTEXT_TOKENS:
         raise ValueError("Cached base cannot admit the enforced context")
     return model, tokenizer
 
@@ -210,10 +214,13 @@ def generation_check(directory):
             output_logits=True,
             pad_token_id=tokenizer.pad_token_id,
         )
-    if generated.sequences.shape[1] != 32768 or not torch.isfinite(generated.logits[0]).all():
+    if (
+        generated.sequences.shape[1] != FIT_CONTEXT_TOKENS
+        or not torch.isfinite(generated.logits[0]).all()
+    ):
         raise ValueError("Generation length/nonfinite score failure")
     cache = generated.past_key_values
-    if cache is None or int(cache.get_seq_length()) != 32767:
+    if cache is None or int(cache.get_seq_length()) != FIT_CONTEXT_TOKENS - 1:
         raise ValueError("Generation did not retain the full prefill cache")
     result = {
         "input_tokens": len(ids),
@@ -337,14 +344,14 @@ def training_check(directory, identity, runtime):
             inputs["prompt_ids"].detach().cpu().tolist() != [row["prompt_ids"]]
             or mask.detach().cpu().tolist() != [row["env_mask"]]
             or not bool(local["attention_mask"].all())
-            or int(local["attention_mask"].shape[1]) != 32768
-            or float(local["normalizer"]) != 32768
+            or int(local["attention_mask"].shape[1]) != FIT_CONTEXT_TOKENS
+            or float(local["normalizer"]) != FIT_CONTEXT_TOKENS
         ):
             raise ValueError("TRL consumed different token/mask/denominator geometry")
         observation = {
             "slot": row["slot"],
             "loss": float(result.detach()),
-            "total_tokens": 32768,
+            "total_tokens": FIT_CONTEXT_TOKENS,
             "active_tokens": int(mask.sum()),
             "normalizer": float(local["normalizer"]),
             "masked_gradient_zero": False,

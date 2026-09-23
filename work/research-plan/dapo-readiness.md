@@ -3,9 +3,10 @@
 **Both 32768-token RTX 3090 fits failed during training backward; the intact 48-task
 GPU run has not started.** Native 32767+1 generation passed under desktop-admitted v2
 and headless/expandable-segments v3, but controlled FP32 all-linear LoRA training
-OOMed before an optimizer update or checkpoint. Tied-group continuation, the full48
-mechanical reward, scheduler, pass-one recovery, and source-pinned CPU qualification
-pass. They do not override the failed memory gates.
+OOMed before an optimizer update or checkpoint. The approved v4 contract reduces only
+complete trajectory/context to 24576 tokens, preserving action limits and the training
+recipe. Tied-group continuation, reward, scheduling, recovery, and source-pinned CPU
+qualification pass. They do not override the pending v4 memory gate.
 
 ## Intended workload
 
@@ -209,18 +210,20 @@ remain ordinary tool observations. Focused regressions reproduce both host failu
 The same review rejected the 131072-token production cap before GPU execution. The
 installed Gemma/SDPA mask path constructs quadratic dense boolean masks; one 131K mask
 alone is 16 GiB. The enforced full48 envelope is now 8192 tokens per decision, 16384
-sampled action tokens and 32768 total trajectory tokens. Cached-tokenizer accounting
+sampled action tokens and 24576 total trajectory tokens. Cached-tokenizer accounting
 measured maxima of 2699 tokens for every initial file, 210 for contract-required reads,
-141 for followups and 850 for the rendered initial prompt. Original step/tool/read/
-storage budgets and every task/output remain unchanged. The context cap does not
+141 for followups and 850 for the rendered initial prompt. Reserving the full sampled
+total and those known inputs leaves 4502 tokens for tool framing, repeated reads and
+other observations. Original step/tool/read/storage budgets and every task/output
+remain unchanged. The context cap does not
 promise that an attempt can spend the entire optional read allowance alongside the
 maximum output; overflow remains explicit failure, never truncation.
 
 ## Production fit command
 
 The [inspect-first GPU fit command](../../docs/grpo-gpu-fit.md) binds one fixed
-32768-token controlled training profile and a separate native 32767+1 generation
-check. V3 and full48 train/resume set PyTorch expandable allocator segments before
+24576-token controlled training profile and a separate native 24575+1 generation
+check. V4 and full48 train/resume set PyTorch expandable allocator segments before
 Torch import, require an empty complete GPU process inventory, and require at least
 24000 MiB free. Source/profile and prepared-data checks precede model loading. A
 passing CPU suite or prepared profile is not a passing GPU fit; production remains
@@ -259,11 +262,10 @@ the [v3 result](gemma-full48-fit-v3-result.md).
 
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
 whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
-remains at 0 of 96 groups and 0 of 384 attempts. Preserving the exact recipe requires
-a larger GPU. Staying on the RTX 3090 requires a separately approved and qualified
-recipe change; FP32 attention-only LoRA is the direct candidate because rank reduction
-alone retains the failing full-width MLP tensors. Do not silently truncate, shorten,
-omit or resample tasks to make the schedule fit or finish.
+remains at 0 of 96 groups and 0 of 384 attempts. Qualify v4 exactly once while the GPU
+remains headless. The known constructed complete paths measured only 598–4066 tokens,
+but they are not sampled upper bounds; any sampled trajectory over 24576 must fail
+explicitly without truncation or resampling. Start production only if v4 passes.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.

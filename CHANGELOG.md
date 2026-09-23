@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Select a 24576-token v4 fit and production context after both 32768-token all-linear
+  fits OOMed. Preserve 8192 tokens per decision, 16384 sampled actions, FP32 rank-8
+  all-linear LoRA, original tasks and output requirements; reduce only observation/tool
+  headroom, with overflow remaining an explicit failure.
+
 - Record the terminal headless/expandable-segments 32768-token fit: ownership and
   native generation passed, but FP32 all-linear LoRA training OOMed in the MLP
   `down_proj` path before an optimizer update. Confirm the exact recipe does not fit

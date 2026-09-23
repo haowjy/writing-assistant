@@ -2,8 +2,9 @@
 
 **The dedicated full48 runner preserves all 48 original tasks and mechanical rewards.**
 CPU scheduling, recovery and the source-pinned streaming integration are verified.
-Both desktop-admitted and headless/expandable-segments training-memory profiles failed
-on the RTX 3090. Production remains blocked. See
+Both 32768-token training-memory profiles failed on the RTX 3090. A fresh 24576-token
+profile now preserves the exact all-linear recipe with less trajectory headroom;
+production remains blocked until it passes. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
@@ -135,7 +136,7 @@ these CPU/process observations.
 | Optimizer | AdamW, learning rate `1e-5`, constant scheduler, weight decay 0, beta 0 |
 | Generation | Thinking on; temperature/top-p 1, top-k 0 |
 | Checkpointing | Every update, latest two retained; nonreentrant activation checkpointing |
-| Native token caps | 8192 per decision, 16384 sampled total, 32768 complete trajectory/context |
+| Native token caps | 8192 per decision, 16384 sampled total, 24576 complete trajectory/context |
 | Original task maxima admitted | 48 decisions, 64 tools, 12000 whitespace read units; original storage ≤262144 bytes |
 | Seeds | `42 + (group * 4 + slot) * 48 + decision`, all indices zero-based |
 
@@ -151,7 +152,7 @@ several decisions; the sampled total leaves 1984 additional action tokens. Cache
 Gemma tokenizer accounting measured at most 2699 tokens for every initial file in a
 task, 210 for all contract-required reads, 141 for followups, and 850 for the initial
 rendered prompt. After reserving the full sampled total, every initial file, followups
-and initial prompt, the 32768 context leaves 12694 tokens for tool framing, repeated
+and initial prompt, the 24576 context leaves 4502 tokens for tool framing, repeated
 reads and other observations.
 
 These are finite engineering allocations, **not token-per-word upper bounds**.
@@ -165,8 +166,10 @@ trajectory tokens; compressible filler and short intermediate replies make those
 existence checks, not realistic writing forecasts. Context overflow fails explicitly;
 ordinary candidate exhaustion retains its failure evidence and mechanical reward
 semantics. The prior 131072-token cap was removed before launch because the installed
-SDPA mask path requires dense quadratic boolean masks. The frozen controlled training profile at the enforced
-32768-token cap OOMed during its first backward pass; native sampled-task fit remains
+SDPA mask path requires dense quadratic boolean masks. Both frozen controlled training
+profiles at the former 32768-token cap OOMed during backward. The 24576-token v4 cap
+preserves every task and output requirement, but gives long sampled trajectories less
+observation/tool headroom. Its native fit remains
 unproven and cannot authorize production.
 
 Coverage reports retain expected group/pass/task/slot identities in the prepared
@@ -200,7 +203,7 @@ without claiming 96 production updates or native Gemma/BF16 memory fit.
 ## Production GPU fit gate
 
 The separate [fit command](grpo-gpu-fit.md) freezes one controlled memory profile
-at 32768 tokens and exercises cached-base native generation before one DAPO update.
+at 24576 tokens and exercises cached-base native generation before one DAPO update.
 Its deterministic tokens and diagnostic rewards do not establish sampled success.
 The v2 attempt passed native generation but OOMed during training backward before an
 optimizer update; see the [measured result](../work/research-plan/gemma-full48-fit-result.md).
@@ -208,7 +211,9 @@ It must not be retried or treated as a pass. The separately bound v3 contract re
 the exact training recipe and 32768-token ledgers while requiring a headless GPU and
 expandable allocator segments. V3 also OOMed during FP32 MLP LoRA backward before an
 optimizer update; see the [v3 result](../work/research-plan/gemma-full48-fit-v3-result.md).
-The fit command never launches production.
+The separately bound v4 profile reduces only complete trajectory/context to 24576
+tokens while preserving all-linear FP32 LoRA and the 8192/16384 action limits. It must
+pass before launch. The fit command never launches production.
 
 Both full48 `train` and `resume` verify the prepared identity and pinned runtime, bind
 `expandable_segments:True` before Torch import, then admit the complete

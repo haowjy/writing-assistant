@@ -35,7 +35,7 @@ class SchedulerTests(unittest.TestCase):
     def test_order_seeds_and_original_probe_caps(self):
         self.assertEqual(
             (SETTINGS.max_tokens, SETTINGS.max_generated_tokens, SETTINGS.context_tokens),
-            (8192, 16384, 32768),
+            (8192, 16384, 24576),
         )
         tasks = [{**fixture_task(), "id": str(i)} for i in range(48)]
         rows = schedule(tasks, SETTINGS)

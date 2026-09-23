@@ -44,12 +44,11 @@ The exact 32768-token, FP32 all-linear LoRA recipe does not fit this 24 GiB RTX 
 under the qualified software path, even headless. The production schedule remains at
 **0 of 96 groups and 0 of 384 attempts**.
 
-Preserving the exact recipe now requires a larger GPU. Staying on the RTX 3090 requires
-a separately approved recipe change and new qualification. The most direct local
-candidate is FP32 attention-only LoRA (`q_proj`, `k_proj`, `v_proj`, `o_proj`), which
-avoids the 6144-wide FP32 MLP adapter tensors while retaining the 32768-token envelope.
-Reducing rank alone would not remove those full-width tensors. Neither candidate is
-qualified by this result.
+Preserving this exact 32768-token recipe requires a larger GPU. The subsequently
+approved v4 contract instead reduces complete trajectory/context to 24576 tokens while
+retaining FP32 all-linear LoRA and the 8192/16384 action limits. All original tasks and
+output requirements remain unchanged, but sampled attempts have less observation/tool
+headroom. V4 is a new qualification contract, not a reinterpretation of this result.
 
 Raw evidence is local at:
 

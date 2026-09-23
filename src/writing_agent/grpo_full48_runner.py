@@ -32,7 +32,7 @@ from writing_agent.grpo_runtime import STREAMING, verify_runtime
 SETTINGS = GRPOSettings(
     revision="3e22461f65e89153144f8adb70e3b8c2cc9845a7",
     runtime_profile="intact-full48-v1",
-    context_tokens=32768,
+    context_tokens=24576,
     max_tokens=8192,
     max_generated_tokens=16384,
     max_steps=96,
@@ -72,8 +72,8 @@ BUDGET_RATIONALE = {
         "plus 1984 tokens for other sampled actions; files may be delivered across decisions"
     ),
     "context": (
-        "32768: 16384 sampled actions + measured 850-token initial prompt + at most "
-        "2699 tokens for every initial file + 141 followup tokens leaves 12694 tokens "
+        "24576: 16384 sampled actions + measured 850-token initial prompt + at most "
+        "2699 tokens for every initial file + 141 followup tokens leaves 4502 tokens "
         "for tool framing, repeated reads and other observations"
     ),
     "limits": (

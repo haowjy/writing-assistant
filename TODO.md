@@ -45,8 +45,11 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Execute v3 once from mosh with no GPU consumers and 24,085 MiB free. Generation
   passed; training still OOMed in the FP32 MLP LoRA path before an update. Preserve the
   [v3 result](work/research-plan/gemma-full48-fit-v3-result.md); do not retry it.
-- [ ] Choose between a larger GPU for the exact recipe and a separately qualified
-  FP32 attention-only LoRA recipe for this RTX 3090. Rank reduction alone is insufficient.
+- [x] Select a 24,576-token v4 contract on the RTX 3090. Keep the 8,192 per-decision /
+  16,384 sampled-action limits and exact FP32 all-linear recipe; reduce only complete
+  trajectory headroom. Original tasks and output requirements remain unchanged.
+- [ ] Execute the fresh v4 headless fit exactly once. Constructed complete paths fit,
+  but sampled attempts above 24,576 must fail explicitly without truncation or resampling.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
   **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until a new
