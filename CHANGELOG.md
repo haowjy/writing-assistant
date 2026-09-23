@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Record the passing single-attempt v5 24576-token RTX 3090 fit: headless admission,
+  native generation, four public-DAPO microbatches, one optimizer update, and a
+  hash-verified full checkpoint. Controlled memory qualification passed; original
+  full48 sampling, writing quality, and production training remain unmeasured.
+
 - Preserve the terminal v4 24576-token fit after its evidence observer rejected the
   correct 32768 group-active-token DAPO denominator. Native generation and the first
   training forward passed, but backward/update/checkpoint did not run. Correct the

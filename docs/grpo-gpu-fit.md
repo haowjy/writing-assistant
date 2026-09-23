@@ -18,8 +18,10 @@ trajectory/context to 24576 tokens, but its evidence observer stopped after the 
 training forward because it incorrectly equated DAPO's group-wide active-token
 denominator with one attempt's trajectory length. See the [v4 result](../work/research-plan/gemma-full48-fit-v4-result.md).
 V4 is terminal and is neither an OOM nor a pass. The corrected v5 profile preserves
-all recipe and token settings and changes only that evidence assertion. Production
-remains blocked until v5 passes.
+all recipe and token settings and changes only that evidence assertion. The single v5
+attempt passed native generation, four controlled microbatches, an optimizer update,
+and complete checkpoint verification; see the [v5 result](../work/research-plan/gemma-full48-fit-v5-result.md).
+Production remains unstarted; the controlled fit does not prove sampled task success.
 
 Use the already qualified Python environment and cached model only:
 

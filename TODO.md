@@ -53,13 +53,16 @@ projects, supported by a maintained wiki, with better prose alongside it.
   group-active-token denominator was 32,768, not one trajectory's 24,576 tokens.
   Preserve the terminal [v4 result](work/research-plan/gemma-full48-fit-v4-result.md);
   it is neither an OOM nor a pass.
-- [ ] Execute the corrected fresh v5 fit exactly once after separate authorization.
-  It changes only the observer assertion. Constructed complete paths fit, but sampled
-  attempts above 24,576 must fail explicitly without truncation or resampling.
+- [x] Execute the corrected fresh v5 fit exactly once after separate authorization.
+  [V5 passed](work/research-plan/gemma-full48-fit-v5-result.md) native generation,
+  four accumulated microbatches, an optimizer update and a complete checkpoint.
+  Its deterministic ledgers do not prove sampled success or arbitrary mask fit;
+  sampled attempts above 24,576 must fail explicitly without truncation or resampling.
 - [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
   96 scheduled groups / 384 attempts. The user authorized overnight execution with
-  **no elapsed-time cutoff**; timing estimates are advisory. Do not launch until a new
-  qualification contract passes. Production remains at 0 groups / 0 attempts.
+  **no elapsed-time cutoff**; timing estimates are advisory. V5 passed the controlled
+  memory qualification; prepare and preflight the intact run before launch under the
+  same headless GPU admission. Production remains at 0 groups / 0 attempts.
 
 ## Completed: short-context GRPO engineering proof
 

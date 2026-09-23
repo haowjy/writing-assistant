@@ -3,10 +3,10 @@
 **The dedicated full48 runner preserves all 48 original tasks and mechanical rewards.**
 CPU scheduling, recovery and the source-pinned streaming integration are verified.
 Both 32768-token training-memory profiles failed on the RTX 3090. The first
-24576-token profile then stopped on a faulty evidence assertion after its first
-training forward; it neither OOMed nor completed qualification. A corrected fresh
-profile preserves the exact all-linear recipe with less trajectory headroom;
-production remains blocked until it passes. See
+24576-token profile stopped on a faulty evidence assertion after its first training
+forward; it neither OOMed nor completed qualification. The corrected v5 controlled
+profile passed a full optimizer update and checkpoint with the exact all-linear recipe
+and less trajectory headroom. Production has not started; sampled fit is unproven. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
@@ -170,8 +170,8 @@ ordinary candidate exhaustion retains its failure evidence and mechanical reward
 semantics. The prior 131072-token cap was removed before launch because the installed
 SDPA mask path requires dense quadratic boolean masks. Both frozen controlled training
 profiles at the former 32768-token cap OOMed during backward. The 24576-token cap preserves every task and output requirement, but gives long
-sampled trajectories less observation/tool headroom. Its native fit remains unproven
-and cannot authorize production.
+sampled trajectories less observation/tool headroom. The controlled v5 training
+fit passed, but sampled full48 trajectories have not been measured.
 
 Coverage reports retain expected group/pass/task/slot identities in the prepared
 schedule and validate them against observed evidence, including seeds and invocation
@@ -217,8 +217,11 @@ tokens while preserving all-linear FP32 LoRA and the 8192/16384 action limits. I
 native generation passed, but its observer incorrectly expected one trajectory's
 24576 tokens instead of DAPO's `4 × 8192 = 32768` group-active-token denominator and
 stopped before backward; see the [v4 result](../work/research-plan/gemma-full48-fit-v4-result.md).
-The corrected v5 profile changes only that evidence assertion and must pass before
-launch. The fit command never launches production.
+The corrected v5 profile changed only that evidence assertion and passed native
+generation, four accumulated loss/backward microbatches, an optimizer update, and
+complete checkpoint verification; see the [v5 result](../work/research-plan/gemma-full48-fit-v5-result.md).
+The fit command never launches production, and the memory evidence is limited to its
+controlled ledger geometry.
 
 Both full48 `train` and `resume` verify the prepared identity and pinned runtime, bind
 `expandable_segments:True` before Torch import, then admit the complete

@@ -1,14 +1,13 @@
 # DAPO full-round readiness
 
-**Both 32768-token RTX 3090 fits failed during training backward; the intact 48-task
-GPU run has not started.** Native 32767+1 generation passed under desktop-admitted v2
-and headless/expandable-segments v3, but controlled FP32 all-linear LoRA training
-OOMed before an optimizer update or checkpoint. The approved v4 contract reduced only
-complete trajectory/context to 24576 tokens, preserving action limits and the training
-recipe, but its observer stopped after the first forward on an incorrect denominator
-assertion. The corrected v5 contract changes only that assertion. Tied-group
-continuation, reward, scheduling, recovery, and source-pinned CPU qualification pass.
-They do not override the pending v5 memory gate.
+**The 24576-token controlled v5 RTX 3090 fit passed; the intact 48-task GPU run has
+not started.** Both earlier 32768-token profiles OOMed before an update. V4 reduced
+only context but its observer rejected the correct DAPO denominator after the first
+forward. V5 changed only that assertion and passed native generation, four accumulated
+microbatches, one optimizer update and a complete checkpoint. This qualifies controlled
+memory, not sampled task trajectories, reward quality, or production completion.
+Tied-group continuation, reward, scheduling, recovery, and source-pinned CPU
+qualification also passed.
 
 ## Intended workload
 
@@ -29,7 +28,9 @@ new relative reward information; rounding residuals and momentum can still move 
 
 The earlier approximately ten-hour estimate extrapolated three shortened training
 tasks. It is **not a measured ETA for these intact tasks**. Fourteen have nine
-follow-ups; no full-task timing or training-memory measurements exist yet.
+follow-ups; no full-task timing exists yet. V5's 219.636-second controlled training
+stage excludes sampled tool conversations, reward execution and production checkpoint
+frequency; it cannot supply a full48 ETA.
 
 ## Completed and verified
 
@@ -270,13 +271,22 @@ total trajectory tokens. Backward, the remaining microbatches, optimizer step, a
 checkpoint did not run. V4 is terminal, is not an OOM, and is not a fit pass. See the
 [v4 result](gemma-full48-fit-v4-result.md).
 
+The corrected v5 fit passed all three headless GPU ownership checks with zero
+consumers and 24085 MiB free. Native 24575+1 generation passed. Four exact
+24576-token microbatches with 8192 active tokens each showed the 32768 group DAPO
+denominator and zero masked gradient; training peaked at 21.096 GiB Torch allocated /
+21.414 GiB reserved. Optimizer step 1 changed the adapter, passed exact equality
+against all 1050 saved adapter tensors, and sealed a full checkpoint with optimizer,
+scheduler and RNG. See the [v5 result](gemma-full48-fit-v5-result.md). This is a
+controlled memory pass, not a sampled writing result.
+
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
 whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
-remains at 0 of 96 groups and 0 of 384 attempts. The corrected v5 identity changes
-only the evidence assertion and requires separate authorization for one fresh headless
-attempt. The known constructed complete paths measured only 598–4066 tokens, but they
-are not sampled upper bounds; any sampled trajectory over 24576 must fail explicitly
-without truncation or resampling. Start production only if v5 passes.
+remains at 0 of 96 groups and 0 of 384 attempts. Prepare/preflight the unchanged
+original release under a fresh identity before training; repeat headless admission on
+train and resume. Constructed complete paths measured only 598–4066 tokens, not
+sampled upper bounds; a sampled trajectory over 24576 fails explicitly without
+truncation or resampling.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
@@ -293,13 +303,15 @@ and `memory-qualification-v1/primary-verification.json`. Source-pinned compatibi
 `runtime-compat/cpu/{summary.json,observations-full.json,observations-resumed.json}`
 and the adjacent test/live-command logs. The terminal fit evidence is in
 `gpu-fit-v2/approved-desktop-v1/`, `gpu-fit-v3/headless-expandable-v1/`, and
-`gpu-fit-v4/context-24576-v1/`, with raw logs in their adjacent runtime files. Durable
-summaries are [gemma-full48-fit-result.md](gemma-full48-fit-result.md),
-[gemma-full48-fit-v3-result.md](gemma-full48-fit-v3-result.md), and
-[gemma-full48-fit-v4-result.md](gemma-full48-fit-v4-result.md). A failed postprocessing hook
-assumption is preserved; correction required no package changes or model reruns.
-Original data and previous GPU runs were not modified. The controlled GPU fit ran,
-but production training, model downloads and paid judge calls did not.
+`gpu-fit-v4/context-24576-v1/`, and `gpu-fit-v5/context-24576-v1/`, with raw logs in
+their adjacent runtime files. Durable summaries are
+[gemma-full48-fit-result.md](gemma-full48-fit-result.md),
+[gemma-full48-fit-v3-result.md](gemma-full48-fit-v3-result.md),
+[gemma-full48-fit-v4-result.md](gemma-full48-fit-v4-result.md), and
+[gemma-full48-fit-v5-result.md](gemma-full48-fit-v5-result.md). A failed postprocessing
+hook assumption is preserved; correction required no package changes or model reruns.
+Original data and previous GPU runs were not modified. The controlled GPU fit passed,
+but production training, model downloads and paid judge calls did not occur.
 
 See [current work order](../../TODO.md), [GRPO usage](../../docs/grpo.md), and the
 [previous short-run result](gemma-microbatch-result.md).
