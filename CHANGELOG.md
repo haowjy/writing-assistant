@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Retain every full48 optimizer-boundary checkpoint in the next fresh run (96 total
+  when complete), leaving the two-checkpoint historical probe unchanged. A six-update
+  tiny CPU schedule/resume run verified all checkpoints survive and exact state agrees
+  with uninterrupted execution. Bind the changed source to a fresh v6 fit profile;
+  the terminal first production run is not modified.
+
 - Preserve the stopped first intact full48 run at checkpoint 14: group 15 sampled four
   attempts, two with unavailable native tool protocol evidence. Refuse in-place resume
   or resampling. A sampled tool call ending at `<eos>` now fails as a scored candidate

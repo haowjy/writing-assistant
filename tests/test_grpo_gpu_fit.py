@@ -160,7 +160,7 @@ class FitTests(unittest.TestCase):
             output = Path(tmp) / "fresh"
             record = prepare_fit(output)
             self.assertEqual(preflight_fit(output), record)
-            self.assertEqual(inspect_fit()["profile"], "gemma-full48-controlled-fit-v5")
+            self.assertEqual(inspect_fit()["profile"], "gemma-full48-controlled-fit-v6")
             self.assertEqual(inspect_fit()["training"]["dapo_group_active_tokens"], 32768)
             self.assertEqual(inspect_fit()["allocator"], CUDA_ALLOCATOR_CONF)
             self.assertEqual(inspect_fit()["ownership_policy"], HEADLESS_POLICY)

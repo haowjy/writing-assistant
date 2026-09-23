@@ -63,11 +63,15 @@ projects, supported by a maintained wiki, with better prose alongside it.
   Preserve the [partial result](work/research-plan/gemma-full48-first-run-result.md):
   14 committed groups / 56 committed attempts, 60 physical attempt results. No
   in-place resume or reinterpretation of its failed samples.
-- [ ] Validate the corrected tool-boundary handling and all-checkpoint retention
-  under a fresh source/fit identity before restarting. Use the pinned base: 48 tasks
-  × two passes × four fresh attempts = 96 groups / 384 attempts. No elapsed-time
-  cutoff; stop deliberately at checkpoint 48 and explicitly resume through 96.
-  Treat the prior partial run as separately reported, never pooled or favorably retried.
+- [x] Correct the two observed sampled tool-response shapes without changing any
+  stopped-run evidence. Prove EOS-ended tool calls score as candidate failures before
+  tool execution and mixed content/tool calls preserve raw action tokens and masked
+  observations. Retain every full48 checkpoint; a six-step CPU lifecycle kept all six
+  saves and matched uninterrupted optimizer, scheduler, RNG, adapter and token state.
+- [ ] Review and qualify this changed source under a fresh fit identity before a
+  fresh pinned-base restart: 48 tasks × two passes × four fresh attempts = 96 groups /
+  384 attempts. No elapsed-time cutoff; stop at checkpoint 48 and explicitly resume
+  through 96. Preserve the first partial run separately, never pool or favorably retry.
 
 ## Completed: short-context GRPO engineering proof
 

@@ -1,8 +1,9 @@
 """Gated single-device TRL GRPO and hash-bound adapter/resume artifacts.
 
-No imports here load optional model libraries. Attempts are never pruned; trainer
-checkpoints retain the latest two. A run has a fixed total step budget, including
-resumption. Only complete, hash-verified trainer checkpoints may resume it.
+No imports here load optional model libraries. Attempts are never pruned; the
+full48 profile retains every trainer checkpoint, while probes retain the latest
+two. A run has a fixed total step budget, including resumption. Only complete,
+hash-verified trainer checkpoints may resume it.
 """
 
 import copy
@@ -155,7 +156,7 @@ def inspect_grpo(
         "dropout": 0,
         "weight_decay": 0,
         "retention": {
-            "trainer_checkpoints": 2,
+            "trainer_checkpoints": settings.max_steps if full48 else 2,
             "inference_adapters": settings.max_invocations,
             "attempts": settings.max_steps
             * settings.group_size
@@ -561,7 +562,7 @@ def trainer_config(settings, output, *, use_cpu, bf16, implementation_config=Non
         report_to="none",
         logging_steps=1,
         save_steps=1,
-        save_total_limit=2,
+        save_total_limit=None if settings.runtime_profile == "intact-full48-v1" else 2,
         eval_strategy="no",
         dataloader_num_workers=0,
         dataloader_pin_memory=False,

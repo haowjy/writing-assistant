@@ -21,7 +21,11 @@ V4 is terminal and is neither an OOM nor a pass. The corrected v5 profile preser
 all recipe and token settings and changes only that evidence assertion. The single v5
 attempt passed native generation, four controlled microbatches, an optimizer update,
 and complete checkpoint verification; see the [v5 result](../work/research-plan/gemma-full48-fit-v5-result.md).
-Production remains unstarted; the controlled fit does not prove sampled task success.
+The first production invocation later stopped on unavailable sampled tool-protocol
+evidence; see the [partial run](../work/research-plan/gemma-full48-first-run-result.md).
+The corrected source and all-checkpoint retention now require a fresh v6 identity-bound
+fit before a new production run. V5 is a pass only for its older source tree, not an
+authorization to run changed source. V6 has not executed.
 
 Use the already qualified Python environment and cached model only:
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from writing_agent.catalog import fingerprint, save_json
-from writing_agent.grpo import file_hashes, seal_directory
+from writing_agent.grpo import file_hashes, seal_directory, trainer_config
 from writing_agent.grpo_full48 import load_full48_release
 from writing_agent.grpo_full48_runner import (
     SETTINGS,
@@ -51,6 +51,26 @@ class SchedulerTests(unittest.TestCase):
                 [{**fixture_task(), "visible": {"budgets": {"max_steps": 49}}}],
                 replace(SETTINGS, max_steps=2),
             )
+
+    def test_full48_retains_all_checkpoints_without_changing_probe_retention(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            full = trainer_config(SETTINGS, Path(tmp) / "full", use_cpu=True, bf16=False)
+            probe = trainer_config(
+                replace(
+                    SETTINGS,
+                    runtime_profile="probe",
+                    max_steps=2,
+                    context_tokens=4096,
+                    max_tokens=256,
+                    max_generated_tokens=1024,
+                ),
+                Path(tmp) / "probe",
+                use_cpu=True,
+                bf16=False,
+            )
+            self.assertIsNone(full["save_total_limit"])
+            self.assertEqual(probe["save_total_limit"], 2)
+            self.assertEqual(full["save_steps"], 1)
 
     def test_reject_wrong_task_exhausted_schedule_and_repeat_before_sampling(self):
         with tempfile.TemporaryDirectory() as tmp:

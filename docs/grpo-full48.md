@@ -9,7 +9,8 @@ profile passed a full optimizer update and checkpoint with the exact all-linear 
 and less trajectory headroom. The first production invocation then stopped at
 checkpoint 14 on two unavailable native tool protocol results in group 15. It cannot
 resume without resampling; see the [partial result](../work/research-plan/gemma-full48-first-run-result.md).
-A corrected fresh-base run needs a new identity and qualification. See
+A corrected fresh-base run needs a new identity and v6 qualification. It retains
+all optimizer-boundary checkpoints, not only the latest two. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
@@ -118,8 +119,11 @@ checkpoint blocks recovery: this recipe never resamples or retries it. Preserve
 that partial run for inspection. Missing, altered or unavailable evidence also
 halts. Later incomplete checkpoint directories can be quarantined by the trainer
 only when there is no uncommitted sampled work. Keep all attempt files and the
-latest two full checkpoints. Up to eight invocation exports allow the two planned
-invocations plus clean-boundary recovery, without unbounded adapter copies.
+all 96 full checkpoints. The former two-checkpoint retention has been replaced
+for a fresh experiment only; failed run evidence is unchanged. Up to eight
+invocation exports allow the two planned invocations plus clean-boundary recovery,
+without unbounded adapter copies. Checkpoints are saved every optimizer boundary,
+including update 48 and final update 96.
 
 The supervisor holds an exclusive file lock inherited by its child. Ownership
 survives supervisor death while the worker remains alive. It records process CPU,
@@ -140,7 +144,7 @@ these CPU/process observations.
 | LoRA | BF16 base, rank 8, alpha 16, all-linear, dropout 0, bias none |
 | Optimizer | AdamW, learning rate `1e-5`, constant scheduler, weight decay 0, beta 0 |
 | Generation | Thinking on; temperature/top-p 1, top-k 0 |
-| Checkpointing | Every update, latest two retained; nonreentrant activation checkpointing |
+| Checkpointing | Every update, all 96 retained; nonreentrant activation checkpointing |
 | Native token caps | 8192 per decision, 16384 sampled total, 24576 complete trajectory/context |
 | Original task maxima admitted | 48 decisions, 64 tools, 12000 whitespace read units; original storage ≤262144 bytes |
 | Seeds | `42 + (group * 4 + slot) * 48 + decision`, all indices zero-based |
@@ -201,7 +205,7 @@ Three fixture tasks visited twice produce six updates and 24 attempts. The lifec
 pauses after pass one/update 3, then resumes through update 6. The check compares
 adapter, optimizer, scheduler, RNG and sampled token ledgers exactly with an
 uninterrupted run; checks four tied and two signal groups; verifies all seeds,
-ordering, accounting and two-checkpoint retention. This proves the schedule shape
+ordering, accounting and six retained CPU checkpoints. This proves the schedule shape
 without claiming 96 production updates or native Gemma/BF16 memory fit.
 
 ## Production GPU fit gate
@@ -224,7 +228,8 @@ The corrected v5 profile changed only that evidence assertion and passed native
 generation, four accumulated loss/backward microbatches, an optimizer update, and
 complete checkpoint verification; see the [v5 result](../work/research-plan/gemma-full48-fit-v5-result.md).
 The fit command never launches production, and the memory evidence is limited to its
-controlled ledger geometry.
+controlled ledger geometry. It binds the older source tree; a new v6 fit for the
+corrected protocol and checkpoint policy has not run yet.
 
 Both full48 `train` and `resume` verify the prepared identity and pinned runtime, bind
 `expandable_segments:True` before Torch import, then admit the complete

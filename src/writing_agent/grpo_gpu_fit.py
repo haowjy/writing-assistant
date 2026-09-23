@@ -43,7 +43,7 @@ REWARDS = [0.0, 0.25, 0.75, 1.0]
 def inspect_fit():
     root = Path(__file__).resolve().parents[2]
     return {
-        "profile": "gemma-full48-controlled-fit-v5",
+        "profile": "gemma-full48-controlled-fit-v6",
         "scope": "controlled memory sizing; not sampled success or native rollout semantics",
         "settings": asdict(FIT_SETTINGS),
         "implementation": implementation_plan(STREAMING),

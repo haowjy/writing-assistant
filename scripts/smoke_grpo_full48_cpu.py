@@ -103,7 +103,9 @@ def smoke(output):
         assert report["status"] == "complete", report
         assert report["attempts_started"] == 24
         assert report["tied_groups"] == 4 and report["signal_groups"] == 2
-        assert len(list(root.glob("checkpoint-*"))) == 2
+        assert sorted(p.name for p in root.glob("checkpoint-*")) == [
+            f"checkpoint-{step}" for step in range(1, 7)
+        ]
         assert [g["task"] for g in report["groups"]] == [t["id"] for t in tasks] * 2
     for filename in ("optimizer.pt", "scheduler.pt", "rng_state.pth"):
         a, b = [

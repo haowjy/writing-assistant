@@ -227,9 +227,11 @@ The frozen Gemma probe retains GRPO and its existing limits.
 or a count of microbatches. The Python API's `stop_after_steps` permits a deliberate early
 stop without changing that total schedule.
 
-Keep the latest two trainer checkpoints and all attempt evidence. Separate inference
-exports are bounded by `max_invocations` (three by default); exceeding it refuses execution
-rather than deleting evidence. Do not repeatedly export merged copies of the full base.
+The historical probe retains the latest two trainer checkpoints; the intact full48
+profile retains every optimizer-boundary checkpoint (96 when complete). All attempt
+evidence is kept in either profile. Separate inference exports are bounded by
+`max_invocations` (three by default); exceeding it refuses execution rather than
+deleting evidence. Do not repeatedly export merged copies of the full base.
 
 ### Recovery
 
