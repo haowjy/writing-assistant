@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Pass the single v6 headless 24576-token controlled fit with the corrected source:
+  native generation, four DAPO microbatches, optimizer update and full checkpoint
+  verification. Launch the separately preflighted fresh-base 96-group run, keeping
+  the earlier checkpoint-14 failure separate; production outcomes remain pending.
+
 - Retain every full48 optimizer-boundary checkpoint in the next fresh run (96 total
   when complete), leaving the two-checkpoint historical probe unchanged. A six-update
   tiny CPU schedule/resume run verified all checkpoints survive and exact state agrees

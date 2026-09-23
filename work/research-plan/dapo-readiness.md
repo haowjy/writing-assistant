@@ -4,8 +4,8 @@
 stopped at checkpoint 14 and cannot resume.** Group 15 sampled four attempts, two
 with unavailable native tool protocol evidence. Preserve that partial run separately;
 see the [first-run result](gemma-full48-first-run-result.md). A corrected fresh-base
-run requires new identity and v6 fit validation of the changed source. Both earlier
-32768-token profiles OOMed
+run required a new identity and v6 fit validation of the changed source; the single
+v6 fit passed and fresh production was launched. Both earlier 32768-token profiles OOMed
 before an update. V4 reduced
 only context but its observer rejected the correct DAPO denominator after the first
 forward. V5 changed only that assertion and passed native generation, four accumulated
@@ -290,10 +290,13 @@ whose finite schedule and exact pass-one recovery pass a tiny CPU proof. The fir
 production attempt reached 14 committed groups and 56 committed attempts; group 15's
 four sampled attempts remain uncommitted and unavailable, so this run cannot resume.
 A different corrected run must start from the pinned base under a fresh identity.
-The new protocol handling and all-checkpoint policy have CPU regression evidence,
-but v6 controlled GPU qualification has not run; v5 binds the old source. Once v6
-passes, prepare/preflight the unchanged original release before training; repeat
-headless admission on train and resume. Constructed complete paths measured only 598–4066 tokens, not
+The new protocol handling and all-checkpoint policy have CPU regression evidence.
+The single [v6 controlled fit](gemma-full48-fit-v6-result.md) passed native generation,
+all four accumulated microbatches, optimizer step 1 and a complete checkpoint,
+with zero GPU consumers and 24085 MiB free at all three admission points. The fresh
+pinned-base release was prepared and preflighted under a new identity and its first
+invocation was launched. Repeat headless admission on train and resume; production
+coverage and quality outcomes are not established by the fit. Constructed complete paths measured only 598–4066 tokens, not
 sampled upper bounds; a sampled trajectory over 24576 fails explicitly without
 truncation or resampling.
 

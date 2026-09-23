@@ -68,10 +68,14 @@ projects, supported by a maintained wiki, with better prose alongside it.
   tool execution and mixed content/tool calls preserve raw action tokens and masked
   observations. Retain every full48 checkpoint; a six-step CPU lifecycle kept all six
   saves and matched uninterrupted optimizer, scheduler, RNG, adapter and token state.
-- [ ] Review and qualify this changed source under a fresh fit identity before a
-  fresh pinned-base restart: 48 tasks × two passes × four fresh attempts = 96 groups /
-  384 attempts. No elapsed-time cutoff; stop at checkpoint 48 and explicitly resume
-  through 96. Preserve the first partial run separately, never pool or favorably retry.
+- [x] Qualify the changed source in the single headless [v6 fit](work/research-plan/gemma-full48-fit-v6-result.md):
+  native generation, all four accumulated DAPO microbatches, optimizer step 1 and
+  complete checkpoint passed. The first partial production run remains separate.
+- [ ] Complete the fresh pinned-base production run now launched under a new identity:
+  48 tasks × two passes × four fresh attempts = 96 groups / 384 attempts, with all
+  96 full checkpoints retained. No elapsed-time cutoff. Inspect the verified stop
+  at checkpoint 48 and explicitly resume through 96; unavailable or uncommitted
+  sampled evidence halts without retry. Do not pool the stopped first run.
 
 ## Completed: short-context GRPO engineering proof
 

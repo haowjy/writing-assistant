@@ -9,8 +9,9 @@ profile passed a full optimizer update and checkpoint with the exact all-linear 
 and less trajectory headroom. The first production invocation then stopped at
 checkpoint 14 on two unavailable native tool protocol results in group 15. It cannot
 resume without resampling; see the [partial result](../work/research-plan/gemma-full48-first-run-result.md).
-A corrected fresh-base run needs a new identity and v6 qualification. It retains
-all optimizer-boundary checkpoints, not only the latest two. See
+The corrected fresh-base run has a new identity and passed the v6 controlled fit;
+its first invocation was launched. It retains all optimizer-boundary checkpoints,
+not only the latest two. The earlier partial run remains terminal and separate. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
@@ -228,8 +229,9 @@ The corrected v5 profile changed only that evidence assertion and passed native
 generation, four accumulated loss/backward microbatches, an optimizer update, and
 complete checkpoint verification; see the [v5 result](../work/research-plan/gemma-full48-fit-v5-result.md).
 The fit command never launches production, and the memory evidence is limited to its
-controlled ledger geometry. It binds the older source tree; a new v6 fit for the
-corrected protocol and checkpoint policy has not run yet.
+controlled ledger geometry. It binds the older source tree. The new
+[v6 fit result](../work/research-plan/gemma-full48-fit-v6-result.md) passed for the
+corrected protocol and checkpoint policy before fresh production launch.
 
 Both full48 `train` and `resume` verify the prepared identity and pinned runtime, bind
 `expandable_segments:True` before Torch import, then admit the complete

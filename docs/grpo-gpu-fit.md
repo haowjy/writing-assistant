@@ -25,7 +25,10 @@ The first production invocation later stopped on unavailable sampled tool-protoc
 evidence; see the [partial run](../work/research-plan/gemma-full48-first-run-result.md).
 The corrected source and all-checkpoint retention now require a fresh v6 identity-bound
 fit before a new production run. V5 is a pass only for its older source tree, not an
-authorization to run changed source. V6 has not executed.
+authorization to run changed source. The single [v6 fit](../work/research-plan/gemma-full48-fit-v6-result.md)
+passed generation, four accumulated microbatches, optimizer step 1 and complete
+checkpoint verification. The separately prepared fresh production run then started;
+no sampled task or prose-quality result follows from the controlled fit.
 
 Use the already qualified Python environment and cached model only:
 
