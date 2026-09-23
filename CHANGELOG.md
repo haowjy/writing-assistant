@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Preserve the stopped first intact full48 run at checkpoint 14: group 15 sampled four
+  attempts, two with unavailable native tool protocol evidence. Refuse in-place resume
+  or resampling. A sampled tool call ending at `<eos>` now fails as a scored candidate
+  before tool execution; a mixed content/tool call with a correct native boundary keeps
+  its raw action tokens and appends only the masked external tool response. Infrastructure
+  and corrupt-token failures still halt the group. A fresh identity and pinned-base
+  restart are required.
+
 - Record the passing single-attempt v5 24576-token RTX 3090 fit: headless admission,
   native generation, four public-DAPO microbatches, one optimizer update, and a
   hash-verified full checkpoint. Controlled memory qualification passed; original

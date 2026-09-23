@@ -17,6 +17,10 @@ class ProtocolError(RuntimeError):
     """Unsupported framing is infrastructure failure, never a bad-candidate reward."""
 
 
+class CandidateOutputError(ValueError):
+    """A sampled model response cannot continue under the native tool protocol."""
+
+
 class GroupPending(RuntimeError):
     """No optimizer step is allowed for this group."""
 
@@ -33,8 +37,8 @@ def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):
         raise ProtocolError("Missing sampled boundary or environment suffix")
     calls = assistant.get("tool_calls") or []
     if calls:
-        if (assistant.get("content") or "").strip():
-            raise ProtocolError("Mixed tool-call/content suffix is unsupported")
+        # The sampled assistant bytes, including any content before a tool call,
+        # are already in the ledger. Only derive bytes after the sampled boundary.
         if any(m["role"] != "tool" for m in external) or len(external) != len(calls):
             raise ProtocolError("Tool suffix requires one response per call")
         dummy = {"role": "assistant", "content": "", "tool_calls": copy.deepcopy(calls)}
@@ -177,13 +181,20 @@ class NativeRolloutBackend(TransformersBackend):
 
         try:
             response = super().complete(messages, tools, emit=record)
+            if response.message.get("tool_calls") and self.last_output[-1] != (
+                self.tokenizer.convert_tokens_to_ids("<|tool_response>")
+            ):
+                raise CandidateOutputError(
+                    "Sampled tool call ended without <|tool_response>; cannot attach observation"
+                )
             self.previous_history = copy.deepcopy(messages)
             self.previous = copy.deepcopy(response.message)
             return response
         except ValueError as exc:
             self.failure = (
                 "candidate_invalid"
-                if emitted_output and not isinstance(exc, ContextBudgetExceeded)
+                if isinstance(exc, CandidateOutputError)
+                or (emitted_output and not isinstance(exc, ContextBudgetExceeded))
                 else "infrastructure"
             )
             raise

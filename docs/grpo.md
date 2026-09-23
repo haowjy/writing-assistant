@@ -155,7 +155,13 @@ The training backend renders the initial prompt once, then appends exact sampled
 IDs and template-derived external suffixes. User follow-ups and tool observations remain
 visible but are masked out of the loss. Sampled reasoning, tool calls, prose, and stopping
 tokens are candidate actions. Every generation input must match its saved training prefix.
-Unsupported framing stops the group as an infrastructure failure.
+A sampled tool call ending without `<|tool_response>` cannot receive a tool observation:
+that attempt ends as candidate-invalid before the tool executes, retaining exact raw
+sampled tokens and a mechanical failure reward. Content before a tool call is still a
+sampled action; when its raw output ends at the native tool-response boundary, only
+the external response suffix is derived and masked. Missing/corrupt ledgers, unstable
+suffixes, tokenizer mismatches, host failures and unavailable rewards still stop the
+whole group as infrastructure, never a fabricated candidate reward.
 
 This append-only context policy deliberately differs from ordinary evaluation rendering.
 It is versioned in the manifest. Compare a trained adapter with its base under matched

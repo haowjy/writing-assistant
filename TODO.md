@@ -58,11 +58,16 @@ projects, supported by a maintained wiki, with better prose alongside it.
   four accumulated microbatches, an optimizer update and a complete checkpoint.
   Its deterministic ledgers do not prove sampled success or arbitrary mask fit;
   sampled attempts above 24,576 must fail explicitly without truncation or resampling.
-- [ ] Restart from the pinned base: 48 tasks × two passes × four fresh attempts =
-  96 scheduled groups / 384 attempts. The user authorized overnight execution with
-  **no elapsed-time cutoff**; timing estimates are advisory. V5 passed the controlled
-  memory qualification; prepare and preflight the intact run before launch under the
-  same headless GPU admission. Production remains at 0 groups / 0 attempts.
+- [x] Start the first pinned-base production run. It stopped at checkpoint 14 after
+  group 15 sampled four attempts, two with unavailable native tool protocol evidence.
+  Preserve the [partial result](work/research-plan/gemma-full48-first-run-result.md):
+  14 committed groups / 56 committed attempts, 60 physical attempt results. No
+  in-place resume or reinterpretation of its failed samples.
+- [ ] Validate the corrected tool-boundary handling and all-checkpoint retention
+  under a fresh source/fit identity before restarting. Use the pinned base: 48 tasks
+  × two passes × four fresh attempts = 96 groups / 384 attempts. No elapsed-time
+  cutoff; stop deliberately at checkpoint 48 and explicitly resume through 96.
+  Treat the prior partial run as separately reported, never pooled or favorably retried.
 
 ## Completed: short-context GRPO engineering proof
 

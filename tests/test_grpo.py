@@ -540,6 +540,77 @@ class NativeTests(unittest.TestCase):
         self.assertIn("Revise.", environment)
         self.assertNotIn("KEEP_OLD_REASONING", environment)
 
+    def test_tool_call_ending_eos_is_a_scored_candidate_failure(self):
+        output = (
+            '<|tool_call>call:write_file{path:<|"|>note.txt<|"|>,'
+            'content:<|"|>after<|"|>}<tool_call|><eos>'
+        )
+        backend = self.backend([output])
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            workspace.write_file("note.txt", "before")
+            result = run_agent(
+                backend,
+                workspace,
+                [{"role": "user", "content": "write then revise"}],
+                tools=["write_file"],
+            )
+            self.assertEqual(workspace.read_file("note.txt"), "before")
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["failure_class"], "candidate_invalid")
+        self.assertEqual(backend.failure, "candidate_invalid")
+        self.assertEqual(result["tool_calls"], 0)
+        tokens = backend.evidence()
+        self.assertEqual(
+            tokens["completion_ids"], self.tokenizer.encode(output, add_special_tokens=False)
+        )
+        self.assertTrue(all(tokens["env_mask"]))
+
+    def test_mixed_content_tool_call_preserves_raw_actions_and_external_suffix(self):
+        first = (
+            'A note before the edit. <|tool_call>call:write_file{path:<|"|>note.txt<|"|>,'
+            'content:<|"|>after<|"|>}<tool_call|><|tool_response>'
+        )
+        backend = self.backend([first, "Done thinking<channel|>Done.<turn|>"])
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            workspace.write_file("note.txt", "before")
+            result = run_agent(
+                backend,
+                workspace,
+                [{"role": "user", "content": "write then revise"}],
+                tools=["write_file"],
+                max_steps=2,
+            )
+            self.assertEqual(workspace.read_file("note.txt"), "after")
+        self.assertEqual(result["status"], "completed", result)
+        tokens = backend.evidence()
+        self.assertEqual(
+            [
+                t
+                for t, mask in zip(tokens["completion_ids"], tokens["env_mask"], strict=True)
+                if mask
+            ],
+            self.tokenizer.encode(
+                first + "Done thinking<channel|>Done.<turn|>", add_special_tokens=False
+            ),
+        )
+        self.assertEqual(
+            tokens["boundaries"][1]["input_ids"],
+            tokens["prompt_ids"]
+            + tokens["completion_ids"][: tokens["boundaries"][1]["completion_offset"]],
+        )
+        self.assertIn(
+            "response:write_file",
+            self.tokenizer.decode(
+                [
+                    t
+                    for t, mask in zip(tokens["completion_ids"], tokens["env_mask"], strict=True)
+                    if not mask
+                ]
+            ),
+        )
+
     def test_unsupported_eos_continuation_and_context_are_explicit(self):
         with self.assertRaisesRegex(ProtocolError, "stopping boundary"):
             native_suffix(
@@ -628,6 +699,55 @@ class NativeTests(unittest.TestCase):
                     if variant in {"judge-error", "infrastructure", "candidate-invalid"}
                     else "ok",
                 )
+
+    def test_sampled_tool_protocol_shapes_score_without_resampling(self):
+        trainer = SimpleNamespace(
+            model=None, processing_class=None, state=SimpleNamespace(global_step=0)
+        )
+        tool_eos = (
+            '<|tool_call>call:write_file{path:<|"|>note.txt<|"|>,'
+            'content:<|"|>after<|"|>}<tool_call|><eos>'
+        )
+        mixed = (
+            'Planning text <|tool_call>call:write_file{path:<|"|>note.txt<|"|>,'
+            'content:<|"|>after<|"|>}<tool_call|><|tool_response>'
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            groups = RolloutGroups(
+                [task()],
+                GRPOSettings(revision=REVISION, group_size=4, max_generated_tokens=512),
+                Path(tmp),
+                lambda scenario, result: Reward(
+                    "ok", 0.0 if result["status"] != "completed" else 1.0
+                ),
+                lambda model, tokenizer, seed: self.backend(
+                    [tool_eos]
+                    if seed == 42
+                    else [mixed, "Thinking<channel|>Done.<turn|>"]
+                    if seed == 74
+                    else ["Thinking<channel|>Done.<turn|>"],
+                    seed=seed,
+                ),
+                SYSTEM_PROMPT,
+            )
+            output = groups(["fixture"] * 4, trainer)
+            self.assertEqual(output["rollout_rewards"], [0.0, 1.0, 1.0, 1.0])
+            attempts = sorted(Path(tmp).glob("groups/*/attempt-*"))
+            self.assertEqual(len(attempts), 4)
+            self.assertTrue(list(Path(tmp).glob("groups/*/complete.json")))
+            for index, attempt in enumerate(attempts):
+                result = json.loads((attempt / "result.json").read_text())
+                reward = json.loads((attempt / "reward.json").read_text())
+                tokens = json.loads((attempt / "tokens.json").read_text())
+                verify_tokens(tokens)
+                self.assertEqual(reward["status"], "ok")
+                if index == 0:
+                    self.assertEqual(result["failure_class"], "candidate_invalid")
+                    self.assertEqual(reward["value"], 0.0)
+                    self.assertEqual((attempt / "workspace/note.txt").read_text(), "before")
+                if index == 1:
+                    self.assertEqual(result["status"], "completed")
+                    self.assertEqual((attempt / "workspace/note.txt").read_text(), "after")
 
     def test_workspace_host_failures_pend_group_instead_of_becoming_rewards(self):
         trainer = SimpleNamespace(

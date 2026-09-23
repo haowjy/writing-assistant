@@ -1,13 +1,17 @@
 # DAPO full-round readiness
 
-**The 24576-token controlled v5 RTX 3090 fit passed; the intact 48-task GPU run has
-not started.** Both earlier 32768-token profiles OOMed before an update. V4 reduced
+**The 24576-token controlled v5 RTX 3090 fit passed; the first intact 48-task run
+stopped at checkpoint 14 and cannot resume.** Group 15 sampled four attempts, two
+with unavailable native tool protocol evidence. Preserve that partial run separately;
+see the [first-run result](gemma-full48-first-run-result.md). A corrected fresh-base
+run requires new identity and validation. Both earlier 32768-token profiles OOMed
+before an update. V4 reduced
 only context but its observer rejected the correct DAPO denominator after the first
 forward. V5 changed only that assertion and passed native generation, four accumulated
 microbatches, one optimizer update and a complete checkpoint. This qualifies controlled
 memory, not sampled task trajectories, reward quality, or production completion.
 Tied-group continuation, reward, scheduling, recovery, and source-pinned CPU
-qualification also passed.
+qualification also passed. Those proofs do not authorize replaying group 15.
 
 ## Intended workload
 
@@ -281,10 +285,12 @@ scheduler and RNG. See the [v5 result](gemma-full48-fit-v5-result.md). This is a
 controlled memory pass, not a sampled writing result.
 
 The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
-whose finite schedule and exact pass-one recovery pass a tiny CPU proof. Production
-remains at 0 of 96 groups and 0 of 384 attempts. Prepare/preflight the unchanged
-original release under a fresh identity before training; repeat headless admission on
-train and resume. Constructed complete paths measured only 598–4066 tokens, not
+whose finite schedule and exact pass-one recovery pass a tiny CPU proof. The first
+production attempt reached 14 committed groups and 56 committed attempts; group 15's
+four sampled attempts remain uncommitted and unavailable, so this run cannot resume.
+A different corrected run must start from the pinned base under a fresh identity.
+Prepare/preflight the unchanged original release before training; repeat headless
+admission on train and resume. Constructed complete paths measured only 598–4066 tokens, not
 sampled upper bounds; a sampled trajectory over 24576 fails explicitly without
 truncation or resampling.
 

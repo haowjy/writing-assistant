@@ -6,7 +6,10 @@ Both 32768-token training-memory profiles failed on the RTX 3090. The first
 24576-token profile stopped on a faulty evidence assertion after its first training
 forward; it neither OOMed nor completed qualification. The corrected v5 controlled
 profile passed a full optimizer update and checkpoint with the exact all-linear recipe
-and less trajectory headroom. Production has not started; sampled fit is unproven. See
+and less trajectory headroom. The first production invocation then stopped at
+checkpoint 14 on two unavailable native tool protocol results in group 15. It cannot
+resume without resampling; see the [partial result](../work/research-plan/gemma-full48-first-run-result.md).
+A corrected fresh-base run needs a new identity and qualification. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate
