@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Pin the complete local Python training runtime for checkpoint-31 fork admission
+  and reject an interrupted slot-002 suffix at its actual on-disk location before
+  GPU admission, rather than relying only on the later no-resample guard.
+
 - Tighten checkpoint-31 fork admission: preserve infrastructure continuation
   failures as unavailable/GroupPending, reject mismatched active W&B runs,
   validate ordered fork schedules and complete checkpoint seals, canonicalize

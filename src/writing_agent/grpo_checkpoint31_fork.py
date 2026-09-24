@@ -41,12 +41,9 @@ def _implementation_pin() -> dict:
     package = Path(__file__).resolve().parent
     root = package.parent.parent
     script = root / "scripts" / "run_grpo_checkpoint31_fork.py"
-    paths = [
-        Path(__file__).resolve(),
-        package / "grpo.py",
-        package / "grpo_rollout.py",
-        script,
-    ]
+    # Any package module can affect generation, scoring, admission, or checkpoint
+    # recovery. Bind the complete local implementation, not just the entrypoints.
+    paths = [*sorted(package.glob("*.py")), script]
     if any(not path.is_file() for path in paths):
         raise ValueError("Fork implementation source is incomplete")
     return {str(path): _sha256(path) for path in paths}
@@ -121,10 +118,9 @@ def _check_source_group(
         if source_root is not None:
             invocation = source_root / "invocations" / started["invocation"] / "started.json"
             saved_invocation = _read_json(invocation)
-            if (
-                saved_invocation.get("identity") != source_experiment.get("identity")
-                or fingerprint(saved_invocation) != started.get("invocation_hash")
-            ):
+            if saved_invocation.get("identity") != source_experiment.get("identity") or fingerprint(
+                saved_invocation
+            ) != started.get("invocation_hash"):
                 raise ValueError("Stopped group invocation is outside the source experiment")
     if (group / "complete.json").exists():
         raise ValueError("Source group must remain unresolved before the fork")
@@ -248,10 +244,8 @@ def apply_native_wandb_binding(config: WandbConfig) -> None:
     run = getattr(active, "run", None) if active else None
     if run is not None and (
         getattr(run, "id", None) != config.get("env", {}).get("WANDB_RUN_ID")
-        or getattr(run, "entity", None)
-        != config["env"].get("WANDB_ENTITY")
-        or getattr(run, "project", None)
-        != config["env"].get("WANDB_PROJECT")
+        or getattr(run, "entity", None) != config["env"].get("WANDB_ENTITY")
+        or getattr(run, "project", None) != config["env"].get("WANDB_PROJECT")
     ):
         raise ValueError("A different W&B run is already active")
     for key, value in config["env"].items():
@@ -396,13 +390,15 @@ def fork_preflight(
     manifest = verify_fork_manifest(output)
     if manifest.get("wandb") is None:
         raise ValueError("Fork preflight requires a frozen W&B run binding")
-    if source_checkpoint is not None and str(Path(source_checkpoint).resolve()) != manifest[
-        "source_checkpoint"
-    ]["path"]:
+    if (
+        source_checkpoint is not None
+        and str(Path(source_checkpoint).resolve()) != manifest["source_checkpoint"]["path"]
+    ):
         raise ValueError("Requested source checkpoint differs from prepared fork")
-    if source_group is not None and str(Path(source_group).resolve()) != manifest[
-        "source_group"
-    ]["path"]:
+    if (
+        source_group is not None
+        and str(Path(source_group).resolve()) != manifest["source_group"]["path"]
+    ):
         raise ValueError("Requested source group differs from prepared fork")
     if release is not None:
         release_path = Path(release).resolve()
@@ -414,15 +410,13 @@ def fork_preflight(
     groups_root = trainer / "groups"
     if not resume and groups_root.exists():
         extra_groups = [
-            path.name
-            for path in groups_root.iterdir()
-            if path.is_dir() and path.name != GROUP_NAME
+            path.name for path in groups_root.iterdir() if path.is_dir() and path.name != GROUP_NAME
         ]
         if extra_groups:
             raise ValueError("First launch has sampled fork groups; prepare a clean output")
     if not resume and any(
         (trainer / "groups" / GROUP_NAME / name).exists()
-        for name in ("continuation-trace.jsonl", "fork-results")
+        for name in ("attempt-002/continuation-trace.jsonl", "fork-results")
     ):
         raise ValueError("First launch has sampled fork continuation evidence")
     if resume:
@@ -484,8 +478,7 @@ def fork_coverage(output: Path) -> dict:
         marker = _read_json(checkpoint / "complete.json")
         actual_group_files = file_hashes(trainer / "groups")
         if any(
-            actual_group_files.get(path) != digest
-            for path, digest in marker["group_files"].items()
+            actual_group_files.get(path) != digest for path, digest in marker["group_files"].items()
         ):
             raise ValueError("Latest checkpoint group seal differs from committed fork files")
         committed_groups = {path.split("/", 1)[0] for path in marker["group_files"]}
@@ -698,6 +691,7 @@ class Checkpoint31RolloutGroups(RolloutGroups):
         backend.restore_answer_followup(result["messages"], tokens)
         trace = []
         with (target / "continuation-trace.jsonl").open("w") as stream:
+
             def emit(event):
                 stream.write(json.dumps(event, ensure_ascii=False) + "\n")
                 stream.flush()
@@ -712,10 +706,19 @@ class Checkpoint31RolloutGroups(RolloutGroups):
                 emit=emit,
                 system_prompt=self.system_prompt,
                 resume={
-                    **{k: result[k] for k in (
-                        "messages", "turns", "tool_calls", "attempted_tool_calls",
-                        "tool_errors", "read_tokens", "read_tokenizer", "usage",
-                    )},
+                    **{
+                        k: result[k]
+                        for k in (
+                            "messages",
+                            "turns",
+                            "tool_calls",
+                            "attempted_tool_calls",
+                            "tool_errors",
+                            "read_tokens",
+                            "read_tokenizer",
+                            "usage",
+                        )
+                    },
                     "step": saved_generations,
                 },
                 **{k: v for k, v in visible["budgets"].items() if k != "max_total_bytes"},
@@ -755,6 +758,7 @@ class Checkpoint31RolloutGroups(RolloutGroups):
 
 def fork_rollout_factory(_fork_root: Path):
     """Return the factory passed to :func:`train_grpo` for a checkpoint-31 fork."""
+
     # The closure names the fork root for call-site readability.  The trainer
     # passes its actual ``output`` directory below, avoiding accidental writes
     # beside the imported evidence.
@@ -830,8 +834,6 @@ def fork_resume_options(fork_root, *, checkpoint=48) -> dict:
         "fork_manifest_identity": manifest["identity"],
         "report_to": experiment["manifest"].get("logging", {}).get("report_to", "none"),
         "wandb_run_name": experiment["manifest"].get("logging", {}).get("wandb_run_name"),
-        "wandb_environment": experiment["manifest"].get("logging", {}).get(
-            "wandb_environment", {}
-        ),
+        "wandb_environment": experiment["manifest"].get("logging", {}).get("wandb_environment", {}),
         "rollout_factory": fork_rollout_factory(fork_root),
     }

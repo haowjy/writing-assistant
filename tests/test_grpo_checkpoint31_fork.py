@@ -17,6 +17,7 @@ from writing_agent.grpo_checkpoint31_fork import (
     Checkpoint31RolloutGroups,
     _check_source_checkpoint,
     _check_source_group,
+    _implementation_pin,
     apply_native_wandb_binding,
     fork_coverage,
     fork_preflight,
@@ -36,6 +37,30 @@ GROUP = SOURCE / "groups/step-000031-87b060b85fc043198c5ef1f8807f47c5"
 
 
 class ForkAdmissionTests(unittest.TestCase):
+    def test_implementation_pin_covers_runtime_dependencies(self):
+        pinned = {Path(path).name for path in _implementation_pin()}
+        self.assertTrue(
+            {
+                "agent.py",
+                "inference.py",
+                "grpo_gpu.py",
+                "grpo_full48_supervisor.py",
+                "grpo_checkpoint31_fork.py",
+                "run_grpo_checkpoint31_fork.py",
+            }
+            <= pinned
+        )
+
+    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    def test_first_launch_rejects_partial_slot002_suffix_before_gpu(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "fork"
+            prepare_fork(SOURCE / "checkpoint-31", GROUP, output, wandb_run_id="offline-test")
+            suffix = output / "trainer/groups" / GROUP_NAME / "attempt-002/continuation-trace.jsonl"
+            suffix.write_text('{"type":"model_output","output_ids":[1]}\n')
+            with self.assertRaisesRegex(ValueError, "sampled fork continuation evidence"):
+                fork_preflight(output)
+
     def test_model_config_integer_keys_canonicalize(self):
         source = {"id2label": {"0": "LABEL_0", "1": "LABEL_1"}}
         current = {"id2label": {0: "LABEL_0", 1: "LABEL_1"}}
@@ -159,9 +184,7 @@ class ForkAdmissionTests(unittest.TestCase):
             original = groups._continue_slot002
             groups._continue_slot002 = lambda _trainer: {
                 "tokens": copy.deepcopy(
-                    json.loads(
-                        (GROUP / "attempt-002/tokens.json").read_text()
-                    )
+                    json.loads((GROUP / "attempt-002/tokens.json").read_text())
                 ),
                 "reward": Reward("ok", value=0.8),
             }
@@ -175,9 +198,9 @@ class ForkAdmissionTests(unittest.TestCase):
             self.assertEqual(calls, [])
             self.assertEqual(result["rollout_rewards"], [0.1, 0.2, 0.8, 0.3])
             self.assertEqual(
-                json.loads(
-                    (trainer_output / "groups" / GROUP_NAME / "group.json").read_text()
-                )["status"],
+                json.loads((trainer_output / "groups" / GROUP_NAME / "group.json").read_text())[
+                    "status"
+                ],
                 "ok",
             )
             self.assertTrue((trainer_output / "groups" / GROUP_NAME / "complete.json").exists())
@@ -236,9 +259,7 @@ class ForkAdmissionTests(unittest.TestCase):
             with self.assertRaises(GroupPending):
                 groups._continue_slot002(SimpleNamespace(model=None, processing_class=None))
             self.assertEqual(before, (source_attempt / "result.json").read_bytes())
-            self.assertFalse(
-                (trainer_output / "groups" / GROUP_NAME / "complete.json").exists()
-            )
+            self.assertFalse((trainer_output / "groups" / GROUP_NAME / "complete.json").exists())
 
     @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
     def test_eligible_continuation_scores_complete_trace(self):
