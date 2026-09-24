@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 
 from writing_agent.catalog import download_source, fingerprint, read_jsonl, save_json
+from writing_agent.text_clean import strip_gutenberg
 
 TELL_REV = "e4910ea1d2bae82efcaf8ba9fde50ab3a419320e"
 HANNA_REV = "282f27536a5d05ad4ce14298abcd70c45668fed2"
@@ -333,20 +334,11 @@ def compile_downloads(raw: Path, destination: Path) -> dict:
             continue
         text = path.read_text(encoding="utf-8-sig")
         # Preserve the raw file, including the license. Derived reading text excludes boilerplate.
-        import re
-
-        body = re.split(
-            r"\*\*\* START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK .*?\*\*\*",
-            text,
-            maxsplit=1,
-            flags=re.I,
-        )
-        if len(body) != 2:
-            failures.append({"source": str(book), "error": "Gutenberg start marker absent"})
+        try:
+            body = strip_gutenberg(text)
+        except ValueError as exc:
+            failures.append({"source": str(book), "error": str(exc)})
             continue
-        body = re.split(
-            r"\*\*\* END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK", body[1], maxsplit=1, flags=re.I
-        )[0].strip()
         catalog.append(
             _source(
                 f"gutenberg-{book}",

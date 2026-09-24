@@ -1,7 +1,15 @@
 # Creative Writing Agent
 
-This research harness runs tool-use evaluations and prepares conversational training
-data for [creative-writing agents](wiki/project-goals.md).
+The public artifact is the generated task list in [data/tasks](data/tasks), with links
+to the source texts. This repository does not vendor model weights or book corpora.
+`scripts/fetch_sources.py` downloads a cited source when you need it.
+`scripts/organize_sources.py` turns those downloads into the catalog.
+`src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
+residue. Supervised training is `scripts/train_sft.py`; the reward function is
+`src/writing_agent/reward.py`. There is no GRPO trainer yet.
+
+This research harness also runs tool-use evaluations and prepares conversational
+training data for [creative-writing agents](wiki/project-goals.md).
 
 **What to do next: [TODO.md](TODO.md)** — the short, active checklist.
 

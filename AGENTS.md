@@ -5,6 +5,9 @@ collaborates with writers on long-running creative projects. The agent should us
 external project files to plan, write, and revise while preserving the author's
 decisions and story continuity.
 
+The published artifact is the generated task list and the scripts that fetch,
+clean, and catalog its sources. Do not commit model weights or book corpora.
+
 - [Research wiki](wiki/index.md): goals and shared concepts.
 - [Research work](work/index.md): current TODOs, deferred work, and experiment plans.
 - [Source guidance](src/AGENTS.md): implementation constraints and code navigation.

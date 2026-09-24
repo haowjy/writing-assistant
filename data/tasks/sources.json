@@ -1,0 +1,42 @@
+[
+  {
+    "id": "gutenberg-289-opening",
+    "url": "https://www.gutenberg.org/ebooks/289",
+    "work_id": "gutenberg-289",
+    "author": "Kenneth Grahame",
+    "license": "Public domain in the USA; Project Gutenberg terms retained",
+    "upstream_split": "unsplit"
+  },
+  {
+    "id": "tmas-train-example_104-story",
+    "url": "https://github.com/google-deepmind/tell_me_a_story",
+    "work_id": "tmas-train-example_104",
+    "author": null,
+    "license": "CC-BY-4.0",
+    "upstream_split": "train"
+  },
+  {
+    "id": "tmas-train-example_100-story",
+    "url": "https://github.com/google-deepmind/tell_me_a_story",
+    "work_id": "tmas-train-example_100",
+    "author": null,
+    "license": "CC-BY-4.0",
+    "upstream_split": "train"
+  },
+  {
+    "id": "tmas-train-example_033-story",
+    "url": "https://github.com/google-deepmind/tell_me_a_story",
+    "work_id": "tmas-train-example_033",
+    "author": null,
+    "license": "CC-BY-4.0",
+    "upstream_split": "train"
+  },
+  {
+    "id": "tmas-train-example_046-story",
+    "url": "https://github.com/google-deepmind/tell_me_a_story",
+    "work_id": "tmas-train-example_046",
+    "author": null,
+    "license": "CC-BY-4.0",
+    "upstream_split": "train"
+  }
+]
