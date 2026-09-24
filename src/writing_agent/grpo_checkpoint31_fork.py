@@ -411,6 +411,15 @@ def fork_preflight(
         if file_hashes(release_path) != manifest["release"]["files"]:
             raise ValueError("Release files differ from prepared fork")
     trainer = output / "trainer"
+    groups_root = trainer / "groups"
+    if not resume and groups_root.exists():
+        extra_groups = [
+            path.name
+            for path in groups_root.iterdir()
+            if path.is_dir() and path.name != GROUP_NAME
+        ]
+        if extra_groups:
+            raise ValueError("First launch has sampled fork groups; prepare a clean output")
     if not resume and any(
         (trainer / "groups" / GROUP_NAME / name).exists()
         for name in ("continuation-trace.jsonl", "fork-results")
