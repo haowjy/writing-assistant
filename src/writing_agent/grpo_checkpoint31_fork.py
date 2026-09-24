@@ -328,6 +328,9 @@ def verify_fork_manifest(output: Path) -> dict:
         {k: v for k, v in manifest.items() if k != "identity"}
     ):
         raise ValueError("Fork identity mismatch")
+    source_root = Path(manifest["source_checkpoint"]["path"]).resolve().parent
+    if output == source_root or output.is_relative_to(source_root):
+        raise ValueError("Fork output is inside immutable source tree")
     source = _check_source_checkpoint(Path(manifest["source_checkpoint"]["path"]))
     if source != manifest["source_checkpoint"]:
         raise ValueError("Original checkpoint seal or path changed")
