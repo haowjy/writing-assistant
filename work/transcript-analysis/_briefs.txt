@@ -1,0 +1,535 @@
+==========================================================================================
+F1-01 [explicit] F1 literary_fiction style='restrained, concrete prose'
+files=[] followups=0 tools=False
+BRIEF:
+Mara has been considering leaving a tidal archive. Ilan has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.
+
+Mara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.
+
+Write 120–220 words about Mara and Ilan in a tidal archive, in restrained, concrete prose. Use close third person centered on Mara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Stage a disagreement over the object. Return only the prose, without a title or commentary.
+
+This is for a literary fiction story.
+
+==========================================================================================
+F1-02 [explicit] F1 mystery style='spare prose'
+files=[] followups=0 tools=False
+BRIEF:
+An anonymous note has arrived at a glass orchard, referring to an earlier disappearance. Suri and Aven have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.
+
+Suri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.
+
+Write 120–220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Continue immediately after the supplied passage. Return only the prose, without a title or commentary.
+
+This is for a mystery story.
+
+==========================================================================================
+F1-03 [explicit] F1 fantasy style='measured pacing with sustained tension'
+files=[] followups=0 tools=False
+BRIEF:
+In this region, places can remember promises spoken inside them. a night ferry has begun repeating a fragment of an old vow after dark. Oren and Leda do not know whose promise it was or whether it concerns them.
+
+Oren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.
+
+Write 120–220 words about Oren and Leda in a night ferry, in measured pacing with sustained tension. Use close third person centered on Oren. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Let most of the scene unfold through dialogue. Return only the prose, without a title or commentary.
+
+This is for a fantasy story.
+
+==========================================================================================
+F1-04 [explicit] F1 science_fiction style='dialogue-led prose with understated tension'
+files=[] followups=0 tools=False
+BRIEF:
+an isolated radio station is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Nessa and Tomas have not established whether this affects the events described below.
+
+Nessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.
+
+Write 120–220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Center a private hesitation before an outward decision. Return only the prose, without a title or commentary.
+
+This is for a science fiction story.
+
+==========================================================================================
+F1-05 [explicit] F1 romance style='formal, precise prose'
+files=[] followups=0 tools=False
+BRIEF:
+Dara has received a letter from an old love who wants to meet again. Sen knows about the invitation but has not read the letter. A possible reunion complicates Dara's feelings about remaining at a provincial courthouse; no decision has been made.
+
+Dara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.
+
+Write 120–220 words about Dara and Sen in a provincial courthouse, in formal, precise prose. Use close third person centered on Dara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Show an interrupted practical task rather than summarizing. Return only the prose, without a title or commentary.
+
+This is for a romance story.
+
+==========================================================================================
+F1-06 [loose] F1 horror style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+For three nights, people near a closing neighborhood cinema have heard their own voices answering from empty rooms. Emil heard it once and has told Ruth, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.
+
+Emil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.
+
+Could you turn this into a scene? I'd like it to feel more alive. Just the story, please.
+
+This is for a horror story.
+
+==========================================================================================
+F1-07 [loose] F1 historical_fiction style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand.
+
+Yara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.
+
+Could you turn this into a scene? I'd like it to feel more alive. Just the story, please.
+
+This is for a historical fiction story.
+
+==========================================================================================
+F1-08 [loose] F1 comedy style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+A visiting committee has mistaken Kavi for the person in charge of a border map office. Noor knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.
+
+Kavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.
+
+Could you turn this into a scene? I'd like it to feel more alive. Just the story, please.
+
+This is for a comedy story.
+
+==========================================================================================
+F1-09 [loose] F1 adventure style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+A route beyond a clockmaker's workshop is opening for the first time in years. Pia and Ren have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.
+
+Pia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.
+
+Could you turn this into a scene? I'd like it to feel more alive. Just the story, please.
+
+This is for a adventure story.
+
+==========================================================================================
+F1-10 [loose] F1 thriller style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+Someone has warned Ada that a stranger will arrive at a family restaurant after closing before morning asking for information. Milo has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.
+
+Ada and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.
+
+Could you turn this into a scene? I'd like it to feel more alive. Just the story, please.
+
+This is for a thriller story.
+
+==========================================================================================
+F2-01 [explicit] F2 fantasy style='restrained, concrete prose'
+files=['notes/source.md', 'drafts/scene.md'] followups=0 tools=True
+BRIEF:
+Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120–220 words in restrained, concrete prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Mara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.
+
+This is for a fantasy story.
+
+==========================================================================================
+F2-02 [explicit] F2 science_fiction style='spare prose'
+files=['notes/source.md'] followups=0 tools=True
+BRIEF:
+Read notes/source.md. Write 120–220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save only prose in drafts/scene.md. Reply briefly afterward.
+
+This is for a science fiction story.
+
+==========================================================================================
+F2-03 [explicit] F2 romance style='measured pacing with sustained tension'
+files=['notes/source.md', 'drafts/scene.md'] followups=0 tools=True
+BRIEF:
+Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120–220 words in measured pacing with sustained tension. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Oren. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.
+
+This is for a romance story.
+
+==========================================================================================
+F2-04 [explicit] F2 horror style='dialogue-led prose with understated tension'
+files=['notes/source.md'] followups=0 tools=True
+BRIEF:
+Read notes/source.md. Write 120–220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save only prose in drafts/scene.md. Reply briefly afterward.
+
+This is for a horror story.
+
+==========================================================================================
+F2-05 [explicit] F2 historical_fiction style='formal, precise prose'
+files=['notes/source.md', 'drafts/scene.md'] followups=0 tools=True
+BRIEF:
+Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120–220 words in formal, precise prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Dara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.
+
+This is for a historical fiction story.
+
+==========================================================================================
+F2-06 [loose] F2 comedy style='unspecified'
+files=['notes/source.md'] followups=0 tools=True
+BRIEF:
+Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.
+
+This is for a comedy story.
+
+==========================================================================================
+F2-07 [loose] F2 adventure style='unspecified'
+files=['notes/source.md', 'drafts/scene.md'] followups=0 tools=True
+BRIEF:
+The scene in drafts/scene.md feels flat. Can you rework it? The background is in notes/source.md. Leave the notes alone.
+
+This is for a adventure story.
+
+==========================================================================================
+F2-08 [loose] F2 thriller style='unspecified'
+files=['notes/source.md'] followups=0 tools=True
+BRIEF:
+Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.
+
+This is for a thriller story.
+
+==========================================================================================
+F2-09 [loose] F2 literary_fiction style='unspecified'
+files=['notes/source.md', 'drafts/scene.md'] followups=0 tools=True
+BRIEF:
+The scene in drafts/scene.md feels flat. Can you rework it? The background is in notes/source.md. Leave the notes alone.
+
+This is for a literary fiction story.
+
+==========================================================================================
+F2-10 [loose] F2 mystery style='unspecified'
+files=['notes/source.md'] followups=0 tools=True
+BRIEF:
+Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.
+
+This is for a mystery story.
+
+==========================================================================================
+F3-01 [explicit] F3 romance style='restrained, concrete prose'
+files=[] followups=0 tools=False
+BRIEF:
+Mara has received a letter from an old love who wants to meet again. Ilan knows about the invitation but has not read the letter. A possible reunion complicates Mara's feelings about remaining at a tidal archive; no decision has been made.
+
+Mara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.
+
+Give three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.
+
+This is for a romance story.
+
+==========================================================================================
+F3-02 [explicit] F3 horror style='spare prose'
+files=[] followups=1 tools=False
+BRIEF:
+For three nights, people near a glass orchard have heard their own voices answering from empty rooms. Suri heard it once and has told Aven, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.
+
+Suri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.
+
+Give three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.
+
+This is for a horror story.
+  FOLLOWUP[0]: Revise all three directions to reduce physical action and increase interpersonal tension. Keep them distinct; explain what changed.
+
+==========================================================================================
+F3-03 [explicit] F3 historical_fiction style='measured pacing with sustained tension'
+files=[] followups=0 tools=False
+BRIEF:
+The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand.
+
+Oren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.
+
+Give three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.
+
+This is for a historical fiction story.
+
+==========================================================================================
+F3-04 [explicit] F3 comedy style='dialogue-led prose with understated tension'
+files=[] followups=1 tools=False
+BRIEF:
+A visiting committee has mistaken Nessa for the person in charge of an isolated radio station. Tomas knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.
+
+Nessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.
+
+Give three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.
+
+This is for a comedy story.
+  FOLLOWUP[0]: Revise all three directions to reduce physical action and increase interpersonal tension. Keep them distinct; explain what changed.
+
+==========================================================================================
+F3-05 [explicit] F3 adventure style='formal, precise prose'
+files=[] followups=0 tools=False
+BRIEF:
+A route beyond a provincial courthouse is opening for the first time in years. Dara and Sen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.
+
+Dara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.
+
+Give three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.
+
+This is for a adventure story.
+
+==========================================================================================
+F3-06 [loose] F3 thriller style='unspecified'
+files=[] followups=1 tools=False
+BRIEF:
+Someone has warned Emil that a stranger will arrive at a closing neighborhood cinema before morning asking for information. Ruth has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.
+
+Emil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.
+
+I'm not sure where to take this. What are some directions I could try?
+
+This is for a thriller story.
+  FOLLOWUP[0]: These feel a bit too busy. Could we lean into what's going on between them?
+
+==========================================================================================
+F3-07 [loose] F3 literary_fiction style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+Yara has been considering leaving a drought-struck communal garden. Belen has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.
+
+Yara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.
+
+I'm not sure where to take this. What are some directions I could try?
+
+This is for a literary fiction story.
+
+==========================================================================================
+F3-08 [loose] F3 mystery style='unspecified'
+files=[] followups=1 tools=False
+BRIEF:
+An anonymous note has arrived at a border map office, referring to an earlier disappearance. Kavi and Noor have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.
+
+Kavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.
+
+I'm not sure where to take this. What are some directions I could try?
+
+This is for a mystery story.
+  FOLLOWUP[0]: These feel a bit too busy. Could we lean into what's going on between them?
+
+==========================================================================================
+F3-09 [loose] F3 fantasy style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+In this region, places can remember promises spoken inside them. a clockmaker's workshop has begun repeating a fragment of an old vow after dark. Pia and Ren do not know whose promise it was or whether it concerns them.
+
+Pia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.
+
+I'm not sure where to take this. What are some directions I could try?
+
+This is for a fantasy story.
+
+==========================================================================================
+F3-10 [loose] F3 science_fiction style='unspecified'
+files=[] followups=1 tools=False
+BRIEF:
+a family restaurant after closing is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Ada and Milo have not established whether this affects the events described below.
+
+Ada and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.
+
+I'm not sure where to take this. What are some directions I could try?
+
+This is for a science fiction story.
+  FOLLOWUP[0]: These feel a bit too busy. Could we lean into what's going on between them?
+
+==========================================================================================
+F4-01 [explicit] F4 historical_fiction style='restrained, concrete prose'
+files=['source/chapter.md'] followups=0 tools=True
+BRIEF:
+Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.
+
+This is for a historical fiction story.
+
+==========================================================================================
+F4-02 [explicit] F4 comedy style='spare prose'
+files=['source/chapter.md'] followups=2 tools=True
+BRIEF:
+Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.
+
+This is for a comedy story.
+  FOLLOWUP[0]: Draft-only possibility, not accepted canon: Aven deliberately broke the tree. Do not update canon from this suggestion.
+  FOLLOWUP[1]: Accepted revision: Suri receives permission to inspect the vault tomorrow. The recorder has not been tested. Update the wiki for this accepted revision; preserve relevant history and unrelated facts.
+
+==========================================================================================
+F4-03 [explicit] F4 adventure style='measured pacing with sustained tension'
+files=['source/chapter.md'] followups=0 tools=True
+BRIEF:
+Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.
+
+This is for a adventure story.
+
+==========================================================================================
+F4-04 [explicit] F4 thriller style='dialogue-led prose with understated tension'
+files=['source/chapter.md'] followups=2 tools=True
+BRIEF:
+Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.
+
+This is for a thriller story.
+  FOLLOWUP[0]: Draft-only possibility, not accepted canon: Nessa recognizes her mother's voice. Do not update canon from this suggestion.
+  FOLLOWUP[1]: Accepted revision: the ice thaws and Nessa turns the antenna east. Nobody identifies the voice. Update the wiki for this accepted revision; preserve relevant history and unrelated facts.
+
+==========================================================================================
+F4-05 [explicit] F4 literary_fiction style='formal, precise prose'
+files=['source/chapter.md'] followups=0 tools=True
+BRIEF:
+Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.
+
+This is for a literary fiction story.
+
+==========================================================================================
+F4-06 [loose] F4 mystery style='unspecified'
+files=['source/chapter.md'] followups=2 tools=True
+BRIEF:
+Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.
+
+This is for a mystery story.
+  FOLLOWUP[0]: Draft-only possibility, not accepted canon: The film definitely shows the festival. Do not update canon from this suggestion.
+  FOLLOWUP[1]: Accepted revision: a technician checks the projector and declares it safe. The reel has not been screened. Update the wiki for this accepted revision; preserve relevant history and unrelated facts.
+
+==========================================================================================
+F4-07 [loose] F4 fantasy style='unspecified'
+files=['source/chapter.md'] followups=0 tools=True
+BRIEF:
+Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.
+
+This is for a fantasy story.
+
+==========================================================================================
+F4-08 [loose] F4 science_fiction style='unspecified'
+files=['source/chapter.md'] followups=2 tools=True
+BRIEF:
+Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.
+
+This is for a science fiction story.
+  FOLLOWUP[0]: Draft-only possibility, not accepted canon: Noor loses her residence papers. Do not update canon from this suggestion.
+  FOLLOWUP[1]: Accepted revision: the supervisor authorizes a provisional correction pending an archive check. Noor keeps her papers. Update the wiki for this accepted revision; preserve relevant history and unrelated facts.
+
+==========================================================================================
+F4-09 [loose] F4 romance style='unspecified'
+files=['source/chapter.md'] followups=0 tools=True
+BRIEF:
+Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.
+
+This is for a romance story.
+
+==========================================================================================
+F4-10 [loose] F4 horror style='unspecified'
+files=['source/chapter.md'] followups=2 tools=True
+BRIEF:
+Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.
+
+This is for a horror story.
+  FOLLOWUP[0]: Draft-only possibility, not accepted canon: They replace tomorrow's menu without agreement. Do not update canon from this suggestion.
+  FOLLOWUP[1]: Accepted revision: the test batch tastes good to Ada and Milo, but no menu change has been authorized. Update the wiki for this accepted revision; preserve relevant history and unrelated facts.
+
+==========================================================================================
+F5-01 [explicit] F5 adventure style='restrained, concrete prose'
+files=['kb/index.md'] followups=0 tools=True
+BRIEF:
+Use the continuity wiki starting at kb/index.md. Write 120–220 words about Mara and Ilan in a tidal archive, in restrained, concrete prose. Use close third person centered on Mara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.
+
+This is for a adventure story.
+
+==========================================================================================
+F5-02 [explicit] F5 thriller style='spare prose'
+files=[] followups=0 tools=False
+BRIEF:
+The original recording is sealed in the municipal vault.
+
+Aven cannot hear high notes after an accident.
+
+Suri suspects a damaged song; Aven's responsibility is unknown.
+
+Someone has warned Suri that a stranger will arrive at a glass orchard before morning asking for information. Aven has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.
+
+Write 120–220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Return a short note, then prose inside <prose></prose>.
+
+This is for a thriller story.
+
+==========================================================================================
+F5-03 [explicit] F5 literary_fiction style='measured pacing with sustained tension'
+files=['kb/index.md', 'kb/canon.md', 'kb/interpretations.md', 'kb/story-context.md'] followups=0 tools=True
+BRIEF:
+Use the continuity wiki starting at kb/index.md. Write 120–220 words about Oren and Leda in a night ferry, in measured pacing with sustained tension. Use close third person centered on Oren. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.
+
+This is for a literary fiction story.
+
+==========================================================================================
+F5-04 [explicit] F5 mystery style='dialogue-led prose with understated tension'
+files=[] followups=0 tools=False
+BRIEF:
+The antenna cannot be turned until the ice thaws.
+
+They agreed to record the next transmission before replying.
+
+Tomas's memory of their mother's channel is uncertain.
+
+An anonymous note has arrived at an isolated radio station, referring to an earlier disappearance. Nessa and Tomas have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.
+
+Write 120–220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Return a short note, then prose inside <prose></prose>.
+
+This is for a mystery story.
+
+==========================================================================================
+F5-05 [explicit] F5 fantasy style='formal, precise prose'
+files=['kb/index.md', 'kb/canon.md', 'kb/interpretations.md', 'kb/story-context.md'] followups=0 tools=True
+BRIEF:
+Use the continuity wiki starting at kb/index.md. Write 120–220 words about Dara and Sen in a provincial courthouse, in formal, precise prose. Use close third person centered on Dara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.
+
+This is for a fantasy story.
+
+==========================================================================================
+F5-06 [loose] F5 science_fiction style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+a closing neighborhood cinema is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Emil and Ruth have not established whether this affects the events described below.
+
+The projector must be checked before anything is screened.
+
+The cinema is scheduled to close on Friday.
+
+Ruth's festival identification is tentative.
+
+Can you write a scene from these notes? Just the story.
+
+This is for a science fiction story.
+
+==========================================================================================
+F5-07 [loose] F5 romance style='unspecified'
+files=['kb/index.md'] followups=0 tools=True
+BRIEF:
+Could you write a scene using the notes in kb/? Save it in drafts/scene.md. Keep the notes as they are for now.
+
+This is for a romance story.
+
+==========================================================================================
+F5-08 [loose] F5 horror style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+For three nights, people near a border map office have heard their own voices answering from empty rooms. Kavi heard it once and has told Noor, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.
+
+Only the supervisor can authorize a corrected official copy.
+
+Noor retains her existing residence papers.
+
+Kavi suspects a copying error; the cause has not been established.
+
+Can you write a scene from these notes? Just the story.
+
+This is for a horror story.
+
+==========================================================================================
+F5-09 [loose] F5 historical_fiction style='unspecified'
+files=['kb/index.md', 'kb/canon.md', 'kb/interpretations.md', 'kb/story-context.md'] followups=0 tools=True
+BRIEF:
+Could you write a scene using the notes in kb/? Save it in drafts/scene.md. Keep the notes as they are for now.
+
+This is for a historical fiction story.
+
+==========================================================================================
+F5-10 [loose] F5 comedy style='unspecified'
+files=[] followups=0 tools=False
+BRIEF:
+A visiting committee has mistaken Ada for the person in charge of a family restaurant after closing. Milo knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.
+
+Untested dishes must not be served to paying guests.
+
+They will keep the regular menu tomorrow.
+
+Milo's interpretation of the crossed-out ingredient is speculative.
+
+Can you write a scene from these notes? Just the story.
+
+This is for a comedy story.
+

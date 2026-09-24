@@ -1,0 +1,4697 @@
+{
+  "summary": {
+    "examples": 20,
+    "families": {
+      "F1": 5,
+      "F2": 5,
+      "F3": 3,
+      "F4": 3,
+      "F5": 4
+    },
+    "channels": {
+      "file": 11,
+      "reply": 9
+    },
+    "loose_examples": 5,
+    "scene_examples": 14,
+    "required_checks": 43,
+    "author_unmet": [
+      "F4-04:consequential-state",
+      "F4-04:accepted-update"
+    ],
+    "deterministic_passed": 41,
+    "deterministic_failed": 0,
+    "unique_primary_openings": 20,
+    "unique_response_openings": 20,
+    "search_calls": 5
+  },
+  "cases": [
+    {
+      "case_id": "F1-01",
+      "channel": "reply",
+      "words": 166,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "20fdf262933281040248b5091789ec663ddcf15fd7093276f2ef5d2ae8c29575",
+        "labels_hash": "32e2786d94c11a4ff565b81a736f4d32661057f8c5ed3c7518efcde15dc5db61",
+        "scenario_id": "F1-01",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve Only the retired keeper has the upper-room key. Keep Mara suspects Ilan sold the ledger; this is an unproven accusation. Do not assert: The ledger is destroyed.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Mara; restrained, concrete prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested literary fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "whole"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "“Then tell me which shelf.”\n\nMara stood between Ilan and the stairs. He had brought a plane down with him; curls of wet wood clung to its blade.\n\n“Above the tide line. I told you.”\n\n“That isn't a shelf.”\n\nHe put the plane on the table. “You said I sold it.”\n\nShe had said it at noon, loudly enough for the harbor office to hear. Now she wanted him to offer something she could check. The upper room was locked. Only the retired keeper had the key.\n\n“If the ledger's there—”\n\n“When you find it,” he said, “will you tell them?”\n\nMara picked a shaving off the blade. She had been sorting her own papers into a box beneath this table, taking a few home each night.\n\n“I haven't found it.”\n\n“No.” He held out his hand for the plane.\n\nShe passed it over, then moved aside. He stopped at the foot of the stairs.\n\n“Will you?”\n\nShe set the shaving on top of her box.",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "a15548ac66087d8fe0bed281038db578cd7674497362c6ff615518c0a887a557",
+            "spans": [
+              [
+                0,
+                856
+              ]
+            ],
+            "prose_hash": "a15548ac66087d8fe0bed281038db578cd7674497362c6ff615518c0a887a557"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F1",
+        "condition": "scene",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "restrained, concrete prose",
+        "instruction_specificity": "explicit",
+        "genre": "literary_fiction"
+      }
+    },
+    {
+      "case_id": "F1-02",
+      "channel": "reply",
+      "words": 171,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "7066a2ba1c50851a28bd53003b70f61fd360ebdecb367da6be182c5a068ebf05",
+        "labels_hash": "c4efd27e35660dabdc24f35b1a3eff210f724462866c50413a800d594ec8ec50",
+        "scenario_id": "F1-02",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The original recording is sealed in the municipal vault. Keep Suri suspects a damaged song; Aven's responsibility is unknown. Do not assert: Aven deliberately broke the tree.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Suri; spare prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested mystery genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "whole"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "No answer came from the vault office. Suri kept the receiver against her ear until Aven pointed to its dark indicator.\n\n“They've closed.”\n\nShe set it down. The original birdsong was still sealed in the municipal vault. Asking to inspect it had not put it within reach.\n\n“Tell me about the day again.”\n\n“The disappearance?”\n\n“You said you heard the gate.”\n\n“I said I saw it open.”\n\nSuri unfolded the anonymous note on the workbench. She had remembered him saying heard. She could almost supply his voice. But since the accident there were high sounds he could not hear, and she had begun filling those gaps for him without asking.\n\n“Write it down,” she said.\n\n“What you remember?”\n\n“What you do.”\n\nHe took a pencil. She turned over a clean sheet for herself. Beyond the bench, birdsong played among the glass trees. Perhaps the song had been damaged. She had no test to set beside that thought.\n\nWhen Aven reached for her sheet, she covered it with her hand.\n\n“Separately first.”",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "399cb0614f442dfb2627e04d1462df2a5ec9dd44d1fd1c92e3ce8091d5701fba",
+            "spans": [
+              [
+                0,
+                978
+              ]
+            ],
+            "prose_hash": "399cb0614f442dfb2627e04d1462df2a5ec9dd44d1fd1c92e3ce8091d5701fba"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F1",
+        "condition": "continuation",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "spare prose",
+        "instruction_specificity": "explicit",
+        "genre": "mystery"
+      }
+    },
+    {
+      "case_id": "F1-03",
+      "channel": "reply",
+      "words": 165,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "2dcdaeac779ea2536e7f679cc500a8b0d6c8ba5c6dcf9529fc8b0a3b27c2e3dc",
+        "labels_hash": "6a701b550f2147d41003b0b9e810944c7d737d2302268c62cb376e87497f65e3",
+        "scenario_id": "F1-03",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The captain alone knows the revised sailing time. Keep Oren's creditor explanation is a guess, not Leda's stated motive. Do not assert: Leda admits she is fleeing a creditor.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Oren; measured pacing with sustained tension.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested fantasy genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "whole"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "“If I ask the captain, what may I tell him?” Oren said.\n\n“That I need the sailing time.”\n\n“He'll ask where you're going.”\n\n“Will he? Or will you?”\n\nOren held the unsigned ticket against the rail. A creditor, he had thought when she boarded. He had already supplied a man on the quay, an unpaid sum. Leda had supplied neither.\n\n“Bell Quay first,” he said. “Then the island.”\n\n“I know the stops.”\n\n“The time has changed. The captain hasn't told anyone.”\n\nFrom below the deck came three words: “Until you return.” The ferry had been repeating that much of a vow after dark. Oren waited for more. Nothing followed.\n\n“Was that someone?” Leda asked.\n\n“The boat.”\n\n“Whose words?”\n\n“I don't know.”\n\n“Then please don't put mine beside them.”\n\nHe lifted the ticket away from the rail.\n\n“I can ask about the time without showing him this.”\n\n“Can you ask without pointing?”\n\nOren looked toward the wheelhouse, then back at his own hand. He lowered it.",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "21d78c161f863d739e0973489be50712e10a443945adb2d7addd533ff3145d2b",
+            "spans": [
+              [
+                0,
+                939
+              ]
+            ],
+            "prose_hash": "21d78c161f863d739e0973489be50712e10a443945adb2d7addd533ff3145d2b"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F1",
+        "condition": "dialogue",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "measured pacing with sustained tension",
+        "instruction_specificity": "explicit",
+        "genre": "fantasy"
+      }
+    },
+    {
+      "case_id": "F1-04",
+      "channel": "reply",
+      "words": 172,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "414949c2e611db891da4e4547fd1fc8f501488c2d8fafc2847830a635d6231a5",
+        "labels_hash": "bc1b47449025bfeeb0437a68b60cdff4b1824e5d4c0ebec17dfa8480bcd6d621",
+        "scenario_id": "F1-04",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The antenna cannot be turned until the ice thaws. Keep Tomas's memory of their mother's channel is uncertain. Do not assert: Nessa recognizes her mother's voice.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Nessa; dialogue-led prose with understated tension.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested science fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "whole"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "To answer would take one press of Nessa's thumb.\n\n“Record,” Tomas said.\n\n“I remember.”\n\nThe transmit button sat beneath her hand. They had agreed to wait for another transmission, but somewhere a person had asked for rescue. She moved her thumb to the desk.\n\n“Mother used that frequency,” he said.\n\n“You were a child.”\n\n“I could still remember.”\n\n“Yes. You could.”\n\nShe opened a blank entry in the log. The island's autonomous systems had synchronized the public records again overnight. Was the missing frequency a consequence of the update? She had no way to tell from the empty line.\n\n“Turn the antenna?” Tomas asked.\n\n“Not until the ice thaws.”\n\n“Then what do we write?”\n\nNessa nearly typed their mother's name. It would give the entry a heading, something less bare than a number. But the voice had been a stranger's to her, and Tomas had remembered a channel, not identified a speaker.\n\n“Frequency. Time. Exact words.”\n\nShe armed the recorder and turned the screen so he could see.\n\n“You take the time.”",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "1ebf7adb8ad977cec7886a5ea7e620eb0603ae3bfe93178cf9f5f4c582a0af7b",
+            "spans": [
+              [
+                0,
+                1009
+              ]
+            ],
+            "prose_hash": "1ebf7adb8ad977cec7886a5ea7e620eb0603ae3bfe93178cf9f5f4c582a0af7b"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F1",
+        "condition": "reflection",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "dialogue-led prose with understated tension",
+        "instruction_specificity": "explicit",
+        "genre": "science_fiction"
+      }
+    },
+    {
+      "case_id": "F1-05",
+      "channel": "reply",
+      "words": 169,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "b36f225e7adb5122d3e69c38f536acc6843fadc4c4253f83326027fd80f1d33c",
+        "labels_hash": "814d95f5ae071451aeee6d32803e3e0ae3f648090e66743d4ef2d9a6aa220a93",
+        "scenario_id": "F1-05",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The original seal remains in a locked evidence chest. Keep Sen alleges copying; the expert has seen only a drawing. Do not assert: The court finds the seal counterfeit.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Dara; formal, precise prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested romance genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "whole"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "Halfway through tying the deposition bundle, Dara caught her letter in the cord.\n\nSen put a finger on the knot.\n\n“That isn't testimony.”\n\n“I know.”\n\nShe loosened the loop. The envelope came free, creased across the address. Sen knew that its writer had asked to see her again; he had not read the invitation. She turned it face down beneath her blotter.\n\n“Will you need someone to take your place?” he asked.\n\n“For an afternoon?”\n\n“You haven't said how long.”\n\nDara pulled the cord too tightly. The top sheet buckled. Before she could smooth it, Sen offered his hand to hold the bundle square.\n\nAcross the room, the evidence chest remained locked. The copper seal was inside; the expert had examined only a drawing. Sen's claim that it had been copied still awaited that examination.\n\n“I haven't agreed to go,” she said.\n\nHis hand stayed under the papers.\n\n“Shall I let go?”\n\nShe looked at his fingers, clear of the knot now.\n\n“Not yet.”\n\nDara began the loop again.",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "f256b01165bf0d7dbfba2454420cbb8d97470b873228f45b8d691722176cec0e",
+            "spans": [
+              [
+                0,
+                965
+              ]
+            ],
+            "prose_hash": "f256b01165bf0d7dbfba2454420cbb8d97470b873228f45b8d691722176cec0e"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F1",
+        "condition": "action",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "formal, precise prose",
+        "instruction_specificity": "explicit",
+        "genre": "romance"
+      }
+    },
+    {
+      "case_id": "F2-02",
+      "channel": "file",
+      "words": 167,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "saved-scene",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "edit-scope",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 2,
+      "read_tokens": 110,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "b9b88f9277c99459d943b8e83e68d6cb5a0524ca43f64629a59c2d6126131b8d",
+        "labels_hash": "cba4b7c851240c360205f54bdbab224286a6f0a58d76d7cc2eaf49589ef4cd69",
+        "scenario_id": "F2-02",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 2,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "saved-scene",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "drafts/scene.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "edit-scope",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The original recording is sealed in the municipal vault. Keep Suri suspects a damaged song; Aven's responsibility is unknown. Do not assert: Aven deliberately broke the tree.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Suri; spare prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested science fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "Under Suri's fingertip, the crack divided a glass leaf.\n\n“Don't lift it,” Aven said.\n\nShe withdrew her hand. The recorder played on. A maintenance cart passed between the rows, following the island's painted service line.\n\n“Did the update touch this machine?”\n\n“Public records changed. I don't know about this.”\n\n“You maintain it.”\n\n“That isn't a test.”\n\nSuri looked at him. She had been ready to make his answer stand for one. He could no longer hear the highest notes, but that did not tell her whether the recording had lost them.\n\n“The original's in the municipal vault,” she said. “Still sealed.”\n\nHe nodded.\n\n“Then we compare them.”\n\n“When we're allowed.”\n\nShe fetched the request form from the workbench. In the box for purpose she wrote DAMAGE, stopped, and added INVESTIGATION. There was no box for suspect.\n\nAven held the paper flat while she signed it. She left the cause blank and addressed the form to the vault office.\n\n“May I inspect the original recording?” she read aloud.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "eb8b3e35c9cfb3cd3d6a20b2ae9b2b3e68793c9831a463ce2c54aaff0de33f21",
+            "spans": [
+              [
+                0,
+                990
+              ]
+            ],
+            "prose_hash": "eb8b3e35c9cfb3cd3d6a20b2ae9b2b3e68793c9831a463ce2c54aaff0de33f21"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F2",
+        "condition": "explore_then_write",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "spare prose",
+        "instruction_specificity": "explicit",
+        "genre": "science_fiction"
+      }
+    },
+    {
+      "case_id": "F2-04",
+      "channel": "file",
+      "words": 168,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "saved-scene",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "edit-scope",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 2,
+      "read_tokens": 119,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "1e2ce0246addda9ed5356a05900c05ff736c899c98151bfd7e393a92d1deae8e",
+        "labels_hash": "56b8c1c1ef348d09fcba9ac98ed4b30f75f0d0334c94e52244b6e2eaf7b50e1e",
+        "scenario_id": "F2-04",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 2,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "saved-scene",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "drafts/scene.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "edit-scope",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The antenna cannot be turned until the ice thaws. Keep Tomas's memory of their mother's channel is uncertain. Do not assert: Nessa recognizes her mother's voice.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Nessa; dialogue-led prose with understated tension.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested horror genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "“Don't use my name on the radio.”\n\nTomas looked up from the log. “I wasn't going to answer.”\n\n“I know.”\n\nNessa pulled the microphone nearer, then pushed it back to its place. The last time she had heard her own voice, it had come from the empty room behind them. Tomas had only her account of it.\n\n“You said it sounded exactly like you.”\n\n“It did.”\n\n“Say something now.”\n\n“No.”\n\nHe shut the log. She opened it again to the missing frequency.\n\n“Mother used that channel,” he said.\n\n“You think she did.”\n\n“I remember the visit.”\n\n“That isn't the same thing.”\n\nThe rescue voice had been unfamiliar. Nessa would write that down, too.\n\n“Could we turn the antenna away?”\n\n“It's iced fast. We wait for a thaw.”\n\n“Or we leave this room.”\n\nShe checked the recorder. Ready. They had agreed to record the next transmission before replying.\n\n“Bring your chair here.”\n\nHe dragged it beside hers. Its legs squealed across the floor. Both of them stopped to listen.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "b9b49a26522606a05bbb537659d8debbfca5dba8296ce0fad31658e7250c5bc5",
+            "spans": [
+              [
+                0,
+                951
+              ]
+            ],
+            "prose_hash": "b9b49a26522606a05bbb537659d8debbfca5dba8296ce0fad31658e7250c5bc5"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F2",
+        "condition": "explore_then_write",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "dialogue-led prose with understated tension",
+        "instruction_specificity": "explicit",
+        "genre": "horror"
+      }
+    },
+    {
+      "case_id": "F2-05",
+      "channel": "file",
+      "words": 152,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "preserve-ending",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "saved-scene",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "edit-scope",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 3,
+      "read_tokens": 108,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "32f1dc9f50dee30f6a5596d0986dfda483b7eb0d6f4b2e6aeb72ccad689ccd17",
+        "labels_hash": "ad2c89b51f5d10c615a12b283b757be32565229d9ba328efda6272c64280d1b5",
+        "scenario_id": "F2-05",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 3,
+            "denominator": 3,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 3,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "preserve-ending",
+            "metric": "Q1",
+            "kind": "protected",
+            "method": "deterministic",
+            "required": true,
+            "path": "drafts/scene.md",
+            "text": "The judge called for silence.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "saved-scene",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "drafts/scene.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "edit-scope",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The original seal remains in a locked evidence chest. Keep Sen alleges copying; the expert has seen only a drawing. Do not assert: The court finds the seal counterfeit.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Dara; formal, precise prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested historical fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md",
+              "selection": "delimited",
+              "start": "<prose>",
+              "end": "</prose>"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "\nDara set her pen across the inkwell before the last word could dry. She had written copied without an attribution.\n\n“Your statement,” she said to Sen, “is that the seal was copied.”\n\n“Yes.”\n\n“On what examination?”\n\n“The expert saw it.”\n\n“The drawing.”\n\nHe looked toward the evidence chest. It remained locked; the original copper seal was inside. Dara waited with her hand beside the pen.\n\n“The drawing,” Sen said.\n\nShe inserted alleges above the line. Paper deliveries had stopped with the strike, and this sheet would have to serve. The small correction left scarcely room for a date.\n\nFrom the public benches came a question about the witness's family. Another voice answered before Dara could make out the words. The judge had forbidden that discussion outside court; inside, everyone appeared determined to have it at once.\n\nShe laid a clean scrap over the wet correction and raised her eyes to the bench.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "a908dcdabea4a737a44eb7cc48db5652ee17764bc89e0b26761743051e6481b2",
+            "spans": [
+              [
+                7,
+                919
+              ]
+            ],
+            "prose_hash": "8fa8237469da58849f9e222bfbb1d373dfa8fef7c871dd8d5a54f9b853b6e767"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F2",
+        "condition": "local_revision",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "formal, precise prose",
+        "instruction_specificity": "explicit",
+        "genre": "historical_fiction"
+      }
+    },
+    {
+      "case_id": "F2-07",
+      "channel": "file",
+      "words": 170,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "saved-scene",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "edit-scope",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 2,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 3,
+      "read_tokens": 116,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "2674fa25a637350524f66e524693ac0a041a17cb1e0c8315f492fb841cd4a21e",
+        "labels_hash": "11cfa836acef76b95b316e41f2569749947f6e1117bc3717b67a1dafd5882fbf",
+        "scenario_id": "F2-07",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 1
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 3,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "saved-scene",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "drafts/scene.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "edit-scope",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Respect the supplied starting facts and distinguish character beliefs from established knowledge. Accept plausible new events, revelations, dialogue, viewpoint, and endings; no particular continuation is required.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested adventure genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "Beyond the garden wall lay a road Yara had never walked. Belen had brought the expedition list into the beds and was trying to flatten it against a dry water barrel.\n\n“We could take this one.”\n\n“We couldn't.”\n\n“It's empty.”\n\nYara pointed to the two full barrels by the seedlings. “And those stay here.”\n\n“I wasn't asking for those.”\n\nShe knelt beside the buried jar. Dust settled on the leaves. Its rim gave her nothing to measure a well by, only a circle of clay with earth packed inside.\n\n“If there's water below it,” Belen said, “you could leave.”\n\n“If.”\n\nBelen folded the list. “You could ask someone else to mind the beds.”\n\nThat had not appeared among the equipment or provisions. Yara brushed dust from a seedling with the side of her finger.\n\n“The council discusses digging after the inspection. We don't move the jar before then.”\n\n“I know.”\n\n“Put another name beside mine.”\n\n“For the expedition?”\n\n“For the watering.”\n\nBelen opened the list again and turned it over.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "49ac7674160cfc09e6b40cfb7657ae2a35b2fc95d5e604187565cb59ebdec541",
+            "spans": [
+              [
+                0,
+                977
+              ]
+            ],
+            "prose_hash": "49ac7674160cfc09e6b40cfb7657ae2a35b2fc95d5e604187565cb59ebdec541"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F2",
+        "condition": "local_revision",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "unspecified",
+        "instruction_specificity": "loose",
+        "genre": "adventure"
+      }
+    },
+    {
+      "case_id": "F2-10",
+      "channel": "file",
+      "words": 184,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "saved-scene",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "edit-scope",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 2,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 2,
+      "read_tokens": 107,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "a4b91fc94662f7c0c0501a4b6fed5d24f4e04ab09818f2010b60f1883a90de19",
+        "labels_hash": "7917109b3e310a7d7736f6cb48ede71b1a754be71492ff0ffa6fe24a26994624",
+        "scenario_id": "F2-10",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 1
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 2,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "saved-scene",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "drafts/scene.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "edit-scope",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Respect the supplied starting facts and distinguish character beliefs from established knowledge. Accept plausible new events, revelations, dialogue, viewpoint, and endings; no particular continuation is required.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested mystery genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "Two saucers for tasting; a third for the anonymous note.\n\nAda moved the third away from the stove.\n\n“You'll get soup on it.”\n\n“I'm trying to remember,” Milo said.\n\n“With a ladle?”\n\nHe set it down. “You were here when they disappeared.”\n\n“I came back here afterward.”\n\n“You made soup.”\n\n“I washed bowls.”\n\nThe little test pan began to spit. Ada lowered the flame. Their aunt would be away until Sunday; there was nobody to settle even the question of the crossed-out ingredient. Milo thought it was the secret. Ada could think of other reasons to cross something out.\n\n“Does the note say soup?” she asked.\n\n“No.”\n\n“Then leave the card out of it.”\n\nHe pushed the recipe toward her and drew the note closer. She put a spoonful into each tasting saucer. Neither reached for one.\n\n“What did you wash first?” he asked.\n\n“The bowls.”\n\n“Before the plates?”\n\nAda looked at the rack. That was how she did it now. She could not remember whether it had always been so.\n\nShe turned off the burner. Tomorrow's regular menu was still on the board.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "97f606cc771b9f5d84479594560fb000fbb60152f8fdb7f2a8bd5f60f22bba15",
+            "spans": [
+              [
+                0,
+                1033
+              ]
+            ],
+            "prose_hash": "97f606cc771b9f5d84479594560fb000fbb60152f8fdb7f2a8bd5f60f22bba15"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F2",
+        "condition": "explore_then_write",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "unspecified",
+        "instruction_specificity": "loose",
+        "genre": "mystery"
+      }
+    },
+    {
+      "case_id": "F3-02",
+      "channel": "reply",
+      "words": null,
+      "kb_words": null,
+      "deterministic": [],
+      "semantic_pending": 1,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "9b8abaeb3f30f522cd2f0d2a21e6d86007b3915883ce2d384e3772b5bbb55b2c",
+        "labels_hash": "9ee3fa6f67874f70a20fb5e8e1fae4a4baf3fff5dc329b9800c6348a8266fa92",
+        "scenario_id": "F3-02",
+        "scores": {
+          "Q1": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "Q2": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No valid selected prose"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q6": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "three-directions",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Exactly three developed viable directions.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F3",
+        "condition": "feedback",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "spare prose",
+        "instruction_specificity": "explicit",
+        "genre": "horror"
+      }
+    },
+    {
+      "case_id": "F3-05",
+      "channel": "reply",
+      "words": null,
+      "kb_words": null,
+      "deterministic": [],
+      "semantic_pending": 1,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "b8c605838f7ac5acd349054ed252113ae1f0d1f39f63ddc09c8bb0ad34f2c914",
+        "labels_hash": "9ee3fa6f67874f70a20fb5e8e1fae4a4baf3fff5dc329b9800c6348a8266fa92",
+        "scenario_id": "F3-05",
+        "scores": {
+          "Q1": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "Q2": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No valid selected prose"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q6": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "three-directions",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Exactly three developed viable directions.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F3",
+        "condition": "alternatives",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "formal, precise prose",
+        "instruction_specificity": "explicit",
+        "genre": "adventure"
+      }
+    },
+    {
+      "case_id": "F3-07",
+      "channel": "reply",
+      "words": null,
+      "kb_words": null,
+      "deterministic": [],
+      "semantic_pending": 0,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "190d556ecc94adfd1f93c677f872b1b2905d79f4649ec7fd957ac2e9725c7ac0",
+        "labels_hash": "e0e1a21a312e4098124638209b72e4a501a598eb6abd78844a66161f7d11d876",
+        "scenario_id": "F3-07",
+        "scores": {
+          "Q1": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q2": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No valid selected prose"
+          },
+          "Q3": {
+            "value": 1,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 1
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q6": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [],
+        "artifacts": [],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F3",
+        "condition": "alternatives",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "unspecified",
+        "instruction_specificity": "loose",
+        "genre": "literary_fiction"
+      }
+    },
+    {
+      "case_id": "F4-01",
+      "channel": "file",
+      "words": null,
+      "kb_words": 171,
+      "deterministic": [
+        {
+          "id": "wiki-words",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-links",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-index",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-only",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "kb/index.md",
+        "kb/ledger.md"
+      ],
+      "tool_calls": 3,
+      "read_tokens": 102,
+      "wiki_graph": {
+        "links": [
+          {
+            "from": "kb/index.md",
+            "to": "kb/ledger.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/ledger.md",
+            "to": "kb/index.md",
+            "anchor": "",
+            "valid": true
+          }
+        ],
+        "valid_fraction": 1.0,
+        "pages": 2,
+        "reachable": [
+          "kb/index.md",
+          "kb/ledger.md"
+        ],
+        "reachability": 1.0,
+        "orphans": [],
+        "missing_entrypoints": [],
+        "unsupported_reference_links": [],
+        "dialect": "inline-atx-v1"
+      },
+      "scorecard": {
+        "version": 1,
+        "result_hash": "8233d2f4a77ccb18afecbd96cb067cf94923c3f59b649f2ba5c95c4bb60aa746",
+        "labels_hash": "efd2c96178258535733ceca2b5d121f9e635de27cb639b2458f04f5f98953f34",
+        "scenario_id": "F4-01",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "numerator": 3,
+            "denominator": 3,
+            "pending": 0
+          },
+          "Q2": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No valid selected prose"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 3,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q8": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 3
+          },
+          "Q9": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q10": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Fresh-reader probes not executed"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "wiki-words",
+            "metric": "Q1",
+            "kind": "kb_word_budget",
+            "method": "deterministic",
+            "required": false,
+            "max": 500,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-links",
+            "metric": "Q1",
+            "kind": "wiki_links",
+            "method": "deterministic",
+            "required": true,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-index",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "kb/index.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-only",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "kb/*.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "consequential-state",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "weight": 3,
+            "text": "Only the retired keeper has the upper-room key.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "qualified-belief",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "weight": 3,
+            "text": "Mara suspects Ilan sold the ledger; this is an unproven accusation.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "optional-context",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "weight": 1,
+            "text": "Ilan repairs the flooded shelves.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [],
+        "wiki_graph": {
+          "links": [
+            {
+              "from": "kb/index.md",
+              "to": "kb/ledger.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/ledger.md",
+              "to": "kb/index.md",
+              "anchor": "",
+              "valid": true
+            }
+          ],
+          "valid_fraction": 1.0,
+          "pages": 2,
+          "reachable": [
+            "kb/index.md",
+            "kb/ledger.md"
+          ],
+          "reachability": 1.0,
+          "orphans": [],
+          "missing_entrypoints": [],
+          "unsupported_reference_links": [],
+          "dialect": "inline-atx-v1"
+        },
+        "status": "completed",
+        "family": "F4",
+        "condition": "construction",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "restrained, concrete prose",
+        "instruction_specificity": "explicit",
+        "genre": "historical_fiction"
+      }
+    },
+    {
+      "case_id": "F4-04",
+      "channel": "file",
+      "words": null,
+      "kb_words": 174,
+      "deterministic": [
+        {
+          "id": "wiki-words",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-links",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-index",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-only",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 4,
+      "unmet_author_checks": [
+        "consequential-state",
+        "accepted-update"
+      ],
+      "changed_paths": [
+        "kb/index.md",
+        "kb/station.md"
+      ],
+      "tool_calls": 3,
+      "read_tokens": 113,
+      "wiki_graph": {
+        "links": [
+          {
+            "from": "kb/index.md",
+            "to": "kb/station.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/station.md",
+            "to": "kb/index.md",
+            "anchor": "",
+            "valid": true
+          }
+        ],
+        "valid_fraction": 1.0,
+        "pages": 2,
+        "reachable": [
+          "kb/index.md",
+          "kb/station.md"
+        ],
+        "reachability": 1.0,
+        "orphans": [],
+        "missing_entrypoints": [],
+        "unsupported_reference_links": [],
+        "dialect": "inline-atx-v1"
+      },
+      "scorecard": {
+        "version": 1,
+        "result_hash": "aa9c73012f3626e6fcdf6b59037d06102c76d987bd2f80b16d91e84abfb7b1a2",
+        "labels_hash": "af741d030bff19759176a8a936d83462c212bde00bc84302c1e4d62b09c81195",
+        "scenario_id": "F4-04",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "numerator": 3,
+            "denominator": 3,
+            "pending": 0
+          },
+          "Q2": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No valid selected prose"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 3,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q8": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 3
+          },
+          "Q9": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q10": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Fresh-reader probes not executed"
+          },
+          "Q11": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "wiki-words",
+            "metric": "Q1",
+            "kind": "kb_word_budget",
+            "method": "deterministic",
+            "required": false,
+            "max": 500,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-links",
+            "metric": "Q1",
+            "kind": "wiki_links",
+            "method": "deterministic",
+            "required": true,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-index",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "kb/index.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-only",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "kb/*.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "consequential-state",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "weight": 3,
+            "text": "The antenna points east; the voice is still unidentified.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "qualified-belief",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "weight": 3,
+            "text": "Tomas's memory of their mother's channel is uncertain.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "optional-context",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "weight": 1,
+            "text": "They agreed to record the next transmission before replying.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "accepted-update",
+            "metric": "Q11",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "The antenna points east; the voice is still unidentified. Preserve relevant history and do not adopt the draft-only suggestion.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [],
+        "wiki_graph": {
+          "links": [
+            {
+              "from": "kb/index.md",
+              "to": "kb/station.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/station.md",
+              "to": "kb/index.md",
+              "anchor": "",
+              "valid": true
+            }
+          ],
+          "valid_fraction": 1.0,
+          "pages": 2,
+          "reachable": [
+            "kb/index.md",
+            "kb/station.md"
+          ],
+          "reachability": 1.0,
+          "orphans": [],
+          "missing_entrypoints": [],
+          "unsupported_reference_links": [],
+          "dialect": "inline-atx-v1"
+        },
+        "status": "completed",
+        "family": "F4",
+        "condition": "update",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "dialogue-led prose with understated tension",
+        "instruction_specificity": "explicit",
+        "genre": "thriller"
+      }
+    },
+    {
+      "case_id": "F4-09",
+      "channel": "file",
+      "words": null,
+      "kb_words": 175,
+      "deterministic": [
+        {
+          "id": "wiki-index",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "wiki-only",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "kb/index.md",
+        "kb/invitation.md",
+        "kb/watch.md"
+      ],
+      "tool_calls": 4,
+      "read_tokens": 108,
+      "wiki_graph": {
+        "links": [
+          {
+            "from": "kb/index.md",
+            "to": "kb/watch.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/index.md",
+            "to": "kb/invitation.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/invitation.md",
+            "to": "kb/index.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/invitation.md",
+            "to": "kb/watch.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/watch.md",
+            "to": "kb/index.md",
+            "anchor": "",
+            "valid": true
+          },
+          {
+            "from": "kb/watch.md",
+            "to": "kb/invitation.md",
+            "anchor": "",
+            "valid": true
+          }
+        ],
+        "valid_fraction": 1.0,
+        "pages": 3,
+        "reachable": [
+          "kb/index.md",
+          "kb/invitation.md",
+          "kb/watch.md"
+        ],
+        "reachability": 1.0,
+        "orphans": [],
+        "missing_entrypoints": [],
+        "unsupported_reference_links": [],
+        "dialect": "inline-atx-v1"
+      },
+      "scorecard": {
+        "version": 1,
+        "result_hash": "721916681115340f6a0b82d97b60c692c5c32dc24a3855fd60c7251ce2da45b9",
+        "labels_hash": "8fb76fd59fb58adf1c3ee06abec68e22893e534971445b54962e42e285c87893",
+        "scenario_id": "F4-09",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 0
+          },
+          "Q2": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No valid selected prose"
+          },
+          "Q3": {
+            "value": 1,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 1
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 4,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q8": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 3
+          },
+          "Q9": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q10": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Fresh-reader probes not executed"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "wiki-index",
+            "metric": "Q3",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": true,
+            "path": "kb/index.md",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "wiki-only",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "kb/*.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "consequential-state",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "weight": 3,
+            "text": "Assess whether recording this information would help a writer continue the chapter. Accept a defensible omission or alternative placement; do not treat this candidate fact as a mandatory checklist item: A collector holds the square key needed to open the watch.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "qualified-belief",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "weight": 3,
+            "text": "Assess whether recording this information would help a writer continue the chapter. Accept a defensible omission or alternative placement; do not treat this candidate fact as a mandatory checklist item: Pia suspects a trick; neither mechanism nor intent is established.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "optional-context",
+            "metric": "Q8",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "weight": 1,
+            "text": "Assess whether recording this information would help a writer continue the chapter. Accept a defensible omission or alternative placement; do not treat this candidate fact as a mandatory checklist item: Pia agreed to record stopping times before drawing conclusions.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [],
+        "wiki_graph": {
+          "links": [
+            {
+              "from": "kb/index.md",
+              "to": "kb/watch.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/index.md",
+              "to": "kb/invitation.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/invitation.md",
+              "to": "kb/index.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/invitation.md",
+              "to": "kb/watch.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/watch.md",
+              "to": "kb/index.md",
+              "anchor": "",
+              "valid": true
+            },
+            {
+              "from": "kb/watch.md",
+              "to": "kb/invitation.md",
+              "anchor": "",
+              "valid": true
+            }
+          ],
+          "valid_fraction": 1.0,
+          "pages": 3,
+          "reachable": [
+            "kb/index.md",
+            "kb/invitation.md",
+            "kb/watch.md"
+          ],
+          "reachability": 1.0,
+          "orphans": [],
+          "missing_entrypoints": [],
+          "unsupported_reference_links": [],
+          "dialect": "inline-atx-v1"
+        },
+        "status": "completed",
+        "family": "F4",
+        "condition": "construction",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "unspecified",
+        "instruction_specificity": "loose",
+        "genre": "romance"
+      }
+    },
+    {
+      "case_id": "F5-02",
+      "channel": "reply",
+      "words": 159,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [],
+      "tool_calls": 0,
+      "read_tokens": 0,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "1e21423aabeb7d5da1f59725b3ce2cbd0cff1f23d89ccf41727874c5d5f6396f",
+        "labels_hash": "f9694c8cf3dfa7405ca6e8ab0e631426e6a6e8d48e4761adcb520ee01f0fc17c",
+        "scenario_id": "F5-02",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The original recording is sealed in the municipal vault. Keep Suri suspects a damaged song; Aven's responsibility is unknown. Do not assert: Aven deliberately broke the tree.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Suri; spare prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested thriller genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "reply",
+              "selection": "delimited",
+              "start": "<prose>",
+              "end": "</prose>"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "\nWhoever stood beyond the orchard gate had kept out of the light.\n\nSuri caught Aven's sleeve before he stepped outside.\n\n“Did you see someone?”\n\n“Something moved.”\n\n“You said they'd been watching.”\n\n“I said there were marks by the entrance.”\n\nShe released him. The warning had said before morning. It had not given a name, or a reason she should trust it.\n\nA high chime sounded from the gate. Aven did not turn. Since the accident he could not hear that pitch; Suri touched his wrist and pointed.\n\n“Stay where I can see you,” she said.\n\n“What do we tell them?”\n\n“Nothing about the recording.”\n\n“The original's sealed in the municipal vault.”\n\n“I know.”\n\nShe still suspected a damaged song, and still had no evidence that made Aven responsible. Sending him to the gate would settle neither question.\n\nSuri moved beside him, leaving the gate shut.\n\n“Who are you here to see?”\n\nShe waited with her hand on the latch.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "1af3fab2b9b68271d32b308a9c3a082acc6ff30a91637758e7ea9e6b77aa6fee",
+            "spans": [
+              [
+                58,
+                972
+              ]
+            ],
+            "prose_hash": "89e840f3d90e8a32ef3d216fbd0f287eb93e9e109f3d01cb021c02d70b711277"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F5",
+        "condition": "supplied_kb",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "spare prose",
+        "instruction_specificity": "explicit",
+        "genre": "thriller"
+      }
+    },
+    {
+      "case_id": "F5-03",
+      "channel": "file",
+      "words": 163,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "retrieve-state",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "retrieve-belief",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "preserve-kb",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 7,
+      "read_tokens": 94,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "bfd652e04e3124b5dfcfbad2ef237a95572ed120d79510bdd2e2a7a1dcbd258d",
+        "labels_hash": "b977a0a0162974ae847cd8f5fdb28a5ba21cc27339002b068df56e1d290087cb",
+        "scenario_id": "F5-03",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 7,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 0
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "retrieve-state",
+            "metric": "Q12",
+            "kind": "evidence_exposed",
+            "method": "deterministic",
+            "required": false,
+            "text": "The captain alone knows the revised sailing time.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "retrieve-belief",
+            "metric": "Q12",
+            "kind": "evidence_exposed",
+            "method": "deterministic",
+            "required": false,
+            "text": "Oren's creditor explanation is a guess, not Leda's stated motive.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "preserve-kb",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The captain alone knows the revised sailing time. Keep Oren's creditor explanation is a guess, not Leda's stated motive. Do not assert: Leda admits she is fleeing a creditor.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Oren; measured pacing with sustained tension.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested literary fiction genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "One more crossing, Oren had told himself yesterday. Now Leda was holding out the departure slate for him to change.\n\n“Have you asked?”\n\n“Not yet.”\n\n“The old time's still up.”\n\nHe took the chalk. Only the captain knew the revised sailing time. Oren rubbed out the old figures with his sleeve and wrote PLEASE ASK instead.\n\n“Ask whom?” Leda said.\n\nHe put the chalk down.\n\n“You're quiet lately.”\n\n“There's work.”\n\nShe looked at the blank space beneath his notice. “There's this.”\n\nHe had decided, without being told, that a creditor might explain her journey. It had been easier to imagine what she was leaving than to say what he wanted to leave.\n\n“Bell Quay first,” he said. “That's unchanged.”\n\n“I didn't ask about the stops.”\n\n“No.”\n\nLeda propped the slate against the wall. Oren took it down again. He could at least spare the next person a useless question.\n\nHe added THE CAPTAIN below PLEASE ASK, then carried the slate to its hook.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "69decc7f446ccb7ea0aadac73c17b766b5c6026b67d6bfdedbd9840b8b2a4cf1",
+            "spans": [
+              [
+                0,
+                937
+              ]
+            ],
+            "prose_hash": "69decc7f446ccb7ea0aadac73c17b766b5c6026b67d6bfdedbd9840b8b2a4cf1"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F5",
+        "condition": "retrieved_kb",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "measured pacing with sustained tension",
+        "instruction_specificity": "explicit",
+        "genre": "literary_fiction"
+      }
+    },
+    {
+      "case_id": "F5-05",
+      "channel": "file",
+      "words": 161,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "retrieve-state",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "retrieve-belief",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "preserve-kb",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "word-budget",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 3,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 7,
+      "read_tokens": 103,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "e8a002085b37a8dc774b9a04b432bab1c5ea31da6caed124ed954dae986083a2",
+        "labels_hash": "780eba3e7ad1c0d4e0da3390f09976a368d9389c0b39de7ac96e329cf8af31d9",
+        "scenario_id": "F5-05",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 2
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 7,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 0
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "retrieve-state",
+            "metric": "Q12",
+            "kind": "evidence_exposed",
+            "method": "deterministic",
+            "required": false,
+            "text": "The original seal remains in a locked evidence chest.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "retrieve-belief",
+            "metric": "Q12",
+            "kind": "evidence_exposed",
+            "method": "deterministic",
+            "required": false,
+            "text": "Sen alleges copying; the expert has seen only a drawing.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "preserve-kb",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "word-budget",
+            "metric": "Q1",
+            "kind": "word_range",
+            "method": "deterministic",
+            "required": false,
+            "artifact": "scene",
+            "min": 120,
+            "max": 220,
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Preserve The original seal remains in a locked evidence chest. Keep Sen alleges copying; the expert has seen only a drawing. Do not assert: The court finds the seal counterfeit.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "pov-style",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Close third person on Dara; formal, precise prose.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested fantasy genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "It was from beneath the witness bench that the courthouse spoke.\n\n“By my own hand.”\n\nDara laid a sheet on the bench and wrote the words. After dark, the building repeated fragments of an old vow. It had never supplied her with a name.\n\n“An admission,” Sen said.\n\n“Whose?”\n\nHe looked toward the locked evidence chest.\n\n“The seal was copied.”\n\n“You allege that. The expert has seen only a drawing.”\n\nThe original copper seal remained in the chest. Dara drew a line beneath the phrase she had recorded. Sen leaned closer, and she covered the empty space where a speaker's name would ordinarily go.\n\n“Then why write it?” he asked.\n\n“Because we heard it.”\n\n“And if it speaks again?”\n\n“I'll write that, too.”\n\nHe lowered his voice. “The witness's family—”\n\n“Here, in court. That stays here.”\n\nThe bench gave a small wooden click. Dara lifted her pen, keeping its point above the paper.\n\nThis time she left room for another line.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "2aa2775d3d5c4ff282c0faa4097ccbeeb057f20bb97331da691fb916baae2e15",
+            "spans": [
+              [
+                0,
+                923
+              ]
+            ],
+            "prose_hash": "2aa2775d3d5c4ff282c0faa4097ccbeeb057f20bb97331da691fb916baae2e15"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F5",
+        "condition": "retrieved_kb",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "formal, precise prose",
+        "instruction_specificity": "explicit",
+        "genre": "fantasy"
+      }
+    },
+    {
+      "case_id": "F5-07",
+      "channel": "file",
+      "words": 177,
+      "kb_words": null,
+      "deterministic": [
+        {
+          "id": "retrieve-state",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "retrieve-belief",
+          "passed": true,
+          "status": "ok"
+        },
+        {
+          "id": "preserve-kb",
+          "passed": true,
+          "status": "ok"
+        }
+      ],
+      "semantic_pending": 2,
+      "unmet_author_checks": [],
+      "changed_paths": [
+        "drafts/scene.md"
+      ],
+      "tool_calls": 3,
+      "read_tokens": 77,
+      "wiki_graph": null,
+      "scorecard": {
+        "version": 1,
+        "result_hash": "6460e08ef604f60d89155ea43561c51b892bca67a9790f2e0ee4c48160bd3441",
+        "labels_hash": "d5c0ecc25095105ba70d88deabe25831ebf80b8ec070af74dc83ab189c3a1490",
+        "scenario_id": "F5-07",
+        "scores": {
+          "Q1": {
+            "value": 1.0,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 1,
+            "denominator": 1,
+            "pending": 1
+          },
+          "Q2": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_judge",
+            "reason": "Awaiting evidence-backed judgment"
+          },
+          "Q3": {
+            "value": null,
+            "status": "pending",
+            "method": "deterministic",
+            "reason": "Required checks or extraction pending"
+          },
+          "Q4": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "denominator": 3,
+            "execution_errors": 0
+          },
+          "Q5": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q6": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q7": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q8": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q9": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q10": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q11": {
+            "value": null,
+            "status": "not_applicable",
+            "method": "deterministic",
+            "reason": "No applicable checks"
+          },
+          "Q12": {
+            "value": 1.0,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null,
+            "numerator": 2,
+            "denominator": 2,
+            "pending": 0
+          },
+          "Q13": {
+            "value": null,
+            "status": "pending",
+            "method": "llm_assisted",
+            "reason": null,
+            "numerator": 0,
+            "denominator": 0,
+            "pending": 1
+          },
+          "R1": {
+            "value": null,
+            "status": "ok",
+            "method": "deterministic",
+            "reason": null
+          },
+          "R2": {
+            "value": null,
+            "status": "unavailable",
+            "method": "deterministic",
+            "reason": "Backend usage not reported"
+          }
+        },
+        "checks": [
+          {
+            "id": "retrieve-state",
+            "metric": "Q12",
+            "kind": "evidence_exposed",
+            "method": "deterministic",
+            "required": false,
+            "text": "Two water barrels are reserved for seedlings.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "retrieve-belief",
+            "metric": "Q12",
+            "kind": "evidence_exposed",
+            "method": "deterministic",
+            "required": false,
+            "text": "Belen's proposed well is unconfirmed.",
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "preserve-kb",
+            "metric": "Q1",
+            "kind": "allowed_changes",
+            "method": "deterministic",
+            "required": true,
+            "paths": [
+              "drafts/scene.md"
+            ],
+            "status": "ok",
+            "passed": true
+          },
+          {
+            "id": "continuity",
+            "metric": "Q13",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": true,
+            "text": "Respect the supplied starting facts and distinguish character beliefs from established knowledge. Accept plausible new events, revelations, dialogue, viewpoint, and endings; no particular continuation is required.",
+            "status": "pending",
+            "passed": null
+          },
+          {
+            "id": "genre-fit",
+            "metric": "Q1",
+            "kind": "semantic",
+            "method": "llm_judge",
+            "required": false,
+            "text": "Fit the requested romance genre in a defensible way; do not require a fixed trope checklist. Genre blends are allowed where the source premise supports them.",
+            "status": "pending",
+            "passed": null
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "scene",
+            "selector": {
+              "id": "scene",
+              "kind": "file",
+              "path": "drafts/scene.md"
+            },
+            "extraction_version": 2,
+            "status": "ok",
+            "text": "By the time Belen asked about the letter, Yara had watered the same seedling twice.\n\n“Is there an answer to send?”\n\nYara tipped the can upright. “Not yet.”\n\nBelen offered her a rag for the spill. She took it by the dry corner; for a moment they were both holding it.\n\n“What did the letter say?”\n\n“That we might meet.”\n\n“I knew that much.”\n\n“Yes.”\n\nThe folded sheet pressed against her ribs inside her pocket. She could read out the proposed day and place. Instead, she tucked the corner of the letter down.\n\nBelen let go of the rag.\n\n“If there's a well, things could be different here.”\n\n“We don't know there's a well.”\n\n“The council will discuss digging after the inspection.”\n\n“And these two barrels stay for the seedlings.”\n\n“I wasn't asking you to spend them.”\n\nYara knelt to wipe the water from the rim of the tray. Belen crouched opposite her and lifted one corner so she could reach beneath.\n\n“Thank you,” she said.\n\nShe put the rag between them instead of in Belen's hand.\n",
+            "provenance": "synthetic",
+            "session_identity": null,
+            "source_hash": "ea6477bcf8f0adcaac43509637e45d060b9617251c5eb83d59310ed0ed399f68",
+            "spans": [
+              [
+                0,
+                981
+              ]
+            ],
+            "prose_hash": "ea6477bcf8f0adcaac43509637e45d060b9617251c5eb83d59310ed0ed399f68"
+          }
+        ],
+        "wiki_graph": null,
+        "status": "completed",
+        "family": "F5",
+        "condition": "retrieved_kb",
+        "provenance": "synthetic",
+        "input_provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "candidate": {
+          "harness": "custom",
+          "provider": "fixture",
+          "model": "authored-demonstration-replay"
+        },
+        "source_groups": [],
+        "style": "unspecified",
+        "instruction_specificity": "loose",
+        "genre": "romance"
+      }
+    }
+  ],
+  "openings": [
+    {
+      "case_id": "F1-01",
+      "primary_first_clause": "then tell me which shelf",
+      "response_first_clause": "then tell me which shelf",
+      "primary_first_line": "“Then tell me which shelf.”"
+    },
+    {
+      "case_id": "F1-02",
+      "primary_first_clause": "no answer came from the vault office",
+      "response_first_clause": "no answer came from the vault office",
+      "primary_first_line": "No answer came from the vault office. Suri kept the receiver against her ear until Aven pointed to its dark indicator."
+    },
+    {
+      "case_id": "F1-03",
+      "primary_first_clause": "if i ask the captain",
+      "response_first_clause": "if i ask the captain",
+      "primary_first_line": "“If I ask the captain, what may I tell him?” Oren said."
+    },
+    {
+      "case_id": "F1-04",
+      "primary_first_clause": "to answer would take one press of nessa's thumb",
+      "response_first_clause": "to answer would take one press of nessa's thumb",
+      "primary_first_line": "To answer would take one press of Nessa's thumb."
+    },
+    {
+      "case_id": "F1-05",
+      "primary_first_clause": "halfway through tying the deposition bundle",
+      "response_first_clause": "halfway through tying the deposition bundle",
+      "primary_first_line": "Halfway through tying the deposition bundle, Dara caught her letter in the cord."
+    },
+    {
+      "case_id": "F2-02",
+      "primary_first_clause": "under suri's fingertip",
+      "response_first_clause": "the orchard scene is saved in drafts/scene",
+      "primary_first_line": "Under Suri's fingertip, the crack divided a glass leaf."
+    },
+    {
+      "case_id": "F2-04",
+      "primary_first_clause": "don't use my name on the radio",
+      "response_first_clause": "written to drafts/scene",
+      "primary_first_line": "“Don't use my name on the radio.”"
+    },
+    {
+      "case_id": "F2-05",
+      "primary_first_clause": "dara set her pen across the inkwell before the last word could dry",
+      "response_first_clause": "expanded the first sentence in drafts/scene",
+      "primary_first_line": "Dara set her pen across the inkwell before the last word could dry. She had written copied without an attribution."
+    },
+    {
+      "case_id": "F2-07",
+      "primary_first_clause": "beyond the garden wall lay a road yara had never walked",
+      "response_first_clause": "for this revision",
+      "primary_first_line": "Beyond the garden wall lay a road Yara had never walked. Belen had brought the expedition list into the beds and was trying to flatten it against a dry water barrel."
+    },
+    {
+      "case_id": "F2-10",
+      "primary_first_clause": "two saucers for tasting",
+      "response_first_clause": "i treated the note and the recipe as separate uncertainties",
+      "primary_first_line": "Two saucers for tasting; a third for the anonymous note."
+    },
+    {
+      "case_id": "F3-02",
+      "primary_first_clause": "test the boundary of a report",
+      "response_first_clause": "test the boundary of a report",
+      "primary_first_line": "1. **Test the boundary of a report.** Suri asks Aven to wait outside an empty room while she enters and speaks. His inability to hear high notes makes “I heard nothing” an inadequate result, so they must agree beforehand on what he can reliably report. Stop at the threshold, with the procedure disputed. This puts Suri's willingness to risk herself against Aven's willingness to endorse the test; neither the voices nor the cracked tree is explained."
+    },
+    {
+      "case_id": "F3-05",
+      "primary_first_clause": "a place held open",
+      "response_first_clause": "a place held open",
+      "primary_first_line": "1. **A place held open.** Dara proposes asking the expedition to hold their places until the hearing can resume. Sen wants to finish preparing their equipment instead of making a request that advertises their uncertainty. Their choice is whether to disclose the delay and risk losing the invitation. The seal remains locked away, the expert still has only a drawing, and departure becomes a practical negotiation rather than a solved case."
+    },
+    {
+      "case_id": "F3-07",
+      "primary_first_clause": "for these options",
+      "response_first_clause": "for these options",
+      "primary_first_line": "For these options, I'm assuming you want the pressure to come from Yara's possible departure while the well remains unconfirmed."
+    },
+    {
+      "case_id": "F4-01",
+      "primary_first_clause": "the tidal archive",
+      "response_first_clause": "created kb/index",
+      "primary_first_line": "# The Tidal Archive"
+    },
+    {
+      "case_id": "F4-04",
+      "primary_first_clause": "winter radio",
+      "response_first_clause": "the radio-station wiki starts at kb/index",
+      "primary_first_line": "# Winter Radio"
+    },
+    {
+      "case_id": "F4-09",
+      "primary_first_clause": "the hollow clock",
+      "response_first_clause": "for the wiki’s structure",
+      "primary_first_line": "# The Hollow Clock"
+    },
+    {
+      "case_id": "F5-02",
+      "primary_first_clause": "whoever stood beyond the orchard gate had kept out of the light",
+      "response_first_clause": "the scene stops before the visitor is identified",
+      "primary_first_line": "Whoever stood beyond the orchard gate had kept out of the light."
+    },
+    {
+      "case_id": "F5-03",
+      "primary_first_clause": "one more crossing",
+      "response_first_clause": "saved the ferry scene in drafts/scene",
+      "primary_first_line": "One more crossing, Oren had told himself yesterday. Now Leda was holding out the departure slate for him to change."
+    },
+    {
+      "case_id": "F5-05",
+      "primary_first_clause": "it was from beneath the witness bench that the courthouse spoke",
+      "response_first_clause": "the courthouse scene is in drafts/scene",
+      "primary_first_line": "It was from beneath the witness bench that the courthouse spoke."
+    },
+    {
+      "case_id": "F5-07",
+      "primary_first_clause": "by the time belen asked about the letter",
+      "response_first_clause": "i chose yara’s viewpoint and assumed the reunion should remain undecided",
+      "primary_first_line": "By the time Belen asked about the letter, Yara had watered the same seedling twice."
+    }
+  ]
+}

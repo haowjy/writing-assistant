@@ -1,0 +1,2708 @@
+[
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/038f9812d0faad51ca8a7eed24309622f09284b2c24a708e1e75639daedb7439/attempt-0001-d8bd67b5",
+  "sid": "F3-01",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "romance",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 548,
+  "out_chars": 3626,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 548,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/0cece8369b4f126e95acc0bda8fe5067eb3e49a284793d6dfa1d89b68248ff8c/attempt-0001-1ff4f022",
+  "sid": "F2-06",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "comedy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 444,
+  "out_chars": 2919,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 444,
+  "files": [
+   [
+    "notes/source.md",
+    107
+   ],
+   [
+    "drafts/scene.md",
+    408
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/10f2d5769e8a3aff3a76de51094588c681e1dcd08938c985ea3a266fdec3850d/attempt-0001-8e6f0fdd",
+  "sid": "F4-04",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "thriller",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 309,
+  "out_chars": 2152,
+  "n_turns": 3,
+  "tool_calls": 4,
+  "n_asst": 3,
+  "asst_words": 602,
+  "files": [
+   [
+    "kb/index.md",
+    276
+   ],
+   [
+    "source/chapter.md",
+    114
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/1d3f0e9752e4c5c1af97c4506045292ee293fb279729d4d663b7e7e62d2f8878/attempt-0001-690e2dd9",
+  "sid": "F5-08",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "horror",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 649,
+  "out_chars": 3880,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 649,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/1f2663f4ffe77dfb38e4eff29eb78f92b035ded1e55dc0a74cd622d9f246711a/attempt-0001-da1f22c0",
+  "sid": "F4-08",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 36,
+  "out_chars": 239,
+  "n_turns": 3,
+  "tool_calls": 3,
+  "n_asst": 3,
+  "asst_words": 418,
+  "files": [
+   [
+    "kb/index.md",
+    287
+   ],
+   [
+    "source/chapter.md",
+    109
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/21f668ec24201e724a704e15b63ca4f676c17cbed600ab4f9bde68688f6e95f2/attempt-0001-aacf12ab",
+  "sid": "F1-03",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "fantasy",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 293,
+  "out_chars": 1701,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 293,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/276f73b5bad12865ee1f13310d68d2288367e8d36ce0a9a34d60a37ee8880cef/attempt-0001-23c4de36",
+  "sid": "F2-03",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "romance",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 280,
+  "out_chars": 1751,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 280,
+  "files": [
+   [
+    "notes/source.md",
+    119
+   ],
+   [
+    "drafts/scene.md",
+    10
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/299358e9441933f8fae58c7ddda45b0d0b85bc6510076a623d47dc029edeaaa8/attempt-0001-d7e2d0e0",
+  "sid": "F2-09",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "literary_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 164,
+  "out_chars": 1002,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 164,
+  "files": [
+   [
+    "notes/source.md",
+    102
+   ],
+   [
+    "drafts/scene.md",
+    96
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/36e0d0aa3ba192d65e2ca430138d86683e64ade2b5755bb6f7b0b90594b48ddb/attempt-0001-ba401ae1",
+  "sid": "F2-07",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "adventure",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 253,
+  "out_chars": 1482,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 2,
+  "asst_words": 304,
+  "files": [
+   [
+    "notes/source.md",
+    108
+   ],
+   [
+    "drafts/scene.md",
+    183
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/3acaacb76b6bba2c6447c959dffafcf151e3d788b407a59b867547a038dd2403/attempt-0001-86c9038d",
+  "sid": "F1-01",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "literary_fiction",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 216,
+  "out_chars": 1239,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 216,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/411bc40505729e6de88ca30c49b1d2dd6518263782570a35cb372028f3cf2c2a/attempt-0001-6bc24bcc",
+  "sid": "F3-08",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "mystery",
+  "style": "unspecified",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 800,
+  "out_chars": 5037,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1689,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/45552cd2ff07ff1264636baf751fce6945c58b074c5c44ab12ff3c80b1bd5196/attempt-0001-d404d735",
+  "sid": "F2-02",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "science_fiction",
+  "style": "spare prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 264,
+  "out_chars": 1627,
+  "n_turns": 1,
+  "tool_calls": 1,
+  "n_asst": 1,
+  "asst_words": 264,
+  "files": [
+   [
+    "notes/source.md",
+    111
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/4671610506de1abff09a9a0839de933d2b01ef62ab032ec0be0ce5d6707f1774/attempt-0001-f7119ece",
+  "sid": "F3-09",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "fantasy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 873,
+  "out_chars": 5491,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 873,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/47b2bc598986edbf4a262cffe0fbed277bec46212e0839363e95ede2785739f2/attempt-0001-8c7fd733",
+  "sid": "F1-04",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "science_fiction",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 262,
+  "out_chars": 1648,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 262,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/510e0330e54a7402d7a74f968a2743737e149d5b82106c89880435c1ca159360/attempt-0001-6f42581a",
+  "sid": "F5-07",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "romance",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 418,
+  "out_chars": 2457,
+  "n_turns": 1,
+  "tool_calls": 4,
+  "n_asst": 1,
+  "asst_words": 418,
+  "files": [
+   [
+    "drafts/scene.md",
+    377
+   ],
+   [
+    "kb/index.md",
+    77
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/526177a57190a860fd9aa9210eb5278ef1928e81f5bc3dab68bef443a0cde702/attempt-0001-df9835d7",
+  "sid": "F2-01",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "fantasy",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 216,
+  "out_chars": 1371,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 216,
+  "files": [
+   [
+    "notes/source.md",
+    108
+   ],
+   [
+    "drafts/scene.md",
+    9
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/53345f7454573083400ea5a52c1f1741b49776af3e20c69b43fd23209c3fbc49/attempt-0001-b35b87f2",
+  "sid": "F3-02",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "horror",
+  "style": "spare prose",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 661,
+  "out_chars": 4356,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1179,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/53ad844f55a66be56636e5474ecee4f004457024a2beec6e3bd347a475a9639e/attempt-0001-c00198c6",
+  "sid": "F1-07",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "historical_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 421,
+  "out_chars": 2486,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 421,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/562592f7ff0981a0391a015aeca227b3cf37c82878e9e1e75a7aadbb1e4d388a/attempt-0001-cb39da41",
+  "sid": "F4-02",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "comedy",
+  "style": "spare prose",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "error",
+  "error": "ValueError: json: could not parse after dialect transforms.\nOriginal: '{content:<|\"|># Continuity Wiki: Chapter Planning\\n\\nThis wiki summarizes consequential facts, character knowledge, and uncertainties derived from the source material to aid in planning future chapters.\\n\\n**Source:** `source/cha",
+  "out_words": 0,
+  "out_chars": 0,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 494,
+  "files": [
+   [
+    "kb/index.md",
+    265
+   ],
+   [
+    "kb/characters/Suri_Aven_Dynamic.md",
+    162
+   ],
+   [
+    "source/chapter.md",
+    110
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/6629cbdad6c838226e83833866df27a3601bc82f7308bad51c890413ab18dd40/attempt-0001-b0101dd6",
+  "sid": "F2-05",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "historical_fiction",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 207,
+  "out_chars": 1391,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 207,
+  "files": [
+   [
+    "notes/source.md",
+    100
+   ],
+   [
+    "drafts/scene.md",
+    10
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/6669ed1afa7c19d0eab76a0d7af2760a76878168c76711157d7a2012f46d34e3/attempt-0001-e544a01e",
+  "sid": "F5-01",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "adventure",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 316,
+  "out_chars": 1882,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 316,
+  "files": [
+   [
+    "drafts/scene.md",
+    275
+   ],
+   [
+    "kb/index.md",
+    81
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/786bccc012c0e026de7f5962e8337f26a93717c248808075e8061827fafbfc93/attempt-0001-bc1ce530",
+  "sid": "F4-07",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "fantasy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 63,
+  "out_chars": 389,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 63,
+  "files": [
+   [
+    "kb/index.md",
+    389
+   ],
+   [
+    "source/chapter.md",
+    104
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/7b078e1c967cdd2bbb2eb0c58f4188b113f7247a3c1458a787b8d67643db16ab/attempt-0001-57912fa3",
+  "sid": "F2-04",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "horror",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 9,
+  "out_chars": 58,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 2,
+  "asst_words": 19,
+  "files": [
+   [
+    "notes/source.md",
+    120
+   ],
+   [
+    "drafts/scene.md",
+    281
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/81778ae6d06c18e887f0857eb9efb108603ecb085d4bd6b24fd27c78e3cef7c5/attempt-0001-046a02cd",
+  "sid": "F5-10",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "comedy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 563,
+  "out_chars": 3639,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 563,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/832c57dd9632ff51c86583c3c3bfd4d0d46605b7123ff6f6f494a71ec65f94f9/attempt-0001-3ee1d107",
+  "sid": "F3-04",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "comedy",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 610,
+  "out_chars": 4183,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1133,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/8aa0496af31b7f453b2eb9d5c78749e524f538fa151aa6d4ac40e518b9b92a45/attempt-0001-ce84d848",
+  "sid": "F5-06",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 368,
+  "out_chars": 2367,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 368,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/8acdcdd7552cc6dd724ab688db812f156c3fd6145e51868ac5e004ece82e411c/attempt-0001-ad2634f1",
+  "sid": "F3-03",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "historical_fiction",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 450,
+  "out_chars": 3103,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 450,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/8c39d31ff20e610364ca9b6073a7e1add23b78339b4452bab480acdd53f082fa/attempt-0001-78cf46b3",
+  "sid": "F1-09",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "adventure",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 568,
+  "out_chars": 3520,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 568,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/9b8392ba37eec70488f53cac15220c768588b412e360c13d090137de04d941fc/attempt-0001-551b8966",
+  "sid": "F1-08",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "comedy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 553,
+  "out_chars": 3537,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 553,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/a3816194afb81e3e5d9d1d4031322e9b27a24d4f80d5e848e0f863b49f076967/attempt-0001-6cff23ff",
+  "sid": "F4-06",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "mystery",
+  "style": "unspecified",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 71,
+  "out_chars": 449,
+  "n_turns": 3,
+  "tool_calls": 4,
+  "n_asst": 3,
+  "asst_words": 455,
+  "files": [
+   [
+    "drafts/chapter_suggestions.md",
+    38
+   ],
+   [
+    "kb/index.md",
+    251
+   ],
+   [
+    "source/chapter.md",
+    104
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/a65e2d76f5ed41be7df38fcbd8b93c69f1ee73b540a8314b11f6e2950fb08016/attempt-0001-7ac74c94",
+  "sid": "F3-06",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "thriller",
+  "style": "unspecified",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 843,
+  "out_chars": 5440,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1720,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/aa36ec8263c09623d21e10c91b57931fc8134229a8a70f78e9dcc4337a8fecd9/attempt-0001-b44eb007",
+  "sid": "F5-04",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "mystery",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 273,
+  "out_chars": 1622,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 273,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/b3d24778065c07409b357a73ad8b413c8b283cc4527167c8569c0f458c19fc14/attempt-0001-3d5f3354",
+  "sid": "F3-10",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 817,
+  "out_chars": 5371,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1657,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/b49984c2607394c14ef13f5e74e95b0739f6cdf7e1f13af4b47b9ea7d5ddb8e5/attempt-0001-cb498270",
+  "sid": "F1-02",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "mystery",
+  "style": "spare prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 266,
+  "out_chars": 1566,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 266,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/bc6d17897a9e9b9ee3be244fbfd3d12f1efd982acb880839ebd6391da7226b5e/attempt-0001-13725f66",
+  "sid": "F4-05",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "literary_fiction",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 371,
+  "out_chars": 2656,
+  "n_turns": 1,
+  "tool_calls": 4,
+  "n_asst": 1,
+  "asst_words": 371,
+  "files": [
+   [
+    "kb/Courtroom Procedures.md",
+    80
+   ],
+   [
+    "kb/index.md",
+    161
+   ],
+   [
+    "kb/Character Dynamics.md",
+    96
+   ],
+   [
+    "source/chapter.md",
+    101
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/c6f9332faffaf08af708176d455b0560e5feb7134ff60fe133afd298f86500fa/attempt-0001-eb5e9ca3",
+  "sid": "F4-03",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "adventure",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 512,
+  "out_chars": 3865,
+  "n_turns": 1,
+  "tool_calls": 6,
+  "n_asst": 1,
+  "asst_words": 512,
+  "files": [
+   [
+    "kb/index.md",
+    244
+   ],
+   [
+    "kb/setting/route_update.md",
+    49
+   ],
+   [
+    "kb/plot_points/unresolved_motive.md",
+    59
+   ],
+   [
+    "kb/characters/leda.md",
+    45
+   ],
+   [
+    "kb/characters/oren.md",
+    59
+   ],
+   [
+    "source/chapter.md",
+    120
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/c85423d65ddca94dbbd1bc75b79616183471205713237f54ab4c51e644436c07/attempt-0001-17fbf5f3",
+  "sid": "F5-03",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "literary_fiction",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 4,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 245,
+  "out_chars": 1485,
+  "n_turns": 1,
+  "tool_calls": 1,
+  "n_asst": 1,
+  "asst_words": 245,
+  "files": [
+   [
+    "kb/canon.md",
+    16
+   ],
+   [
+    "kb/index.md",
+    8
+   ],
+   [
+    "kb/interpretations.md",
+    12
+   ],
+   [
+    "kb/story-context.md",
+    37
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/c9cbacfc863b1484727b4b0aa9689f40e7f28f9e8a70563a0ef90d20d2eab4de/attempt-0001-e0d04b1c",
+  "sid": "F5-02",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "thriller",
+  "style": "spare prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 271,
+  "out_chars": 1642,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 271,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/ca15b2bf4d13c43f1177a0e7d685d91ec2536a2babe0075a1e56e91de5f8776a/attempt-0001-979e5da6",
+  "sid": "F3-07",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "literary_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 901,
+  "out_chars": 5770,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 901,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/ccee408f4cd20a8d07ae16c69fdc373eb9a13107e101da60238a52ec557642b9/attempt-0001-4e8d300f",
+  "sid": "F4-01",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "historical_fiction",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 495,
+  "out_chars": 3608,
+  "n_turns": 1,
+  "tool_calls": 5,
+  "n_asst": 1,
+  "asst_words": 495,
+  "files": [
+   [
+    "kb/index.md",
+    233
+   ],
+   [
+    "kb/plot_points/the_ledger.md",
+    85
+   ],
+   [
+    "kb/characters/mara.md",
+    64
+   ],
+   [
+    "kb/characters/ilan.md",
+    63
+   ],
+   [
+    "source/chapter.md",
+    103
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/cf0f60d8f0967ae0250d80a838245fcff1afe86c560198a81a08212ee6fc38e0/attempt-0001-e39e415f",
+  "sid": "F5-05",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "fantasy",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 4,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 268,
+  "out_chars": 1738,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 268,
+  "files": [
+   [
+    "drafts/scene.md",
+    257
+   ],
+   [
+    "kb/canon.md",
+    20
+   ],
+   [
+    "kb/index.md",
+    8
+   ],
+   [
+    "kb/interpretations.md",
+    12
+   ],
+   [
+    "kb/story-context.md",
+    41
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/d0231e832abb42577ff2572e0ba0243349e23cc09ff67ae09e0bb4821a5cd03a/attempt-0001-11489c19",
+  "sid": "F4-10",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "horror",
+  "style": "unspecified",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 65,
+  "out_chars": 399,
+  "n_turns": 3,
+  "tool_calls": 4,
+  "n_asst": 3,
+  "asst_words": 716,
+  "files": [
+   [
+    "kb/index.md",
+    271
+   ],
+   [
+    "source/chapter.md",
+    115
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/e0e5189a5da15251b6ad0098ccf3ee0f5e831bb32a82de71ab580de72c764efb/attempt-0001-83846956",
+  "sid": "F2-08",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "thriller",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 487,
+  "out_chars": 2921,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 487,
+  "files": [
+   [
+    "notes/source.md",
+    106
+   ],
+   [
+    "drafts/scene.md",
+    440
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/e333fcafc3f4262446931ddbf0b0cb3baa5ccbe376798b43f64b4f3c52d7226d/attempt-0001-b17b17f9",
+  "sid": "F1-06",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "horror",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 589,
+  "out_chars": 3526,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 589,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/eb3577d47a3e46c13823dfb25f09e090fb48a8f7fab2334ee273f60dcff2ab13/attempt-0001-d070f4b0",
+  "sid": "F1-05",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "romance",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 230,
+  "out_chars": 1437,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 230,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/fa6f5edca111047255c8530bf7bb3eda19259a50784e8dccbdf9be0b918c4ff5/attempt-0001-8b90fd66",
+  "sid": "F3-05",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "adventure",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 505,
+  "out_chars": 3398,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 505,
+  "files": []
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/fbbfc2bab02a393c0d0e8514299af6de6868093424518f8062a20ec16543c89b/attempt-0001-42343f7b",
+  "sid": "F5-09",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "historical_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 4,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 18,
+  "out_chars": 106,
+  "n_turns": 1,
+  "tool_calls": 6,
+  "n_asst": 2,
+  "asst_words": 46,
+  "files": [
+   [
+    "drafts/scene.md",
+    387
+   ],
+   [
+    "kb/canon.md",
+    22
+   ],
+   [
+    "kb/index.md",
+    8
+   ],
+   [
+    "kb/interpretations.md",
+    12
+   ],
+   [
+    "kb/story-context.md",
+    36
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/fbcd3ff9e2717ee93a5f32e0c5db0a8e39d83ebaa3813d0e758b3e6331b8ca5b/attempt-0001-f0352270",
+  "sid": "F2-10",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "mystery",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 370,
+  "out_chars": 2233,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 370,
+  "files": [
+   [
+    "notes/source.md",
+    108
+   ],
+   [
+    "drafts/scene.md",
+    334
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/fbd32301bc587ab5560830efd0788dc88df0d8da975f8cb70190ff07774e13c6/attempt-0001-e4dc0283",
+  "sid": "F4-09",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "romance",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 45,
+  "out_chars": 349,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 45,
+  "files": [
+   [
+    "kb/index.md",
+    366
+   ],
+   [
+    "source/chapter.md",
+    109
+   ]
+  ]
+ },
+ {
+  "arm": "nf4",
+  "dir": "runs/custom50-e2b-it-2026-09-14/attempts/fcc35e086851a53c1cf4ceb06296194a2b9b3b6f03e55ebc49db6a9f2aefdbcb/attempt-0001-bfa71904",
+  "sid": "F1-10",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "thriller",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 559,
+  "out_chars": 3411,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 559,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/0b76a3f7c524b1fc2ae9108bb6f9253dfdaf6a8f1d1bbe2867a2ea7f938aae69/attempt-0001-f65c2fba",
+  "sid": "F1-06",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "horror",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 443,
+  "out_chars": 2676,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 443,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/0e5d70bb72f8e8da1f3d96dbce95b27bc9b30c4670da8e6a3b49d6c718d90736/attempt-0001-b26d831e",
+  "sid": "F2-01",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "fantasy",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 172,
+  "out_chars": 1068,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 172,
+  "files": [
+   [
+    "notes/source.md",
+    108
+   ],
+   [
+    "drafts/scene.md",
+    9
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/115d6d397411597b665867d7a739b0709c2642a599d3bb14247e47d9c258af4c/attempt-0001-91d99b1c",
+  "sid": "F5-03",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "literary_fiction",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 4,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 9,
+  "out_chars": 58,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 9,
+  "files": [
+   [
+    "drafts/scene.md",
+    227
+   ],
+   [
+    "kb/canon.md",
+    16
+   ],
+   [
+    "kb/index.md",
+    8
+   ],
+   [
+    "kb/interpretations.md",
+    12
+   ],
+   [
+    "kb/story-context.md",
+    37
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/1515e3f3d8af66138b52844ae0a6a4f3398bc2a5d50cf73050057ad5a7274d0d/attempt-0001-b56398c8",
+  "sid": "F4-04",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "thriller",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 109,
+  "out_chars": 786,
+  "n_turns": 3,
+  "tool_calls": 9,
+  "n_asst": 3,
+  "asst_words": 255,
+  "files": [
+   [
+    "kb/index.md",
+    42
+   ],
+   [
+    "kb/plot_points.md",
+    79
+   ],
+   [
+    "kb/characters.md",
+    93
+   ],
+   [
+    "kb/uncertainties.md",
+    64
+   ],
+   [
+    "source/chapter.md",
+    114
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/1fe183da0e03f072cc151acf961e96b4441baf1db4d5048ec5e62ce913d9ecc0/attempt-0001-52a71bfd",
+  "sid": "F3-04",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "comedy",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 492,
+  "out_chars": 3498,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 927,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/2e13114826830106d02803f531e941d11aa714f379b64baa1f437e8333c97629/attempt-0001-e3b22a23",
+  "sid": "F2-10",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "mystery",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 15,
+  "out_chars": 98,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 15,
+  "files": [
+   [
+    "notes/source.md",
+    108
+   ],
+   [
+    "drafts/scene.md",
+    271
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/41c133398a3271ce4955a2c5d9e041cf16891101a35e675ee13d6b03deddfa3b/attempt-0001-a440bf38",
+  "sid": "F3-07",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "literary_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 691,
+  "out_chars": 4373,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 691,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/43fcba7e133880a280abe09798a40c169513ce6ac40d36f6ce0e7895fd5696c1/attempt-0001-d89b20a6",
+  "sid": "F4-09",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "romance",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 56,
+  "out_chars": 381,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 56,
+  "files": [
+   [
+    "kb/index.md",
+    279
+   ],
+   [
+    "source/chapter.md",
+    109
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/462c112754d1cf7b5d6b46a87854fc9296f170b3d9d4eb652439a946240d4e11/attempt-0001-85dcd780",
+  "sid": "F5-02",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "thriller",
+  "style": "spare prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 233,
+  "out_chars": 1493,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 233,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/4dde2e894d70cc64ee1f4b57e48a7bee60ea69fdebdbe4bdadea76df52562544/attempt-0001-6d779170",
+  "sid": "F3-01",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "romance",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 379,
+  "out_chars": 2474,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 379,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/50e26e610bfe6fd95a2ccc39c2da82e9925ae1e72674349d2a8c768116f828e4/attempt-0001-b920a8f6",
+  "sid": "F2-07",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "adventure",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 158,
+  "out_chars": 976,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 158,
+  "files": [
+   [
+    "notes/source.md",
+    108
+   ],
+   [
+    "drafts/scene.md",
+    122
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/5ee33b6bff4c40468ca7772bb2945fcb1a7b20ec8a5169ada8ef52c6df450887/attempt-0001-cfce6a26",
+  "sid": "F1-02",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "mystery",
+  "style": "spare prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 202,
+  "out_chars": 1212,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 202,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/5efa45c774a7ce2e2ee9d83246f150f4158f88f1f11eb709d12f151402b12a31/attempt-0001-452e6e7f",
+  "sid": "F2-06",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "comedy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 23,
+  "out_chars": 139,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 23,
+  "files": [
+   [
+    "notes/source.md",
+    107
+   ],
+   [
+    "drafts/scene.md",
+    364
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/5fc0b96a6445ffd7d8fe43f4772813888855edde15579c718b0ea4c6c199dbdf/attempt-0001-8ee9409e",
+  "sid": "F5-09",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "historical_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 4,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 15,
+  "out_chars": 102,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 15,
+  "files": [
+   [
+    "drafts/scene.md",
+    177
+   ],
+   [
+    "kb/canon.md",
+    22
+   ],
+   [
+    "kb/index.md",
+    8
+   ],
+   [
+    "kb/interpretations.md",
+    12
+   ],
+   [
+    "kb/story-context.md",
+    36
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/60b1597f550d50e4c08ea0948d4c9a80d65b5d0b9b8e9e81d8235777128074d1/attempt-0001-73bd4512",
+  "sid": "F3-06",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "thriller",
+  "style": "unspecified",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 632,
+  "out_chars": 4121,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1342,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/753919b4b6ab91049ec82da8d9c36316c6cbfd3e0d09bd8a2d287cf4daa7ad55/attempt-0001-2dcd8edc",
+  "sid": "F1-08",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "comedy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 555,
+  "out_chars": 3622,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 555,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/79b6c41a31e87d106b3af7f5ffb3500451e2acee66f0c2c35910b18570770794/attempt-0001-8148a0aa",
+  "sid": "F1-07",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "historical_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 397,
+  "out_chars": 2430,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 397,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/871a2b10bfd66d7292e1c7460ea52f19773e984aeabfdfbdaa99786d18b11b25/attempt-0001-3f1ae671",
+  "sid": "F5-04",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "mystery",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 183,
+  "out_chars": 1139,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 183,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/89357125e8477e8406b0931676f1df69b2c6d5b4bb3a0ee74740edcc484a8cdd/attempt-0001-41e4417a",
+  "sid": "F1-09",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "adventure",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 482,
+  "out_chars": 2888,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 482,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/8957925ae598a01c79e4b57701af843aceef963962cbec5e052e131a923f0eb5/attempt-0001-4940b602",
+  "sid": "F1-03",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "fantasy",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 226,
+  "out_chars": 1342,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 226,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/8ea36f9d742a1ae5901da13255fa07eab08b1b139b1032452539c5cf6bbca39e/attempt-0001-0bae5052",
+  "sid": "F3-09",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "fantasy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 908,
+  "out_chars": 5529,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 908,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/9160e58d0413245b528428392d8dfa4247312f8bfcc7e958bfec609ac65862b6/attempt-0001-0dcf5209",
+  "sid": "F1-10",
+  "spec": "loose",
+  "family": "F1",
+  "genre": "thriller",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 532,
+  "out_chars": 3271,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 532,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/92e014127393f945dc3a03f4c0991b945be4bfaad62e899457f7e08d4f9cd3ee/attempt-0001-a6d3cd83",
+  "sid": "F4-03",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "adventure",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 283,
+  "out_chars": 1887,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 283,
+  "files": [
+   [
+    "kb/Character: Leda.md",
+    87
+   ],
+   [
+    "kb/index.md",
+    169
+   ],
+   [
+    "source/chapter.md",
+    120
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/980a955386ecb81b180e264cef70c27e603d4c0cb8e15c9540bec054a1ed04ad/attempt-0001-d41f047e",
+  "sid": "F3-10",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 617,
+  "out_chars": 3902,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1308,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/9911de1bbd006cf4fc49fc8b7eb44bbab7eee8448e2969d9841bf4df8dde036c/attempt-0001-80cbd1c4",
+  "sid": "F2-08",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "thriller",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 6,
+  "out_chars": 45,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 6,
+  "files": [
+   [
+    "notes/source.md",
+    106
+   ],
+   [
+    "drafts/scene.md",
+    370
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/9e4b085a7115abba790320b87d0ab47f56f60791fc55d4709165bf9b7c19fe3a/attempt-0001-54c748ea",
+  "sid": "F4-05",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "literary_fiction",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 302,
+  "out_chars": 2106,
+  "n_turns": 1,
+  "tool_calls": 4,
+  "n_asst": 1,
+  "asst_words": 302,
+  "files": [
+   [
+    "kb/index.md",
+    36
+   ],
+   [
+    "kb/dara_sen_tension.md",
+    106
+   ],
+   [
+    "kb/seal_mystery.md",
+    103
+   ],
+   [
+    "source/chapter.md",
+    101
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/a1d001780e1b695058bb6b497071cb419e5e485b41db91ef5a05e2233ba3ae40/attempt-0001-ca78889e",
+  "sid": "F4-08",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 77,
+  "out_chars": 486,
+  "n_turns": 3,
+  "tool_calls": 5,
+  "n_asst": 3,
+  "asst_words": 216,
+  "files": [
+   [
+    "kb/index.md",
+    182
+   ],
+   [
+    "source/chapter.md",
+    109
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/a97cbaa17818805dfc2fc7828523162c147dfac37dd3571ec206c0256b2e79b0/attempt-0001-e8b0936a",
+  "sid": "F1-04",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "science_fiction",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 237,
+  "out_chars": 1411,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 237,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/ab267ee323e414b1bb5cd88d0b73afb361344d1296dc92e76160d66cc1603e86/attempt-0001-1037356e",
+  "sid": "F3-05",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "adventure",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 381,
+  "out_chars": 2665,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 381,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/b16f613c3b4a0442750dde90d5d0cb87850f70c7b343526da6b27df093f919a3/attempt-0001-a6f9c246",
+  "sid": "F4-07",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "fantasy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 243,
+  "out_chars": 1575,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 243,
+  "files": [
+   [
+    "kb/index.md",
+    158
+   ],
+   [
+    "source/chapter.md",
+    104
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/b33e3b74429359e5c69e1b779d1e1bd7aa3d502479428f24c827c08cf552eb5b/attempt-0001-62093c42",
+  "sid": "F2-02",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "science_fiction",
+  "style": "spare prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 5,
+  "out_chars": 39,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 5,
+  "files": [
+   [
+    "notes/source.md",
+    111
+   ],
+   [
+    "drafts/scene.md",
+    195
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/bcf987068682bbd61f777af9a0548b56fd866176f6b041c8f0345056893b1b91/attempt-0001-2cd9e1b6",
+  "sid": "F3-02",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "horror",
+  "style": "spare prose",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 422,
+  "out_chars": 2820,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 825,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/c24b76879b92432db119be9d04ed184e80411751870a91d50ac6b25e374799ca/attempt-0001-e872d830",
+  "sid": "F4-02",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "comedy",
+  "style": "spare prose",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 128,
+  "out_chars": 920,
+  "n_turns": 3,
+  "tool_calls": 5,
+  "n_asst": 3,
+  "asst_words": 429,
+  "files": [
+   [
+    "kb/aven.md",
+    96
+   ],
+   [
+    "kb/index.md",
+    67
+   ],
+   [
+    "kb/draft_aven_intent.md",
+    65
+   ],
+   [
+    "source/chapter.md",
+    110
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/c372d00f6bed8f4312183b2630bd6fffcf377da64d604a0cf61d59867462819d/attempt-0001-7e6ece62",
+  "sid": "F2-09",
+  "spec": "loose",
+  "family": "F2",
+  "genre": "literary_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 124,
+  "out_chars": 751,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 124,
+  "files": [
+   [
+    "notes/source.md",
+    102
+   ],
+   [
+    "drafts/scene.md",
+    90
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/c8cbbc4e00755ff94ec1312faa5ab1b904dd4a96275e9b3cc01ac43937e17924/attempt-0001-f9abb795",
+  "sid": "F5-08",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "horror",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 447,
+  "out_chars": 2805,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 447,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/ca856642123fc557da3f4c6a083b6e599b8687debbc8aaff1feb62437b42f5b8/attempt-0001-1dff02ce",
+  "sid": "F2-04",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "horror",
+  "style": "dialogue-led prose with understated tension",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 6,
+  "out_chars": 45,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 6,
+  "files": [
+   [
+    "notes/source.md",
+    120
+   ],
+   [
+    "drafts/scene.md",
+    237
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/ced8be6c7a092694676d2103809b1272b66cf74cba50c1c6e312f4b689bb8066/attempt-0001-3b95a128",
+  "sid": "F4-10",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "horror",
+  "style": "unspecified",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 45,
+  "out_chars": 258,
+  "n_turns": 3,
+  "tool_calls": 5,
+  "n_asst": 3,
+  "asst_words": 136,
+  "files": [
+   [
+    "kb/index.md",
+    210
+   ],
+   [
+    "source/chapter.md",
+    115
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/d044534df29ede9c9bb2c646ff46e6469eec9bcc4718c50779cf544c9019a1af/attempt-0001-d6d18c0a",
+  "sid": "F3-03",
+  "spec": "explicit",
+  "family": "F3",
+  "genre": "historical_fiction",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 419,
+  "out_chars": 2886,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 419,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/d51648153b98eb0a013d2240a577a5793a103bf5c89d53ddcc0ff0c7e7b16c89/attempt-0001-1a9dabe5",
+  "sid": "F5-01",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "adventure",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 9,
+  "out_chars": 58,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 9,
+  "files": [
+   [
+    "drafts/scene.md",
+    240
+   ],
+   [
+    "kb/index.md",
+    81
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/d682c2c7d508c99f43021e3e10b8642acdd9535583725bbd1475d9e45f240f61/attempt-0001-e7ac6bb2",
+  "sid": "F4-06",
+  "spec": "loose",
+  "family": "F4",
+  "genre": "mystery",
+  "style": "unspecified",
+  "n_fu": 2,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 141,
+  "out_chars": 968,
+  "n_turns": 3,
+  "tool_calls": 9,
+  "n_asst": 3,
+  "asst_words": 641,
+  "files": [
+   [
+    "kb/locations.md",
+    78
+   ],
+   [
+    "kb/clues.md",
+    67
+   ],
+   [
+    "kb/index.md",
+    95
+   ],
+   [
+    "kb/characters.md",
+    67
+   ],
+   [
+    "source/chapter.md",
+    104
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/d7b5a3785a785b53a2f4d9a88582a2b8ac1b309f7095f00133312fc9c88a2afa/attempt-0001-5ea38cb6",
+  "sid": "F2-03",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "romance",
+  "style": "measured pacing with sustained tension",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 8,
+  "out_chars": 61,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 8,
+  "files": [
+   [
+    "notes/source.md",
+    119
+   ],
+   [
+    "drafts/scene.md",
+    239
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/ddd5d64f16d630b03d52e9ebc8c6f66d20f947ab850b12cb214bdf27198b4f00/attempt-0001-eb387980",
+  "sid": "F5-07",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "romance",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 15,
+  "out_chars": 94,
+  "n_turns": 1,
+  "tool_calls": 4,
+  "n_asst": 1,
+  "asst_words": 15,
+  "files": [
+   [
+    "drafts/scene.md",
+    309
+   ],
+   [
+    "kb/index.md",
+    77
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/e41f6d25880e3419ec4c2bded15d4f0f832b33d3617564233f27b053f3c78131/attempt-0001-ffb6abd6",
+  "sid": "F5-06",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 425,
+  "out_chars": 2753,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 425,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/e85a46c2725a92943d62cca765356c8ce6543306465bac3f42b765a8cc39b2bf/attempt-0001-7ce8d5df",
+  "sid": "F2-05",
+  "spec": "explicit",
+  "family": "F2",
+  "genre": "historical_fiction",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 2,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 198,
+  "out_chars": 1250,
+  "n_turns": 1,
+  "tool_calls": 2,
+  "n_asst": 1,
+  "asst_words": 198,
+  "files": [
+   [
+    "notes/source.md",
+    100
+   ],
+   [
+    "drafts/scene.md",
+    10
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/e9144fe67983c6bb22cb86f7a8daf087179c07af1e8d038fd8901853dd502b09/attempt-0001-d29dac3c",
+  "sid": "F5-10",
+  "spec": "loose",
+  "family": "F5",
+  "genre": "comedy",
+  "style": "unspecified",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 441,
+  "out_chars": 2827,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 441,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/ec439c2346cc87ea2d1cf46cfe144180ea13c9c2d61bc00c9e7afb34703f8f1e/attempt-0001-f1c78044",
+  "sid": "F3-08",
+  "spec": "loose",
+  "family": "F3",
+  "genre": "mystery",
+  "style": "unspecified",
+  "n_fu": 1,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 625,
+  "out_chars": 3931,
+  "n_turns": 2,
+  "tool_calls": 0,
+  "n_asst": 2,
+  "asst_words": 1351,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/ec46e0bbef38ba9380527179c4f37323ca12e5eb425bececcb9d61cd8edb1f6c/attempt-0001-4f378525",
+  "sid": "F5-05",
+  "spec": "explicit",
+  "family": "F5",
+  "genre": "fantasy",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 4,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 236,
+  "out_chars": 1477,
+  "n_turns": 1,
+  "tool_calls": 4,
+  "n_asst": 1,
+  "asst_words": 236,
+  "files": [
+   [
+    "drafts/scene.md",
+    224
+   ],
+   [
+    "kb/canon.md",
+    20
+   ],
+   [
+    "kb/index.md",
+    8
+   ],
+   [
+    "kb/interpretations.md",
+    12
+   ],
+   [
+    "kb/story-context.md",
+    41
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/f577561e200bd6193bc1f96a4bcb8a4b6915c60507531d82c93791fa59135b2d/attempt-0001-3a5774d8",
+  "sid": "F1-05",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "romance",
+  "style": "formal, precise prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 183,
+  "out_chars": 1160,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 183,
+  "files": []
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/fb2ed77da85096c6f786b0b27a1510d5e2c8e61a64f05181e1fa17bd07cda0cb/attempt-0001-bbc8c122",
+  "sid": "F4-01",
+  "spec": "explicit",
+  "family": "F4",
+  "genre": "historical_fiction",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 1,
+  "has_tools": true,
+  "status": "completed",
+  "error": "",
+  "out_words": 169,
+  "out_chars": 1185,
+  "n_turns": 1,
+  "tool_calls": 3,
+  "n_asst": 1,
+  "asst_words": 169,
+  "files": [
+   [
+    "kb/The Ledger.md",
+    93
+   ],
+   [
+    "kb/index.md",
+    30
+   ],
+   [
+    "source/chapter.md",
+    103
+   ]
+  ]
+ },
+ {
+  "arm": "bf16",
+  "dir": "runs/custom50-e2b-it-2026-09-21-bf16/attempts/fd0de1d9871333e1ff52c40bf200312fbf576cd3076b8d0f0bf52d7898efedf0/attempt-0001-b7ca89a7",
+  "sid": "F1-01",
+  "spec": "explicit",
+  "family": "F1",
+  "genre": "literary_fiction",
+  "style": "restrained, concrete prose",
+  "n_fu": 0,
+  "n_files": 0,
+  "has_tools": false,
+  "status": "completed",
+  "error": "",
+  "out_words": 175,
+  "out_chars": 1057,
+  "n_turns": 1,
+  "tool_calls": 0,
+  "n_asst": 1,
+  "asst_words": 175,
+  "files": []
+ }
+]

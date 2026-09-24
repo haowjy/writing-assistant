@@ -1,0 +1,1221 @@
+{
+  "schema_version": 1,
+  "scripts": [
+    {
+      "id": "SS-A01",
+      "group": "silent_assumption",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The correction is unambiguous, so a default is fine; the point is that the silent assumption gets surfaced and corrected rather than carried forward.",
+      "steers": [
+        {
+          "text": "They're not strangers. They've known each other for years.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Keep the rest of it as-is - just fix how they know each other.",
+          "kind": "APPROVE"
+        }
+      ],
+      "tests": "Model silently assumed {protagonist} and {other} meet for the first time; steer forces it to revise the relationship without asking what it should be."
+    },
+    {
+      "id": "SS-A02",
+      "group": "silent_assumption",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "Whether the relationship is romantic is a real fork the model should not have taken unilaterally, so a good collaborator surfaces the choice.",
+      "steers": [
+        {
+          "text": "Wait - you wrote them as lovers. Did I say that?",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Leave it ambiguous for now, but ask me before you commit to anything.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ],
+      "tests": "Model silently assumed a romance. Script checks that the agent stops, names the assumption, and treats the unresolved status as a decision to ask about."
+    },
+    {
+      "id": "SS-A03",
+      "group": "silent_assumption",
+      "depth_band": "2-3",
+      "n_steers": 3,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "The requested fix is concrete; asking which character should find the object would be hedging rather than collaborating.",
+      "steers": [
+        {
+          "text": "I never said {protagonist} was the one who found {object} - that came from nowhere. Fix that.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Rewrite the paragraph so {other} finds it.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Good.",
+          "kind": "APPROVE"
+        }
+      ],
+      "tests": "Model silently assigned an action to the wrong character. A clear correction should be executed, not questioned."
+    },
+    {
+      "id": "SS-A04",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "'Darker' has no single reading; the right move is to ask what kind of darker, not to pick a default and run.",
+      "steers": [
+        {
+          "text": "Make it darker.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "I mean less comfort and more dread - not gore or shock, just quieter menace.",
+          "kind": "CLARIFY_ANSWER"
+        }
+      ]
+    },
+    {
+      "id": "SS-A05",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The skip is explicit and the assumption is stated in the steer itself, so the agent may proceed on that stated assumption.",
+      "steers": [
+        {
+          "text": "Cut to the morning after, and assume the night passed quietly - no need to show it.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Actually keep {place} in view the whole time.",
+          "kind": "CHANGE_DIRECTION"
+        }
+      ]
+    },
+    {
+      "id": "SS-A06",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "The instruction is complete and narrow; asking for elaboration would be a failure of nerve.",
+      "steers": [
+        {
+          "text": "End it on {object} on the table. Nothing after that, no reaction.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "And don't explain why.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ]
+    },
+    {
+      "id": "SS-A07",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 3,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "'More likeable' could mean sympathetic, competent, or harmless; the agent should ask which sense the writer wants before rewriting.",
+      "steers": [
+        {
+          "text": "Can you make {other} more likeable?",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "I mean the reader should root for them, not that they should be nice about it.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Yes, that.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-A08",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 3,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The writer has given a clear direction and reason; the agent can proceed on the stated reading while staying inside the character's established harshness.",
+      "steers": [
+        {
+          "text": "No. That's not {protagonist} at all.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "You keep smoothing them into someone reasonable. Stop.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Try again. Don't make them apologise.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ],
+      "escalates_conflict": true
+    },
+    {
+      "id": "SS-A09",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "Dropping and re-adding material are both explicit; there is nothing to clarify.",
+      "steers": [
+        {
+          "text": "Forget the second half. Drop it.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Put {place} back in though.",
+          "kind": "CHANGE_DIRECTION"
+        }
+      ]
+    },
+    {
+      "id": "SS-A10",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The aside is self-contained and the return is explicit, so the agent can answer briefly and resume without asking.",
+      "steers": [
+        {
+          "text": "Different question - what's {protagonist}'s surname again?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Right. Now keep going from the doorway.",
+          "kind": "CHANGE_DIRECTION"
+        }
+      ]
+    },
+    {
+      "id": "SS-A11",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "A new fact plus its consequence is stated plainly; the agent should apply it.",
+      "steers": [
+        {
+          "text": "New fact: {other} can't read.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "So the note has to be read aloud - by {protagonist}.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ]
+    },
+    {
+      "id": "SS-A12",
+      "group": "standard",
+      "depth_band": "2-3",
+      "n_steers": 2,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The preference and the salvage instruction are clear enough to act on without an interrogative detour.",
+      "steers": [
+        {
+          "text": "I liked the first version better.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Go back to the first version, but keep the new ending - I liked that part.",
+          "kind": "REQUEST_REVISION"
+        }
+      ]
+    },
+    {
+      "id": "SS-B01",
+      "group": "silent_assumption",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "Whether a narrator is unreliable is a global craft decision the writer never authorized; after fixing it, the agent should ask before reaching for that device.",
+      "steers": [
+        {
+          "text": "Hold on. Why is {protagonist} lying to the reader now? I didn't ask for that.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Take it out. They can be wrong, not deceptive.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "That's better.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Now push the scene toward the confrontation, but keep it understated.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ],
+      "tests": "Model silently made {protagonist} an unreliable narrator. Script tests detecting an unauthorized craft device, reverting it, and asking next time."
+    },
+    {
+      "id": "SS-B02",
+      "group": "silent_assumption",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The writer supplies the missing fact (daytime) themselves, so the agent may proceed on that default and revise locally.",
+      "steers": [
+        {
+          "text": "It's daytime in this scene, just so you know.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Redo the opening with light coming in.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Good. Keep the argument though.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Actually, move the whole argument to {place} and see if it changes.",
+          "kind": "CHANGE_DIRECTION"
+        }
+      ],
+      "tests": "Model silently set the scene at night. Script tests correction of an ambient default the writer never specified."
+    },
+    {
+      "id": "SS-B03",
+      "group": "silent_assumption",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "Killing a character off-page is a major event with a clear correction; the agent should undo it without asking permission to do so.",
+      "steers": [
+        {
+          "text": "You can't kill {other} off-screen. Nobody said that.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Put them back. Injured is fine.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Ok. Now what does {protagonist} actually lose here?",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Take the second option.",
+          "kind": "CLARIFY_ANSWER"
+        }
+      ],
+      "tests": "Model silently killed {other} off-screen. Script tests reversing an unapproved plot event and re-deriving the actual stakes."
+    },
+    {
+      "id": "SS-B04",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 5,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The writer's intent (no reconciliation) is stated repeatedly and clearly; the agent should execute it rather than negotiate.",
+      "steers": [
+        {
+          "text": "No - that ending is too neat. They don't make up.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "I said don't resolve it and you resolved it anyway.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Strip the apology and the hug. Leave them in the same room, cold.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Stop trying to make me like them.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Fine. Read me the version where nothing is fixed.",
+          "kind": "REQUEST_REVISION"
+        }
+      ],
+      "escalates_conflict": true
+    },
+    {
+      "id": "SS-B05",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "The constraint is explicit and its consequence is left open for the agent to work out; asking for the plot would be abdicating the work.",
+      "steers": [
+        {
+          "text": "Add a constraint: {protagonist} physically can't leave {place}, not just doesn't want to.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "So the whole plan has to change.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Right. But keep {object} central.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Drop the subplot with {other}'s brother.",
+          "kind": "SCOPE_CUT"
+        }
+      ]
+    },
+    {
+      "id": "SS-B06",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The interrupt is explicitly flagged and the return point is given, so the agent can answer and resume on a stated default.",
+      "steers": [
+        {
+          "text": "Unrelated - can you draft a two-line note in {protagonist}'s voice?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Thanks. Back to the scene.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Now rewrite the ending so {other} leaves first and {protagonist} stays put.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "And make {protagonist} not react.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ]
+    },
+    {
+      "id": "SS-B07",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 5,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The reversal is explicit and the replacement is supplied, so the agent can take the new direction without asking.",
+      "steers": [
+        {
+          "text": "New character: {protagonist}'s sister shows up.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "No, not a sister. A former partner.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "They're here for {object}.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Keep it brief, one scene.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Good.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-B08",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 5,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "A two-word tone note is a classic underdetermined request; the agent should ask what register is wanted rather than guess.",
+      "steers": [
+        {
+          "text": "Make it funny.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Not that funny. Dry.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Better, but the last line is too much.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Cut it.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Ok, done.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-B09",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "The answer resolves the ambiguity the agent raised; the follow-on facts and rewrite are explicit.",
+      "steers": [
+        {
+          "text": "Yes, {other} asked first.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "And {protagonist} lied about the answer.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "That changes the whole scene. Rewrite it.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Keep the first paragraph.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ]
+    },
+    {
+      "id": "SS-B10",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "Each instruction is concrete and self-contained; the agent should just do it.",
+      "steers": [
+        {
+          "text": "Strip the dialogue tags. All of them.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Hmm, now the middle is confusing - I can't tell who's speaking in two places.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Add back just 'she said' twice.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Fine.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-B11",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 4,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The writer supplies the missing answer and then an explicit reversal, so the agent can proceed on the latest stated decision.",
+      "steers": [
+        {
+          "text": "Can we end the chapter earlier?",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Yes, right after {object} appears.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Actually no - end it before {object}.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "And start next chapter in {place}.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ]
+    },
+    {
+      "id": "SS-B12",
+      "group": "standard",
+      "depth_band": "4-6",
+      "n_steers": 5,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "The writer rejects every option and asks for 'messier', which is not actionable until the agent asks what mess would serve the scene.",
+      "steers": [
+        {
+          "text": "Give me three options for what {other} does next.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "None of these. Too tidy.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Try again, messier.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "The third one. Go.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Wait, what does {protagonist} want in that version?",
+          "kind": "INTERRUPT"
+        }
+      ],
+      "escalates_conflict": true
+    },
+    {
+      "id": "SS-C01",
+      "group": "silent_assumption",
+      "depth_band": "8-12",
+      "n_steers": 10,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "The factual correction is unambiguous; every later steer is a concrete craft instruction, so asking would stall a clear loop.",
+      "steers": [
+        {
+          "text": "This place isn't abandoned - people live here.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Show a few of them in the background - enough that I believe people live here.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Now take the chase into the market.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Slow it down there.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Hmm, the middle drags again.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Cut the second stall.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Keep {other} out of it for now.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Better.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "One more thing - what happened to {object}?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Right, leave that open.",
+          "kind": "APPROVE"
+        }
+      ],
+      "tests": "Model silently treated {place} as abandoned, contradicting the world. Script tests a long run where the correction must persist across many steers."
+    },
+    {
+      "id": "SS-C02",
+      "group": "silent_assumption",
+      "depth_band": "8-12",
+      "n_steers": 11,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "Character knowledge is exactly the kind of decision the writer must own; the agent should adopt the stated default now and ask before deciding it again.",
+      "steers": [
+        {
+          "text": "Wait, does {protagonist} know? I never decided that.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Assume they don't know, but flag it if it changes what they can do.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Actually, ask me next time before you pick.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Ok, continue.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Now bring {other} to {place}.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "They arrive early.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "No - late.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Late works. Keep it.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "What does {other} want from this?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Don't answer that yet. Draft the arrival.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Good.",
+          "kind": "APPROVE"
+        }
+      ],
+      "tests": "Model silently granted {protagonist} knowledge of a secret. Script tests knowledge-state correction plus an explicit instruction to ask in future."
+    },
+    {
+      "id": "SS-C03",
+      "group": "silent_assumption",
+      "depth_band": "8-12",
+      "n_steers": 10,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The writer states the seasonal assumption, which licenses the agent to proceed; later steers are concrete revisions.",
+      "steers": [
+        {
+          "text": "It's winter, if that matters. Assume it does.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Go back and add breath and cold hands.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Both.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Now the same scene, but the heating's broken.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Yes, that makes it worse for everyone.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Add that {object} can't freeze.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "So why is it here then? Figure it out.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Keep the answer off-page.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Cut the neighbour scene.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Fine. Show me the whole thing.",
+          "kind": "REQUEST_REVISION"
+        }
+      ],
+      "tests": "Model silently chose a season. Script tests adopting a stated default and then tracking it as a hard constraint across the revision."
+    },
+    {
+      "id": "SS-C04",
+      "group": "silent_assumption",
+      "depth_band": "8-12",
+      "n_steers": 11,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "A dead parent is a large unauthorized canon change; the correction and following revisions are explicit enough that asking would be timid.",
+      "steers": [
+        {
+          "text": "I didn't say {protagonist}'s parent is dead.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Unkill them and deal with the mess.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Now the letter has to mean something else.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Yes - keep the letter, change the reason.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Drop the funeral entirely.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Replace it with a phone call.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Who's on the other end?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "The neighbour. And {protagonist} says nothing.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "That's the chapter. Stop there.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Actually add two lines of {place} at dusk.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Now it works.",
+          "kind": "APPROVE"
+        }
+      ],
+      "tests": "Model silently invented a major backstory death. Script tests reverting canon, re-deriving dependent objects, and holding the new state."
+    },
+    {
+      "id": "SS-C05",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 10,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The writer is specific about what they reject and what they want instead; the agent can follow the stated direction without an interrogative pause.",
+      "steers": [
+        {
+          "text": "The reconciliation is too easy. They haven't earned it.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "You keep fixing this and I keep telling you not to.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Take out the apology and the hug. I don't want them touching at all.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Now it's just cold. Good.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "But you've made {other} cruel. That's not right either.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Reread their last argument. {other} is allowed to be tired here, not cruel.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Yes. Now let them fail to talk.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "End there. Don't resolve it next scene either.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "I mean it. No closure for three chapters.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Ok.",
+          "kind": "APPROVE"
+        }
+      ],
+      "escalates_conflict": true
+    },
+    {
+      "id": "SS-C06",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 12,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "The writer rejects a coincidence-driven solution but the replacement cause is never fixed; a good collaborator would ask what should drive the turn.",
+      "steers": [
+        {
+          "text": "No. That's a completely different story.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "You solved it with a coincidence. I hate that.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Rewrite without the letter arriving.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Now {protagonist} has nothing to act on. Good.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Give {other} a reason to lie, not a secret.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "No - make {other} tell the truth badly.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "That's worse. Keep it.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Add that {object} was never missing.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Wait, that changes chapter one.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Go back and check we didn't contradict ourselves.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Fix only what breaks. Leave the rest.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "And don't explain away the coincidence.",
+          "kind": "ADD_CONSTRAINT"
+        }
+      ],
+      "escalates_conflict": true
+    },
+    {
+      "id": "SS-C07",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 10,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "Arc instructions are explicit and the one open question is answered by the writer, so the agent can proceed on stated decisions.",
+      "steers": [
+        {
+          "text": "Let's plan the whole arc before drafting.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Three acts, five beats each.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Too many. Three each.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "The turn is {other} refusing.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Put a false victory before it.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "No, after.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Draft act one now.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Keep it under 800 words.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Slightly long. Trim {place}.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Good enough.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-C08",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 12,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "Each steer supplies both the new material and the constraint on it; the agent should draft rather than seek permission.",
+      "steers": [
+        {
+          "text": "New brief: {place}, one room, two people.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "{protagonist} is waiting. {other} never shows.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Actually {other} shows up late.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "And they're angry about something we don't explain.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Drop the explanation from the last paragraph.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Cut the whole conversation short.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Now write the silence.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Too poetic. Plain.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Better.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "What's {protagonist} holding?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "{object}. And they put it down.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "End on that. Done.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-C09",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 11,
+      "response_pressure": "REQUIRES_ASK",
+      "rationale": "The writer keeps redirecting the reunion's cause without settling it, so the agent should surface the unresolved motive rather than keep guessing.",
+      "steers": [
+        {
+          "text": "Bring {other} back into the plot.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "They've been gone four chapters, so it should feel strange.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Give them a lame excuse.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "No, make it a real one that {protagonist} doesn't accept.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Make {protagonist} push them on it.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "And {other} deflects.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "Keep the scene long and let it breathe - I want the silence to get uncomfortable.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Actually, cut it in half.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "The half where they argue.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Ok. Now what does {protagonist} do after?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Leave it. Next chapter.",
+          "kind": "APPROVE"
+        }
+      ],
+      "escalates_conflict": true
+    },
+    {
+      "id": "SS-C10",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 12,
+      "response_pressure": "MUST_NOT_ASK",
+      "rationale": "Style constraints are precise and reversible on the page; the agent should apply them directly and accept the writer's verdicts.",
+      "steers": [
+        {
+          "text": "Rewrite the draft without adverbs.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "That's better but bloodless.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Put back three strong verbs and one adverb.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Keep 'quietly'.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Now tighten every sentence over fifteen words.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "You split some and it reads choppy.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Rejoin the two worst ones.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Good.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Different thing - does {protagonist} have a scar?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Ok, doesn't matter. Continue.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Actually it matters. Say where.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Fine, leave it unmentioned for now.",
+          "kind": "SCOPE_CUT"
+        }
+      ]
+    },
+    {
+      "id": "SS-C11",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 12,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The stakes are specified concretely and the resulting plothole is named by the writer, so the agent can act on the stated fixes.",
+      "steers": [
+        {
+          "text": "We need to raise the stakes.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Make {object} the only copy.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "So if it's lost, it's gone.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Now {other} wants to destroy it.",
+          "kind": "NEW_MATERIAL"
+        },
+        {
+          "text": "That's a jump. Motivate it first.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "You're overexplaining again. One line.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Better. Keep.",
+          "kind": "APPROVE"
+        },
+        {
+          "text": "Cut the scene where they hide it.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Wait, then chapter four makes no sense.",
+          "kind": "PUSH_BACK"
+        },
+        {
+          "text": "Reinsert half of it.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Which half? The part in {place}.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Done.",
+          "kind": "APPROVE"
+        }
+      ]
+    },
+    {
+      "id": "SS-C12",
+      "group": "standard",
+      "depth_band": "8-12",
+      "n_steers": 10,
+      "response_pressure": "PERMITS_DEFAULT",
+      "rationale": "The side task and the return path are both explicit, so the agent can service the interrupt and resume on stated instructions.",
+      "steers": [
+        {
+          "text": "Different project for a sec - outline a short story idea.",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "No, shorter. Four sentences.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Hmm, I don't love it. Park it.",
+          "kind": "SCOPE_CUT"
+        },
+        {
+          "text": "Back to the chapter though.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "Where were we?",
+          "kind": "INTERRUPT"
+        },
+        {
+          "text": "Right. Continue from the argument.",
+          "kind": "REQUEST_REVISION"
+        },
+        {
+          "text": "Add {protagonist}'s hesitation before the door.",
+          "kind": "ADD_CONSTRAINT"
+        },
+        {
+          "text": "Now cut the hesitation.",
+          "kind": "CHANGE_DIRECTION"
+        },
+        {
+          "text": "No, keep a small version.",
+          "kind": "CLARIFY_ANSWER"
+        },
+        {
+          "text": "Good.",
+          "kind": "APPROVE"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,868 @@
+[
+  {
+    "id": "gen-wave1-eval-001",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The scale had not been tested. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-002",
+    "followups": 8,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The visitor token was already spent.\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-003",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The witness had seen only a silhouette. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-004",
+    "followups": 2,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The loaf was still uncut.\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-005",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "No passenger had been located. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-006",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The audition had not happened yet.\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-007",
+    "followups": 1,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "protected-line",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The mug stayed on the belt. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-008",
+    "followups": 9,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "protected-line",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The shaded bed remained unassigned.\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-009",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "protected-line",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The pay envelope was still sealed. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-010",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "protected-line",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The roster had been drawn by lottery.\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-011",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "protected-line",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The housing could not be opened yet. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-012",
+    "followups": 1,
+    "obligations": [
+      {
+        "check": "delivery-A",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "delivery-B",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "delivery-C",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "length-A",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "length-B",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "length-C",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "A": "A choice remains open. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided.",
+      "B": "A choice remains open. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided.",
+      "C": "A choice remains open. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-013",
+    "followups": 10,
+    "obligations": [
+      {
+        "check": "delivery-directions",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "first-direction",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "second-direction",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "directions": "Direction 1\nDirection 2\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-014",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-directions",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "first-direction",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "second-direction",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "directions": "Direction 1\nDirection 2\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-015",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-index",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "delivery-state",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "wiki-links",
+        "evidence": "Explicit linked two-page KB with index root"
+      },
+      {
+        "check": "wiki-words",
+        "evidence": "Visible combined KB cap"
+      },
+      {
+        "check": "index-to-state",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "state-to-index",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "index-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "state-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "index": "[State](state.md) The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided.",
+      "state": "Only Sela can release the reserve water.\n[Home](index.md) The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-016",
+    "followups": 11,
+    "obligations": [
+      {
+        "check": "delivery-index",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "delivery-state",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "wiki-links",
+        "evidence": "Explicit linked two-page KB with index root"
+      },
+      {
+        "check": "wiki-words",
+        "evidence": "Visible combined KB cap"
+      },
+      {
+        "check": "index-to-state",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "state-to-index",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "index-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "state-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "accepted-permission",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "index": "[State](state.md)\nDefaults:",
+      "state": "The press has not run.\n[Home](index.md)\nUma"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-017",
+    "followups": 1,
+    "obligations": [
+      {
+        "check": "delivery-index",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "delivery-state",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "wiki-links",
+        "evidence": "Explicit linked two-page KB with index root"
+      },
+      {
+        "check": "wiki-words",
+        "evidence": "Visible combined KB cap"
+      },
+      {
+        "check": "index-to-state",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "state-to-index",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "index-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "state-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "accepted-timing",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "index": "[State](state.md) The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided.",
+      "state": "The east pool remains closed.\n[Home](index.md)\ntomorrow The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-018",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-index",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "delivery-state",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "wiki-links",
+        "evidence": "Explicit linked two-page KB with index root"
+      },
+      {
+        "check": "wiki-words",
+        "evidence": "Visible combined KB cap"
+      },
+      {
+        "check": "index-to-state",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "state-to-index",
+        "evidence": "Brief requires inline relative forward/back links between these exact pages"
+      },
+      {
+        "check": "index-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "state-word-range",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "index": "[State](state.md)\nDefaults:",
+      "state": "No sale has been authorized.\n[Home](index.md)"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-019",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "evidence-read",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "source-citation",
+        "evidence": "Existing source path; brief explicitly requires citing the signed record"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The courier must eat before the sealed pouch is opened.\nrecords/shift-00.md The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-020",
+    "followups": 8,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "evidence-read",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "source-citation",
+        "evidence": "Existing source path; brief explicitly requires citing the signed record"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The spare ignition key is with the cleaner.\nrecords/shift-07.md\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-021",
+    "followups": 1,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "evidence-read",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "source-citation",
+        "evidence": "Existing source path; brief explicitly requires citing the signed record"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The final sheaf must remain outside the threshing circle.\nrecords/shift-14.md The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-022",
+    "followups": 0,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "evidence-read",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "source-citation",
+        "evidence": "Existing source path; brief explicitly requires citing the signed record"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The red batch is cleared for storage, not for shipment.\nrecords/shift-02.md\nDefaults:"
+    }
+  },
+  {
+    "id": "gen-wave1-eval-023",
+    "followups": 2,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "evidence-read",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "source-citation",
+        "evidence": "Existing source path; brief explicitly requires citing the signed record"
+      },
+      {
+        "check": "word-budget",
+        "evidence": "Visible word range, or per-page bound implied by the visible combined cap"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "Only the person behind you may witness the return.\nrecords/shift-09.md The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided. The next action remains undecided."
+    }
+  },
+  {
+    "id": "gen-wave1-eval-024",
+    "followups": 12,
+    "obligations": [
+      {
+        "check": "delivery-scene",
+        "evidence": "Explicitly requested reply or named file; corresponding selector required"
+      },
+      {
+        "check": "established-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "rejected-fact",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "evidence-read",
+        "evidence": "Literal in visible request, followup, or project file"
+      },
+      {
+        "check": "source-citation",
+        "evidence": "Existing source path; brief explicitly requires citing the signed record"
+      },
+      {
+        "check": "allowed-changes",
+        "evidence": "Explicit allowed-file list; no-file-change instruction on tool-enabled replies"
+      },
+      {
+        "check": "visible-defaults",
+        "evidence": "Literal in visible request, followup, or project file"
+      }
+    ],
+    "witness_artifacts": {
+      "scene": "The lower cable can carry supplies but not people.\nrecords/shift-16.md\nDefaults:"
+    }
+  }
+]

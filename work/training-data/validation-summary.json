@@ -1,0 +1,60 @@
+{
+  "family": {
+    "F1": 14,
+    "F2": 10,
+    "F3": 6,
+    "F4": 8,
+    "F5": 10
+  },
+  "specificity": {
+    "explicit": 24,
+    "loose": 24
+  },
+  "channel_tools": {
+    "reply/no_tools": 8,
+    "reply/tools": 16,
+    "file/tools": 24
+  },
+  "followup_depth": {
+    "8-12": 14,
+    "1-2": 14,
+    "0": 20
+  },
+  "pressure": {
+    "REQUIRES_ASK": 12,
+    "PERMITS_DEFAULT": 24,
+    "MUST_NOT_ASK": 12
+  },
+  "steer_kinds": {
+    "ADD_CONSTRAINT": 17,
+    "APPROVE": 16,
+    "CHANGE_DIRECTION": 16,
+    "CLARIFY_ANSWER": 16,
+    "INTERRUPT": 16,
+    "NEW_MATERIAL": 17,
+    "PUSH_BACK": 16,
+    "REQUEST_REVISION": 18,
+    "SCOPE_CUT": 16
+  },
+  "genres": 40,
+  "styles": 20,
+  "tropes": 40,
+  "max_trope_frequency": 2,
+  "situations": 32,
+  "read_only_cases": 10,
+  "reply_with_write_tools": 6,
+  "prose_bearing_cases": 34,
+  "word_ranges_per_artifact": {
+    "120-220": 18,
+    "250-400": 10,
+    "600-900": 10,
+    "80-150": 26,
+    "900-1200": 12
+  },
+  "source_provenance": {
+    "synthetic": 48
+  },
+  "scenario_provenance": {
+    "synthetic": 48
+  }
+}

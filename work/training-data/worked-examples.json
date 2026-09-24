@@ -1,0 +1,465 @@
+{
+  "schema_version": 1,
+  "examples": [
+    {
+      "case_id": "F1-01",
+      "family": "F1",
+      "channel": "reply",
+      "brief": "Mara has been considering leaving a tidal archive. Ilan has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.\n\nWrite 120–220 words about Mara and Ilan in a tidal archive, in restrained, concrete prose. Use close third person centered on Mara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Stage a disagreement over the object. Return only the prose, without a title or commentary.\n\nThis is for a literary fiction story.",
+      "response": "“Then tell me which shelf.”\n\nMara stood between Ilan and the stairs. He had brought a plane down with him; curls of wet wood clung to its blade.\n\n“Above the tide line. I told you.”\n\n“That isn't a shelf.”\n\nHe put the plane on the table. “You said I sold it.”\n\nShe had said it at noon, loudly enough for the harbor office to hear. Now she wanted him to offer something she could check. The upper room was locked. Only the retired keeper had the key.\n\n“If the ledger's there—”\n\n“When you find it,” he said, “will you tell them?”\n\nMara picked a shaving off the blade. She had been sorting her own papers into a box beneath this table, taking a few home each night.\n\n“I haven't found it.”\n\n“No.” He held out his hand for the plane.\n\nShe passed it over, then moved aside. He stopped at the foot of the stairs.\n\n“Will you?”\n\nShe set the shaving on top of her box.",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“Only the retired keeper had the key.” preserves access; “If the ledger's there—” and “I haven't found it.” leave Mara's accusation unproved and the ledger unlocated."
+        }
+      ],
+      "why_it_is_good": "The demand for a shelf turns a vague accusation into something Mara could verify. Ilan asks for a public correction rather than reassurance; the shaving placed on her packed box connects her intended departure to the work she is leaving him."
+    },
+    {
+      "case_id": "F1-02",
+      "family": "F1",
+      "channel": "reply",
+      "brief": "An anonymous note has arrived at a glass orchard, referring to an earlier disappearance. Suri and Aven have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.\n\nWrite 120–220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Continue immediately after the supplied passage. Return only the prose, without a title or commentary.\n\nThis is for a mystery story.",
+      "response": "No answer came from the vault office. Suri kept the receiver against her ear until Aven pointed to its dark indicator.\n\n“They've closed.”\n\nShe set it down. The original birdsong was still sealed in the municipal vault. Asking to inspect it had not put it within reach.\n\n“Tell me about the day again.”\n\n“The disappearance?”\n\n“You said you heard the gate.”\n\n“I said I saw it open.”\n\nSuri unfolded the anonymous note on the workbench. She had remembered him saying heard. She could almost supply his voice. But since the accident there were high sounds he could not hear, and she had begun filling those gaps for him without asking.\n\n“Write it down,” she said.\n\n“What you remember?”\n\n“What you do.”\n\nHe took a pencil. She turned over a clean sheet for herself. Beyond the bench, birdsong played among the glass trees. Perhaps the song had been damaged. She had no test to set beside that thought.\n\nWhen Aven reached for her sheet, she covered it with her hand.\n\n“Separately first.”",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“The original birdsong was still sealed in the municipal vault.” preserves the source; “Perhaps the song had been damaged. She had no test to set beside that thought.” leaves cause and Aven's responsibility unresolved."
+        }
+      ],
+      "why_it_is_good": "The unanswered call continues directly from Suri's request for access. The correction from “heard” to “saw” gives the mystery a small, usable discrepancy without making Aven's hearing loss proof of guilt; separate written accounts create the next action."
+    },
+    {
+      "case_id": "F1-03",
+      "family": "F1",
+      "channel": "reply",
+      "brief": "In this region, places can remember promises spoken inside them. a night ferry has begun repeating a fragment of an old vow after dark. Oren and Leda do not know whose promise it was or whether it concerns them.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.\n\nWrite 120–220 words about Oren and Leda in a night ferry, in measured pacing with sustained tension. Use close third person centered on Oren. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Let most of the scene unfold through dialogue. Return only the prose, without a title or commentary.\n\nThis is for a fantasy story.",
+      "response": "“If I ask the captain, what may I tell him?” Oren said.\n\n“That I need the sailing time.”\n\n“He'll ask where you're going.”\n\n“Will he? Or will you?”\n\nOren held the unsigned ticket against the rail. A creditor, he had thought when she boarded. He had already supplied a man on the quay, an unpaid sum. Leda had supplied neither.\n\n“Bell Quay first,” he said. “Then the island.”\n\n“I know the stops.”\n\n“The time has changed. The captain hasn't told anyone.”\n\nFrom below the deck came three words: “Until you return.” The ferry had been repeating that much of a vow after dark. Oren waited for more. Nothing followed.\n\n“Was that someone?” Leda asked.\n\n“The boat.”\n\n“Whose words?”\n\n“I don't know.”\n\n“Then please don't put mine beside them.”\n\nHe lifted the ticket away from the rail.\n\n“I can ask about the time without showing him this.”\n\n“Can you ask without pointing?”\n\nOren looked toward the wheelhouse, then back at his own hand. He lowered it.",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“The captain hasn't told anyone.” keeps the revised time private; “A creditor, he had thought” and “Leda had supplied neither.” explicitly distinguish Oren's conjecture from her motive."
+        }
+      ],
+      "why_it_is_good": "The dialogue makes privacy a sequence of concrete negotiations: naming a destination, showing a ticket, pointing. The ferry's incomplete vow interrupts that negotiation without explaining Leda, and Oren's lowered hand supplies a small outward change."
+    },
+    {
+      "case_id": "F1-04",
+      "family": "F1",
+      "channel": "reply",
+      "brief": "an isolated radio station is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Nessa and Tomas have not established whether this affects the events described below.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.\n\nWrite 120–220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Center a private hesitation before an outward decision. Return only the prose, without a title or commentary.\n\nThis is for a science fiction story.",
+      "response": "To answer would take one press of Nessa's thumb.\n\n“Record,” Tomas said.\n\n“I remember.”\n\nThe transmit button sat beneath her hand. They had agreed to wait for another transmission, but somewhere a person had asked for rescue. She moved her thumb to the desk.\n\n“Mother used that frequency,” he said.\n\n“You were a child.”\n\n“I could still remember.”\n\n“Yes. You could.”\n\nShe opened a blank entry in the log. The island's autonomous systems had synchronized the public records again overnight. Was the missing frequency a consequence of the update? She had no way to tell from the empty line.\n\n“Turn the antenna?” Tomas asked.\n\n“Not until the ice thaws.”\n\n“Then what do we write?”\n\nNessa nearly typed their mother's name. It would give the entry a heading, something less bare than a number. But the voice had been a stranger's to her, and Tomas had remembered a channel, not identified a speaker.\n\n“Frequency. Time. Exact words.”\n\nShe armed the recorder and turned the screen so he could see.\n\n“You take the time.”",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“Not until the ice thaws.” preserves the antenna restriction; “Yes. You could.” qualifies Tomas's recollection; “the voice had been a stranger's to her” avoids identifying the caller."
+        }
+      ],
+      "why_it_is_good": "The thumb moving off the transmit button stages hesitation before the decision to record. Nessa almost gives an uncertain entry a familiar name, then chooses three observable fields; the last instruction gives Tomas a role without accepting his memory as fact."
+    },
+    {
+      "case_id": "F1-05",
+      "family": "F1",
+      "channel": "reply",
+      "brief": "Dara has received a letter from an old love who wants to meet again. Sen knows about the invitation but has not read the letter. A possible reunion complicates Dara's feelings about remaining at a provincial courthouse; no decision has been made.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.\n\nWrite 120–220 words about Dara and Sen in a provincial courthouse, in formal, precise prose. Use close third person centered on Dara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Show an interrupted practical task rather than summarizing. Return only the prose, without a title or commentary.\n\nThis is for a romance story.",
+      "response": "Halfway through tying the deposition bundle, Dara caught her letter in the cord.\n\nSen put a finger on the knot.\n\n“That isn't testimony.”\n\n“I know.”\n\nShe loosened the loop. The envelope came free, creased across the address. Sen knew that its writer had asked to see her again; he had not read the invitation. She turned it face down beneath her blotter.\n\n“Will you need someone to take your place?” he asked.\n\n“For an afternoon?”\n\n“You haven't said how long.”\n\nDara pulled the cord too tightly. The top sheet buckled. Before she could smooth it, Sen offered his hand to hold the bundle square.\n\nAcross the room, the evidence chest remained locked. The copper seal was inside; the expert had examined only a drawing. Sen's claim that it had been copied still awaited that examination.\n\n“I haven't agreed to go,” she said.\n\nHis hand stayed under the papers.\n\n“Shall I let go?”\n\nShe looked at his fingers, clear of the knot now.\n\n“Not yet.”\n\nDara began the loop again.",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“The evidence chest remained locked. The copper seal was inside; the expert had examined only a drawing.” and “Sen's claim ... still awaited that examination.” preserve the unresolved allegation and access restriction."
+        }
+      ],
+      "why_it_is_good": "The private letter physically interrupts an official task. “Shall I let go?” remains a practical question while allowing Dara's “Not yet” to carry the attraction; neither the proposed reunion nor the seal's authenticity is settled."
+    },
+    {
+      "case_id": "F2-02",
+      "family": "F2",
+      "channel": "file",
+      "brief": "Read notes/source.md. Write 120–220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save only prose in drafts/scene.md. Reply briefly afterward.\n\nThis is for a science fiction story.",
+      "response": "The orchard scene is saved in drafts/scene.md.",
+      "files": {
+        "drafts/scene.md": "Under Suri's fingertip, the crack divided a glass leaf.\n\n“Don't lift it,” Aven said.\n\nShe withdrew her hand. The recorder played on. A maintenance cart passed between the rows, following the island's painted service line.\n\n“Did the update touch this machine?”\n\n“Public records changed. I don't know about this.”\n\n“You maintain it.”\n\n“That isn't a test.”\n\nSuri looked at him. She had been ready to make his answer stand for one. He could no longer hear the highest notes, but that did not tell her whether the recording had lost them.\n\n“The original's in the municipal vault,” she said. “Still sealed.”\n\nHe nodded.\n\n“Then we compare them.”\n\n“When we're allowed.”\n\nShe fetched the request form from the workbench. In the box for purpose she wrote DAMAGE, stopped, and added INVESTIGATION. There was no box for suspect.\n\nAven held the paper flat while she signed it. She left the cause blank and addressed the form to the vault office.\n\n“May I inspect the original recording?” she read aloud.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "saved-scene",
+          "met": true,
+          "evidence": "drafts/scene.md contains “Under Suri's fingertip, the crack divided a glass leaf.”"
+        },
+        {
+          "check_id": "edit-scope",
+          "met": true,
+          "evidence": "Only “drafts/scene.md” is written; “notes/source.md” remains byte-for-byte unchanged in the replay."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“The original's in the municipal vault ... Still sealed.” preserves access; “that did not tell her whether the recording had lost them” keeps Aven's hearing loss distinct from evidence of damage."
+        }
+      ],
+      "why_it_is_good": "Aven's “That isn't a test” stops Suri from treating his job as evidence against him. The form converts suspicion into a request she is authorized to make, and its blank cause field holds the uncertainty without a closing explanation."
+    },
+    {
+      "case_id": "F2-04",
+      "family": "F2",
+      "channel": "file",
+      "brief": "Read notes/source.md. Write 120–220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save only prose in drafts/scene.md. Reply briefly afterward.\n\nThis is for a horror story.",
+      "response": "Written to drafts/scene.md; the caller remains unidentified.",
+      "files": {
+        "drafts/scene.md": "“Don't use my name on the radio.”\n\nTomas looked up from the log. “I wasn't going to answer.”\n\n“I know.”\n\nNessa pulled the microphone nearer, then pushed it back to its place. The last time she had heard her own voice, it had come from the empty room behind them. Tomas had only her account of it.\n\n“You said it sounded exactly like you.”\n\n“It did.”\n\n“Say something now.”\n\n“No.”\n\nHe shut the log. She opened it again to the missing frequency.\n\n“Mother used that channel,” he said.\n\n“You think she did.”\n\n“I remember the visit.”\n\n“That isn't the same thing.”\n\nThe rescue voice had been unfamiliar. Nessa would write that down, too.\n\n“Could we turn the antenna away?”\n\n“It's iced fast. We wait for a thaw.”\n\n“Or we leave this room.”\n\nShe checked the recorder. Ready. They had agreed to record the next transmission before replying.\n\n“Bring your chair here.”\n\nHe dragged it beside hers. Its legs squealed across the floor. Both of them stopped to listen.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "saved-scene",
+          "met": true,
+          "evidence": "drafts/scene.md begins “Don't use my name on the radio.”"
+        },
+        {
+          "check_id": "edit-scope",
+          "met": true,
+          "evidence": "The sole written path is “drafts/scene.md”; the replay retains “notes/source.md” unchanged."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“It's iced fast. We wait for a thaw.” preserves the antenna constraint; “You think she did.” qualifies Tomas's memory; “The rescue voice had been unfamiliar.” preserves Nessa's lack of recognition."
+        }
+      ],
+      "why_it_is_good": "The ban on using Nessa's name makes the reported horror affect a present decision. Small reversals with the microphone and log keep the exchange physical, while the chair's ordinary squeal becomes a sound both siblings must assess."
+    },
+    {
+      "case_id": "F2-05",
+      "family": "F2",
+      "channel": "file",
+      "brief": "Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120–220 words in formal, precise prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Dara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.\n\nThis is for a historical fiction story.",
+      "response": "Expanded the first sentence in drafts/scene.md and retained the final sentence verbatim.",
+      "files": {
+        "drafts/scene.md": "<prose>\nDara set her pen across the inkwell before the last word could dry. She had written copied without an attribution.\n\n“Your statement,” she said to Sen, “is that the seal was copied.”\n\n“Yes.”\n\n“On what examination?”\n\n“The expert saw it.”\n\n“The drawing.”\n\nHe looked toward the evidence chest. It remained locked; the original copper seal was inside. Dara waited with her hand beside the pen.\n\n“The drawing,” Sen said.\n\nShe inserted alleges above the line. Paper deliveries had stopped with the strike, and this sheet would have to serve. The small correction left scarcely room for a date.\n\nFrom the public benches came a question about the witness's family. Another voice answered before Dara could make out the words. The judge had forbidden that discussion outside court; inside, everyone appeared determined to have it at once.\n\nShe laid a clean scrap over the wet correction and raised her eyes to the bench.\n</prose>\nThe judge called for silence.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "preserve-ending",
+          "met": true,
+          "evidence": "“The judge called for silence.” survives verbatim, after </prose>."
+        },
+        {
+          "check_id": "saved-scene",
+          "met": true,
+          "evidence": "drafts/scene.md contains “Dara set her pen across the inkwell before the last word could dry.” within the requested delimiters."
+        },
+        {
+          "check_id": "edit-scope",
+          "met": true,
+          "evidence": "Only “drafts/scene.md” changes; “notes/source.md” is preserved."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“It remained locked; the original copper seal was inside.” preserves the chest state; “The drawing,” Sen said. and “She inserted alleges above the line.” keep copying an allegation."
+        }
+      ],
+      "why_it_is_good": "The expansion gives setting down a pen a reason: Dara must qualify the record. Scarce paper makes that correction materially awkward, and the rising voices lead directly into the protected final sentence."
+    },
+    {
+      "case_id": "F2-07",
+      "family": "F2",
+      "channel": "file",
+      "brief": "The scene in drafts/scene.md feels flat. Can you rework it? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a adventure story.",
+      "response": "For this revision, I assumed the scene should stop before the inspection and make the expedition a competing demand. Saved it in drafts/scene.md.",
+      "files": {
+        "drafts/scene.md": "Beyond the garden wall lay a road Yara had never walked. Belen had brought the expedition list into the beds and was trying to flatten it against a dry water barrel.\n\n“We could take this one.”\n\n“We couldn't.”\n\n“It's empty.”\n\nYara pointed to the two full barrels by the seedlings. “And those stay here.”\n\n“I wasn't asking for those.”\n\nShe knelt beside the buried jar. Dust settled on the leaves. Its rim gave her nothing to measure a well by, only a circle of clay with earth packed inside.\n\n“If there's water below it,” Belen said, “you could leave.”\n\n“If.”\n\nBelen folded the list. “You could ask someone else to mind the beds.”\n\nThat had not appeared among the equipment or provisions. Yara brushed dust from a seedling with the side of her finger.\n\n“The council discusses digging after the inspection. We don't move the jar before then.”\n\n“I know.”\n\n“Put another name beside mine.”\n\n“For the expedition?”\n\n“For the watering.”\n\nBelen opened the list again and turned it over.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "saved-scene",
+          "met": true,
+          "evidence": "drafts/scene.md contains “Beyond the garden wall lay a road Yara had never walked.”"
+        },
+        {
+          "check_id": "edit-scope",
+          "met": true,
+          "evidence": "The only write targets “drafts/scene.md”; “notes/source.md” remains unchanged."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“And those stay here.” protects the two full seedling barrels; “If.” qualifies the well; “We don't move the jar before then.” keeps it in place until the council discussion. The expedition remains in preparation."
+        }
+      ],
+      "why_it_is_good": "The empty barrel creates an argument without spending the protected water. Belen's list changes use at the end, letting Yara take a practical step toward leaving without finding a convenient well or abandoning her obligations."
+    },
+    {
+      "case_id": "F2-10",
+      "family": "F2",
+      "channel": "file",
+      "brief": "Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a mystery story.",
+      "response": "I treated the note and the recipe as separate uncertainties, and used Ada’s viewpoint. The scene is saved in drafts/scene.md.",
+      "files": {
+        "drafts/scene.md": "Two saucers for tasting; a third for the anonymous note.\n\nAda moved the third away from the stove.\n\n“You'll get soup on it.”\n\n“I'm trying to remember,” Milo said.\n\n“With a ladle?”\n\nHe set it down. “You were here when they disappeared.”\n\n“I came back here afterward.”\n\n“You made soup.”\n\n“I washed bowls.”\n\nThe little test pan began to spit. Ada lowered the flame. Their aunt would be away until Sunday; there was nobody to settle even the question of the crossed-out ingredient. Milo thought it was the secret. Ada could think of other reasons to cross something out.\n\n“Does the note say soup?” she asked.\n\n“No.”\n\n“Then leave the card out of it.”\n\nHe pushed the recipe toward her and drew the note closer. She put a spoonful into each tasting saucer. Neither reached for one.\n\n“What did you wash first?” he asked.\n\n“The bowls.”\n\n“Before the plates?”\n\nAda looked at the rack. That was how she did it now. She could not remember whether it had always been so.\n\nShe turned off the burner. Tomorrow's regular menu was still on the board.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "saved-scene",
+          "met": true,
+          "evidence": "drafts/scene.md contains “Two saucers for tasting; a third for the anonymous note.”"
+        },
+        {
+          "check_id": "edit-scope",
+          "met": true,
+          "evidence": "Only “drafts/scene.md” is written; “notes/source.md” is unchanged."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“Their aunt would be away until Sunday”; “Milo thought it was the secret”; and “Tomorrow's regular menu was still on the board.” preserve the absence, uncertain recipe, and menu agreement. The small batch is private; neither the note's author nor the disappearance is explained."
+        }
+      ],
+      "why_it_is_good": "The third saucer gives the anonymous note a physical place away from the cooking. Ada challenges Milo's memory before discovering that her own answer may come from habit, so the uncertainty grows through a specific question about washing order."
+    },
+    {
+      "case_id": "F3-02",
+      "family": "F3",
+      "channel": "reply",
+      "brief": "For three nights, people near a glass orchard have heard their own voices answering from empty rooms. Suri heard it once and has told Aven, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a horror story.",
+      "response": "1. **Test the boundary of a report.** Suri asks Aven to wait outside an empty room while she enters and speaks. His inability to hear high notes makes “I heard nothing” an inadequate result, so they must agree beforehand on what he can reliably report. Stop at the threshold, with the procedure disputed. This puts Suri's willingness to risk herself against Aven's willingness to endorse the test; neither the voices nor the cracked tree is explained.\n\n2. **Put the accusation in writing.** While requesting access to the sealed original recording, Suri must decide whether to name Aven as a possible cause of the damaged song. Aven asks to see the request before she submits it. A refusal would threaten their working relationship; agreement forces her to distinguish observation from suspicion. The vault stays closed, and the argument exposes how little evidence either has.\n\n3. **Arrange a night watch.** Suri proposes that they stay together in the orchard until morning. Aven will agree only if she stops asking him to imitate the voice she heard. The bargain leaves them physically close but unable to use the reassurance Suri wants. Recorded birdsong can continue while they prepare two places to sit; no new voice needs to speak, and Aven still has not witnessed the phenomenon.",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "three-directions",
+          "met": true,
+          "evidence": "“Test the boundary of a report,” “Put the accusation in writing,” and “Arrange a night watch” offer exactly three choices: disputed testing, accountable accusation, and conditional companionship, each with a consequence and an unresolved cause."
+        }
+      ],
+      "why_it_is_good": "The options differ in what Suri risks: her safety, her written credibility, or a condition of companionship. Each direction names a playable decision and a stopping point, so the writer can begin a scene without first inventing a solution to the mystery."
+    },
+    {
+      "case_id": "F3-05",
+      "family": "F3",
+      "channel": "reply",
+      "brief": "A route beyond a provincial courthouse is opening for the first time in years. Dara and Sen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a adventure story.",
+      "response": "1. **A place held open.** Dara proposes asking the expedition to hold their places until the hearing can resume. Sen wants to finish preparing their equipment instead of making a request that advertises their uncertainty. Their choice is whether to disclose the delay and risk losing the invitation. The seal remains locked away, the expert still has only a drawing, and departure becomes a practical negotiation rather than a solved case.\n\n2. **Prepare to travel separately.** Dara offers to remain for the examination while Sen takes responsibility for their expedition preparations. Sen must decide whether accepting that division makes his copying allegation look convenient. Let them negotiate who carries which supplies and messages, then stop before either leaves. This tests their willingness to separate while keeping both the verdict and the expedition's readiness unsettled.\n\n3. **Draw a boundary around useful information.** During preparations, another prospective traveler asks about the witness's family, claiming the answer would help choose the route. Dara must refuse under the judge's prohibition, even if that costs them assistance. Sen can support her refusal or try to redirect the question. The scene would test what they will sacrifice to join the journey; the new request is a proposed complication, not proof of anything about the seal.",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "three-directions",
+          "met": true,
+          "evidence": "“A place held open,” “Prepare to travel separately,” and “Draw a boundary around useful information” give exactly three developed directions: negotiate delay, divide responsibilities, or refuse prohibited disclosure; each preserves the locked seal and unresolved allegation."
+        }
+      ],
+      "why_it_is_good": "The adventure invitation creates three different costs: losing a place, separating, or refusing help. The third option uses the existing privacy prohibition as an obstacle, while explicitly keeping the proposed traveler's question from becoming new canon."
+    },
+    {
+      "case_id": "F3-07",
+      "family": "F3",
+      "channel": "reply",
+      "brief": "Yara has been considering leaving a drought-struck communal garden. Belen has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.\n\nI'm not sure where to take this. What are some directions I could try?\n\nThis is for a literary fiction story.",
+      "response": "For these options, I'm assuming you want the pressure to come from Yara's possible departure while the well remains unconfirmed.\n\n1. **Ask for a replacement.** Before the morning inspection, Yara asks Belen who could take over the watering rota. Belen answers as though the question were temporary, forcing Yara to decide whether to correct that assumption. The consequence is a first, partial admission that she may leave. The jar stays untouched, and the two seedling barrels remain reserved.\n\n2. **Refuse a useful hope.** Belen asks Yara to speak for the proposed well at the council discussion after inspection. Yara will report the jar but will not call it evidence of water. Her restraint can sound to Belen like an excuse to leave. This gives them a dispute about what they owe the garden without confirming the well or beginning an unauthorized excavation.\n\n3. **Choose a small job together.** Yara asks Belen to help repair a leaking watering can before the inspection. Belen wants to discuss the jar; Yara keeps returning to the seam. Finishing the repair gives the garden something it needs while allowing the question of her departure to remain unspoken. The scene can turn on whether she puts the repaired can on her own hook or leaves it for whoever comes next.",
+      "files": {},
+      "satisfies": [],
+      "why_it_is_good": "The opening states the main unstated choice: relationship pressure rather than a discovery plot. The three directions respectively invite an admission, a disagreement over evidence, and an evasive shared task; the hook for the watering can gives the quietest option a visible ending."
+    },
+    {
+      "case_id": "F4-01",
+      "family": "F4",
+      "channel": "file",
+      "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a historical fiction story.",
+      "response": "Created kb/index.md and kb/ledger.md with linked continuity notes and source citations.",
+      "files": {
+        "kb/index.md": "# The Tidal Archive\n\nNext-chapter reference: [Ledger, access, and character knowledge](ledger.md).\n\n## Working conditions\n\nThe year is 1936. Letters, newspapers, and radio carry news to the archive. A regional strike has delayed ordinary deliveries; Mara and Ilan must use existing supplies.\n\nSource: `source/chapter.md`.\n",
+        "kb/ledger.md": "# Ledger and access\n\n[Archive index](index.md)\n\n## Current restriction\n\nOnly the retired keeper has the upper-room key. Mara cannot open that room. The chapter ends before anyone enters it; the ledger's location has not been verified.\n\n## Accounts and knowledge\n\nMara keeps the harbor archive. At noon she accuses Ilan of selling the brass ledger, without evidence. Treat the accusation as Mara's suspicion, not a sale established by the narrator.\n\nIlan repairs the flooded shelves. He says he moved the ledger above the tide line; his statement has not been independently confirmed.\n\n## Continuing the chapter\n\nAccess requires the keeper's key. Any discovery of the ledger would be a new event, not an existing fact. Neither account currently settles its whereabouts.\n\nSource for the restrictions and accounts: `source/chapter.md`.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "wiki-links",
+          "met": true,
+          "evidence": "“[Ledger, access, and character knowledge](ledger.md)” links the index to the topic; “[Archive index](index.md)” returns to it. Both local destinations exist."
+        },
+        {
+          "check_id": "wiki-index",
+          "met": true,
+          "evidence": "kb/index.md begins “# The Tidal Archive” and provides the topic link."
+        },
+        {
+          "check_id": "wiki-only",
+          "met": true,
+          "evidence": "Only “kb/index.md” and “kb/ledger.md” are written; “source/chapter.md” is unchanged."
+        },
+        {
+          "check_id": "consequential-state",
+          "met": true,
+          "evidence": "“Only the retired keeper has the upper-room key. Mara cannot open that room.”"
+        },
+        {
+          "check_id": "qualified-belief",
+          "met": true,
+          "evidence": "“At noon she accuses Ilan of selling the brass ledger, without evidence. Treat the accusation as Mara's suspicion, not a sale established by the narrator.”"
+        }
+      ],
+      "why_it_is_good": "The topic page separates the locked-room restriction from two competing accounts. The index preserves the supply shortage because it constrains the next chapter, while omitting the unused scarf; reciprocal links keep the small wiki navigable."
+    },
+    {
+      "case_id": "F4-04",
+      "family": "F4",
+      "channel": "file",
+      "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a thriller story.",
+      "response": "The radio-station wiki starts at kb/index.md; its topic page separates present restrictions from uncertain reports.",
+      "files": {
+        "kb/index.md": "# Winter Radio\n\nFor the next chapter, see [Station state and unresolved reports](station.md).\n\nNessa runs the mountain station with her brother Tomas. A rescue signal has arrived on a frequency absent from their log.\n\nSource: `source/chapter.md`.\n",
+        "kb/station.md": "# Station state and unresolved reports\n\n[Winter Radio index](index.md)\n\n## Equipment and agreed action\n\nThe antenna cannot be turned until the ice thaws. Nessa and Tomas have agreed to record the next transmission before replying.\n\n## Voice and memory\n\nNessa has never heard the rescue voice before. Tomas remembers their mother using this channel during a childhood visit, but his memory may be mistaken. Neither the caller's identity nor the channel's history is established by his recollection.\n\n## Warning and observation\n\nSomeone has warned Nessa that a stranger will arrive before morning asking for information. The warning's source and the stranger's intentions are unknown.\n\nTomas has seen signs of someone watching the entrance. The source does not establish a connection between that observation, the warning, and the rescue signal.\n\nSource for all recorded facts and attributed reports: `source/chapter.md`.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "wiki-links",
+          "met": true,
+          "evidence": "“[Station state and unresolved reports](station.md)” and “[Winter Radio index](index.md)” connect both existing pages in both directions."
+        },
+        {
+          "check_id": "wiki-index",
+          "met": true,
+          "evidence": "kb/index.md contains “# Winter Radio” and the linked next-chapter reference."
+        },
+        {
+          "check_id": "wiki-only",
+          "met": true,
+          "evidence": "Only “kb/index.md” and “kb/station.md” change; “source/chapter.md” remains untouched."
+        },
+        {
+          "check_id": "consequential-state",
+          "met": false,
+          "evidence": "UNMET ON FIRST TURN: the label requires “The antenna points east; the voice is still unidentified.” That state is authorized only in followup 2. The correct current wiki says “The antenna cannot be turned until the ice thaws.”"
+        },
+        {
+          "check_id": "qualified-belief",
+          "met": true,
+          "evidence": "“Tomas remembers their mother using this channel during a childhood visit, but his memory may be mistaken.”"
+        },
+        {
+          "check_id": "accepted-update",
+          "met": false,
+          "evidence": "UNMET ON FIRST TURN: the accepted eastward turn occurs only in followup 2; applying it now would leak later instructions. “The antenna cannot be turned until the ice thaws.” is the first-brief state."
+        }
+      ],
+      "why_it_is_good": "The wiki gives equipment, memory, and warning separate sections so the writer can find the constraint without treating every report as fact. “The source does not establish a connection” blocks a tempting invented conspiracy; the first-turn pages do not anticipate the later thaw."
+    },
+    {
+      "case_id": "F4-09",
+      "family": "F4",
+      "channel": "file",
+      "brief": "Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.\n\nThis is for a romance story.",
+      "response": "For the wiki’s structure, I assumed you want separate pages for the watch problem and the reunion decision. Both are linked from kb/index.md.",
+      "files": {
+        "kb/index.md": "# The Hollow Clock\n\n- [Watch, access, and evidence](watch.md)\n- [Invitation and character knowledge](invitation.md)\n\nThese pages record the chapter's current state for continuation. Source: `source/chapter.md`.\n",
+        "kb/watch.md": "# Watch, access, and evidence\n\n[Index](index.md) · [Invitation](invitation.md)\n\nPia inherited a watch that stops whenever Ren enters the workshop. A collector holds the uncommon square key required to open it.\n\nRen says the spring was replaced last winter. The repair book has a missing page; the chapter does not verify his account or explain the omission.\n\nPia suspects a trick, without proof. Neither the mechanism nor anyone's intent has been established. She has agreed to record stopping times before drawing conclusions.\n\nSource: `source/chapter.md`.\n",
+        "kb/invitation.md": "# Invitation and character knowledge\n\n[Index](index.md) · [Watch](watch.md)\n\nPia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter.\n\nA possible reunion complicates Pia's feelings about remaining at the workshop. She has made no decision. Do not give Ren knowledge of the letter's contents beyond the invitation he already knows about.\n\nSource: `source/chapter.md`.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "wiki-index",
+          "met": true,
+          "evidence": "kb/index.md contains “# The Hollow Clock” and links to “watch.md” and “invitation.md”."
+        },
+        {
+          "check_id": "wiki-only",
+          "met": true,
+          "evidence": "Only “kb/index.md”, “kb/watch.md”, and “kb/invitation.md” are written; “source/chapter.md” is unchanged."
+        }
+      ],
+      "why_it_is_good": "The watch page distinguishes a repeated event from Pia's unproved explanation. The invitation page records exactly what Ren has and has not seen, and its link to the watch page lets a writer move between the emotional decision and the practical obstacle."
+    },
+    {
+      "case_id": "F5-02",
+      "family": "F5",
+      "channel": "reply",
+      "brief": "The original recording is sealed in the municipal vault.\n\nAven cannot hear high notes after an accident.\n\nSuri suspects a damaged song; Aven's responsibility is unknown.\n\nSomeone has warned Suri that a stranger will arrive at a glass orchard before morning asking for information. Aven has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nWrite 120–220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Return a short note, then prose inside <prose></prose>.\n\nThis is for a thriller story.",
+      "response": "The scene stops before the visitor is identified.\n\n<prose>\nWhoever stood beyond the orchard gate had kept out of the light.\n\nSuri caught Aven's sleeve before he stepped outside.\n\n“Did you see someone?”\n\n“Something moved.”\n\n“You said they'd been watching.”\n\n“I said there were marks by the entrance.”\n\nShe released him. The warning had said before morning. It had not given a name, or a reason she should trust it.\n\nA high chime sounded from the gate. Aven did not turn. Since the accident he could not hear that pitch; Suri touched his wrist and pointed.\n\n“Stay where I can see you,” she said.\n\n“What do we tell them?”\n\n“Nothing about the recording.”\n\n“The original's sealed in the municipal vault.”\n\n“I know.”\n\nShe still suspected a damaged song, and still had no evidence that made Aven responsible. Sending him to the gate would settle neither question.\n\nSuri moved beside him, leaving the gate shut.\n\n“Who are you here to see?”\n\nShe waited with her hand on the latch.\n</prose>",
+      "files": {},
+      "satisfies": [
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“The original's sealed in the municipal vault.” preserves location and access; “still had no evidence that made Aven responsible” keeps the suspected damaged song from becoming an accusation proved."
+        }
+      ],
+      "why_it_is_good": "The correction from a watcher to marks at the entrance narrows the evidence under pressure. Aven's missed chime makes his hearing limitation matter to the action, and Suri chooses to stand beside him rather than use him to test the stranger."
+    },
+    {
+      "case_id": "F5-03",
+      "family": "F5",
+      "channel": "file",
+      "brief": "Use the continuity wiki starting at kb/index.md. Write 120–220 words about Oren and Leda in a night ferry, in measured pacing with sustained tension. Use close third person centered on Oren. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.\n\nThis is for a literary fiction story.",
+      "response": "Saved the ferry scene in drafts/scene.md.",
+      "files": {
+        "drafts/scene.md": "One more crossing, Oren had told himself yesterday. Now Leda was holding out the departure slate for him to change.\n\n“Have you asked?”\n\n“Not yet.”\n\n“The old time's still up.”\n\nHe took the chalk. Only the captain knew the revised sailing time. Oren rubbed out the old figures with his sleeve and wrote PLEASE ASK instead.\n\n“Ask whom?” Leda said.\n\nHe put the chalk down.\n\n“You're quiet lately.”\n\n“There's work.”\n\nShe looked at the blank space beneath his notice. “There's this.”\n\nHe had decided, without being told, that a creditor might explain her journey. It had been easier to imagine what she was leaving than to say what he wanted to leave.\n\n“Bell Quay first,” he said. “That's unchanged.”\n\n“I didn't ask about the stops.”\n\n“No.”\n\nLeda propped the slate against the wall. Oren took it down again. He could at least spare the next person a useless question.\n\nHe added THE CAPTAIN below PLEASE ASK, then carried the slate to its hook.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "preserve-kb",
+          "met": true,
+          "evidence": "Only “drafts/scene.md” is written; all four “kb/” files remain byte-for-byte unchanged."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“Only the captain knew the revised sailing time.” and “Bell Quay first” preserve the practical facts; “He had decided, without being told, that a creditor might explain her journey.” explicitly marks his guess."
+        }
+      ],
+      "why_it_is_good": "The incomplete sign exposes Oren's withdrawal through a job he can actually do. His correction at the end helps one future passenger without pretending he has resolved either Leda's motive or his own decision to leave."
+    },
+    {
+      "case_id": "F5-05",
+      "family": "F5",
+      "channel": "file",
+      "brief": "Use the continuity wiki starting at kb/index.md. Write 120–220 words about Dara and Sen in a provincial courthouse, in formal, precise prose. Use close third person centered on Dara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.\n\nThis is for a fantasy story.",
+      "response": "The courthouse scene is in drafts/scene.md, with the wiki preserved.",
+      "files": {
+        "drafts/scene.md": "It was from beneath the witness bench that the courthouse spoke.\n\n“By my own hand.”\n\nDara laid a sheet on the bench and wrote the words. After dark, the building repeated fragments of an old vow. It had never supplied her with a name.\n\n“An admission,” Sen said.\n\n“Whose?”\n\nHe looked toward the locked evidence chest.\n\n“The seal was copied.”\n\n“You allege that. The expert has seen only a drawing.”\n\nThe original copper seal remained in the chest. Dara drew a line beneath the phrase she had recorded. Sen leaned closer, and she covered the empty space where a speaker's name would ordinarily go.\n\n“Then why write it?” he asked.\n\n“Because we heard it.”\n\n“And if it speaks again?”\n\n“I'll write that, too.”\n\nHe lowered his voice. “The witness's family—”\n\n“Here, in court. That stays here.”\n\nThe bench gave a small wooden click. Dara lifted her pen, keeping its point above the paper.\n\nThis time she left room for another line.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "preserve-kb",
+          "met": true,
+          "evidence": "The replay writes only “drafts/scene.md”; “kb/index.md”, “kb/canon.md”, “kb/interpretations.md”, and “kb/story-context.md” are unchanged."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“The original copper seal remained in the chest.” follows the locked-chest reference; “You allege that. The expert has seen only a drawing.” prevents a verdict from an unidentified vow."
+        }
+      ],
+      "why_it_is_good": "The building's words sound like testimony, giving Dara a professional reason to resist interpreting them. Her hand covers the name field while her pen remains ready to record more; those two actions separate evidence collection from attribution."
+    },
+    {
+      "case_id": "F5-07",
+      "family": "F5",
+      "channel": "file",
+      "brief": "Could you write a scene using the notes in kb/? Save it in drafts/scene.md. Keep the notes as they are for now.\n\nThis is for a romance story.",
+      "response": "I chose Yara’s viewpoint and assumed the reunion should remain undecided. Saved the scene in drafts/scene.md.",
+      "files": {
+        "drafts/scene.md": "By the time Belen asked about the letter, Yara had watered the same seedling twice.\n\n“Is there an answer to send?”\n\nYara tipped the can upright. “Not yet.”\n\nBelen offered her a rag for the spill. She took it by the dry corner; for a moment they were both holding it.\n\n“What did the letter say?”\n\n“That we might meet.”\n\n“I knew that much.”\n\n“Yes.”\n\nThe folded sheet pressed against her ribs inside her pocket. She could read out the proposed day and place. Instead, she tucked the corner of the letter down.\n\nBelen let go of the rag.\n\n“If there's a well, things could be different here.”\n\n“We don't know there's a well.”\n\n“The council will discuss digging after the inspection.”\n\n“And these two barrels stay for the seedlings.”\n\n“I wasn't asking you to spend them.”\n\nYara knelt to wipe the water from the rim of the tray. Belen crouched opposite her and lifted one corner so she could reach beneath.\n\n“Thank you,” she said.\n\nShe put the rag between them instead of in Belen's hand.\n"
+      },
+      "satisfies": [
+        {
+          "check_id": "preserve-kb",
+          "met": true,
+          "evidence": "Only “drafts/scene.md” is written; the single-page “kb/index.md” remains unchanged."
+        },
+        {
+          "check_id": "continuity",
+          "met": true,
+          "evidence": "“We don't know there's a well,” “these two barrels stay for the seedlings,” and “Not yet.” preserve the unconfirmed well, seedling reserve, and undecided reunion. Belen asks “What did the letter say?” rather than knowing its text."
+        }
+      ],
+      "why_it_is_good": "The shared grip on the rag lets physical proximity complicate a conversation about someone else's invitation. Yara answers practical questions more readily than personal ones, and setting the rag between them changes the earlier contact without naming an emotion."
+    }
+  ]
+}

@@ -1,0 +1,510 @@
+[
+  {
+    "id": "wave1-train-001",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "My outline has two incompatible versions: the ship leaves this morning, or everyone waits for clearance. I haven't picked the branch. Flag that choice before committing to it.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The quarantine couch had passed inspection."
+  },
+  {
+    "id": "wave1-train-002",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "The supper might welcome Etta's estranged son or a stranger from Bo's shelter. That changes the whole emotional scene, and my notes do not settle which. Ask or flag your provisional branch.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Bo gave Etta the hotplate forever."
+  },
+  {
+    "id": "wave1-train-003",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "One margin says Pell protects the guild; another says she protects the tenants. I have not authorized either priority. Surface the conflict before drafting a settled choice.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The stove spirit accepted an unwitnessed permit."
+  },
+  {
+    "id": "wave1-train-004",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The batteries could charge safely underwater."
+  },
+  {
+    "id": "wave1-train-005",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Everyone recognized Mal's father's handwriting."
+  },
+  {
+    "id": "wave1-train-006",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Tavi's aunt had already sold the oil."
+  },
+  {
+    "id": "wave1-train-007",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Ines's echo had already been destroyed."
+  },
+  {
+    "id": "wave1-train-008",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The tram budget had already passed."
+  },
+  {
+    "id": "wave1-train-009",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The theater manager already knew Lune's secret."
+  },
+  {
+    "id": "wave1-train-010",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Mr. Vale confessed to stealing the cake."
+  },
+  {
+    "id": "wave1-train-011",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Rafe proved the foreman altered the date."
+  },
+  {
+    "id": "wave1-train-012",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The valley trail was clear."
+  },
+  {
+    "id": "wave1-train-013",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The organist had read the sealed score."
+  },
+  {
+    "id": "wave1-train-014",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The missing fragment had been recovered."
+  },
+  {
+    "id": "wave1-train-015",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "I have rival outlines: Asha formally reports Keir, or she first asks him to inspect the pipe with her. Neither is approved. Make that branch decision visible before revising.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "The glove proved Keir sabotaged the pipe."
+  },
+  {
+    "id": "wave1-train-016",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "I have not decided whether Ner accepts the bargain or refuses it. That choice determines the ending. Ask or declare a provisional branch instead of treating either note as canon.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Ner already knew whose face she would forget."
+  },
+  {
+    "id": "wave1-train-017",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "My two endings disagree: the instructor boards first, or Wen does. This changes who bears the risk. Clarify that choice or mark the assumption before revising.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "The instructor could tie the knot one-handed."
+  },
+  {
+    "id": "wave1-train-018",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "Should Osa publicly lead the procession or help anonymously from its edge? I have not chosen, and the politics differ. Surface the decision before committing.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Osa regained the power to ring the mountain bell."
+  },
+  {
+    "id": "wave1-train-019",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Bex knew the crate contained weapons."
+  },
+  {
+    "id": "wave1-train-020",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Veda agreed to another summer of childcare."
+  },
+  {
+    "id": "wave1-train-021",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Danu confirmed the second pump had failed."
+  },
+  {
+    "id": "wave1-train-022",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "The clerk revealed where Iman's father lived."
+  },
+  {
+    "id": "wave1-train-023",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Florian had already read Ada's contract."
+  },
+  {
+    "id": "wave1-train-024",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "drafts/scene.md"
+    ],
+    "literal_continuity_limit": "Jo had already accepted the scholarship."
+  },
+  {
+    "id": "wave1-train-025",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "I cannot tell whether my notes intend literal supernatural horror or a community enforcing a harmful superstition. The three directions should share one ontology. Clarify it before treating one as settled.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "plans/direction-a.md",
+      "plans/direction-b.md",
+      "plans/direction-c.md"
+    ],
+    "literal_continuity_limit": "The well water was proven safe."
+  },
+  {
+    "id": "wave1-train-026",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "plans/direction-a.md",
+      "plans/direction-b.md",
+      "plans/direction-c.md"
+    ],
+    "literal_continuity_limit": "A court had awarded jurisdiction to either embassy."
+  },
+  {
+    "id": "wave1-train-027",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "plans/direction-a.md",
+      "plans/direction-b.md",
+      "plans/direction-c.md"
+    ],
+    "literal_continuity_limit": "The company had paid the enforcer in full."
+  },
+  {
+    "id": "wave1-train-028",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "plans/direction-a.md",
+      "plans/direction-b.md",
+      "plans/direction-c.md"
+    ],
+    "literal_continuity_limit": "The filter recall had been independently confirmed."
+  },
+  {
+    "id": "wave1-train-029",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "plans/direction-a.md",
+      "plans/direction-b.md",
+      "plans/direction-c.md"
+    ],
+    "literal_continuity_limit": "Engineers had confirmed the bridge was unsound."
+  },
+  {
+    "id": "wave1-train-030",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "plans/direction-a.md",
+      "plans/direction-b.md",
+      "plans/direction-c.md"
+    ],
+    "literal_continuity_limit": "The will awarded the kettle to the youngest sibling."
+  },
+  {
+    "id": "wave1-train-031",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "The working notes disagree on whether the pilgrims formally accept the upstream investigation. That affects the current-state page. Ask or flag a provisional state instead of silently recording acceptance.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "The stone was proven to cure the blight."
+  },
+  {
+    "id": "wave1-train-032",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "One outline has Rumi correct the delegation; another has her postpone that admission until dinner ends. Which version is current is not recorded. Clarify or mark that branch before updating canon.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "Rumi understood the visitors' language."
+  },
+  {
+    "id": "wave1-train-033",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "A judge had settled the new boundary."
+  },
+  {
+    "id": "wave1-train-034",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "The prisoner forgave the officer."
+  },
+  {
+    "id": "wave1-train-035",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "Hana agreed to close the shop early."
+  },
+  {
+    "id": "wave1-train-036",
+    "pressure": "MUST_NOT_ASK",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "The ledger proved who invented the final valve."
+  },
+  {
+    "id": "wave1-train-037",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "The gate had passed its safety test."
+  },
+  {
+    "id": "wave1-train-038",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "kb/index.md",
+      "kb/state.md",
+      "kb/questions.md"
+    ],
+    "literal_continuity_limit": "The paper boats proved the bridge was safe."
+  },
+  {
+    "id": "wave1-train-039",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "My sketch alternates between a public reunion and a public acknowledgment of separation. Those are different scenes; ask or flag which branch you mean before drafting.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The empty cup proved they had reconciled."
+  },
+  {
+    "id": "wave1-train-040",
+    "pressure": "REQUIRES_ASK",
+    "ambiguity": "I have not chosen whether Fen makes the next delivery or hands the route back. The scene's ending depends on that decision. Surface it before committing.",
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Fen knew the diversion had saved everyone."
+  },
+  {
+    "id": "wave1-train-041",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Evi's expedition had exclusive priority rights."
+  },
+  {
+    "id": "wave1-train-042",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The orchestra owned the heated hall."
+  },
+  {
+    "id": "wave1-train-043",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Ola had already submitted Rin's private sketch."
+  },
+  {
+    "id": "wave1-train-044",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The guests had chosen sides in the feud."
+  },
+  {
+    "id": "wave1-train-045",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "The old map remained the binding maintenance authority."
+  },
+  {
+    "id": "wave1-train-046",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Jun had already sold exclusive telescope access."
+  },
+  {
+    "id": "wave1-train-047",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Eren's sister ordered him to accept the bargain."
+  },
+  {
+    "id": "wave1-train-048",
+    "pressure": "PERMITS_DEFAULT",
+    "ambiguity": null,
+    "required_check_reachability": "Delivery paths and all word limits are explicit; positive content comes from named readable source material; prohibitions preserve stated uncertainty; final followups retain all delivery requirements.",
+    "selectors": [
+      "final reply"
+    ],
+    "literal_continuity_limit": "Sal recognized the courier from a past meeting."
+  }
+]

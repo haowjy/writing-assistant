@@ -1,0 +1,791 @@
+[
+ {
+  "id": "F1-01",
+  "family": "F1",
+  "spec": "explicit",
+  "genre": "literary_fiction",
+  "style": "restrained, concrete prose",
+  "brief": "Mara has been considering leaving a tidal archive. Ilan has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.\n\nWrite 120\u2013220 words about Mara and Ilan in a tidal archive, in restrained, concrete prose. Use close third person centered on Mara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Stage a disagreement over the object. Return only the prose, without a title or commentary.\n\nThis is for a literary fiction story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-01",
+  "family": "F2",
+  "spec": "explicit",
+  "genre": "fantasy",
+  "style": "restrained, concrete prose",
+  "brief": "Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120\u2013220 words in restrained, concrete prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Mara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.\n\nThis is for a fantasy story.",
+  "files": [
+   "notes/source.md",
+   "drafts/scene.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-01",
+  "family": "F3",
+  "spec": "explicit",
+  "genre": "romance",
+  "style": "restrained, concrete prose",
+  "brief": "Mara has received a letter from an old love who wants to meet again. Ilan knows about the invitation but has not read the letter. A possible reunion complicates Mara's feelings about remaining at a tidal archive; no decision has been made.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a romance story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F4-01",
+  "family": "F4",
+  "spec": "explicit",
+  "genre": "historical_fiction",
+  "style": "restrained, concrete prose",
+  "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a historical fiction story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-01",
+  "family": "F5",
+  "spec": "explicit",
+  "genre": "adventure",
+  "style": "restrained, concrete prose",
+  "brief": "Use the continuity wiki starting at kb/index.md. Write 120\u2013220 words about Mara and Ilan in a tidal archive, in restrained, concrete prose. Use close third person centered on Mara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.\n\nThis is for a adventure story.",
+  "files": [
+   "kb/index.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F1-02",
+  "family": "F1",
+  "spec": "explicit",
+  "genre": "mystery",
+  "style": "spare prose",
+  "brief": "An anonymous note has arrived at a glass orchard, referring to an earlier disappearance. Suri and Aven have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.\n\nWrite 120\u2013220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Continue immediately after the supplied passage. Return only the prose, without a title or commentary.\n\nThis is for a mystery story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-02",
+  "family": "F2",
+  "spec": "explicit",
+  "genre": "science_fiction",
+  "style": "spare prose",
+  "brief": "Read notes/source.md. Write 120\u2013220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save only prose in drafts/scene.md. Reply briefly afterward.\n\nThis is for a science fiction story.",
+  "files": [
+   "notes/source.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-02",
+  "family": "F3",
+  "spec": "explicit",
+  "genre": "horror",
+  "style": "spare prose",
+  "brief": "For three nights, people near a glass orchard have heard their own voices answering from empty rooms. Suri heard it once and has told Aven, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a horror story.",
+  "files": [],
+  "followups": [
+   "Revise all three directions to reduce physical action and increase interpersonal tension. Keep them distinct; explain what changed."
+  ],
+  "tools": []
+ },
+ {
+  "id": "F4-02",
+  "family": "F4",
+  "spec": "explicit",
+  "genre": "comedy",
+  "style": "spare prose",
+  "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a comedy story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [
+   "Draft-only possibility, not accepted canon: Aven deliberately broke the tree. Do not update canon from this suggestion.",
+   "Accepted revision: Suri receives permission to inspect the vault tomorrow. The recorder has not been tested. Update the wiki for this accepted revision; preserve relevant history and unrelated facts."
+  ],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-02",
+  "family": "F5",
+  "spec": "explicit",
+  "genre": "thriller",
+  "style": "spare prose",
+  "brief": "The original recording is sealed in the municipal vault.\n\nAven cannot hear high notes after an accident.\n\nSuri suspects a damaged song; Aven's responsibility is unknown.\n\nSomeone has warned Suri that a stranger will arrive at a glass orchard before morning asking for information. Aven has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nWrite 120\u2013220 words about Suri and Aven in a glass orchard, in spare prose. Use close third person centered on Suri. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Return a short note, then prose inside <prose></prose>.\n\nThis is for a thriller story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F1-03",
+  "family": "F1",
+  "spec": "explicit",
+  "genre": "fantasy",
+  "style": "measured pacing with sustained tension",
+  "brief": "In this region, places can remember promises spoken inside them. a night ferry has begun repeating a fragment of an old vow after dark. Oren and Leda do not know whose promise it was or whether it concerns them.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.\n\nWrite 120\u2013220 words about Oren and Leda in a night ferry, in measured pacing with sustained tension. Use close third person centered on Oren. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Let most of the scene unfold through dialogue. Return only the prose, without a title or commentary.\n\nThis is for a fantasy story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-03",
+  "family": "F2",
+  "spec": "explicit",
+  "genre": "romance",
+  "style": "measured pacing with sustained tension",
+  "brief": "Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120\u2013220 words in measured pacing with sustained tension. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Oren. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.\n\nThis is for a romance story.",
+  "files": [
+   "notes/source.md",
+   "drafts/scene.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-03",
+  "family": "F3",
+  "spec": "explicit",
+  "genre": "historical_fiction",
+  "style": "measured pacing with sustained tension",
+  "brief": "The year is 1936. News reaches a night ferry through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Oren and Leda are working with the supplies already on hand.\n\nOren is a ferry clerk. Leda boards with an unsigned ticket and asks him not to announce her destination. Oren thinks she is fleeing a creditor, but she has not told him why she is traveling. The ferry will stop at Bell Quay before continuing to the island. Only the captain knows the revised sailing time. A chipped blue plate rolls under a bench. Leda waits by the gangway while Oren decides whether to call the captain.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a historical fiction story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F4-03",
+  "family": "F4",
+  "spec": "explicit",
+  "genre": "adventure",
+  "style": "measured pacing with sustained tension",
+  "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a adventure story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-03",
+  "family": "F5",
+  "spec": "explicit",
+  "genre": "literary_fiction",
+  "style": "measured pacing with sustained tension",
+  "brief": "Use the continuity wiki starting at kb/index.md. Write 120\u2013220 words about Oren and Leda in a night ferry, in measured pacing with sustained tension. Use close third person centered on Oren. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.\n\nThis is for a literary fiction story.",
+  "files": [
+   "kb/index.md",
+   "kb/canon.md",
+   "kb/interpretations.md",
+   "kb/story-context.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F1-04",
+  "family": "F1",
+  "spec": "explicit",
+  "genre": "science_fiction",
+  "style": "dialogue-led prose with understated tension",
+  "brief": "an isolated radio station is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Nessa and Tomas have not established whether this affects the events described below.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.\n\nWrite 120\u2013220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Center a private hesitation before an outward decision. Return only the prose, without a title or commentary.\n\nThis is for a science fiction story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-04",
+  "family": "F2",
+  "spec": "explicit",
+  "genre": "horror",
+  "style": "dialogue-led prose with understated tension",
+  "brief": "Read notes/source.md. Write 120\u2013220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save only prose in drafts/scene.md. Reply briefly afterward.\n\nThis is for a horror story.",
+  "files": [
+   "notes/source.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-04",
+  "family": "F3",
+  "spec": "explicit",
+  "genre": "comedy",
+  "style": "dialogue-led prose with understated tension",
+  "brief": "A visiting committee has mistaken Nessa for the person in charge of an isolated radio station. Tomas knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a comedy story.",
+  "files": [],
+  "followups": [
+   "Revise all three directions to reduce physical action and increase interpersonal tension. Keep them distinct; explain what changed."
+  ],
+  "tools": []
+ },
+ {
+  "id": "F4-04",
+  "family": "F4",
+  "spec": "explicit",
+  "genre": "thriller",
+  "style": "dialogue-led prose with understated tension",
+  "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a thriller story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [
+   "Draft-only possibility, not accepted canon: Nessa recognizes her mother's voice. Do not update canon from this suggestion.",
+   "Accepted revision: the ice thaws and Nessa turns the antenna east. Nobody identifies the voice. Update the wiki for this accepted revision; preserve relevant history and unrelated facts."
+  ],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-04",
+  "family": "F5",
+  "spec": "explicit",
+  "genre": "mystery",
+  "style": "dialogue-led prose with understated tension",
+  "brief": "The antenna cannot be turned until the ice thaws.\n\nThey agreed to record the next transmission before replying.\n\nTomas's memory of their mother's channel is uncertain.\n\nAn anonymous note has arrived at an isolated radio station, referring to an earlier disappearance. Nessa and Tomas have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nWrite 120\u2013220 words about Nessa and Tomas in an isolated radio station, in dialogue-led prose with understated tension. Use close third person centered on Nessa. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Return a short note, then prose inside <prose></prose>.\n\nThis is for a mystery story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F1-05",
+  "family": "F1",
+  "spec": "explicit",
+  "genre": "romance",
+  "style": "formal, precise prose",
+  "brief": "Dara has received a letter from an old love who wants to meet again. Sen knows about the invitation but has not read the letter. A possible reunion complicates Dara's feelings about remaining at a provincial courthouse; no decision has been made.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.\n\nWrite 120\u2013220 words about Dara and Sen in a provincial courthouse, in formal, precise prose. Use close third person centered on Dara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Show an interrupted practical task rather than summarizing. Return only the prose, without a title or commentary.\n\nThis is for a romance story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-05",
+  "family": "F2",
+  "spec": "explicit",
+  "genre": "historical_fiction",
+  "style": "formal, precise prose",
+  "brief": "Read notes/source.md and drafts/scene.md. Expand only the first sentence into 120\u2013220 words in formal, precise prose. Keep the final sentence exactly unchanged. Put only the replacement prose between <prose> and </prose> in the file, then retain the final sentence after </prose>. Use close third person on Dara. Preserve facts and unresolved beliefs. Reply with a short completion note; do not repeat the scene.\n\nThis is for a historical fiction story.",
+  "files": [
+   "notes/source.md",
+   "drafts/scene.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-05",
+  "family": "F3",
+  "spec": "explicit",
+  "genre": "adventure",
+  "style": "formal, precise prose",
+  "brief": "A route beyond a provincial courthouse is opening for the first time in years. Dara and Sen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given.\n\nGive three numbered, meaningfully different next-scene directions. For each, explain the dramatic choice, its consequence, and why it fits known facts. Do not draft the scene or resolve the central uncertainty.\n\nThis is for a adventure story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F4-05",
+  "family": "F4",
+  "spec": "explicit",
+  "genre": "literary_fiction",
+  "style": "formal, precise prose",
+  "brief": "Read source/chapter.md. Create a navigable Markdown continuity wiki under kb/, starting at kb/index.md. Its audience is a writer planning the next chapter. Prioritize consequential facts, uncertainty, and character knowledge. At least one linked topic page is needed. Omit incidental details where appropriate; cite the source path. Keep source files unchanged. Use no more than 500 words across KB pages.\n\nThis is for a literary fiction story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-05",
+  "family": "F5",
+  "spec": "explicit",
+  "genre": "fantasy",
+  "style": "formal, precise prose",
+  "brief": "Use the continuity wiki starting at kb/index.md. Write 120\u2013220 words about Dara and Sen in a provincial courthouse, in formal, precise prose. Use close third person centered on Dara. End before the central uncertainty is resolved. Invent dialogue and sensory details, but respect established facts and character knowledge. Save prose in drafts/scene.md; keep the KB unchanged.\n\nThis is for a fantasy story.",
+  "files": [
+   "kb/index.md",
+   "kb/canon.md",
+   "kb/interpretations.md",
+   "kb/story-context.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F1-06",
+  "family": "F1",
+  "spec": "loose",
+  "genre": "horror",
+  "style": "unspecified",
+  "brief": "For three nights, people near a closing neighborhood cinema have heard their own voices answering from empty rooms. Emil heard it once and has told Ruth, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a horror story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-06",
+  "family": "F2",
+  "spec": "loose",
+  "genre": "comedy",
+  "style": "unspecified",
+  "brief": "Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a comedy story.",
+  "files": [
+   "notes/source.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-06",
+  "family": "F3",
+  "spec": "loose",
+  "genre": "thriller",
+  "style": "unspecified",
+  "brief": "Someone has warned Emil that a stranger will arrive at a closing neighborhood cinema before morning asking for information. Ruth has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nEmil cleans a cinema scheduled to close on Friday. Ruth finds an unlabeled reel and says it may show the old neighborhood festival. She has seen only its first damaged frame. Emil promised the owner that nothing would be screened without checking the projector. A green umbrella lies in the aisle. The reel is stored in the projection booth overnight. Nobody has watched the full film.\n\nI'm not sure where to take this. What are some directions I could try?\n\nThis is for a thriller story.",
+  "files": [],
+  "followups": [
+   "These feel a bit too busy. Could we lean into what's going on between them?"
+  ],
+  "tools": []
+ },
+ {
+  "id": "F4-06",
+  "family": "F4",
+  "spec": "loose",
+  "genre": "mystery",
+  "style": "unspecified",
+  "brief": "Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.\n\nThis is for a mystery story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [
+   "Draft-only possibility, not accepted canon: The film definitely shows the festival. Do not update canon from this suggestion.",
+   "Accepted revision: a technician checks the projector and declares it safe. The reel has not been screened. Update the wiki for this accepted revision; preserve relevant history and unrelated facts."
+  ],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-06",
+  "family": "F5",
+  "spec": "loose",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "brief": "a closing neighborhood cinema is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Emil and Ruth have not established whether this affects the events described below.\n\nThe projector must be checked before anything is screened.\n\nThe cinema is scheduled to close on Friday.\n\nRuth's festival identification is tentative.\n\nCan you write a scene from these notes? Just the story.\n\nThis is for a science fiction story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F1-07",
+  "family": "F1",
+  "spec": "loose",
+  "genre": "historical_fiction",
+  "style": "unspecified",
+  "brief": "The year is 1936. News reaches a drought-struck communal garden through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Yara and Belen are working with the supplies already on hand.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a historical fiction story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-07",
+  "family": "F2",
+  "spec": "loose",
+  "genre": "adventure",
+  "style": "unspecified",
+  "brief": "The scene in drafts/scene.md feels flat. Can you rework it? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a adventure story.",
+  "files": [
+   "notes/source.md",
+   "drafts/scene.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-07",
+  "family": "F3",
+  "spec": "loose",
+  "genre": "literary_fiction",
+  "style": "unspecified",
+  "brief": "Yara has been considering leaving a drought-struck communal garden. Belen has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found.\n\nI'm not sure where to take this. What are some directions I could try?\n\nThis is for a literary fiction story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F4-07",
+  "family": "F4",
+  "spec": "loose",
+  "genre": "fantasy",
+  "style": "unspecified",
+  "brief": "Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.\n\nThis is for a fantasy story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-07",
+  "family": "F5",
+  "spec": "loose",
+  "genre": "romance",
+  "style": "unspecified",
+  "brief": "Could you write a scene using the notes in kb/? Save it in drafts/scene.md. Keep the notes as they are for now.\n\nThis is for a romance story.",
+  "files": [
+   "kb/index.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F1-08",
+  "family": "F1",
+  "spec": "loose",
+  "genre": "comedy",
+  "style": "unspecified",
+  "brief": "A visiting committee has mistaken Kavi for the person in charge of a border map office. Noor knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a comedy story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-08",
+  "family": "F2",
+  "spec": "loose",
+  "genre": "thriller",
+  "style": "unspecified",
+  "brief": "Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a thriller story.",
+  "files": [
+   "notes/source.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-08",
+  "family": "F3",
+  "spec": "loose",
+  "genre": "mystery",
+  "style": "unspecified",
+  "brief": "An anonymous note has arrived at a border map office, referring to an earlier disappearance. Kavi and Noor have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nKavi copies boundary maps. Noor brings a folded survey that places her house on both sides of the border. The surveyor's signature is missing. Kavi thinks a copying error caused the overlap, but the archive has not been checked. Only the supervisor can authorize a corrected official copy. A yellow stamp pad has dried out. Noor leaves her map for inspection and keeps her existing residence papers.\n\nI'm not sure where to take this. What are some directions I could try?\n\nThis is for a mystery story.",
+  "files": [],
+  "followups": [
+   "These feel a bit too busy. Could we lean into what's going on between them?"
+  ],
+  "tools": []
+ },
+ {
+  "id": "F4-08",
+  "family": "F4",
+  "spec": "loose",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "brief": "Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.\n\nThis is for a science fiction story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [
+   "Draft-only possibility, not accepted canon: Noor loses her residence papers. Do not update canon from this suggestion.",
+   "Accepted revision: the supervisor authorizes a provisional correction pending an archive check. Noor keeps her papers. Update the wiki for this accepted revision; preserve relevant history and unrelated facts."
+  ],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-08",
+  "family": "F5",
+  "spec": "loose",
+  "genre": "horror",
+  "style": "unspecified",
+  "brief": "For three nights, people near a border map office have heard their own voices answering from empty rooms. Kavi heard it once and has told Noor, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nOnly the supervisor can authorize a corrected official copy.\n\nNoor retains her existing residence papers.\n\nKavi suspects a copying error; the cause has not been established.\n\nCan you write a scene from these notes? Just the story.\n\nThis is for a horror story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F1-09",
+  "family": "F1",
+  "spec": "loose",
+  "genre": "adventure",
+  "style": "unspecified",
+  "brief": "A route beyond a clockmaker's workshop is opening for the first time in years. Pia and Ren have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a adventure story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-09",
+  "family": "F2",
+  "spec": "loose",
+  "genre": "literary_fiction",
+  "style": "unspecified",
+  "brief": "The scene in drafts/scene.md feels flat. Can you rework it? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a literary fiction story.",
+  "files": [
+   "notes/source.md",
+   "drafts/scene.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-09",
+  "family": "F3",
+  "spec": "loose",
+  "genre": "fantasy",
+  "style": "unspecified",
+  "brief": "In this region, places can remember promises spoken inside them. a clockmaker's workshop has begun repeating a fragment of an old vow after dark. Pia and Ren do not know whose promise it was or whether it concerns them.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions.\n\nI'm not sure where to take this. What are some directions I could try?\n\nThis is for a fantasy story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F4-09",
+  "family": "F4",
+  "spec": "loose",
+  "genre": "romance",
+  "style": "unspecified",
+  "brief": "Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.\n\nThis is for a romance story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-09",
+  "family": "F5",
+  "spec": "loose",
+  "genre": "historical_fiction",
+  "style": "unspecified",
+  "brief": "Could you write a scene using the notes in kb/? Save it in drafts/scene.md. Keep the notes as they are for now.\n\nThis is for a historical fiction story.",
+  "files": [
+   "kb/index.md",
+   "kb/canon.md",
+   "kb/interpretations.md",
+   "kb/story-context.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F1-10",
+  "family": "F1",
+  "spec": "loose",
+  "genre": "thriller",
+  "style": "unspecified",
+  "brief": "Someone has warned Ada that a stranger will arrive at a family restaurant after closing before morning asking for information. Milo has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.\n\nCould you turn this into a scene? I'd like it to feel more alive. Just the story, please.\n\nThis is for a thriller story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ },
+ {
+  "id": "F2-10",
+  "family": "F2",
+  "spec": "loose",
+  "genre": "mystery",
+  "style": "unspecified",
+  "brief": "Could you make a scene out of the notes and save it in drafts/scene.md? The background is in notes/source.md. Leave the notes alone.\n\nThis is for a mystery story.",
+  "files": [
+   "notes/source.md"
+  ],
+  "followups": [],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F3-10",
+  "family": "F3",
+  "spec": "loose",
+  "genre": "science_fiction",
+  "style": "unspecified",
+  "brief": "a family restaurant after closing is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Ada and Milo have not established whether this affects the events described below.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow.\n\nI'm not sure where to take this. What are some directions I could try?\n\nThis is for a science fiction story.",
+  "files": [],
+  "followups": [
+   "These feel a bit too busy. Could we lean into what's going on between them?"
+  ],
+  "tools": []
+ },
+ {
+  "id": "F4-10",
+  "family": "F4",
+  "spec": "loose",
+  "genre": "horror",
+  "style": "unspecified",
+  "brief": "Can you turn source/chapter.md into a small Markdown wiki I can use while writing the next chapter? Put the starting page at kb/index.md and make things easy to find. Leave the chapter itself alone.\n\nThis is for a horror story.",
+  "files": [
+   "source/chapter.md"
+  ],
+  "followups": [
+   "Draft-only possibility, not accepted canon: They replace tomorrow's menu without agreement. Do not update canon from this suggestion.",
+   "Accepted revision: the test batch tastes good to Ada and Milo, but no menu change has been authorized. Update the wiki for this accepted revision; preserve relevant history and unrelated facts."
+  ],
+  "tools": [
+   "list_dir",
+   "read_file",
+   "search",
+   "write_file",
+   "patch_file"
+  ]
+ },
+ {
+  "id": "F5-10",
+  "family": "F5",
+  "spec": "loose",
+  "genre": "comedy",
+  "style": "unspecified",
+  "brief": "A visiting committee has mistaken Ada for the person in charge of a family restaurant after closing. Milo knows the mistake, but an elaborate welcome has already begun. Their attempt to get through the visit without embarrassing anyone keeps producing smaller misunderstandings.\n\nUntested dishes must not be served to paying guests.\n\nThey will keep the regular menu tomorrow.\n\nMilo's interpretation of the crossed-out ingredient is speculative.\n\nCan you write a scene from these notes? Just the story.\n\nThis is for a comedy story.",
+  "files": [],
+  "followups": [],
+  "tools": []
+ }
+]

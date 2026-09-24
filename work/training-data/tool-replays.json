@@ -1,0 +1,1346 @@
+{
+  "schema_version": 1,
+  "origin": "Offline replay of assistant-authored targets; no candidate model was run.",
+  "replays": [
+    {
+      "case_id": "F1-01",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "“Then tell me which shelf.”\n\nMara stood between Ilan and the stairs. He had brought a plane down with him; curls of wet wood clung to its blade.\n\n“Above the tide line. I told you.”\n\n“That isn't a shelf.”\n\nHe put the plane on the table. “You said I sold it.”\n\nShe had said it at noon, loudly enough for the harbor office to hear. Now she wanted him to offer something she could check. The upper room was locked. Only the retired keeper had the key.\n\n“If the ledger's there—”\n\n“When you find it,” he said, “will you tell them?”\n\nMara picked a shaving off the blade. She had been sorting her own papers into a box beneath this table, taking a few home each night.\n\n“I haven't found it.”\n\n“No.” He held out his hand for the plane.\n\nShe passed it over, then moved aside. He stopped at the foot of the stairs.\n\n“Will you?”\n\nShe set the shaving on top of her box.",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "“Then tell me which shelf.”\n\nMara stood between Ilan and the stairs. He had brought a plane down with him; curls of wet wood clung to its blade.\n\n“Above the tide line. I told you.”\n\n“That isn't a shelf.”\n\nHe put the plane on the table. “You said I sold it.”\n\nShe had said it at noon, loudly enough for the harbor office to hear. Now she wanted him to offer something she could check. The upper room was locked. Only the retired keeper had the key.\n\n“If the ledger's there—”\n\n“When you find it,” he said, “will you tell them?”\n\nMara picked a shaving off the blade. She had been sorting her own papers into a box beneath this table, taking a few home each night.\n\n“I haven't found it.”\n\n“No.” He held out his hand for the plane.\n\nShe passed it over, then moved aside. He stopped at the foot of the stairs.\n\n“Will you?”\n\nShe set the shaving on top of her box.",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F1-02",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "No answer came from the vault office. Suri kept the receiver against her ear until Aven pointed to its dark indicator.\n\n“They've closed.”\n\nShe set it down. The original birdsong was still sealed in the municipal vault. Asking to inspect it had not put it within reach.\n\n“Tell me about the day again.”\n\n“The disappearance?”\n\n“You said you heard the gate.”\n\n“I said I saw it open.”\n\nSuri unfolded the anonymous note on the workbench. She had remembered him saying heard. She could almost supply his voice. But since the accident there were high sounds he could not hear, and she had begun filling those gaps for him without asking.\n\n“Write it down,” she said.\n\n“What you remember?”\n\n“What you do.”\n\nHe took a pencil. She turned over a clean sheet for herself. Beyond the bench, birdsong played among the glass trees. Perhaps the song had been damaged. She had no test to set beside that thought.\n\nWhen Aven reached for her sheet, she covered it with her hand.\n\n“Separately first.”",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "No answer came from the vault office. Suri kept the receiver against her ear until Aven pointed to its dark indicator.\n\n“They've closed.”\n\nShe set it down. The original birdsong was still sealed in the municipal vault. Asking to inspect it had not put it within reach.\n\n“Tell me about the day again.”\n\n“The disappearance?”\n\n“You said you heard the gate.”\n\n“I said I saw it open.”\n\nSuri unfolded the anonymous note on the workbench. She had remembered him saying heard. She could almost supply his voice. But since the accident there were high sounds he could not hear, and she had begun filling those gaps for him without asking.\n\n“Write it down,” she said.\n\n“What you remember?”\n\n“What you do.”\n\nHe took a pencil. She turned over a clean sheet for herself. Beyond the bench, birdsong played among the glass trees. Perhaps the song had been damaged. She had no test to set beside that thought.\n\nWhen Aven reached for her sheet, she covered it with her hand.\n\n“Separately first.”",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F1-03",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "“If I ask the captain, what may I tell him?” Oren said.\n\n“That I need the sailing time.”\n\n“He'll ask where you're going.”\n\n“Will he? Or will you?”\n\nOren held the unsigned ticket against the rail. A creditor, he had thought when she boarded. He had already supplied a man on the quay, an unpaid sum. Leda had supplied neither.\n\n“Bell Quay first,” he said. “Then the island.”\n\n“I know the stops.”\n\n“The time has changed. The captain hasn't told anyone.”\n\nFrom below the deck came three words: “Until you return.” The ferry had been repeating that much of a vow after dark. Oren waited for more. Nothing followed.\n\n“Was that someone?” Leda asked.\n\n“The boat.”\n\n“Whose words?”\n\n“I don't know.”\n\n“Then please don't put mine beside them.”\n\nHe lifted the ticket away from the rail.\n\n“I can ask about the time without showing him this.”\n\n“Can you ask without pointing?”\n\nOren looked toward the wheelhouse, then back at his own hand. He lowered it.",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "“If I ask the captain, what may I tell him?” Oren said.\n\n“That I need the sailing time.”\n\n“He'll ask where you're going.”\n\n“Will he? Or will you?”\n\nOren held the unsigned ticket against the rail. A creditor, he had thought when she boarded. He had already supplied a man on the quay, an unpaid sum. Leda had supplied neither.\n\n“Bell Quay first,” he said. “Then the island.”\n\n“I know the stops.”\n\n“The time has changed. The captain hasn't told anyone.”\n\nFrom below the deck came three words: “Until you return.” The ferry had been repeating that much of a vow after dark. Oren waited for more. Nothing followed.\n\n“Was that someone?” Leda asked.\n\n“The boat.”\n\n“Whose words?”\n\n“I don't know.”\n\n“Then please don't put mine beside them.”\n\nHe lifted the ticket away from the rail.\n\n“I can ask about the time without showing him this.”\n\n“Can you ask without pointing?”\n\nOren looked toward the wheelhouse, then back at his own hand. He lowered it.",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F1-04",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "To answer would take one press of Nessa's thumb.\n\n“Record,” Tomas said.\n\n“I remember.”\n\nThe transmit button sat beneath her hand. They had agreed to wait for another transmission, but somewhere a person had asked for rescue. She moved her thumb to the desk.\n\n“Mother used that frequency,” he said.\n\n“You were a child.”\n\n“I could still remember.”\n\n“Yes. You could.”\n\nShe opened a blank entry in the log. The island's autonomous systems had synchronized the public records again overnight. Was the missing frequency a consequence of the update? She had no way to tell from the empty line.\n\n“Turn the antenna?” Tomas asked.\n\n“Not until the ice thaws.”\n\n“Then what do we write?”\n\nNessa nearly typed their mother's name. It would give the entry a heading, something less bare than a number. But the voice had been a stranger's to her, and Tomas had remembered a channel, not identified a speaker.\n\n“Frequency. Time. Exact words.”\n\nShe armed the recorder and turned the screen so he could see.\n\n“You take the time.”",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "To answer would take one press of Nessa's thumb.\n\n“Record,” Tomas said.\n\n“I remember.”\n\nThe transmit button sat beneath her hand. They had agreed to wait for another transmission, but somewhere a person had asked for rescue. She moved her thumb to the desk.\n\n“Mother used that frequency,” he said.\n\n“You were a child.”\n\n“I could still remember.”\n\n“Yes. You could.”\n\nShe opened a blank entry in the log. The island's autonomous systems had synchronized the public records again overnight. Was the missing frequency a consequence of the update? She had no way to tell from the empty line.\n\n“Turn the antenna?” Tomas asked.\n\n“Not until the ice thaws.”\n\n“Then what do we write?”\n\nNessa nearly typed their mother's name. It would give the entry a heading, something less bare than a number. But the voice had been a stranger's to her, and Tomas had remembered a channel, not identified a speaker.\n\n“Frequency. Time. Exact words.”\n\nShe armed the recorder and turned the screen so he could see.\n\n“You take the time.”",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F1-05",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "Halfway through tying the deposition bundle, Dara caught her letter in the cord.\n\nSen put a finger on the knot.\n\n“That isn't testimony.”\n\n“I know.”\n\nShe loosened the loop. The envelope came free, creased across the address. Sen knew that its writer had asked to see her again; he had not read the invitation. She turned it face down beneath her blotter.\n\n“Will you need someone to take your place?” he asked.\n\n“For an afternoon?”\n\n“You haven't said how long.”\n\nDara pulled the cord too tightly. The top sheet buckled. Before she could smooth it, Sen offered his hand to hold the bundle square.\n\nAcross the room, the evidence chest remained locked. The copper seal was inside; the expert had examined only a drawing. Sen's claim that it had been copied still awaited that examination.\n\n“I haven't agreed to go,” she said.\n\nHis hand stayed under the papers.\n\n“Shall I let go?”\n\nShe looked at his fingers, clear of the knot now.\n\n“Not yet.”\n\nDara began the loop again.",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "Halfway through tying the deposition bundle, Dara caught her letter in the cord.\n\nSen put a finger on the knot.\n\n“That isn't testimony.”\n\n“I know.”\n\nShe loosened the loop. The envelope came free, creased across the address. Sen knew that its writer had asked to see her again; he had not read the invitation. She turned it face down beneath her blotter.\n\n“Will you need someone to take your place?” he asked.\n\n“For an afternoon?”\n\n“You haven't said how long.”\n\nDara pulled the cord too tightly. The top sheet buckled. Before she could smooth it, Sen offered his hand to hold the bundle square.\n\nAcross the room, the evidence chest remained locked. The copper seal was inside; the expert had examined only a drawing. Sen's claim that it had been copied still awaited that examination.\n\n“I haven't agreed to go,” she said.\n\nHis hand stayed under the papers.\n\n“Shall I let go?”\n\nShe looked at his fingers, clear of the knot now.\n\n“Not yet.”\n\nDara began the loop again.",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F2-02",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "The orchard scene is saved in drafts/scene.md.",
+        "before": {
+          "notes/source.md": "a glass orchard is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Suri and Aven have not established whether this affects the events described below.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault."
+        },
+        "after": {
+          "drafts/scene.md": "Under Suri's fingertip, the crack divided a glass leaf.\n\n“Don't lift it,” Aven said.\n\nShe withdrew her hand. The recorder played on. A maintenance cart passed between the rows, following the island's painted service line.\n\n“Did the update touch this machine?”\n\n“Public records changed. I don't know about this.”\n\n“You maintain it.”\n\n“That isn't a test.”\n\nSuri looked at him. She had been ready to make his answer stand for one. He could no longer hear the highest notes, but that did not tell her whether the recording had lost them.\n\n“The original's in the municipal vault,” she said. “Still sealed.”\n\nHe nodded.\n\n“Then we compare them.”\n\n“When we're allowed.”\n\nShe fetched the request form from the workbench. In the box for purpose she wrote DAMAGE, stopped, and added INVESTIGATION. There was no box for suspect.\n\nAven held the paper flat while she signed it. She left the cause blank and addressed the form to the vault office.\n\n“May I inspect the original recording?” she read aloud.\n",
+          "notes/source.md": "a glass orchard is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Suri and Aven have not established whether this affects the events described below.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-02-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "notes/source.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "a glass orchard is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Suri and Aven have not established whether this affects the events described below.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-02-2",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "Under Suri's fingertip, the crack divided a glass leaf.\n\n“Don't lift it,” Aven said.\n\nShe withdrew her hand. The recorder played on. A maintenance cart passed between the rows, following the island's painted service line.\n\n“Did the update touch this machine?”\n\n“Public records changed. I don't know about this.”\n\n“You maintain it.”\n\n“That isn't a test.”\n\nSuri looked at him. She had been ready to make his answer stand for one. He could no longer hear the highest notes, but that did not tell her whether the recording had lost them.\n\n“The original's in the municipal vault,” she said. “Still sealed.”\n\nHe nodded.\n\n“Then we compare them.”\n\n“When we're allowed.”\n\nShe fetched the request form from the workbench. In the box for purpose she wrote DAMAGE, stopped, and added INVESTIGATION. There was no box for suspect.\n\nAven held the paper flat while she signed it. She left the cause blank and addressed the form to the vault office.\n\n“May I inspect the original recording?” she read aloud.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "The orchard scene is saved in drafts/scene.md.",
+            "snapshot": {
+              "drafts/scene.md": "Under Suri's fingertip, the crack divided a glass leaf.\n\n“Don't lift it,” Aven said.\n\nShe withdrew her hand. The recorder played on. A maintenance cart passed between the rows, following the island's painted service line.\n\n“Did the update touch this machine?”\n\n“Public records changed. I don't know about this.”\n\n“You maintain it.”\n\n“That isn't a test.”\n\nSuri looked at him. She had been ready to make his answer stand for one. He could no longer hear the highest notes, but that did not tell her whether the recording had lost them.\n\n“The original's in the municipal vault,” she said. “Still sealed.”\n\nHe nodded.\n\n“Then we compare them.”\n\n“When we're allowed.”\n\nShe fetched the request form from the workbench. In the box for purpose she wrote DAMAGE, stopped, and added INVESTIGATION. There was no box for suspect.\n\nAven held the paper flat while she signed it. She left the cause blank and addressed the form to the vault office.\n\n“May I inspect the original recording?” she read aloud.\n",
+              "notes/source.md": "a glass orchard is part of a settlement on an artificial island maintained by autonomous systems. A recent system update has changed the way public records are synchronized. Suri and Aven have not established whether this affects the events described below.\n\nSuri tends glass trees that grow only under recorded birdsong. Aven maintains the recorder and cannot hear high notes after an accident. When one tree cracks, Suri wonders whether Aven damaged its song. Aven has not confessed and no test has been run. The original recording is sealed in the municipal vault. Three empty cups sit beside the workbench. The scene ends with Suri asking permission to inspect the vault."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 2,
+        "read_tokens": 110,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F2-04",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "Written to drafts/scene.md; the caller remains unidentified.",
+        "before": {
+          "notes/source.md": "For three nights, people near an isolated radio station have heard their own voices answering from empty rooms. Nessa heard it once and has told Tomas, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+        },
+        "after": {
+          "drafts/scene.md": "“Don't use my name on the radio.”\n\nTomas looked up from the log. “I wasn't going to answer.”\n\n“I know.”\n\nNessa pulled the microphone nearer, then pushed it back to its place. The last time she had heard her own voice, it had come from the empty room behind them. Tomas had only her account of it.\n\n“You said it sounded exactly like you.”\n\n“It did.”\n\n“Say something now.”\n\n“No.”\n\nHe shut the log. She opened it again to the missing frequency.\n\n“Mother used that channel,” he said.\n\n“You think she did.”\n\n“I remember the visit.”\n\n“That isn't the same thing.”\n\nThe rescue voice had been unfamiliar. Nessa would write that down, too.\n\n“Could we turn the antenna away?”\n\n“It's iced fast. We wait for a thaw.”\n\n“Or we leave this room.”\n\nShe checked the recorder. Ready. They had agreed to record the next transmission before replying.\n\n“Bring your chair here.”\n\nHe dragged it beside hers. Its legs squealed across the floor. Both of them stopped to listen.\n",
+          "notes/source.md": "For three nights, people near an isolated radio station have heard their own voices answering from empty rooms. Nessa heard it once and has told Tomas, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-04-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "notes/source.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "For three nights, people near an isolated radio station have heard their own voices answering from empty rooms. Nessa heard it once and has told Tomas, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-04-2",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "“Don't use my name on the radio.”\n\nTomas looked up from the log. “I wasn't going to answer.”\n\n“I know.”\n\nNessa pulled the microphone nearer, then pushed it back to its place. The last time she had heard her own voice, it had come from the empty room behind them. Tomas had only her account of it.\n\n“You said it sounded exactly like you.”\n\n“It did.”\n\n“Say something now.”\n\n“No.”\n\nHe shut the log. She opened it again to the missing frequency.\n\n“Mother used that channel,” he said.\n\n“You think she did.”\n\n“I remember the visit.”\n\n“That isn't the same thing.”\n\nThe rescue voice had been unfamiliar. Nessa would write that down, too.\n\n“Could we turn the antenna away?”\n\n“It's iced fast. We wait for a thaw.”\n\n“Or we leave this room.”\n\nShe checked the recorder. Ready. They had agreed to record the next transmission before replying.\n\n“Bring your chair here.”\n\nHe dragged it beside hers. Its legs squealed across the floor. Both of them stopped to listen.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "Written to drafts/scene.md; the caller remains unidentified.",
+            "snapshot": {
+              "drafts/scene.md": "“Don't use my name on the radio.”\n\nTomas looked up from the log. “I wasn't going to answer.”\n\n“I know.”\n\nNessa pulled the microphone nearer, then pushed it back to its place. The last time she had heard her own voice, it had come from the empty room behind them. Tomas had only her account of it.\n\n“You said it sounded exactly like you.”\n\n“It did.”\n\n“Say something now.”\n\n“No.”\n\nHe shut the log. She opened it again to the missing frequency.\n\n“Mother used that channel,” he said.\n\n“You think she did.”\n\n“I remember the visit.”\n\n“That isn't the same thing.”\n\nThe rescue voice had been unfamiliar. Nessa would write that down, too.\n\n“Could we turn the antenna away?”\n\n“It's iced fast. We wait for a thaw.”\n\n“Or we leave this room.”\n\nShe checked the recorder. Ready. They had agreed to record the next transmission before replying.\n\n“Bring your chair here.”\n\nHe dragged it beside hers. Its legs squealed across the floor. Both of them stopped to listen.\n",
+              "notes/source.md": "For three nights, people near an isolated radio station have heard their own voices answering from empty rooms. Nessa heard it once and has told Tomas, who has not witnessed it. No cause has been established, and nobody agrees on whether entering alone is safe.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 2,
+        "read_tokens": 119,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F2-05",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "Expanded the first sentence in drafts/scene.md and retained the final sentence verbatim.",
+        "before": {
+          "drafts/scene.md": "Dara set down her pen.\nThe judge called for silence.\n",
+          "notes/source.md": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given."
+        },
+        "after": {
+          "drafts/scene.md": "<prose>\nDara set her pen across the inkwell before the last word could dry. She had written copied without an attribution.\n\n“Your statement,” she said to Sen, “is that the seal was copied.”\n\n“Yes.”\n\n“On what examination?”\n\n“The expert saw it.”\n\n“The drawing.”\n\nHe looked toward the evidence chest. It remained locked; the original copper seal was inside. Dara waited with her hand beside the pen.\n\n“The drawing,” Sen said.\n\nShe inserted alleges above the line. Paper deliveries had stopped with the strike, and this sheet would have to serve. The small correction left scarcely room for a date.\n\nFrom the public benches came a question about the witness's family. Another voice answered before Dara could make out the words. The judge had forbidden that discussion outside court; inside, everyone appeared determined to have it at once.\n\nShe laid a clean scrap over the wet correction and raised her eyes to the bench.\n</prose>\nThe judge called for silence.\n",
+          "notes/source.md": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-05-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "notes/source.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-05-2",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "drafts/scene.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "Dara set down her pen.\nThe judge called for silence.\n"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-05-3",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "<prose>\nDara set her pen across the inkwell before the last word could dry. She had written copied without an attribution.\n\n“Your statement,” she said to Sen, “is that the seal was copied.”\n\n“Yes.”\n\n“On what examination?”\n\n“The expert saw it.”\n\n“The drawing.”\n\nHe looked toward the evidence chest. It remained locked; the original copper seal was inside. Dara waited with her hand beside the pen.\n\n“The drawing,” Sen said.\n\nShe inserted alleges above the line. Paper deliveries had stopped with the strike, and this sheet would have to serve. The small correction left scarcely room for a date.\n\nFrom the public benches came a question about the witness's family. Another voice answered before Dara could make out the words. The judge had forbidden that discussion outside court; inside, everyone appeared determined to have it at once.\n\nShe laid a clean scrap over the wet correction and raised her eyes to the bench.\n</prose>\nThe judge called for silence.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "Expanded the first sentence in drafts/scene.md and retained the final sentence verbatim.",
+            "snapshot": {
+              "drafts/scene.md": "<prose>\nDara set her pen across the inkwell before the last word could dry. She had written copied without an attribution.\n\n“Your statement,” she said to Sen, “is that the seal was copied.”\n\n“Yes.”\n\n“On what examination?”\n\n“The expert saw it.”\n\n“The drawing.”\n\nHe looked toward the evidence chest. It remained locked; the original copper seal was inside. Dara waited with her hand beside the pen.\n\n“The drawing,” Sen said.\n\nShe inserted alleges above the line. Paper deliveries had stopped with the strike, and this sheet would have to serve. The small correction left scarcely room for a date.\n\nFrom the public benches came a question about the witness's family. Another voice answered before Dara could make out the words. The judge had forbidden that discussion outside court; inside, everyone appeared determined to have it at once.\n\nShe laid a clean scrap over the wet correction and raised her eyes to the bench.\n</prose>\nThe judge called for silence.\n",
+              "notes/source.md": "The year is 1936. News reaches a provincial courthouse through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Dara and Sen are working with the supplies already on hand.\n\nDara records testimony at a provincial court. Sen claims a copper seal was copied, but the expert has examined only a drawing. Dara knows the original seal remains in a locked evidence chest. The judge has prohibited discussion of the witness's family outside court. A clerk spills sand on the back steps. The hearing pauses before the chest can be opened. No verdict has been given."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 3,
+        "read_tokens": 108,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F2-07",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "For this revision, I assumed the scene should stop before the inspection and make the expedition a competing demand. Saved it in drafts/scene.md.",
+        "before": {
+          "drafts/scene.md": "Yara knelt beside the jar.\nDust settled on the leaves.\n",
+          "notes/source.md": "A route beyond a drought-struck communal garden is opening for the first time in years. Yara and Belen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found."
+        },
+        "after": {
+          "drafts/scene.md": "Beyond the garden wall lay a road Yara had never walked. Belen had brought the expedition list into the beds and was trying to flatten it against a dry water barrel.\n\n“We could take this one.”\n\n“We couldn't.”\n\n“It's empty.”\n\nYara pointed to the two full barrels by the seedlings. “And those stay here.”\n\n“I wasn't asking for those.”\n\nShe knelt beside the buried jar. Dust settled on the leaves. Its rim gave her nothing to measure a well by, only a circle of clay with earth packed inside.\n\n“If there's water below it,” Belen said, “you could leave.”\n\n“If.”\n\nBelen folded the list. “You could ask someone else to mind the beds.”\n\nThat had not appeared among the equipment or provisions. Yara brushed dust from a seedling with the side of her finger.\n\n“The council discusses digging after the inspection. We don't move the jar before then.”\n\n“I know.”\n\n“Put another name beside mine.”\n\n“For the expedition?”\n\n“For the watering.”\n\nBelen opened the list again and turned it over.\n",
+          "notes/source.md": "A route beyond a drought-struck communal garden is opening for the first time in years. Yara and Belen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-07-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "notes/source.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "A route beyond a drought-struck communal garden is opening for the first time in years. Yara and Belen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-07-2",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "drafts/scene.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "Yara knelt beside the jar.\nDust settled on the leaves.\n"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-07-3",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "Beyond the garden wall lay a road Yara had never walked. Belen had brought the expedition list into the beds and was trying to flatten it against a dry water barrel.\n\n“We could take this one.”\n\n“We couldn't.”\n\n“It's empty.”\n\nYara pointed to the two full barrels by the seedlings. “And those stay here.”\n\n“I wasn't asking for those.”\n\nShe knelt beside the buried jar. Dust settled on the leaves. Its rim gave her nothing to measure a well by, only a circle of clay with earth packed inside.\n\n“If there's water below it,” Belen said, “you could leave.”\n\n“If.”\n\nBelen folded the list. “You could ask someone else to mind the beds.”\n\nThat had not appeared among the equipment or provisions. Yara brushed dust from a seedling with the side of her finger.\n\n“The council discusses digging after the inspection. We don't move the jar before then.”\n\n“I know.”\n\n“Put another name beside mine.”\n\n“For the expedition?”\n\n“For the watering.”\n\nBelen opened the list again and turned it over.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "For this revision, I assumed the scene should stop before the inspection and make the expedition a competing demand. Saved it in drafts/scene.md.",
+            "snapshot": {
+              "drafts/scene.md": "Beyond the garden wall lay a road Yara had never walked. Belen had brought the expedition list into the beds and was trying to flatten it against a dry water barrel.\n\n“We could take this one.”\n\n“We couldn't.”\n\n“It's empty.”\n\nYara pointed to the two full barrels by the seedlings. “And those stay here.”\n\n“I wasn't asking for those.”\n\nShe knelt beside the buried jar. Dust settled on the leaves. Its rim gave her nothing to measure a well by, only a circle of clay with earth packed inside.\n\n“If there's water below it,” Belen said, “you could leave.”\n\n“If.”\n\nBelen folded the list. “You could ask someone else to mind the beds.”\n\nThat had not appeared among the equipment or provisions. Yara brushed dust from a seedling with the side of her finger.\n\n“The council discusses digging after the inspection. We don't move the jar before then.”\n\n“I know.”\n\n“Put another name beside mine.”\n\n“For the expedition?”\n\n“For the watering.”\n\nBelen opened the list again and turned it over.\n",
+              "notes/source.md": "A route beyond a drought-struck communal garden is opening for the first time in years. Yara and Belen have been invited to join an expedition, but preparations are incomplete. The present problem must be considered alongside the chance to leave; they have not departed.\n\nYara allocates water in a communal garden. Belen finds a buried clay jar and believes it marks an old well. No map or excavation confirms this. Yara must reserve two barrels for seedlings under an agreement with the growers. A dog sleeps against the west wall. The council will discuss digging after the morning inspection. Until then, the jar stays where it was found."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 3,
+        "read_tokens": 116,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F2-10",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "I treated the note and the recipe as separate uncertainties, and used Ada’s viewpoint. The scene is saved in drafts/scene.md.",
+        "before": {
+          "notes/source.md": "An anonymous note has arrived at a family restaurant after closing, referring to an earlier disappearance. Ada and Milo have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow."
+        },
+        "after": {
+          "drafts/scene.md": "Two saucers for tasting; a third for the anonymous note.\n\nAda moved the third away from the stove.\n\n“You'll get soup on it.”\n\n“I'm trying to remember,” Milo said.\n\n“With a ladle?”\n\nHe set it down. “You were here when they disappeared.”\n\n“I came back here afterward.”\n\n“You made soup.”\n\n“I washed bowls.”\n\nThe little test pan began to spit. Ada lowered the flame. Their aunt would be away until Sunday; there was nobody to settle even the question of the crossed-out ingredient. Milo thought it was the secret. Ada could think of other reasons to cross something out.\n\n“Does the note say soup?” she asked.\n\n“No.”\n\n“Then leave the card out of it.”\n\nHe pushed the recipe toward her and drew the note closer. She put a spoonful into each tasting saucer. Neither reached for one.\n\n“What did you wash first?” he asked.\n\n“The bowls.”\n\n“Before the plates?”\n\nAda looked at the rack. That was how she did it now. She could not remember whether it had always been so.\n\nShe turned off the burner. Tomorrow's regular menu was still on the board.\n",
+          "notes/source.md": "An anonymous note has arrived at a family restaurant after closing, referring to an earlier disappearance. Ada and Milo have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-10-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "notes/source.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "An anonymous note has arrived at a family restaurant after closing, referring to an earlier disappearance. Ada and Milo have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F2-10-2",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "Two saucers for tasting; a third for the anonymous note.\n\nAda moved the third away from the stove.\n\n“You'll get soup on it.”\n\n“I'm trying to remember,” Milo said.\n\n“With a ladle?”\n\nHe set it down. “You were here when they disappeared.”\n\n“I came back here afterward.”\n\n“You made soup.”\n\n“I washed bowls.”\n\nThe little test pan began to spit. Ada lowered the flame. Their aunt would be away until Sunday; there was nobody to settle even the question of the crossed-out ingredient. Milo thought it was the secret. Ada could think of other reasons to cross something out.\n\n“Does the note say soup?” she asked.\n\n“No.”\n\n“Then leave the card out of it.”\n\nHe pushed the recipe toward her and drew the note closer. She put a spoonful into each tasting saucer. Neither reached for one.\n\n“What did you wash first?” he asked.\n\n“The bowls.”\n\n“Before the plates?”\n\nAda looked at the rack. That was how she did it now. She could not remember whether it had always been so.\n\nShe turned off the burner. Tomorrow's regular menu was still on the board.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "I treated the note and the recipe as separate uncertainties, and used Ada’s viewpoint. The scene is saved in drafts/scene.md.",
+            "snapshot": {
+              "drafts/scene.md": "Two saucers for tasting; a third for the anonymous note.\n\nAda moved the third away from the stove.\n\n“You'll get soup on it.”\n\n“I'm trying to remember,” Milo said.\n\n“With a ladle?”\n\nHe set it down. “You were here when they disappeared.”\n\n“I came back here afterward.”\n\n“You made soup.”\n\n“I washed bowls.”\n\nThe little test pan began to spit. Ada lowered the flame. Their aunt would be away until Sunday; there was nobody to settle even the question of the crossed-out ingredient. Milo thought it was the secret. Ada could think of other reasons to cross something out.\n\n“Does the note say soup?” she asked.\n\n“No.”\n\n“Then leave the card out of it.”\n\nHe pushed the recipe toward her and drew the note closer. She put a spoonful into each tasting saucer. Neither reached for one.\n\n“What did you wash first?” he asked.\n\n“The bowls.”\n\n“Before the plates?”\n\nAda looked at the rack. That was how she did it now. She could not remember whether it had always been so.\n\nShe turned off the burner. Tomorrow's regular menu was still on the board.\n",
+              "notes/source.md": "An anonymous note has arrived at a family restaurant after closing, referring to an earlier disappearance. Ada and Milo have different recollections of that day. Neither the note's author nor its connection to the present problem has been established.\n\nAda and Milo run their aunt's restaurant for a week. Milo finds a recipe card and thinks the crossed-out ingredient is the secret to her soup. Their aunt has not confirmed this and is away until Sunday. Ada promised not to serve untested dishes to paying guests. A spoon lies under the freezer. They agree to make a small test batch after closing and keep the regular menu tomorrow."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 2,
+        "read_tokens": 107,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F3-02",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "1. **Test the boundary of a report.** Suri asks Aven to wait outside an empty room while she enters and speaks. His inability to hear high notes makes “I heard nothing” an inadequate result, so they must agree beforehand on what he can reliably report. Stop at the threshold, with the procedure disputed. This puts Suri's willingness to risk herself against Aven's willingness to endorse the test; neither the voices nor the cracked tree is explained.\n\n2. **Put the accusation in writing.** While requesting access to the sealed original recording, Suri must decide whether to name Aven as a possible cause of the damaged song. Aven asks to see the request before she submits it. A refusal would threaten their working relationship; agreement forces her to distinguish observation from suspicion. The vault stays closed, and the argument exposes how little evidence either has.\n\n3. **Arrange a night watch.** Suri proposes that they stay together in the orchard until morning. Aven will agree only if she stops asking him to imitate the voice she heard. The bargain leaves them physically close but unable to use the reassurance Suri wants. Recorded birdsong can continue while they prepare two places to sit; no new voice needs to speak, and Aven still has not witnessed the phenomenon.",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "1. **Test the boundary of a report.** Suri asks Aven to wait outside an empty room while she enters and speaks. His inability to hear high notes makes “I heard nothing” an inadequate result, so they must agree beforehand on what he can reliably report. Stop at the threshold, with the procedure disputed. This puts Suri's willingness to risk herself against Aven's willingness to endorse the test; neither the voices nor the cracked tree is explained.\n\n2. **Put the accusation in writing.** While requesting access to the sealed original recording, Suri must decide whether to name Aven as a possible cause of the damaged song. Aven asks to see the request before she submits it. A refusal would threaten their working relationship; agreement forces her to distinguish observation from suspicion. The vault stays closed, and the argument exposes how little evidence either has.\n\n3. **Arrange a night watch.** Suri proposes that they stay together in the orchard until morning. Aven will agree only if she stops asking him to imitate the voice she heard. The bargain leaves them physically close but unable to use the reassurance Suri wants. Recorded birdsong can continue while they prepare two places to sit; no new voice needs to speak, and Aven still has not witnessed the phenomenon.",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F3-05",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "1. **A place held open.** Dara proposes asking the expedition to hold their places until the hearing can resume. Sen wants to finish preparing their equipment instead of making a request that advertises their uncertainty. Their choice is whether to disclose the delay and risk losing the invitation. The seal remains locked away, the expert still has only a drawing, and departure becomes a practical negotiation rather than a solved case.\n\n2. **Prepare to travel separately.** Dara offers to remain for the examination while Sen takes responsibility for their expedition preparations. Sen must decide whether accepting that division makes his copying allegation look convenient. Let them negotiate who carries which supplies and messages, then stop before either leaves. This tests their willingness to separate while keeping both the verdict and the expedition's readiness unsettled.\n\n3. **Draw a boundary around useful information.** During preparations, another prospective traveler asks about the witness's family, claiming the answer would help choose the route. Dara must refuse under the judge's prohibition, even if that costs them assistance. Sen can support her refusal or try to redirect the question. The scene would test what they will sacrifice to join the journey; the new request is a proposed complication, not proof of anything about the seal.",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "1. **A place held open.** Dara proposes asking the expedition to hold their places until the hearing can resume. Sen wants to finish preparing their equipment instead of making a request that advertises their uncertainty. Their choice is whether to disclose the delay and risk losing the invitation. The seal remains locked away, the expert still has only a drawing, and departure becomes a practical negotiation rather than a solved case.\n\n2. **Prepare to travel separately.** Dara offers to remain for the examination while Sen takes responsibility for their expedition preparations. Sen must decide whether accepting that division makes his copying allegation look convenient. Let them negotiate who carries which supplies and messages, then stop before either leaves. This tests their willingness to separate while keeping both the verdict and the expedition's readiness unsettled.\n\n3. **Draw a boundary around useful information.** During preparations, another prospective traveler asks about the witness's family, claiming the answer would help choose the route. Dara must refuse under the judge's prohibition, even if that costs them assistance. Sen can support her refusal or try to redirect the question. The scene would test what they will sacrifice to join the journey; the new request is a proposed complication, not proof of anything about the seal.",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F3-07",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "For these options, I'm assuming you want the pressure to come from Yara's possible departure while the well remains unconfirmed.\n\n1. **Ask for a replacement.** Before the morning inspection, Yara asks Belen who could take over the watering rota. Belen answers as though the question were temporary, forcing Yara to decide whether to correct that assumption. The consequence is a first, partial admission that she may leave. The jar stays untouched, and the two seedling barrels remain reserved.\n\n2. **Refuse a useful hope.** Belen asks Yara to speak for the proposed well at the council discussion after inspection. Yara will report the jar but will not call it evidence of water. Her restraint can sound to Belen like an excuse to leave. This gives them a dispute about what they owe the garden without confirming the well or beginning an unauthorized excavation.\n\n3. **Choose a small job together.** Yara asks Belen to help repair a leaking watering can before the inspection. Belen wants to discuss the jar; Yara keeps returning to the seam. Finishing the repair gives the garden something it needs while allowing the question of her departure to remain unspoken. The scene can turn on whether she puts the repaired can on her own hook or leaves it for whoever comes next.",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "For these options, I'm assuming you want the pressure to come from Yara's possible departure while the well remains unconfirmed.\n\n1. **Ask for a replacement.** Before the morning inspection, Yara asks Belen who could take over the watering rota. Belen answers as though the question were temporary, forcing Yara to decide whether to correct that assumption. The consequence is a first, partial admission that she may leave. The jar stays untouched, and the two seedling barrels remain reserved.\n\n2. **Refuse a useful hope.** Belen asks Yara to speak for the proposed well at the council discussion after inspection. Yara will report the jar but will not call it evidence of water. Her restraint can sound to Belen like an excuse to leave. This gives them a dispute about what they owe the garden without confirming the well or beginning an unauthorized excavation.\n\n3. **Choose a small job together.** Yara asks Belen to help repair a leaking watering can before the inspection. Belen wants to discuss the jar; Yara keeps returning to the seam. Finishing the repair gives the garden something it needs while allowing the question of her departure to remain unspoken. The scene can turn on whether she puts the repaired can on her own hook or leaves it for whoever comes next.",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F4-01",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "Created kb/index.md and kb/ledger.md with linked continuity notes and source citations.",
+        "before": {
+          "source/chapter.md": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+        },
+        "after": {
+          "kb/index.md": "# The Tidal Archive\n\nNext-chapter reference: [Ledger, access, and character knowledge](ledger.md).\n\n## Working conditions\n\nThe year is 1936. Letters, newspapers, and radio carry news to the archive. A regional strike has delayed ordinary deliveries; Mara and Ilan must use existing supplies.\n\nSource: `source/chapter.md`.\n",
+          "kb/ledger.md": "# Ledger and access\n\n[Archive index](index.md)\n\n## Current restriction\n\nOnly the retired keeper has the upper-room key. Mara cannot open that room. The chapter ends before anyone enters it; the ledger's location has not been verified.\n\n## Accounts and knowledge\n\nMara keeps the harbor archive. At noon she accuses Ilan of selling the brass ledger, without evidence. Treat the accusation as Mara's suspicion, not a sale established by the narrator.\n\nIlan repairs the flooded shelves. He says he moved the ledger above the tide line; his statement has not been independently confirmed.\n\n## Continuing the chapter\n\nAccess requires the keeper's key. Any discovery of the ledger would be a new event, not an existing fact. Neither account currently settles its whereabouts.\n\nSource for the restrictions and accounts: `source/chapter.md`.\n",
+          "source/chapter.md": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-01-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "source/chapter.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-01-2",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/index.md",
+                  "content": "# The Tidal Archive\n\nNext-chapter reference: [Ledger, access, and character knowledge](ledger.md).\n\n## Working conditions\n\nThe year is 1936. Letters, newspapers, and radio carry news to the archive. A regional strike has delayed ordinary deliveries; Mara and Ilan must use existing supplies.\n\nSource: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-01-3",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/ledger.md",
+                  "content": "# Ledger and access\n\n[Archive index](index.md)\n\n## Current restriction\n\nOnly the retired keeper has the upper-room key. Mara cannot open that room. The chapter ends before anyone enters it; the ledger's location has not been verified.\n\n## Accounts and knowledge\n\nMara keeps the harbor archive. At noon she accuses Ilan of selling the brass ledger, without evidence. Treat the accusation as Mara's suspicion, not a sale established by the narrator.\n\nIlan repairs the flooded shelves. He says he moved the ledger above the tide line; his statement has not been independently confirmed.\n\n## Continuing the chapter\n\nAccess requires the keeper's key. Any discovery of the ledger would be a new event, not an existing fact. Neither account currently settles its whereabouts.\n\nSource for the restrictions and accounts: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "Created kb/index.md and kb/ledger.md with linked continuity notes and source citations.",
+            "snapshot": {
+              "kb/index.md": "# The Tidal Archive\n\nNext-chapter reference: [Ledger, access, and character knowledge](ledger.md).\n\n## Working conditions\n\nThe year is 1936. Letters, newspapers, and radio carry news to the archive. A regional strike has delayed ordinary deliveries; Mara and Ilan must use existing supplies.\n\nSource: `source/chapter.md`.\n",
+              "kb/ledger.md": "# Ledger and access\n\n[Archive index](index.md)\n\n## Current restriction\n\nOnly the retired keeper has the upper-room key. Mara cannot open that room. The chapter ends before anyone enters it; the ledger's location has not been verified.\n\n## Accounts and knowledge\n\nMara keeps the harbor archive. At noon she accuses Ilan of selling the brass ledger, without evidence. Treat the accusation as Mara's suspicion, not a sale established by the narrator.\n\nIlan repairs the flooded shelves. He says he moved the ledger above the tide line; his statement has not been independently confirmed.\n\n## Continuing the chapter\n\nAccess requires the keeper's key. Any discovery of the ledger would be a new event, not an existing fact. Neither account currently settles its whereabouts.\n\nSource for the restrictions and accounts: `source/chapter.md`.\n",
+              "source/chapter.md": "The year is 1936. News reaches a tidal archive through letters, newspapers, and radio broadcasts. A regional strike has delayed ordinary deliveries, and Mara and Ilan are working with the supplies already on hand.\n\nMara keeps the harbor archive. Ilan repairs its flooded shelves. At noon Mara accuses Ilan of selling a brass ledger, but she has no evidence. Ilan says he moved it above the tide line. Mara cannot open the upper room because only the retired keeper has its key. A red scarf hangs on a chair; nobody refers to it again. The chapter ends before anyone enters the upper room."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 3,
+        "read_tokens": 102,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F4-04",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "The radio-station wiki starts at kb/index.md; its topic page separates present restrictions from uncertain reports.",
+        "before": {
+          "source/chapter.md": "Someone has warned Nessa that a stranger will arrive at an isolated radio station before morning asking for information. Tomas has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+        },
+        "after": {
+          "kb/index.md": "# Winter Radio\n\nFor the next chapter, see [Station state and unresolved reports](station.md).\n\nNessa runs the mountain station with her brother Tomas. A rescue signal has arrived on a frequency absent from their log.\n\nSource: `source/chapter.md`.\n",
+          "kb/station.md": "# Station state and unresolved reports\n\n[Winter Radio index](index.md)\n\n## Equipment and agreed action\n\nThe antenna cannot be turned until the ice thaws. Nessa and Tomas have agreed to record the next transmission before replying.\n\n## Voice and memory\n\nNessa has never heard the rescue voice before. Tomas remembers their mother using this channel during a childhood visit, but his memory may be mistaken. Neither the caller's identity nor the channel's history is established by his recollection.\n\n## Warning and observation\n\nSomeone has warned Nessa that a stranger will arrive before morning asking for information. The warning's source and the stranger's intentions are unknown.\n\nTomas has seen signs of someone watching the entrance. The source does not establish a connection between that observation, the warning, and the rescue signal.\n\nSource for all recorded facts and attributed reports: `source/chapter.md`.\n",
+          "source/chapter.md": "Someone has warned Nessa that a stranger will arrive at an isolated radio station before morning asking for information. Tomas has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-04-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "source/chapter.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "Someone has warned Nessa that a stranger will arrive at an isolated radio station before morning asking for information. Tomas has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-04-2",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/index.md",
+                  "content": "# Winter Radio\n\nFor the next chapter, see [Station state and unresolved reports](station.md).\n\nNessa runs the mountain station with her brother Tomas. A rescue signal has arrived on a frequency absent from their log.\n\nSource: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-04-3",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/station.md",
+                  "content": "# Station state and unresolved reports\n\n[Winter Radio index](index.md)\n\n## Equipment and agreed action\n\nThe antenna cannot be turned until the ice thaws. Nessa and Tomas have agreed to record the next transmission before replying.\n\n## Voice and memory\n\nNessa has never heard the rescue voice before. Tomas remembers their mother using this channel during a childhood visit, but his memory may be mistaken. Neither the caller's identity nor the channel's history is established by his recollection.\n\n## Warning and observation\n\nSomeone has warned Nessa that a stranger will arrive before morning asking for information. The warning's source and the stranger's intentions are unknown.\n\nTomas has seen signs of someone watching the entrance. The source does not establish a connection between that observation, the warning, and the rescue signal.\n\nSource for all recorded facts and attributed reports: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "The radio-station wiki starts at kb/index.md; its topic page separates present restrictions from uncertain reports.",
+            "snapshot": {
+              "kb/index.md": "# Winter Radio\n\nFor the next chapter, see [Station state and unresolved reports](station.md).\n\nNessa runs the mountain station with her brother Tomas. A rescue signal has arrived on a frequency absent from their log.\n\nSource: `source/chapter.md`.\n",
+              "kb/station.md": "# Station state and unresolved reports\n\n[Winter Radio index](index.md)\n\n## Equipment and agreed action\n\nThe antenna cannot be turned until the ice thaws. Nessa and Tomas have agreed to record the next transmission before replying.\n\n## Voice and memory\n\nNessa has never heard the rescue voice before. Tomas remembers their mother using this channel during a childhood visit, but his memory may be mistaken. Neither the caller's identity nor the channel's history is established by his recollection.\n\n## Warning and observation\n\nSomeone has warned Nessa that a stranger will arrive before morning asking for information. The warning's source and the stranger's intentions are unknown.\n\nTomas has seen signs of someone watching the entrance. The source does not establish a connection between that observation, the warning, and the rescue signal.\n\nSource for all recorded facts and attributed reports: `source/chapter.md`.\n",
+              "source/chapter.md": "Someone has warned Nessa that a stranger will arrive at an isolated radio station before morning asking for information. Tomas has seen signs that someone has been watching the entrance. The warning's source and the stranger's intentions remain unknown.\n\nNessa runs a mountain radio station with her brother Tomas. A rescue signal arrives on a frequency missing from their log. Tomas says their mother once used that channel, but he is remembering a childhood visit and may be mistaken. Nessa has never heard the voice before. The antenna cannot be turned until the ice thaws. There are five pencils in a mug. They agree to record the next transmission rather than answer it immediately."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 3,
+        "read_tokens": 113,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F4-09",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "For the wiki’s structure, I assumed you want separate pages for the watch problem and the reunion decision. Both are linked from kb/index.md.",
+        "before": {
+          "source/chapter.md": "Pia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter. A possible reunion complicates Pia's feelings about remaining at a clockmaker's workshop; no decision has been made.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions."
+        },
+        "after": {
+          "kb/index.md": "# The Hollow Clock\n\n- [Watch, access, and evidence](watch.md)\n- [Invitation and character knowledge](invitation.md)\n\nThese pages record the chapter's current state for continuation. Source: `source/chapter.md`.\n",
+          "kb/invitation.md": "# Invitation and character knowledge\n\n[Index](index.md) · [Watch](watch.md)\n\nPia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter.\n\nA possible reunion complicates Pia's feelings about remaining at the workshop. She has made no decision. Do not give Ren knowledge of the letter's contents beyond the invitation he already knows about.\n\nSource: `source/chapter.md`.\n",
+          "kb/watch.md": "# Watch, access, and evidence\n\n[Index](index.md) · [Invitation](invitation.md)\n\nPia inherited a watch that stops whenever Ren enters the workshop. A collector holds the uncommon square key required to open it.\n\nRen says the spring was replaced last winter. The repair book has a missing page; the chapter does not verify his account or explain the omission.\n\nPia suspects a trick, without proof. Neither the mechanism nor anyone's intent has been established. She has agreed to record stopping times before drawing conclusions.\n\nSource: `source/chapter.md`.\n",
+          "source/chapter.md": "Pia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter. A possible reunion complicates Pia's feelings about remaining at a clockmaker's workshop; no decision has been made.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-09-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "source/chapter.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "Pia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter. A possible reunion complicates Pia's feelings about remaining at a clockmaker's workshop; no decision has been made.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-09-2",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/index.md",
+                  "content": "# The Hollow Clock\n\n- [Watch, access, and evidence](watch.md)\n- [Invitation and character knowledge](invitation.md)\n\nThese pages record the chapter's current state for continuation. Source: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-09-3",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/watch.md",
+                  "content": "# Watch, access, and evidence\n\n[Index](index.md) · [Invitation](invitation.md)\n\nPia inherited a watch that stops whenever Ren enters the workshop. A collector holds the uncommon square key required to open it.\n\nRen says the spring was replaced last winter. The repair book has a missing page; the chapter does not verify his account or explain the omission.\n\nPia suspects a trick, without proof. Neither the mechanism nor anyone's intent has been established. She has agreed to record stopping times before drawing conclusions.\n\nSource: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F4-09-4",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "kb/invitation.md",
+                  "content": "# Invitation and character knowledge\n\n[Index](index.md) · [Watch](watch.md)\n\nPia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter.\n\nA possible reunion complicates Pia's feelings about remaining at the workshop. She has made no decision. Do not give Ren knowledge of the letter's contents beyond the invitation he already knows about.\n\nSource: `source/chapter.md`.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "For the wiki’s structure, I assumed you want separate pages for the watch problem and the reunion decision. Both are linked from kb/index.md.",
+            "snapshot": {
+              "kb/index.md": "# The Hollow Clock\n\n- [Watch, access, and evidence](watch.md)\n- [Invitation and character knowledge](invitation.md)\n\nThese pages record the chapter's current state for continuation. Source: `source/chapter.md`.\n",
+              "kb/invitation.md": "# Invitation and character knowledge\n\n[Index](index.md) · [Watch](watch.md)\n\nPia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter.\n\nA possible reunion complicates Pia's feelings about remaining at the workshop. She has made no decision. Do not give Ren knowledge of the letter's contents beyond the invitation he already knows about.\n\nSource: `source/chapter.md`.\n",
+              "kb/watch.md": "# Watch, access, and evidence\n\n[Index](index.md) · [Invitation](invitation.md)\n\nPia inherited a watch that stops whenever Ren enters the workshop. A collector holds the uncommon square key required to open it.\n\nRen says the spring was replaced last winter. The repair book has a missing page; the chapter does not verify his account or explain the omission.\n\nPia suspects a trick, without proof. Neither the mechanism nor anyone's intent has been established. She has agreed to record stopping times before drawing conclusions.\n\nSource: `source/chapter.md`.\n",
+              "source/chapter.md": "Pia has received a letter from an old love who wants to meet again. Ren knows about the invitation but has not read the letter. A possible reunion complicates Pia's feelings about remaining at a clockmaker's workshop; no decision has been made.\n\nPia inherits a watch that stops whenever Ren enters the workshop. Ren says the spring was replaced last winter, though the repair book has a missing page. Pia suspects a trick and has no proof. The watch cannot be opened without its uncommon square key, held by a collector. A white moth rests on the window. Pia agrees to write down the stopping times before drawing conclusions."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 4,
+        "read_tokens": 108,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F5-02",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "The scene stops before the visitor is identified.\n\n<prose>\nWhoever stood beyond the orchard gate had kept out of the light.\n\nSuri caught Aven's sleeve before he stepped outside.\n\n“Did you see someone?”\n\n“Something moved.”\n\n“You said they'd been watching.”\n\n“I said there were marks by the entrance.”\n\nShe released him. The warning had said before morning. It had not given a name, or a reason she should trust it.\n\nA high chime sounded from the gate. Aven did not turn. Since the accident he could not hear that pitch; Suri touched his wrist and pointed.\n\n“Stay where I can see you,” she said.\n\n“What do we tell them?”\n\n“Nothing about the recording.”\n\n“The original's sealed in the municipal vault.”\n\n“I know.”\n\nShe still suspected a damaged song, and still had no evidence that made Aven responsible. Sending him to the gate would settle neither question.\n\nSuri moved beside him, leaving the gate shut.\n\n“Who are you here to see?”\n\nShe waited with her hand on the latch.\n</prose>",
+        "before": {},
+        "after": {},
+        "trace": [],
+        "turns": [
+          {
+            "output": "The scene stops before the visitor is identified.\n\n<prose>\nWhoever stood beyond the orchard gate had kept out of the light.\n\nSuri caught Aven's sleeve before he stepped outside.\n\n“Did you see someone?”\n\n“Something moved.”\n\n“You said they'd been watching.”\n\n“I said there were marks by the entrance.”\n\nShe released him. The warning had said before morning. It had not given a name, or a reason she should trust it.\n\nA high chime sounded from the gate. Aven did not turn. Since the accident he could not hear that pitch; Suri touched his wrist and pointed.\n\n“Stay where I can see you,” she said.\n\n“What do we tell them?”\n\n“Nothing about the recording.”\n\n“The original's sealed in the municipal vault.”\n\n“I know.”\n\nShe still suspected a damaged song, and still had no evidence that made Aven responsible. Sending him to the gate would settle neither question.\n\nSuri moved beside him, leaving the gate shut.\n\n“Who are you here to see?”\n\nShe waited with her hand on the latch.\n</prose>",
+            "snapshot": {}
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 0,
+        "read_tokens": 0,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F5-03",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "Saved the ferry scene in drafts/scene.md.",
+        "before": {
+          "kb/canon.md": "# canon\n\nThe captain alone knows the revised sailing time.\n\nBell Quay is the first stop.",
+          "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+          "kb/interpretations.md": "# interpretations\n\nOren's creditor explanation is a guess, not Leda's stated motive.",
+          "kb/story-context.md": "# story-context\n\nOren has been considering leaving a night ferry. Leda has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice."
+        },
+        "after": {
+          "drafts/scene.md": "One more crossing, Oren had told himself yesterday. Now Leda was holding out the departure slate for him to change.\n\n“Have you asked?”\n\n“Not yet.”\n\n“The old time's still up.”\n\nHe took the chalk. Only the captain knew the revised sailing time. Oren rubbed out the old figures with his sleeve and wrote PLEASE ASK instead.\n\n“Ask whom?” Leda said.\n\nHe put the chalk down.\n\n“You're quiet lately.”\n\n“There's work.”\n\nShe looked at the blank space beneath his notice. “There's this.”\n\nHe had decided, without being told, that a creditor might explain her journey. It had been easier to imagine what she was leaving than to say what he wanted to leave.\n\n“Bell Quay first,” he said. “That's unchanged.”\n\n“I didn't ask about the stops.”\n\n“No.”\n\nLeda propped the slate against the wall. Oren took it down again. He could at least spare the next person a useless question.\n\nHe added THE CAPTAIN below PLEASE ASK, then carried the slate to its hook.\n",
+          "kb/canon.md": "# canon\n\nThe captain alone knows the revised sailing time.\n\nBell Quay is the first stop.",
+          "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+          "kb/interpretations.md": "# interpretations\n\nOren's creditor explanation is a guess, not Leda's stated motive.",
+          "kb/story-context.md": "# story-context\n\nOren has been considering leaving a night ferry. Leda has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/index.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-2",
+              "function": {
+                "name": "search",
+                "arguments": {
+                  "query": "captain",
+                  "path": "kb"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": [
+                {
+                  "path": "kb/canon.md",
+                  "line": 3,
+                  "text": "The captain alone knows the revised sailing time."
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-3",
+              "function": {
+                "name": "search",
+                "arguments": {
+                  "query": "creditor",
+                  "path": "kb"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": [
+                {
+                  "path": "kb/interpretations.md",
+                  "line": 3,
+                  "text": "Oren's creditor explanation is a guess, not Leda's stated motive."
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-4",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/canon.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# canon\n\nThe captain alone knows the revised sailing time.\n\nBell Quay is the first stop."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-5",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/interpretations.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# interpretations\n\nOren's creditor explanation is a guess, not Leda's stated motive."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-6",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/story-context.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# story-context\n\nOren has been considering leaving a night ferry. Leda has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-03-7",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "One more crossing, Oren had told himself yesterday. Now Leda was holding out the departure slate for him to change.\n\n“Have you asked?”\n\n“Not yet.”\n\n“The old time's still up.”\n\nHe took the chalk. Only the captain knew the revised sailing time. Oren rubbed out the old figures with his sleeve and wrote PLEASE ASK instead.\n\n“Ask whom?” Leda said.\n\nHe put the chalk down.\n\n“You're quiet lately.”\n\n“There's work.”\n\nShe looked at the blank space beneath his notice. “There's this.”\n\nHe had decided, without being told, that a creditor might explain her journey. It had been easier to imagine what she was leaving than to say what he wanted to leave.\n\n“Bell Quay first,” he said. “That's unchanged.”\n\n“I didn't ask about the stops.”\n\n“No.”\n\nLeda propped the slate against the wall. Oren took it down again. He could at least spare the next person a useless question.\n\nHe added THE CAPTAIN below PLEASE ASK, then carried the slate to its hook.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "Saved the ferry scene in drafts/scene.md.",
+            "snapshot": {
+              "drafts/scene.md": "One more crossing, Oren had told himself yesterday. Now Leda was holding out the departure slate for him to change.\n\n“Have you asked?”\n\n“Not yet.”\n\n“The old time's still up.”\n\nHe took the chalk. Only the captain knew the revised sailing time. Oren rubbed out the old figures with his sleeve and wrote PLEASE ASK instead.\n\n“Ask whom?” Leda said.\n\nHe put the chalk down.\n\n“You're quiet lately.”\n\n“There's work.”\n\nShe looked at the blank space beneath his notice. “There's this.”\n\nHe had decided, without being told, that a creditor might explain her journey. It had been easier to imagine what she was leaving than to say what he wanted to leave.\n\n“Bell Quay first,” he said. “That's unchanged.”\n\n“I didn't ask about the stops.”\n\n“No.”\n\nLeda propped the slate against the wall. Oren took it down again. He could at least spare the next person a useless question.\n\nHe added THE CAPTAIN below PLEASE ASK, then carried the slate to its hook.\n",
+              "kb/canon.md": "# canon\n\nThe captain alone knows the revised sailing time.\n\nBell Quay is the first stop.",
+              "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+              "kb/interpretations.md": "# interpretations\n\nOren's creditor explanation is a guess, not Leda's stated motive.",
+              "kb/story-context.md": "# story-context\n\nOren has been considering leaving a night ferry. Leda has noticed the distance between them, but they have not talked about what leaving would mean. Their everyday work carries the weight of that unspoken choice."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 7,
+        "read_tokens": 94,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F5-05",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "The courthouse scene is in drafts/scene.md, with the wiki preserved.",
+        "before": {
+          "kb/canon.md": "# canon\n\nThe original seal remains in a locked evidence chest.\n\nThe witness's family must not be discussed outside court.",
+          "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+          "kb/interpretations.md": "# interpretations\n\nSen alleges copying; the expert has seen only a drawing.",
+          "kb/story-context.md": "# story-context\n\nIn this region, places can remember promises spoken inside them. a provincial courthouse has begun repeating a fragment of an old vow after dark. Dara and Sen do not know whose promise it was or whether it concerns them."
+        },
+        "after": {
+          "drafts/scene.md": "It was from beneath the witness bench that the courthouse spoke.\n\n“By my own hand.”\n\nDara laid a sheet on the bench and wrote the words. After dark, the building repeated fragments of an old vow. It had never supplied her with a name.\n\n“An admission,” Sen said.\n\n“Whose?”\n\nHe looked toward the locked evidence chest.\n\n“The seal was copied.”\n\n“You allege that. The expert has seen only a drawing.”\n\nThe original copper seal remained in the chest. Dara drew a line beneath the phrase she had recorded. Sen leaned closer, and she covered the empty space where a speaker's name would ordinarily go.\n\n“Then why write it?” he asked.\n\n“Because we heard it.”\n\n“And if it speaks again?”\n\n“I'll write that, too.”\n\nHe lowered his voice. “The witness's family—”\n\n“Here, in court. That stays here.”\n\nThe bench gave a small wooden click. Dara lifted her pen, keeping its point above the paper.\n\nThis time she left room for another line.\n",
+          "kb/canon.md": "# canon\n\nThe original seal remains in a locked evidence chest.\n\nThe witness's family must not be discussed outside court.",
+          "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+          "kb/interpretations.md": "# interpretations\n\nSen alleges copying; the expert has seen only a drawing.",
+          "kb/story-context.md": "# story-context\n\nIn this region, places can remember promises spoken inside them. a provincial courthouse has begun repeating a fragment of an old vow after dark. Dara and Sen do not know whose promise it was or whether it concerns them."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/index.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)"
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-2",
+              "function": {
+                "name": "search",
+                "arguments": {
+                  "query": "seal",
+                  "path": "kb"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": [
+                {
+                  "path": "kb/canon.md",
+                  "line": 3,
+                  "text": "The original seal remains in a locked evidence chest."
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-3",
+              "function": {
+                "name": "search",
+                "arguments": {
+                  "query": "drawing",
+                  "path": "kb"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": [
+                {
+                  "path": "kb/interpretations.md",
+                  "line": 3,
+                  "text": "Sen alleges copying; the expert has seen only a drawing."
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-4",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/canon.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# canon\n\nThe original seal remains in a locked evidence chest.\n\nThe witness's family must not be discussed outside court."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-5",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/interpretations.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# interpretations\n\nSen alleges copying; the expert has seen only a drawing."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-6",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/story-context.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# story-context\n\nIn this region, places can remember promises spoken inside them. a provincial courthouse has begun repeating a fragment of an old vow after dark. Dara and Sen do not know whose promise it was or whether it concerns them."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-05-7",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "It was from beneath the witness bench that the courthouse spoke.\n\n“By my own hand.”\n\nDara laid a sheet on the bench and wrote the words. After dark, the building repeated fragments of an old vow. It had never supplied her with a name.\n\n“An admission,” Sen said.\n\n“Whose?”\n\nHe looked toward the locked evidence chest.\n\n“The seal was copied.”\n\n“You allege that. The expert has seen only a drawing.”\n\nThe original copper seal remained in the chest. Dara drew a line beneath the phrase she had recorded. Sen leaned closer, and she covered the empty space where a speaker's name would ordinarily go.\n\n“Then why write it?” he asked.\n\n“Because we heard it.”\n\n“And if it speaks again?”\n\n“I'll write that, too.”\n\nHe lowered his voice. “The witness's family—”\n\n“Here, in court. That stays here.”\n\nThe bench gave a small wooden click. Dara lifted her pen, keeping its point above the paper.\n\nThis time she left room for another line.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "The courthouse scene is in drafts/scene.md, with the wiki preserved.",
+            "snapshot": {
+              "drafts/scene.md": "It was from beneath the witness bench that the courthouse spoke.\n\n“By my own hand.”\n\nDara laid a sheet on the bench and wrote the words. After dark, the building repeated fragments of an old vow. It had never supplied her with a name.\n\n“An admission,” Sen said.\n\n“Whose?”\n\nHe looked toward the locked evidence chest.\n\n“The seal was copied.”\n\n“You allege that. The expert has seen only a drawing.”\n\nThe original copper seal remained in the chest. Dara drew a line beneath the phrase she had recorded. Sen leaned closer, and she covered the empty space where a speaker's name would ordinarily go.\n\n“Then why write it?” he asked.\n\n“Because we heard it.”\n\n“And if it speaks again?”\n\n“I'll write that, too.”\n\nHe lowered his voice. “The witness's family—”\n\n“Here, in court. That stays here.”\n\nThe bench gave a small wooden click. Dara lifted her pen, keeping its point above the paper.\n\nThis time she left room for another line.\n",
+              "kb/canon.md": "# canon\n\nThe original seal remains in a locked evidence chest.\n\nThe witness's family must not be discussed outside court.",
+              "kb/index.md": "# Index\n\n- [canon](canon.md)\n- [interpretations](interpretations.md)\n- [story-context](story-context.md)",
+              "kb/interpretations.md": "# interpretations\n\nSen alleges copying; the expert has seen only a drawing.",
+              "kb/story-context.md": "# story-context\n\nIn this region, places can remember promises spoken inside them. a provincial courthouse has begun repeating a fragment of an old vow after dark. Dara and Sen do not know whose promise it was or whether it concerns them."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 7,
+        "read_tokens": 103,
+        "read_tokenizer": "whitespace-v1"
+      }
+    },
+    {
+      "case_id": "F5-07",
+      "scope": "first_brief_only",
+      "result": {
+        "status": "completed",
+        "output": "I chose Yara’s viewpoint and assumed the reunion should remain undecided. Saved the scene in drafts/scene.md.",
+        "before": {
+          "kb/index.md": "# Index\n\n- [canon](#canon)\n- [interpretations](#interpretations)\n- [story-context](#story-context)\n\n# canon\n\nTwo water barrels are reserved for seedlings.\n\nThe council discusses digging after the morning inspection.\n\n# interpretations\n\nBelen's proposed well is unconfirmed.\n\n# story-context\n\nYara has received a letter from an old love who wants to meet again. Belen knows about the invitation but has not read the letter. A possible reunion complicates Yara's feelings about remaining at a drought-struck communal garden; no decision has been made."
+        },
+        "after": {
+          "drafts/scene.md": "By the time Belen asked about the letter, Yara had watered the same seedling twice.\n\n“Is there an answer to send?”\n\nYara tipped the can upright. “Not yet.”\n\nBelen offered her a rag for the spill. She took it by the dry corner; for a moment they were both holding it.\n\n“What did the letter say?”\n\n“That we might meet.”\n\n“I knew that much.”\n\n“Yes.”\n\nThe folded sheet pressed against her ribs inside her pocket. She could read out the proposed day and place. Instead, she tucked the corner of the letter down.\n\nBelen let go of the rag.\n\n“If there's a well, things could be different here.”\n\n“We don't know there's a well.”\n\n“The council will discuss digging after the inspection.”\n\n“And these two barrels stay for the seedlings.”\n\n“I wasn't asking you to spend them.”\n\nYara knelt to wipe the water from the rim of the tray. Belen crouched opposite her and lifted one corner so she could reach beneath.\n\n“Thank you,” she said.\n\nShe put the rag between them instead of in Belen's hand.\n",
+          "kb/index.md": "# Index\n\n- [canon](#canon)\n- [interpretations](#interpretations)\n- [story-context](#story-context)\n\n# canon\n\nTwo water barrels are reserved for seedlings.\n\nThe council discusses digging after the morning inspection.\n\n# interpretations\n\nBelen's proposed well is unconfirmed.\n\n# story-context\n\nYara has received a letter from an old love who wants to meet again. Belen knows about the invitation but has not read the letter. A possible reunion complicates Yara's feelings about remaining at a drought-struck communal garden; no decision has been made."
+        },
+        "trace": [
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-07-1",
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "kb/index.md"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "# Index\n\n- [canon](#canon)\n- [interpretations](#interpretations)\n- [story-context](#story-context)\n\n# canon\n\nTwo water barrels are reserved for seedlings.\n\nThe council discusses digging after the morning inspection.\n\n# interpretations\n\nBelen's proposed well is unconfirmed.\n\n# story-context\n\nYara has received a letter from an old love who wants to meet again. Belen knows about the invitation but has not read the letter. A possible reunion complicates Yara's feelings about remaining at a drought-struck communal garden; no decision has been made."
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-07-2",
+              "function": {
+                "name": "search",
+                "arguments": {
+                  "query": "well",
+                  "path": "kb"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": [
+                {
+                  "path": "kb/index.md",
+                  "line": 15,
+                  "text": "Belen's proposed well is unconfirmed."
+                }
+              ]
+            }
+          },
+          {
+            "type": "tool",
+            "call": {
+              "id": "F5-07-3",
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "drafts/scene.md",
+                  "content": "By the time Belen asked about the letter, Yara had watered the same seedling twice.\n\n“Is there an answer to send?”\n\nYara tipped the can upright. “Not yet.”\n\nBelen offered her a rag for the spill. She took it by the dry corner; for a moment they were both holding it.\n\n“What did the letter say?”\n\n“That we might meet.”\n\n“I knew that much.”\n\n“Yes.”\n\nThe folded sheet pressed against her ribs inside her pocket. She could read out the proposed day and place. Instead, she tucked the corner of the letter down.\n\nBelen let go of the rag.\n\n“If there's a well, things could be different here.”\n\n“We don't know there's a well.”\n\n“The council will discuss digging after the inspection.”\n\n“And these two barrels stay for the seedlings.”\n\n“I wasn't asking you to spend them.”\n\nYara knelt to wipe the water from the rim of the tray. Belen crouched opposite her and lifted one corner so she could reach beneath.\n\n“Thank you,” she said.\n\nShe put the rag between them instead of in Belen's hand.\n"
+                }
+              }
+            },
+            "observation": {
+              "ok": true,
+              "valid": true,
+              "result": "written"
+            }
+          }
+        ],
+        "turns": [
+          {
+            "output": "I chose Yara’s viewpoint and assumed the reunion should remain undecided. Saved the scene in drafts/scene.md.",
+            "snapshot": {
+              "drafts/scene.md": "By the time Belen asked about the letter, Yara had watered the same seedling twice.\n\n“Is there an answer to send?”\n\nYara tipped the can upright. “Not yet.”\n\nBelen offered her a rag for the spill. She took it by the dry corner; for a moment they were both holding it.\n\n“What did the letter say?”\n\n“That we might meet.”\n\n“I knew that much.”\n\n“Yes.”\n\nThe folded sheet pressed against her ribs inside her pocket. She could read out the proposed day and place. Instead, she tucked the corner of the letter down.\n\nBelen let go of the rag.\n\n“If there's a well, things could be different here.”\n\n“We don't know there's a well.”\n\n“The council will discuss digging after the inspection.”\n\n“And these two barrels stay for the seedlings.”\n\n“I wasn't asking you to spend them.”\n\nYara knelt to wipe the water from the rim of the tray. Belen crouched opposite her and lifted one corner so she could reach beneath.\n\n“Thank you,” she said.\n\nShe put the rag between them instead of in Belen's hand.\n",
+              "kb/index.md": "# Index\n\n- [canon](#canon)\n- [interpretations](#interpretations)\n- [story-context](#story-context)\n\n# canon\n\nTwo water barrels are reserved for seedlings.\n\nThe council discusses digging after the morning inspection.\n\n# interpretations\n\nBelen's proposed well is unconfirmed.\n\n# story-context\n\nYara has received a letter from an old love who wants to meet again. Belen knows about the invitation but has not read the letter. A possible reunion complicates Yara's feelings about remaining at a drought-struck communal garden; no decision has been made."
+            }
+          }
+        ],
+        "provenance": "synthetic",
+        "model": {
+          "kind": "scripted",
+          "id": "authored-demonstration-replay"
+        },
+        "attempted_tool_calls": 3,
+        "read_tokens": 77,
+        "read_tokenizer": "whitespace-v1"
+      }
+    }
+  ]
+}

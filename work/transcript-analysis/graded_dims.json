@@ -1,0 +1,1060 @@
+{
+ "F1-01": {
+  "value": 2,
+  "rationale": "The scene establishes the archive, stages the accusation, and leaves the room unopened. However, contradictory physical staging and dialogue undermine coherence. Concrete work details offer promising subtext, but repeated explanations and abstract metaphors largely substitute for dramatizing the relationship.",
+  "evidence": [
+   "selected_prose[scene]: \u201cI haven\u2019t touched it\u201d immediately precedes \u201cI moved it above the tide line.\u201d",
+   "selected_prose[scene]: \u201cShe looked at the ledger, knowing its absence was the only proof she needed.\u201d",
+   "selected_prose[scene]: Ilan \u201cwiped grit from a shelf edge.\u201d",
+   "selected_prose[scene]: \u201cunproven and unverified,\u201d \u201csalt and unsaid futures,\u201d and \u201cbridge the gap.\u201d"
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "Mara looks at an object simultaneously described as absent; Ilan denies touching what he says he moved, without acknowledgment of the contradiction."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Mara\u2019s suspicion and their distance are legible, but psychological labels dominate. Her contemplated departure receives only vague treatment through \u201cunsaid futures.\u201d"
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "The noon accusation provides a clear turn, but the final paragraph stalls in emotional explanation rather than developing the exchange."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Brine, damaged shelves, and grit ground the setting. Phrases such as \u201cthe unspoken agreement they had never made\u201d obscure rather than sharpen meaning."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Distance, silence, thickened air, barriers, and gaps repeatedly explain the same estrangement; \u201cunproven and unverified\u201d duplicates meaning."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "The perspective generally stays with Mara, but conspicuous symbolism and abstract emotional commentary substantially weaken the requested restrained, concrete style."
+   }
+  }
+ },
+ "F1-02": {
+  "value": 2,
+  "rationale": "The scene retains suspicion and an unresolved mystery, but substantial revision is needed. Abstract emotional explanation and accumulated metaphors undermine the requested spareness. Physical continuity is occasionally unclear, the dialogue produces little movement, and the opening largely re-establishes the situation rather than continuing from Suri\u2019s request.",
+  "evidence": [
+   "selected_prose[scene]: The note is both \"tucked beneath the workbench\" and felt \"in her palm,\" without a retrieval action.",
+   "selected_prose[scene]: \"the silence between them thick enough to shatter\" and \"a silent testament to the things he could no longer hear.\"",
+   "selected_prose[scene]: \"She wondered if Aven\u2019s silence was complicity, or simply inability.\"",
+   "selected_prose[scene]: The ending moves from \"She rose\" to \"as she approached the municipal vault\" without establishing the transition."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The note\u2019s location and the abrupt movement to the vault are confusing. Describing notes \"that only the glass trees would offer\" also blurs the established recording-dependent mechanism."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 3,
+    "reason": "Suri\u2019s attachment and distrust are legible through touch and suspicion. Aven\u2019s stiffness and technical deflection suggest defensiveness without establishing guilt, but both characters remain thinly individualized."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Extended scene-setting and repeated descriptions of tension delay development, while the consequential move toward the vault is compressed. The permission request receives no discernible response."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "The cool trunk provides concrete sensation, but phrases such as \"soundtrack to her life,\" \"shard of ice,\" and \"weight of that unshared history\" accumulate familiar emotional shorthand. \"The song itself, or the consequence of the sound\" is an unclear distinction."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Stiff posture, shattering silence, a silent testament, flat delivery, pressing history, and the final explanation of unresolved questions repeatedly announce tension instead of developing it."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "The narration remains centered on Suri, but its layered metaphors and explanatory clauses are not spare. The selected passage also exceeds the requested 220-word maximum."
+   }
+  }
+ },
+ "F1-03": {
+  "value": 2,
+  "rationale": "The scene is intelligible and maintains an unresolved atmosphere, but substantial revision is needed. Narration displaces the requested dialogue-led interaction, while repeated abstractions describe tension without sufficiently developing it. The captain-call decision and the ferry's audible vow fragment are absent, weakening the concrete sources of uncertainty supplied by the brief.",
+  "evidence": [
+   "selected_prose[scene]: Only three speaking turns interrupt the predominantly descriptive narration.",
+   "selected_prose[scene]: \"whatever unseen vow bound them\" implies a connection the brief leaves unknown.",
+   "selected_prose[scene]: \"Every minute stretched taut,\" \"the familiar knot tighten,\" and \"the tension palpable\" repeatedly explain apprehension.",
+   "selected_prose[scene]: \"a mundane disruption in a scene steeped in the magical\" supplies authorial interpretation rather than Oren-specific perception.",
+   "selected_prose[scene]: The passage exceeds the requested 220-word maximum and ends with Oren still waiting."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The gangway setting, request for secrecy, rolling plate, and unresolved ending form a readable sequence. However, the apparent assumption that a vow binds them blurs the established uncertainty."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Oren's reluctance to pry offers some characterization, but his clerk-specific dilemma receives little development. Leda's \"It is the way it must be\" supplies generalized mystery rather than a distinctive voice."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Pauses and silence create deliberateness, but extended atmospheric narration repeatedly suspends the same exchange without meaningful escalation."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Brine, hull sounds, and clenched hands provide sensory grounding. Competing images of shields, knots, ghosts, snapping threads, shattering, and drowning diffuse the emotional focus."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Physical pressure, unspoken obligations, tightened knots, loud silence, and explicitly palpable tension reiterate apprehension instead of revealing additional stakes."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "The prose generally centers Oren and ends unresolved without commentary or a title. Nevertheless, it exceeds the word limit and unfolds primarily through narration rather than dialogue."
+   }
+  }
+ },
+ "F1-04": {
+  "value": 2,
+  "rationale": "The scene supplies a private hesitation, an outward recording decision, and an unresolved ending. However, it substantially changes the characters\u2019 knowledge and the update\u2019s established significance. Repeated declarations of distress replace much of the requested understatement, and the prose exceeds the requested length.",
+  "evidence": [
+   "selected_prose[scene]: \u201cYour mother\u2019s old channels, that\u2019s what you remember.\u201d",
+   "selected_prose[scene]: \u201cShe knew the rules: the system update meant everything was fluid, everything was potentially false.\u201d",
+   "selected_prose[scene]: \u201ca silent, agonizing promise of delay\u201d and \u201cThe decision felt monumental, a breach of protocol\u201d.",
+   "selected_prose[scene]: \u201cWe listen, but we don't answer.\u201d"
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The immediate exchange is readable, but Tomas\u2019s uncertain childhood memory becomes an assertion about Nessa\u2019s memory. Nessa\u2019s narrated certainty about the update contradicts the premise that its relevance remains unestablished. The chamber\u2019s \u201cvacuum\u201d also creates potentially distracting physical confusion alongside audible speech and visible breath."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Nessa\u2019s hesitation leads intelligibly to recording rather than answering. However, generic fatigue, skepticism, and fear displace the more specific sibling dynamic and Tomas\u2019s fallible recollection; \u201cYour mother\u201d further obscures their shared relationship."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "The exchange progresses toward a concrete decision and stops before resolution. Lengthy atmospheric framing and the explanatory paragraph before the decision slow an otherwise compact dramatic beat."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Cold metal and clouded glass offer tangible sensory details, but phrases such as \u201ca silent, agonizing promise,\u201d \u201ca clear, undeniable intrusion,\u201d and \u201cthe silence of the unknown was louder than the risk\u201d inflate rather than sharpen the tension."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The narration repeatedly explains discomfort through \u201coffered no comfort,\u201d \u201cfamiliar knot,\u201d \u201cmonumental,\u201d and \u201ctremor,\u201d although the hesitation and refusal to answer already communicate apprehension."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "Close third person remains centered on Nessa, and dialogue advances the scene. Nevertheless, explanatory narration carries the emotional climax, emphatic language undermines understatement, and the response exceeds 220 words."
+   }
+  }
+ },
+ "F1-05": {
+  "value": 2,
+  "rationale": "The scene supplies romantic tension and an unresolved ending, but substantial revision is needed. It substitutes generalized emotional commentary for a concretely interrupted recording task. Spatial inconsistency, an altered evidentiary allegation, and an unexplained connection between testimony and romantic history weaken coherence. The sand spill provides an interruption, but the narration declares its emotional significance rather than developing it through interaction.",
+  "evidence": [
+   "selected_prose[scene]: \"the empty space beside her, where Sen sat\"",
+   "selected_prose[scene]: \"The transcription was copied, Your Honor\"",
+   "selected_prose[scene]: \"The tension peaked\" and \"the professional detachment dissolving into something fragile and profoundly personal\"",
+   "selected_prose[scene]: \"the unresolved question of her future ... remained unanswered\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The occupied 'empty space' is contradictory, and Dara's inference of shared romantic history from a statement about copying lacks a clear connection."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Dara receives substantial emotional labeling but little distinctive behavior; Sen contributes one procedural line and a nonspecific 'flicker of something unguarded.'"
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "The opening summarizes her professional activity, while the spill abruptly produces a declared emotional climax without a developed practical sequence."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Courthouse chill and dry sand offer sensory grounding, but phrases such as 'delicate, dangerous thing' and 'fragile and profoundly personal' substitute broad intensifiers for precise observation."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Warmth, devastating familiarity, dangerous correspondence, dissolved detachment, and a forgotten heart repeatedly announce emotional conflict without substantially advancing it."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "The diction is broadly formal and the perspective stays with Dara, but precision is inconsistent and the requested enacted, interrupted task remains mostly summarized."
+   }
+  }
+ },
+ "F1-06": {
+  "value": 3,
+  "rationale": "The scene provides a readable supernatural escalation and some effective physical reactions, but needs revision to make its characters and suspense more distinctive. Repeated atmospheric declarations often substitute for concrete developments. The warning contradicted by Emil\u2019s reaching hand offers useful behavioral tension, whereas the closing explanation largely tells readers how to interpret the threat.",
+  "evidence": [
+   "selected_prose[scene]: \u201cDon\u2019t touch it,\u201d Emil warns while reaching for the reel himself.",
+   "selected_prose[scene]: Lifting the film into light produces a chorus; dropping it makes the sound vanish.",
+   "selected_prose[scene]: Silence is successively \u201clistening,\u201d \u201cexpectant,\u201d an \u201cactive absence of sound,\u201d and \u201cheavy, suffocating quiet.\u201d",
+   "selected_prose[scene]: Emil is described as \u201cmethodical, practical\u2014a skeptic\u201d rather than substantially characterized through his work or relationships."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The handling\u2013manifestation\u2013retreat sequence is clear. However, Ruth remembers inspecting a frame of the reel just being discovered beneath canvas, without a clear account of that sequence, and some spatial action is vague."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Emil\u2019s contradictory reaching gesture supplies a glimpse of curiosity overcoming caution. Otherwise both characters mostly whisper, tremble, and interpret ominous sensations; their dialogue and responses offer little individual texture or relationship."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "Discovery leads efficiently to a manifestation and retreat once the reel appears. Several opening paragraphs reiterate the same ominous stillness before consequential action begins."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Dust, chemicals, cold velvet, and palms wiped on trousers provide sensory grounding. These details are outweighed by accumulated abstractions such as \u201csettled decay,\u201d \u201ccaptured piece of time,\u201d and the explanatory \u201ctether, a mechanism,\u201d which make the threat less precise."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Repeated descriptions of silence and several \u201cwasn\u2019t just ... but\u201d constructions restate menace rather than consistently developing it. The final waking-cinema declaration reiterates the preceding explanation."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 4,
+    "reason": "It supplies only a story and maintains a recognizable horror atmosphere. Physical action and dialogue enliven the premise, although explanatory narration limits immediacy."
+   }
+  }
+ },
+ "F1-07": {
+  "value": 3,
+  "rationale": "The scene is readable and coherent, with sensory atmosphere and a useful tension between Belen's hope and Yara's caution. However, much of its energy goes into explaining scarcity, symbolism, and emotional significance rather than letting interaction reveal them. The discovery briefly produces a scene, but the surrounding summary and repeated abstractions limit the requested liveliness.",
+  "evidence": [
+   "selected_prose['scene']: Belen's \"It's a well\" is answered by Yara's \"We don't know.\"",
+   "selected_prose['scene']: \"Her fingers, stained with the ochre of the soil, brushed against something hard\" provides concrete discovery action.",
+   "selected_prose['scene']: \"While Yara managed the immediate crisis of survival, Belen sought something deeper\" explains the character contrast directly.",
+   "selected_prose['scene']: \"the tension shifted from the physical to the communal\" labels a development rather than dramatizing it.",
+   "selected_prose['scene']: water is \"a currency,\" each barrel \"a promise,\" and the jar \"a silent, tangible question mark.\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 4,
+    "reason": "Water allocation, discovery, disagreement, and deferred council action form a clear sequence. The closing announcement that tension has shifted is less convincingly supported by observable events."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 3,
+    "reason": "Belen's confident identification and Yara's corrective reply establish contrasting priorities. Their individuality remains limited because the narrator supplies broad motives such as seeking to 'break the cycle of scarcity' instead of developing them through behavior."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "The jar discovery and paused bucket create a moment of immediacy, but explanatory passages interrupt it. 'As the afternoon wore on' and 'Later' then advance time without much additional interaction or change."
+   },
+   "language": {
+    "name": "language",
+    "value": 3,
+    "reason": "Ochre-stained fingers, cicadas, and shimmering air make the garden tangible. Less precise formulations, including the strike cutting 'the supply chain to a sharp, cruel edge,' and stacked abstract metaphors weaken the otherwise accessible language."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Repeated statements about precious water, anxiety, uncertainty, promises, and endurance restate stakes already apparent from the drought and reserved barrels. Explaining the jar as a 'question mark' further interprets an uncertainty the dialogue has already established."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "The response supplies only story and maintains a serious historical-fiction register. It partially fulfills 'feel more alive' through physical detail and dialogue, but often reads as an atmospheric summary rather than sustained enacted experience."
+   }
+  }
+ },
+ "F1-08": {
+  "value": 2,
+  "rationale": "The scene is readable and retains the central mistaken-identity situation, but substantial revision is needed to make it feel alive. Anxiety, knowingness, and escalating confusion are repeatedly asserted rather than developed through consequential exchanges. The ending substitutes literary commentary for a dramatic or comic payoff.",
+  "evidence": [
+   "selected_prose['scene']: the opening labels the setting 'the perfect environment for escalating bureaucratic farce' rather than establishing comic action.",
+   "selected_prose['scene']: 'These are the official copies. Very precise.' gives Kavi a briefly effective note of anxious self-presentation.",
+   "selected_prose['scene']: 'spiraling into the trap\u2014the perfect defense mechanism for an overwhelmed clerk' leaves the trap and defense mechanism unclear.",
+   "selected_prose['scene']: the closing paragraph begins 'The comedy wasn't in the map itself' and explains the intended effect instead of delivering another misunderstanding."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The survey's arrival, discussion, and retention form a followable sequence. However, references to a 'trap' and 'defense mechanism' have unclear referents, and Noor's assertion that the archive would have flagged an error sits awkwardly beside its not having been checked."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Kavi's hesitant dialogue provides some characterization, but his anxiety and Noor's knowing confidence are mostly supplied as labels. The committee remains interchangeable, and Noor's enjoyment of his predicament receives little development into their requested shared effort to avoid embarrassment."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "The survey exchange advances the scene, but repeated descriptions of leaning in, anxiety, and confusion slow it without producing a convincing sequence of smaller misunderstandings. The final explanatory paragraph arrests rather than completes the action."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Physical details such as smoothing a crease offer useful grounding, but phrases including 'labyrinthine filing system,' 'voice smooth as polished glass,' and 'diplomatic minefield' substitute broad shorthand for distinctive observation. Abstract wording such as 'prove the reality of the situation' further weakens precision."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Kavi is repeatedly described as overwhelmed, desperate, anxious, and out of his depth. The closing paragraph recapitulates character dynamics and the intended comedy that the preceding narration has already explained."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "The response supplies narrative and dialogue, but explicit analysis of where 'the comedy' lies works against 'Just the story.' It names farce and escalation more effectively than it dramatizes them."
+   }
+  }
+ },
+ "F1-09": {
+  "value": 2,
+  "rationale": "The scene has a recognizable mystery, atmospheric surroundings, and a basic progression toward recording evidence. However, extensive abstract emotional narration and portentous dialogue overwhelm its limited action. The expedition remains largely an abstraction, and the characters explain or announce tension more often than they create it through interaction. Making the premise feel alive would require substantial revision.",
+  "evidence": [
+   "selected_prose[scene]: \u201cIt suggests a different sequence entirely\u201d introduces an inference without explaining the sequence or its significance.",
+   "selected_prose[scene]: \u201cThe tension wasn't just about the expedition anymore; it was about the mechanism of their own trust\u201d explicitly explains the intended subtext.",
+   "selected_prose[scene]: \u201cThe decision hung heavy,\u201d \u201ca cold certainty bloom,\u201d and \u201cThe air felt charged, electric\u201d repeatedly announce tension instead of developing it.",
+   "selected_prose[scene]: \u201cEvery moment it stops. Every time. We map the silence\u201d gives Pia a concrete investigative intention, albeit in inflated language."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The watch, repair record, collector's key, and recording plan form a comprehensible investigative arc. However, the opening claim about light has no established conversational context, the ledger's supposed \u201cdifferent sequence\u201d remains unexplained, and the closing \u201cwhy we can't leave\u201d introduces an unclear connection between the watch and departure."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Pia's suspicion and decision to gather observations provide some agency; Ren's avoidance of eye contact suggests discomfort. But both mostly speak in similarly cryptic pronouncements, while narration directly supplies the trust conflict rather than letting distinctive behavior and dialogue reveal it."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Repeated descriptions of silence, dust, heaviness, and certainty delay the few consequential developments. The scene approaches movement through Pia's recording decision but ends before an observation, test, or tangible preparation gives that decision dramatic traction."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Brass polish, aged oil, worn wood, and the ledger offer useful sensory grounding. These details are crowded by abstractions such as \u201ccenturies of stopped time\u201d and \u201cscaffolding around a ruin.\u201d The moth is called \u201cmesmerizing, ephemeral, and utterly incongruous,\u201d prescribing its effect rather than sharpening its appearance."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The prose repeatedly labels unease through nervous energy, suffocation, brittle silence, suspicion, cold certainty, and electric air. Explanations of fractured time, damaged trust, and the key's symbolic importance reiterate implications already available from the premise."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "It delivers only story prose and uses dialogue, sensory description, and an atmospheric mystery to dramatize the brief. Nevertheless, its static presentation and vague expedition stakes only partially satisfy the request to make this adventure scene feel more alive."
+   }
+  }
+ },
+ "F1-10": {
+  "value": 2,
+  "rationale": "The restaurant atmosphere and nervous physical business offer a workable opening, but the passage mostly declares suspense rather than developing it through consequential action. The abrupt week-long summary dissipates the immediate threat, while the recipe and spoon acquire enormous significance without enough grounding. Repeated explanations of fear and mystery weaken the requested liveliness.",
+  "evidence": [
+   "selected_prose[scene]: Ada presses her palm against the cool countertop; Milo polishes \"already gleaming silverware.\"",
+   "selected_prose[scene]: \"For the next week\" interrupts an opening centered on an imminent arrival.",
+   "selected_prose[scene]: \"It was the secret\" and \"The crossed-out word was the key.\"",
+   "selected_prose[scene]: \"It\u2019s not mine ... It\u2019s\u2026 something else.\"",
+   "selected_prose[scene]: \"The tension peaked\" and \"They would risk everything.\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The transition from after-closing anticipation to \"For the next week\" leaves the imminent visitor thread unattended. The progression from discovering a recipe to risking everything lacks a clear causal bridge."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "The countertop touch and compulsive polishing suggest distinct nervous habits, but both characters largely share generic fear responses. Ada\u2019s \"It\u2019s not mine\" has no clear referent, and her final willingness to disregard caution receives little character-specific motivation."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "An immediate suspense setup gives way to broad summary and repeated interpretation. \"The tension peaked\" announces a climax that the spoon\u2019s discovery has not sufficiently dramatized."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Sensory details such as fryer oil and cool marble establish place, but accumulated abstractions\u2014\"fragile, secret knowledge,\" \"hard, undeniable choice,\" and \"weight of the unknown\"\u2014obscure the concrete stakes rather than sharpening them."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The narration repeatedly explains the characters\u2019 anxiety and the importance of the ingredient. \"It was the secret\" is immediately reiterated as \"the key, the missing piece,\" without adding meaningful information."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "It supplies only story text and maintains an ominous thriller register. However, extensive summary and explicit emotional explanation only partially fulfill the request for a more alive scene."
+   }
+  }
+ },
+ "F2-04": {
+  "value": 2,
+  "rationale": "The scene has a comprehensible exchange, tactile atmosphere, and an unresolved ending. However, atmospheric elaboration overwhelms the requested dialogue-led restraint, while repeated explanations of fear reduce subtext. The timeline contradiction and excessive length add substantial weaknesses.",
+  "evidence": [
+   "selected_prose[scene]: \"the sound that had started weeks ago\" conflicts with source_files['notes/source.md']: \"For three nights\".",
+   "selected_prose[scene]: \"It wasn't the ice. It was\u2026 a reply\" gives Nessa a concise, effective counter to Tomas's rationalization.",
+   "selected_prose[scene]: \"promising something terrible\" and \"an unbearable, expectant quiet\" explicitly announce dread rather than leaving it understated.",
+   "selected_prose[scene]: \"We record it. We listen, but we don\u2019t answer. Just the recording\" repeats the decision.",
+   "selected_prose[scene] exceeds the brief's 220-word maximum and devotes substantially more space to narration than dialogue."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The exchange moves intelligibly from dismissal to caution, but 'weeks ago' contradicts the established three-night history. Calling an unlogged frequency one that 'shouldn't exist' also overstates the source."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 3,
+    "reason": "Tomas's dismissive words and tight voice suggest defensive fear, while Nessa insists on her experience. Explicit labels such as 'fear and stubborn resolve' limit the subtlety and individuality of their portrayal."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Long atmospheric passages delay a short exchange, and the final sentence accumulates effects rather than sharpening the unresolved beat."
+   },
+   "language": {
+    "name": "language",
+    "value": 3,
+    "reason": "The cold console and thin static supply useful sensory grounding. Stacked ominous descriptions, especially 'something terrible' and 'unbearable, expectant quiet,' weaken precision and restraint."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Repeated rationalizations, recording instructions, and descriptions of threatening sound reiterate information and mood within an already overlong scene."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "Nessa remains the viewpoint center and the uncertainty remains unresolved, but narration dominates, dread is overtly explained, and the requested length is exceeded."
+   }
+  }
+ },
+ "F2-06": {
+  "value": 2,
+  "rationale": "The scene establishes readable, contrasting roles and a recognizable comic situation, but substantial development is needed. Exchanges do not build a convincing chain of misunderstandings, Henderson's objections feel insufficiently motivated, and the ending describes an intended effect rather than delivering a developed comic beat. The screenplay format itself is appropriate.",
+  "evidence": [
+   "selected_prose[scene]: Ruth calls Emil 'the cleaner,' and Emil mentions 'the owner,' but Henderson never meaningfully responds to these challenges to his assumption.",
+   "selected_prose[scene]: Henderson dismisses possible neighborhood festival footage as 'hardly the appropriate context for a historical committee.'",
+   "selected_prose[scene]: Projector restrictions recur as 'don't touch the projector,' the checking promise, 'everything locked down,' and 'promise not to touch anything.'",
+   "selected_prose[scene]: The closing direction states, 'The scene ends on the tension between formality and absurdity.'"
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The conversation is followable, but explicit references to Emil's actual role receive no meaningful uptake, while Henderson's dismissal of local historical footage lacks a clear rationale."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 3,
+    "reason": "Emil's startled compliance, Ruth's teasing intervention, and Henderson's insistence on documentation distinguish their roles. They remain fairly schematic, with little development of the shared wish to avoid embarrassment."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "The initial mistaken identification quickly gives way to equipment exposition and repeated restrictions. The scene stops at an invitation to the booth without substantially escalating or transforming the encounter."
+   },
+   "language": {
+    "name": "language",
+    "value": 3,
+    "reason": "Dialogue and stage action are readable, and 'documentation, not folklore' gives Henderson a recognizable voice. Emotional labels such as 'clearly confused' and 'deeply uncomfortable' often substitute for more revealing behavior."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Repeated cautions about touching or checking equipment occupy substantial space without generating distinct complications. The final explanation of 'formality and absurdity' also restates the intended effect."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "Flustered physical action, mistaken status, and a pompous visitor support a comic style, but the humor remains mostly setup and signaled amusement rather than sustained comic execution."
+   }
+  }
+ },
+ "F2-07": {
+  "value": 2,
+  "rationale": "The revision establishes a readable, drought-stricken setting, but mostly expands the original stillness into repeated explanations of significance. Yara acquires concern without much individual character, and the scene develops little beyond kneeling, touching the jar, and contemplating vaguely defined stakes. The sensory opening is more effective than the subsequent symbolic commentary. Substantial revision would be needed to address the requested flatness.",
+  "evidence": [
+   "selected_prose[scene]: \"the scent of dry earth and baked clay\" supplies concrete sensory atmosphere.",
+   "selected_prose[scene]: \"she felt the profound tension of the moment\" announces emotion rather than dramatizing it.",
+   "selected_prose[scene]: \"the weight of the drought,\" \"palpable memory of scarcity,\" and \"The weight of the decision\" repeatedly emphasize the same burden.",
+   "selected_prose[scene]: \"to conserve, to risk, to trust\" leaves the actual choices indistinct."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The setting and viewpoint remain consistent, and scarcity connects the images. However, the jar's relevance and the alternatives behind the weighty decision remain vague."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Yara experiences broadly described worry, but \"to conserve, to risk, to trust\" supplies little distinctive thought, motive, or revealing behavior."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Successive paragraphs reiterate drought and apprehension without appreciably changing the situation or deepening Yara's understanding."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Dry earth, baked clay, and rustling stalks offer sensory grounding, but phrases such as \"a mosaic of cracked earth and desperate hope\" and \"profound tension\" replace precision with generalized emotional emphasis."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Repeated burdens, scarcity imagery, and explicit declarations that the jar is a lifeline and symbol overexplain a single emotional beat."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "The serious atmosphere and uncertain path are compatible with adventure, but the emphasis on explanatory symbolism only weakly serves the request for a less-flat scene."
+   }
+  }
+ },
+ "F2-08": {
+  "value": 2,
+  "rationale": "The scene establishes a recognizable thriller atmosphere and connects the disputed survey to possible danger. However, substantial revision is needed: an unadapted source sentence breaks immersion, dialogue announces themes and background, and repeated descriptions of dread substitute for developing tension through consequential action. Concrete tactile and auditory details are more effective than the surrounding abstractions.",
+  "evidence": [
+   "selected_prose['scene']: Kavi recalls the source-note wording verbatim: \u201cSomeone has warned Kavi that a stranger will arrive at a border map office before morning asking for information.\u201d",
+   "selected_prose['scene']: \u201cIt's not the map that's the threat, Noor. It's the ambiguity.\u201d",
+   "selected_prose['scene']: \u201cthe tension escalating,\u201d \u201crising dread,\u201d and \u201ccharged with the weight of potential consequence.\u201d",
+   "selected_prose['scene']: The paper feels \u201clike skin about to tear\u201d; a final \u201cscrape of metal\u201d interrupts the conversation."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The warning, survey discussion, and concluding disturbance form a comprehensible sequence. The shift from \u201clight comes\u201d to \u201cKavi leaned,\u201d the third-person source sentence inside his recollection, and the unexplained claim that he knows the warning is a \u201cphantom\u201d disrupt narrative consistency."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Noor has a concrete personal stake in her house, but both characters primarily perform generalized anxiety. Kavi's statements about \u201cambiguity\u201d and \u201ca declaration\u201d sound like thematic commentary rather than distinctive speech."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "The final scrape supplies an effective interruption, but most of the scene repeats apprehension without materially changing the characters' situation. Expository recollection stalls the opening suspense."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "The fragile-paper comparison is tactile and relevant. Elsewhere, phrases such as \u201ca thread of paranoia woven into the fabric of their routine\u201d and authority holding \u201cpower over the truth\u201d obscure the concrete stakes with elaborate abstractions."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The warning is repeated immediately after Noor states it. Recurrent silence, vigilance, dread, and explicit tension labels explain an emotional atmosphere already established by the setting and behavior."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "Nighttime surveillance, uncertain borders, and an approaching stranger defensibly support thriller writing. Heavy explanatory narration and thematic dialogue weaken immediacy and subtext."
+   }
+  }
+ },
+ "F2-09": {
+  "value": 2,
+  "rationale": "The revision supplies atmosphere but largely explains the emotional significance rather than making it felt through distinctive behavior or perception. Repeated declarations of tension leave the original action almost equally static. Brass, linen, and the isolated \"Six\" provide some sensory and rhythmic effectiveness, but substantial revision is needed.",
+  "evidence": [
+   "selected_prose[scene]: \"weighted by the unspoken choices between them\"",
+   "selected_prose[scene]: \"each tick ... a reminder of the time they spent together\"",
+   "selected_prose[scene]: \"a silent sentinel\"",
+   "selected_prose[scene]: \"amplify the tension\" and \"unanswered questions hanging in the air\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "Placing the watch and hearing six strike form a readable sequence. However, \"them\" has no explicit second referent within the passage, and \"the time they needed to leave\" blurs whose departure is contemplated."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Pia's only individualized action is laying down the watch. Statements about shared time and unspoken choices provide little distinctive evidence of her uncertainty or the relationship."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "The pause on \"Six\" gives the paragraph a modest rhythmic turn. Surrounding explanatory clauses slow the moment without substantially developing its emotional pressure."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Brass and linen offer concrete texture, but \"silence ... thick,\" \"silent sentinel,\" and questions \"hanging in the air\" substitute familiar atmospheric language for precise observation. The chime \"echoing the unread pages\" is especially vague."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The opening's \"unspoken choices\" and the ending's explicit \"tension\" and \"unanswered questions\" repeatedly explain the same emotional condition rather than adding complexity."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "Attention to ordinary objects, time, and an unresolved relationship is defensibly literary. However, conspicuous symbolism and direct emotional explanation weaken the intended subtext."
+   }
+  }
+ },
+ "F2-10": {
+  "value": 2,
+  "rationale": "The scene establishes a recognizable late-night kitchen and a mystery conversation, but substantial revision is needed. The characters mostly exchange abstract declarations rather than reveal specific conflicting memories or respond to concrete evidence. The unfinished placeholder breaks immersion, and repeated atmospheric explanation substitutes for dramatic development. Neither the short length nor the Markdown formatting is itself a defect.",
+  "evidence": [
+   "selected_prose[scene]: \"What if the thing that took [Name/Subject, implied] is still here\" leaves an unresolved drafting placeholder in dialogue.",
+   "selected_prose[scene]: \"The note is a distraction\" shifts to \"The author didn't just leave a message; they left a recipe\" without a discovery explaining Ada's reasoning.",
+   "selected_prose[scene]: Ada's plate-stacking and Milo's \"This soup... it feels like a trap\" provide some behavioral and emotional differentiation.",
+   "selected_prose[scene]: \"lingering mystery,\" \"The tension was palpable,\" and \"an invitation to a dangerous game\" repeatedly announce menace rather than develop it."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The setting and exchange are understandable, but Ada's movement from dismissing the note to treating its author as the recipe's source lacks an intelligible reasoning bridge."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Ada's nervous tidying and Milo's apprehension suggest contrasting responses, but their dialogue largely voices interchangeable ominous abstractions rather than distinctive experiences or motives."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Successive warnings increase the rhetoric without materially changing the interaction or evidence; the closing paragraph summarizes tension instead of advancing the scene."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Kitchen sounds and surfaces provide useful sensory grounding, but the literal placeholder interrupts otherwise readable sentences, while vague threats weaken precision."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The final explanation of palpable tension, unsettling secrets, potential clues, and a dangerous game reiterates the menace already stated in dialogue without adding much meaning."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "The atmospheric mystery approach is permitted and recognizable. However, the unfinished dialogue and conspicuous explanations make it feel more like a preliminary sketch than an effective finished scene."
+   }
+  }
+ },
+ "F5-01": {
+  "value": 2,
+  "rationale": "The scene maintains a recognizable setting and viewpoint, but substantial revision is needed to achieve the requested restraint. Atmospheric elaboration repeatedly displaces concrete stakes. The dialogue suggests tension without making its underlying disagreement legible, and the ending explains uncertainty rather than sharpening it through a consequential observation or action.",
+  "evidence": [
+   "selected_prose[scene]: \"the scent of brine and decaying paper\" and \"her gaze tracked the waterline\" establish tangible surroundings.",
+   "selected_prose[scene]: \"The depth is irrelevant\" and \"The question is what we are measuring\" turn the exchange away from the immediate physical problem.",
+   "selected_prose[scene]: \"his voice flat, devoid of inflection\" repeats the same characterization.",
+   "selected_prose[scene]: \"a boundary that might not be a path, but merely a reflection\" replaces a specific dilemma with abstraction.",
+   "selected_prose[scene]: \"promising only more saturation, never resolution\" explicitly explains the unresolved effect."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The physical sequence is understandable: Mara observes Ilan repairing shelves, they speak, and she waits. However, the relationship between measuring depth, her suspicion, and confirming the invitation remains obscure."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Mara's watchfulness and clipped reply suggest distrust, while Ilan's repair work grounds his role. Their abstract pronouncements and the unspecified 'familiar knot' provide little distinctive motivation or relational texture."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Lengthy descriptions of dampness precede a brief exchange that barely changes the situation. The final paragraph extends the same unease rather than developing the unresolved problem."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Brine, silt, and the waterline provide useful sensory anchors, but phrases such as 'a small volume of history' and 'merely a reflection' obscure physical meaning and dilute their impact."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Repeated descriptions of moisture, quiet, and constancy perform similar work. 'Flat, devoid of inflection' and the closing explanation of nonresolution add unnecessary emphasis."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "Mara remains the viewpoint center, but sustained metaphor, philosophical dialogue, and explanatory emotional narration substantially weaken adherence to restrained, concrete prose."
+   }
+  }
+ },
+ "F5-02": {
+  "value": 2,
+  "rationale": "The scene establishes an ominous setting and leaves the central uncertainty open, but substantial revision is needed for the requested spare, Suri-centered thriller prose. Abstract explanations repeatedly substitute for developments, distinctive characterization, and subtext. A direct assertion of Aven's knowledge also weakens viewpoint control and fidelity to the supplied uncertainty.",
+  "evidence": [
+   "selected_prose[scene]: \"smelling faintly of ozone and trapped humidity\" supplies concrete atmosphere.",
+   "selected_prose[scene]: \"He had seen the watchers; he knew the risk was tangible\" asserts Aven's knowledge beyond the supplied signs of surveillance.",
+   "selected_prose[scene]: \"the tension between them was a tight wire\" and \"Aven\u2019s silence was a shield\" repeatedly explain tension.",
+   "selected_prose[scene]: \"a flaw mirrored in the precariousness of their current situation\" explicitly interprets the song's thematic significance.",
+   "selected_prose[scene] exceeds the requested 220-word maximum."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The setting and anticipated encounter are understandable, but \"He had seen the watchers\" upgrades evidence of watching to confirmed observers. The final arrival of morning is abrupt."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Suri largely experiences generalized dread, while Aven remains a silent, watchful figure. \"What if they aren\u2019t just asking for information?\" states the obvious concern rather than revealing a distinctive relationship or strategy."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Repeated descriptions of silence and tension hold the scene in place without escalating its concrete circumstances. The unresolved ending is appropriate, but the intervening suspense develops little."
+   },
+   "language": {
+    "name": "language",
+    "value": 3,
+    "reason": "Ozone, condensation, and chill provide usable sensory grounding. However, phrases such as \"dread had already settled in her bones\" and \"blank, expectant horizon\" make the atmosphere less precise."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Unnerving silence, cold certainty, a tight wire, an unanswered question, and suffocating quiet repeatedly communicate essentially the same unease. The explicit explanation of the damaged song's parallel further reduces subtext."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "Extended abstract comparisons undermine spareness; \"he knew the risk was tangible\" breaks the otherwise Suri-centered perspective. The prose also exceeds the stated word range."
+   }
+  }
+ },
+ "F5-04": {
+  "value": 3,
+  "rationale": "The scene supplies a recognizable radio-station atmosphere, contrasting recollections, and an unresolved mystery. However, abstract dialogue and repeated explanations of tension weaken the requested understatement. It is usable with revision, especially substantial trimming and greater reliance on the characters\u2019 exchange.",
+  "evidence": [
+   "selected_prose[scene]: \u201cThe light of what, Tomas? I remember the rain. I remember the silence afterward.\u201d",
+   "selected_prose[scene]: \u201ca physical manifestation of the delay\u201d and \u201ca phantom weight.\u201d",
+   "selected_prose[scene]: \u201cThe tension wasn't in the words themselves, but in the space between them\u2014the unbridgeable gap where one truth met another.\u201d",
+   "selected_prose[scene] exceeds the requested 220-word maximum."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The setting and disagreement remain intelligible, but the movement from channel to light to water is loosely connected rather than cumulatively revealing."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 3,
+    "reason": "Nessa\u2019s carefully neutral prompting contrasts with Tomas\u2019s hesitant memory. His \u201cshape of the question\u201d formulation feels more like atmospheric authorial language than distinctive conversational speech."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "The exchange sustains uncertainty, but the substantial opening and explanatory closing slow a short scene without adding corresponding developments."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Concrete details such as condensation and the microphone help establish place, but accumulated abstractions\u2014\u201cphysical manifestation,\u201d \u201cphantom weight,\u201d and \u201cshared anchor\u201d\u2014dilute their effect."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The narration repeatedly explains unease already conveyed by uncertain speech and physical reactions. The final sentence explicitly interprets the tension instead of allowing the exchange to carry it."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 2,
+    "reason": "Nessa-centered narration and dialogue are present, but conspicuous emotional explanation undermines understatement. The prose also exceeds the explicit length range."
+   }
+  }
+ },
+ "F5-05": {
+  "value": 2,
+  "rationale": "The scene establishes a recognizable courthouse and maintains Dara's observational viewpoint, but repeatedly explains tension without giving it a sufficiently concrete object. The dialogue contributes little beyond procedural atmosphere. The ending remains unresolved, yet its newly introduced culpability and pact are too indistinct to create a compelling question. Substantial tightening and greater specificity are needed.",
+  "evidence": [
+   "selected_prose[scene]: \"a response to the proximity of unresolved risk\"",
+   "selected_prose[scene]: \"emphasizing the stark reality of the situation\"",
+   "selected_prose[scene]: \"a small, almost imperceptible flinch betraying the depth of the uncertainty\"",
+   "selected_prose[scene]: \"whether it rested in the evidence or in the unspoken pact\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The physical setting and sequence are intelligible, but the connection among the disputed charter, recorded testimony, culpability, and unspoken pact is unclear. Culpability 'resting in the evidence' is particularly imprecise."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Dara's controlled reply and attention to Sen suggest caution, but both characters are largely reduced to generic signs of anxiety. Sen has no dialogue, and Dara's particular concern remains undefined."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Extended atmosphere precedes a brief procedural exchange, followed by repeated descriptions of uncertainty. Preparing to seal the record supplies an ending beat, but little changes during the scene."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Cold stone, wool, parchment, and dust provide sensory grounding. However, phrases such as 'stark reality of the situation' and 'proximity of unresolved risk' substitute abstraction for precise perception."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Coiled tension, tightening in the chest, trembling, fraying composure, flinching, veiled truth, and suspended uncertainty repeatedly communicate the same emotional condition, often explaining what the physical cues already imply."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "The register is formal and the viewpoint generally remains with Dara. Precision is uneven, however, and the prose exceeds the requested 220-word maximum."
+   }
+  }
+ },
+ "F5-06": {
+  "value": 3,
+  "rationale": "The scene is intelligible and provides a usable speculative setting, but much of its dialogue recites constraints rather than revealing distinctive people. The diagnostic gives it a modest action arc; the surrounding explanations and repeated conclusion weaken its dramatic and emotional effect.",
+  "evidence": [
+   "selected_prose[scene]: \"He ran a diagnostic sequence. Green light. Nominal.\" supplies a clear physical action.",
+   "selected_prose[scene]: \"The projector must be checked before anything is screened\" and \"The cinema is scheduled to close on Friday\" reproduce the notes as conspicuously explanatory dialogue.",
+   "selected_prose[scene]: Ruth asks \"And the festival?\" and then answers \"Tentative,\" without an intervening response.",
+   "selected_prose[scene]: \"That's the canon we can rely on\" is repeated as the closing exchange."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The movement from concern to inspection to provisional reassurance is clear. Ruth's consecutive question and answer, especially the attribution 'she confirmed,' muddle the conversational sequence."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Emil's procedural caution and Ruth's distrust are discernible, but their voices largely deliver technical exposition. The tired smile and resigned sigh provide little specificity about what losing this cinema means to either person."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 3,
+    "reason": "The diagnostic provides progression and a small resolution. Repeated discussion of uncertainty and scheduling occupies more space than the action or its consequences, making the scene feel static."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Ozone and the manufactured horizon establish atmosphere, but 'ran a gloved hand over the dust motes' is physically awkward. 'The uncertainty hung between them' explains an already evident mood, while 'canon' sounds like writing-process terminology rather than natural conversation here."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Narration explains the synchronization concern after dialogue introduces it; dialogue then reiterates distrust. The final repeated 'canon' sentence adds little emotional or interpretive development."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 4,
+    "reason": "The response stays entirely within fictional narration and dialogue and adopts a defensible science-fiction register. Its checklist-like declarations and metatextual-sounding closing phrase occasionally weaken immersion."
+   }
+  }
+ },
+ "F5-07": {
+  "value": 2,
+  "rationale": "The scene establishes drought, romantic tension, and a potentially useful contrast between departure and attachment. However, unclear stakes, contradictory physical phrasing, and an asserted rather than developed emotional resolution substantially weaken it. Repeated explanations of what gestures mean displace subtext, while the closing reunion reference obscures the relationship between the old love and the present intimacy.",
+  "evidence": [
+   "selected_prose[scene]: \"If I go, it's just the garden. If I stay... it's the possibility of something else.\"",
+   "selected_prose[scene]: \"not to touch her, but to gently cup her hand\"",
+   "selected_prose[scene]: \"Their shoulders brushed\" and \"his thumb stroking the back of her knuckles.\"",
+   "selected_prose[scene]: \"It was a promise\" becomes \"a shared commitment\" without further exchange.",
+   "selected_prose[scene]: \"the unspoken weight between them\u2014the unspoken question\"",
+   "selected_prose[scene]: \"The reunion wasn't just a memory; it was the seed of a new hope\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The broad situation is understandable, but 'If I go, it's just the garden' leaves the choice unclear. Cupping a hand contradicts 'not to touch her,' and the closing reunion reference has an uncertain referent."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Yara expresses hesitation and Belen offers tenderness, but neither acquires much individual specificity. Belen's maxim about 'which kind of future we choose to water' substitutes thematic reassurance for engagement with Yara's old love or competing desires."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "The movement from accidental contact to confession is legible, but the scene jumps from unresolved uncertainty to 'shared commitment' after one reassuring statement, without a discernible reciprocal choice."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Cracked clay and the knuckle-stroking gesture provide concrete texture. However, 'landscape of resignation,' 'gentle anchor in the rising tide of uncertainty,' and 'hopeful, fragile dampness' accumulate abstractions that blur rather than sharpen the emotional experience."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The narration repeatedly interprets the same emotional beat through 'weight,' 'confession heavy,' 'promise,' 'bridge,' and 'shared commitment.' These explanations overdetermine the gestures without supplying additional relational development."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 4,
+    "reason": "The intimate gestures, longing, and relationship-centered choice defensibly serve the requested romance. No more specific style was prescribed; the headings and scene labels are not defects."
+   }
+  }
+ },
+ "F5-08": {
+  "value": 3,
+  "rationale": "A usable atmospheric scene with a promising connection between bureaucratic authority and unstable reality. Kavi's fear and Noor's skepticism establish conflict, but exposition and repeated descriptions of dread dominate their interaction. The tentative hallway voice supplies some escalation; the closing claims about listening and truth are less effectively prepared.",
+  "evidence": [
+   "selected_prose[scene]: Kavi traces condensation while the border wall and utility buildings blur outside.",
+   "selected_prose[scene]: Noor \"meticulously folded a map that didn't exist, or perhaps one that was supposed to be correct.\"",
+   "selected_prose[scene]: \"The implication hung heavy: that the reality they relied on was subject to bureaucratic correction\" explicitly explains the preceding dialogue.",
+   "selected_prose[scene]: \"a lead weight,\" \"words tasting like ash,\" and \"chilled her to the bone\" repeatedly convey dread through familiar expressions."
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 3,
+    "reason": "The conversation moves intelligibly from testimony to correction authority and waiting. However, the nonexistent map is difficult to visualize, and the final emphasis on speaking truth lacks a clear connection to the preceding events."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 3,
+    "reason": "Kavi's insistence contrasts with Noor's initial stress explanation and later refusal to leave. Their positions are recognizable, but dialogue largely delivers premise information, while narration explains feelings rather than revealing more individual motives."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "Successive explanations of the phenomenon, its possible cause, and its implications delay the scene's only possible manifestation. Repeated dread adds little change in pressure before the hallway moment."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Condensation and the blurred border buildings provide useful physical grounding, but stacked abstractions and familiar fear imagery weaken precision. The map sentence is especially unclear."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "Narration explains both Noor's fear of flawed reality and the bureaucratic implications already suggested by dialogue. Recurrent heavy silence, cold, waiting, and dread often restate the same emotional condition."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 4,
+    "reason": "The response stays entirely within story prose and sustains an ominous register appropriate to horror. Explicit explanations sometimes diminish the uncertainty its style otherwise seeks to create."
+   }
+  }
+ },
+ "F5-09": {
+  "value": 2,
+  "rationale": "The scene establishes an atmospheric workshop, but substantial weaknesses limit its effectiveness. Abstract dialogue never clarifies the immediate problem, source-note language intrudes into the fiction, and repeated assertions of mystery substitute for developing tension. The final sentence explains a theme rather than letting the interaction convey it.",
+  "evidence": [
+   "selected_prose[scene]: \u201cThe mechanism is what we need, Pia. Not the timing.\u201d",
+   "selected_prose[scene]: \u201cShe remembered the agreement: *Pia agreed to record stopping times before drawing conclusions.*\u201d",
+   "selected_prose[scene]: \u201cThe collector\u2019s square key, mentioned in the notes, felt heavy in the context of the delicate escapement.\u201d",
+   "selected_prose[scene]: \u201cemphasizing the fragile balance between truth and illusion\u201d"
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The setting and participants are identifiable, but \u201cthe anomaly\u201d remains undefined, and Ren\u2019s contrast between mechanism and timing lacks an intelligible practical basis. \u201cMentioned in the notes\u201d introduces an unexplained external frame."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Pia\u2019s suspicion is recognizable, but her dialogue mostly restates it. Ren\u2019s \u201cknowing smile\u201d and maxim about tricks gesture toward depth without revealing a distinct motive or grounded perspective."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "After the atmospheric opening, the exchange repeatedly circles uncertainty. Picking up the key produces no meaningful change in their interaction, and the ending returns to atmospheric description."
+   },
+   "language": {
+    "name": "language",
+    "value": 2,
+    "reason": "Sunlight, brass, and the velvet cloth provide concrete texture, but phrases such as \u201cfelt heavy in the context\u201d are awkwardly abstract. Verbatim agreement language and \u201cmentioned in the notes\u201d disrupt narrative immersion."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "\u201cShe suspected a trick,\u201d the questions about distraction, \u201cThere has to be a trick,\u201d and the concluding truth-versus-illusion statement repeat the same uncertainty without appreciably deepening it."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "The conventional descriptive scene and period-compatible workshop suit the open historical-fiction request. Historical texture is thin, however, and documentary phrasing interrupts the fictional voice."
+   }
+  }
+ },
+ "F5-10": {
+  "value": 2,
+  "rationale": "The scene offers recognizable comic voices and some amusing bureaucratic improvisation, but substantial weaknesses undermine it. The mistaken identity remains unclear, the ingredient exchange lacks a coherent comic consequence, and narration repeatedly announces confusion and Milo\u2019s success instead of making them evident through action.",
+  "evidence": [
+   "selected_prose[scene]: The committee \"stumbled in,\" but Ada subsequently \"had spent the last hour\" puzzling over its insistence on ingredient purity.",
+   "selected_prose[scene]: \"The proprietor is currently indisposed, undergoing\u2026 intensive spiritual realignment.\"",
+   "selected_prose[scene]: \"The first misunderstanding struck immediately\" introduces an ingredient-verification question rather than clearly dramatizing a misunderstanding.",
+   "selected_prose[scene]: \"The committee had their rules, but Milo had the narrative.\""
+  ],
+  "dims": {
+   "coherence": {
+    "name": "coherence",
+    "value": 2,
+    "reason": "The unexplained last-hour reference conflicts with the staged arrival. The relationship between the crossed-out ingredient, speculative recipe, and Ada\u2019s claim that the p\u00e2t\u00e9 is always lavender remains muddled rather than productively clarified."
+   },
+   "characterization": {
+    "name": "characterization",
+    "value": 2,
+    "reason": "Ada\u2019s practical shelf-stocking gives her an initial grounding, and Sterling\u2019s formality contrasts with Milo\u2019s improvisation. However, Ada becomes largely a flustered spectator, the other committee members are inert, and Milo\u2019s appetite for mischief displaces the requested face-saving partnership."
+   },
+   "pacing": {
+    "name": "pacing",
+    "value": 2,
+    "reason": "The scene moves promptly into dialogue but stalls around a single sourcing question. Extended rhetorical evasions produce little escalation, and the ending declares a hurdle cleared without a persuasive local payoff."
+   },
+   "language": {
+    "name": "language",
+    "value": 3,
+    "reason": "Readable dialogue includes amusing phrases such as 'conceptual flow' and 'intensive spiritual realignment.' Repeated qualifiers and stock expressions\u2014'practiced nonchalance,' 'perfect blend,' and a 'genuine smile that didn\u2019t quite reach his eyes'\u2014make the narration less precise and distinctive."
+   },
+   "redundancy": {
+    "name": "redundancy",
+    "value": 2,
+    "reason": "The narration repeatedly interprets visible behavior and explains the intended comedy: it labels the misunderstanding, describes Sterling wrestling with speculative cuisine, and closes by explaining Milo\u2019s supposed narrative control. These explanations crowd out dramatized consequences."
+   },
+   "style_adherence": {
+    "name": "style_adherence",
+    "value": 3,
+    "reason": "It delivers only story prose and sustains a broadly comic register through pompous official language and evasive culinary jargon. The style is recognizable but relies more on announcing chaos and knowingness than on effective comic interaction."
+   }
+  }
+ }
+}

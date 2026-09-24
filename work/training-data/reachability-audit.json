@@ -1,0 +1,1586 @@
+[
+  {
+    "id": "wave1-train-001",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-002",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-003",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-004",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-005",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-006",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-007",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-008",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-009",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-010",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-011",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-012",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-013",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-014",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-015",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-016",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-017",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-018",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-019",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-020",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-021",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-022",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-023",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-024",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "protected-line",
+        "enabled_by": "drafts/scene.md: explicitly protected final sentence"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-025",
+    "checks": [
+      {
+        "check": "delivery-direction-a",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-a",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-a",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-b",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-b",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-b",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-c",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-c",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-c",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-026",
+    "checks": [
+      {
+        "check": "delivery-direction-a",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-a",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-a",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-b",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-b",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-b",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-c",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-c",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-c",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-027",
+    "checks": [
+      {
+        "check": "delivery-direction-a",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-a",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-a",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-b",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-b",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-b",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-c",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-c",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-c",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-028",
+    "checks": [
+      {
+        "check": "delivery-direction-a",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-a",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-a",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-b",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-b",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-b",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-c",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-c",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-c",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-029",
+    "checks": [
+      {
+        "check": "delivery-direction-a",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-a",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-a",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-b",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-b",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-b",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-c",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-c",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-c",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-030",
+    "checks": [
+      {
+        "check": "delivery-direction-a",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-a",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-a",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-b",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-b",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-b",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-direction-c",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-direction-c",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-direction-c",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-031",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-032",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-033",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-034",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-035",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-036",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-037",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-038",
+    "checks": [
+      {
+        "check": "delivery-index",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-index",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-index",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-state",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-state",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-state",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "delivery-questions",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-questions",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-questions",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "wiki-words",
+        "enabled_by": "explicit whole-KB cap"
+      },
+      {
+        "check": "wiki-links",
+        "enabled_by": "explicit three-page navigation requirement"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-039",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-12.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-12.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-040",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-19.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-19.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-041",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-26.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-26.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-042",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-04.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-04.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-043",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-11.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-11.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-044",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-18.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-18.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-045",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-25.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-25.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-046",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-03.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-03.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-047",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-10.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-10.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  },
+  {
+    "id": "wave1-train-048",
+    "checks": [
+      {
+        "check": "delivery-scene",
+        "enabled_by": "explicit requested deliverable"
+      },
+      {
+        "check": "words-scene",
+        "enabled_by": "explicit brief word range"
+      },
+      {
+        "check": "continuity-scene",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      },
+      {
+        "check": "workspace-scope",
+        "enabled_by": "explicit delivery paths and workspace edit restriction"
+      },
+      {
+        "check": "current-instruction",
+        "enabled_by": "kb/record-17.md"
+      },
+      {
+        "check": "instruction-exposed",
+        "enabled_by": "kb/record-17.md"
+      },
+      {
+        "check": "superseded-instruction",
+        "enabled_by": "source uncertainty or withdrawn instruction; literal check only, semantic rubric also supplied"
+      }
+    ],
+    "followup_audit": "Authored followups preserve required artifacts, word ranges, protected spans and unresolved source facts; later authorized details are additive."
+  }
+]

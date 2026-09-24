@@ -1,0 +1,38 @@
+[
+  {
+    "id": "gen-wave1-eval-019",
+    "matches": 4,
+    "read_tokens": 111,
+    "budget": 3500
+  },
+  {
+    "id": "gen-wave1-eval-020",
+    "matches": 4,
+    "read_tokens": 109,
+    "budget": 3500
+  },
+  {
+    "id": "gen-wave1-eval-021",
+    "matches": 4,
+    "read_tokens": 112,
+    "budget": 3500
+  },
+  {
+    "id": "gen-wave1-eval-022",
+    "matches": 4,
+    "read_tokens": 116,
+    "budget": 3500
+  },
+  {
+    "id": "gen-wave1-eval-023",
+    "matches": 4,
+    "read_tokens": 112,
+    "budget": 3500
+  },
+  {
+    "id": "gen-wave1-eval-024",
+    "matches": 4,
+    "read_tokens": 111,
+    "budget": 3500
+  }
+]

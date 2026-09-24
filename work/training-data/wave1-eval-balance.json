@@ -1,0 +1,83 @@
+{
+  "family": {
+    "F1": 6,
+    "F2": 5,
+    "F3": 3,
+    "F4": 4,
+    "F5": 6
+  },
+  "specificity": {
+    "explicit": 12,
+    "loose": 12
+  },
+  "channel_tools": {
+    "reply/no_tools": 6,
+    "file/tools": 10,
+    "reply/tools": 8
+  },
+  "followups": {
+    "0": 12,
+    "8-12": 6,
+    "1-2": 6
+  },
+  "genres": {
+    "literary realism": 1,
+    "social science fiction": 1,
+    "legal thriller": 1,
+    "magical realism": 1,
+    "nautical adventure": 1,
+    "coming-of-age fiction": 1,
+    "workplace comedy": 1,
+    "climate fiction": 1,
+    "historical fiction": 1,
+    "romantic comedy": 1,
+    "hard science fiction": 1,
+    "heist fiction": 1,
+    "first-contact science fiction": 1,
+    "western": 1,
+    "solarpunk": 1,
+    "political thriller": 1,
+    "cozy fantasy": 1,
+    "family saga": 1,
+    "space opera": 1,
+    "detective fiction": 1,
+    "folk horror": 1,
+    "workplace science fiction": 1,
+    "absurdist fiction": 1,
+    "survival adventure": 1
+  },
+  "styles": {
+    "spare and concrete": 1,
+    "dialogue-led": 1,
+    "formal and ceremonious": 2,
+    "lyrical with precise physical detail": 1,
+    "close attention to physical action": 1,
+    "reflective and interior": 1,
+    "dryly comic": 1,
+    "unhurried and observational": 1,
+    "documentary and matter-of-fact": 1,
+    "colloquial and conversational": 1,
+    "voice shaped by a particular profession": 2,
+    "tense and clipped": 2,
+    "playful and digressive": 1,
+    "plainspoken with occasional imagery": 1,
+    "expansive and sensory": 2,
+    "ironic and socially observant": 1,
+    "restrained emotional expression": 1,
+    "emotionally direct": 1,
+    "ornate and rhythmic": 1,
+    "fragmentary but intelligible": 1
+  },
+  "prose_bearing": 17,
+  "scenario_provenance": {
+    "original": 24
+  },
+  "deep_cases": {
+    "gen-wave1-eval-002": 8,
+    "gen-wave1-eval-008": 9,
+    "gen-wave1-eval-013": 10,
+    "gen-wave1-eval-016": 11,
+    "gen-wave1-eval-020": 8,
+    "gen-wave1-eval-024": 12
+  }
+}
