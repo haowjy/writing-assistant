@@ -88,7 +88,9 @@ def _check_source_checkpoint(checkpoint: Path) -> dict:
     }
 
 
-def _check_source_group(group: Path, *, source_experiment: dict | None = None) -> dict:
+def _check_source_group(
+    group: Path, *, source_experiment: dict | None = None, source_root: Path | None = None
+) -> dict:
     group = group.resolve()
     if not group.is_dir() or not group.name.startswith("step-000031-"):
         raise ValueError("Fork source must be the stopped checkpoint-31 group")
@@ -100,6 +102,14 @@ def _check_source_group(group: Path, *, source_experiment: dict | None = None) -
         task = next((item for item in tasks if item["id"] == started["task"]), None)
         if task is None or fingerprint(task) != started.get("task_hash"):
             raise ValueError("Stopped group task hash is outside the source experiment")
+        if source_root is not None:
+            invocation = source_root / "invocations" / started["invocation"] / "started.json"
+            saved_invocation = _read_json(invocation)
+            if (
+                saved_invocation.get("identity") != source_experiment.get("identity")
+                or fingerprint(saved_invocation) != started.get("invocation_hash")
+            ):
+                raise ValueError("Stopped group invocation is outside the source experiment")
     if (group / "complete.json").exists():
         raise ValueError("Source group must remain unresolved before the fork")
     attempts = {}
@@ -246,8 +256,15 @@ def prepare_fork(source_checkpoint, source_group, output, *, wandb_run_id=None) 
     checkpoint = Path(source_checkpoint)
     group = Path(source_group)
     source = _check_source_checkpoint(checkpoint)
+    if group.resolve().parent != checkpoint.parent.resolve() / "groups":
+        raise ValueError("Stopped group is not from the original checkpoint experiment")
     group_info = _check_source_group(
-        group, source_experiment={"manifest": source["experiment_manifest"]}
+        group,
+        source_experiment={
+            "identity": source["identity"],
+            "manifest": source["experiment_manifest"],
+        },
+        source_root=checkpoint.parent,
     )
     output = Path(output).resolve()
     source_root = checkpoint.parent.resolve()
@@ -315,7 +332,11 @@ def verify_fork_manifest(output: Path) -> dict:
         raise ValueError("Original checkpoint seal or path changed")
     group = _check_source_group(
         Path(manifest["source_group"]["path"]),
-        source_experiment={"manifest": source["experiment_manifest"]},
+        source_experiment={
+            "identity": source["identity"],
+            "manifest": source["experiment_manifest"],
+        },
+        source_root=Path(source["path"]).parent,
     )
     if group != manifest["source_group"]:
         raise ValueError("Original group evidence changed")

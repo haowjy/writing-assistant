@@ -26,6 +26,9 @@
   preflight and explicit 48-to-96 resume options, pending-group coverage, frozen
   W&B environment enforcement, and a leased checkpoint-31 fork CLI.  No launch
   or online W&B run was performed.
+- Bind the stopped group invocation to the same original experiment as checkpoint
+  31, reject source-tree output paths, and validate task/seed provenance before
+  any continuation.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of
