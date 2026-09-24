@@ -11,6 +11,8 @@
   disabling model/checkpoint uploads; no GPU or online training run was started.
   Fork coverage reports the verified v2 prefix separately from fork-local
   checkpoint-32 evidence and refuses to claim readiness before that seal exists.
+  W&B logging identity is now bound in the trainer manifest and fail-closed
+  unless an explicit run name accompanies native reporting.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of

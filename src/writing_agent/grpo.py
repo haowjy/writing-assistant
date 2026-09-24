@@ -276,6 +276,11 @@ def train_grpo(
         raise ValueError("Caller-owned weights/tokenizer/backend need an explicit identity")
     if backend_factory is not None and not runtime_identity:
         raise ValueError("Custom backend requires an explicit identity")
+    wandb_reporting = report_to == "wandb" or report_to == ["wandb"]
+    if wandb_reporting and not wandb_run_name:
+        raise ValueError("W&B reporting requires an explicit bound run name")
+    if report_to not in ("none", "wandb") and report_to != ["wandb"]:
+        raise ValueError("Only disabled reporting or native W&B reporting is admitted")
     verified_runtime = verify_runtime(implementation)
     import torch
     from datasets import Dataset
@@ -339,6 +344,7 @@ def train_grpo(
         "rollout_implementation": fingerprint(
             inspect.getsource(rollout_factory or RolloutGroups)
         ),
+        "logging": {"report_to": report_to, "wandb_run_name": wandb_run_name},
         "tokenizer": fingerprint(tokenizer.backend_tokenizer.to_str()),
         "chat_template": fingerprint(tokenizer.chat_template),
         "response_template": fingerprint(getattr(tokenizer, "response_template", None)),
