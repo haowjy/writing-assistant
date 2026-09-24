@@ -230,6 +230,51 @@ def verify_fork_manifest(output: Path) -> dict:
     return manifest
 
 
+def fork_coverage(output: Path) -> dict:
+    """Report verified original-prefix plus fork-local tail coverage.
+
+    The original 31 optimizer boundaries are evidence from v2, not work done by
+    this fork.  Only a fork checkpoint-32 seal can claim the first new update.
+    """
+    output = Path(output).resolve()
+    errors = []
+    try:
+        manifest = verify_fork_manifest(output)
+        trainer = output / "trainer"
+        experiment = _read_json(trainer / "experiment.json")
+        fork_identity = experiment["identity"]
+        if fork_identity == manifest["source_checkpoint"]["identity"]:
+            raise ValueError("Fork trainer identity must differ from v2")
+        group = trainer / "groups" / GROUP_NAME
+        if _read_json(group / "complete.json") != {"status": "scored", "attempts": 4}:
+            raise ValueError("Checkpoint-31 fork group is not scored")
+        for slot in range(4):
+            attempt = group / f"attempt-{slot:03d}"
+            if not (attempt / "fork_reward.json").exists():
+                raise ValueError(f"Fork reward missing for slot {slot}")
+            reward = _read_json(attempt / "fork_reward.json")
+            if reward.get("status") != "ok":
+                raise ValueError(f"Fork reward unavailable for slot {slot}")
+        checkpoint = trainer / "checkpoint-32"
+        checkpoint_step = verify_checkpoint(checkpoint, fork_identity)
+        if checkpoint_step != 32:
+            raise ValueError("Fork checkpoint does not seal update 32")
+    except (OSError, ValueError, KeyError, TypeError, ProtocolError) as exc:
+        errors.append(str(exc))
+        manifest = None
+    return {
+        "status": "ready" if not errors else "blocked",
+        "fork_id": FORK_ID,
+        "original_prefix": {
+            "source_identity": manifest["source_checkpoint"]["identity"] if manifest else None,
+            "through_checkpoint": GROUP_STEP,
+            "verified": manifest is not None,
+        },
+        "fork_tail": {"group": GROUP_STEP, "first_new_checkpoint": 32, "verified": not errors},
+        "errors": errors,
+    }
+
+
 class Checkpoint31RolloutGroups(RolloutGroups):
     """TRL callback that imports three actions and resumes slot002 once."""
 
