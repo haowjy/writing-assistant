@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add a guarded agent continuation boundary and native sampled-token restoration
+  for a final answer followed by a scheduled user turn. A read-only CPU replay of
+  stopped v2 slot 002 verifies five original actions and the 25 masked follow-up
+  tokens before entering only the missing sixth model call. This is not yet a
+  checkpoint-31 fork, a new model response, or an optimizer update.
+
 - Revise the final-answer EOS policy: keep `<eos>` in the sampled action ledger
   and append the scheduled user's native turn as a masked external suffix without
   inserting a replacement `<turn|>`. Verify the exact next input, action/mask

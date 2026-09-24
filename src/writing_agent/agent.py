@@ -36,6 +36,7 @@ def run_agent(
     count_tokens: Callable[[str], int] = lambda text: len(text.split()),
     read_tokenizer: str = "whitespace-v1",
     system_prompt: str = SYSTEM_PROMPT,
+    resume: dict | None = None,
 ) -> dict:
     if max_steps < 1 or max_tool_calls < 0 or max_read_tokens < 0:
         raise ValueError("Invalid agent budget")
@@ -44,16 +45,46 @@ def run_agent(
     if allowed - available:
         raise ValueError("Unknown tool configuration")
     schemas = [s for s in TOOL_SCHEMAS if s["function"]["name"] in allowed]
-    pending = iter(followups or [])
-    turns = []
-    read_tokens = 0
-    history = [{"role": "system", "content": system_prompt}, *copy.deepcopy(messages)]
-    calls = 0
-    attempted_calls = 0
-    errors = 0
-    usage = {}
+    if resume is None:
+        pending = iter(followups or [])
+        turns = []
+        read_tokens = 0
+        history = [{"role": "system", "content": system_prompt}, *copy.deepcopy(messages)]
+        calls = attempted_calls = errors = start_step = 0
+        usage = {}
+        emit({"type": "input", "messages": history, "tools": schemas})
+    else:
+        # Resumption is permitted only at a completed assistant answer followed by
+        # an external user turn; never reconstruct or resample a prior model action.
+        history = copy.deepcopy(resume["messages"])
+        turns = copy.deepcopy(resume["turns"])
+        start_step = resume["step"]
+        if (
+            not isinstance(start_step, int)
+            or not 0 < start_step < max_steps
+            or history[0] != {"role": "system", "content": system_prompt}
+            or history[1 : len(messages) + 1] != messages
+            or len(turns) < 1
+            or len(turns) > len(followups or [])
+            or history[-1] != {"role": "user", "content": followups[len(turns) - 1]}
+            or history[-2].get("role") != "assistant"
+            or history[-2].get("tool_calls")
+        ):
+            raise ValueError("Invalid agent continuation boundary")
+        pending = iter(followups[len(turns) :])
+        calls = resume["tool_calls"]
+        attempted_calls = resume["attempted_tool_calls"]
+        errors = resume["tool_errors"]
+        read_tokens = resume["read_tokens"]
+        usage = copy.deepcopy(resume["usage"])
+        if (
+            any(type(x) is not int or x < 0 for x in (calls, attempted_calls, errors, read_tokens))
+            or calls > max_tool_calls
+            or read_tokens > max_read_tokens
+            or resume["read_tokenizer"] != read_tokenizer
+        ):
+            raise ValueError("Invalid agent continuation counters")
     started = time.perf_counter()
-    emit({"type": "input", "messages": history, "tools": schemas})
 
     def finish(
         status: str,
@@ -85,7 +116,7 @@ def run_agent(
                 target[key] = target.get(key, 0) + value
 
     try:
-        for step in range(max_steps):
+        for step in range(start_step, max_steps):
             before = time.perf_counter()
             completion = backend.complete(history, schemas, emit=emit)
             message = completion.message

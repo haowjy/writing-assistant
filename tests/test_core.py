@@ -109,6 +109,54 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result["status"], "step_limit")
         self.assertEqual(failed["status"], "error")
 
+    def test_continue_after_saved_answer_and_external_followup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            initial = [{"role": "user", "content": "Draft."}]
+            followups = ["Revise."]
+            first = {"role": "assistant", "content": "Draft one."}
+            second = {"role": "assistant", "content": "Revised."}
+            events = []
+            partial = run_agent(
+                ScriptedBackend([first]),
+                workspace,
+                initial,
+                followups=followups,
+                emit=events.append,
+            )
+            self.assertEqual(partial["status"], "error")
+            self.assertEqual(partial["messages"][-1], {"role": "user", "content": "Revise."})
+            state = {**partial, "step": 1}
+            continued_events = []
+            continued = run_agent(
+                ScriptedBackend([second]),
+                workspace,
+                initial,
+                followups=followups,
+                resume=state,
+                emit=continued_events.append,
+            )
+            uninterrupted = run_agent(
+                ScriptedBackend([first, second]),
+                Workspace(Path(tmp) / "fresh"),
+                initial,
+                followups=followups,
+            )
+            for field in ("status", "messages", "turns", "output", "tool_calls", "usage"):
+                self.assertEqual(continued[field], uninterrupted[field])
+            self.assertEqual(
+                [e["step"] for e in continued_events if e["type"] == "generation"], [1]
+            )
+            self.assertFalse(any(e["type"] == "input" for e in continued_events))
+            with self.assertRaisesRegex(ValueError, "continuation boundary"):
+                run_agent(
+                    ScriptedBackend([second]),
+                    workspace,
+                    initial,
+                    followups=followups,
+                    resume={**state, "messages": state["messages"][:-1]},
+                )
+
     def test_tool_budget_stops_mutations(self):
         calls = [
             {

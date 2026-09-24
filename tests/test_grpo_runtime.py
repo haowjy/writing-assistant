@@ -26,7 +26,7 @@ except PackageNotFoundError:
 
 class RuntimeAdmissionTests(unittest.TestCase):
     def test_legacy_plan_shape_and_explicit_streaming_identity(self):
-        from tests.test_grpo import REVISION, task
+        from test_grpo import REVISION, task
 
         common = dict(
             tasks=[task()],

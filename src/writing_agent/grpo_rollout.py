@@ -8,7 +8,12 @@ from uuid import uuid4
 
 from writing_agent.agent import run_agent
 from writing_agent.catalog import fingerprint, save_json
-from writing_agent.inference import ContextBudgetExceeded, TransformersBackend, render_messages
+from writing_agent.inference import (
+    ContextBudgetExceeded,
+    TransformersBackend,
+    parse_response,
+    render_messages,
+)
 from writing_agent.reward import Reward, group_advantages
 from writing_agent.workspace import Workspace
 
@@ -221,6 +226,53 @@ class NativeRolloutBackend(TransformersBackend):
         except Exception:
             self.failure = "infrastructure"
             raise
+
+    def restore_answer_followup(self, history, evidence):
+        """Restore sampled IDs before a follow-up, without rendering old actions.
+
+        The caller verifies source lineage and workspace before invoking this.
+        """
+        verify_tokens(evidence)
+        boundaries = evidence["boundaries"]
+        if (
+            self.prompt_ids
+            or self.completion_ids
+            or self.calls
+            or len(history) < 3
+            or history[-1].get("role") != "user"
+            or history[-2].get("role") != "assistant"
+            or history[-2].get("tool_calls")
+            or not boundaries
+            or not boundaries[-1].get("output_ids")
+            or boundaries[-1]["output_ids"][-1]
+            not in (
+                self.tokenizer.convert_tokens_to_ids("<turn|>"),
+                self.tokenizer.convert_tokens_to_ids("<eos>"),
+            )
+            or boundaries[-1]["completion_offset"] + len(boundaries[-1]["output_ids"])
+            != len(evidence["completion_ids"])
+        ):
+            raise ProtocolError("Invalid saved answer/follow-up boundary")
+        last = boundaries[-1]
+        decoded = self.tokenizer.decode(last["output_ids"], skip_special_tokens=False)
+        prefix = self.tokenizer.decode(last["input_ids"], skip_special_tokens=False)
+        if parse_response(self.tokenizer, decoded, prefix=prefix) != history[-2]:
+            raise ProtocolError("Saved answer differs from sampled token ledger")
+        if (
+            len(evidence["prompt_ids"]) + len(evidence["completion_ids"])
+            > self.config["context_tokens"]
+            or sum(evidence["env_mask"]) > self.generated_limit
+        ):
+            raise ProtocolError("Saved prefix exceeds frozen token budgets")
+        self.prompt_ids = evidence["prompt_ids"].copy()
+        self.completion_ids = evidence["completion_ids"].copy()
+        self.env_mask = evidence["env_mask"].copy()
+        self.boundaries = copy.deepcopy(boundaries)
+        self.previous_history = copy.deepcopy(history[:-2])
+        self.previous = copy.deepcopy(history[-2])
+        self.last_output = last["output_ids"].copy()
+        self.calls = len(boundaries)
+        self.generated_tokens = sum(self.env_mask)
 
     def evidence(self):
         evidence = {

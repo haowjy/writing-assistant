@@ -614,6 +614,58 @@ class NativeTests(unittest.TestCase):
             )
         self.assertEqual(completed["status"], "completed")
 
+    def test_restore_saved_answer_without_resampling_prefix(self):
+        first, second = "Finished.<eos>", "Revision<turn|>"
+        initial = [{"role": "user", "content": "write then revise"}]
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp) / "restored")
+            source = self.backend([first])
+            history = [{"role": "system", "content": SYSTEM_PROMPT}, *initial]
+            response = source.complete(history, [])
+            history.extend([response.message, {"role": "user", "content": "Revise."}])
+            evidence = source.evidence()
+            turn = {"output": "Finished.", "snapshot": {}, "message_index": 2}
+            state = {
+                "messages": history,
+                "turns": [turn],
+                "step": 1,
+                "tool_calls": 0,
+                "attempted_tool_calls": 0,
+                "tool_errors": 0,
+                "read_tokens": 0,
+                "read_tokenizer": "whitespace-v1",
+                "usage": response.usage,
+            }
+            restored = self.backend([second])
+            restored.restore_answer_followup(history, evidence)
+            continued = run_agent(
+                restored,
+                workspace,
+                initial,
+                tools=[],
+                followups=["Revise."],
+                resume=state,
+            )
+            full = self.backend([first, second])
+            uninterrupted = run_agent(
+                full,
+                Workspace(Path(tmp) / "full"),
+                initial,
+                tools=[],
+                followups=["Revise."],
+            )
+        self.assertEqual(continued["status"], "completed")
+        self.assertEqual(continued["messages"], uninterrupted["messages"])
+        self.assertEqual(restored.evidence(), full.evidence())
+        self.assertEqual(len(restored.model.inputs), 1)
+        self.assertEqual(restored.model.inputs[0], full.model.inputs[1])
+        bad = self.backend([second])
+        with self.assertRaisesRegex(ProtocolError, "differs from sampled"):
+            bad.restore_answer_followup(
+                history[:-2] + [{"role": "assistant", "content": "Changed"}, history[-1]],
+                evidence,
+            )
+
     def test_mixed_content_tool_call_preserves_raw_actions_and_external_suffix(self):
         first = (
             'A note before the edit. <|tool_call>call:write_file{path:<|"|>note.txt<|"|>,'
