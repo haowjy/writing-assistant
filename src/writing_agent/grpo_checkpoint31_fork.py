@@ -172,6 +172,16 @@ def prepare_fork(source_checkpoint, source_group, output, *, wandb_run_id=None) 
     (fork_group / "attempt-002").mkdir()
     _copy_attempt(group / "attempt-002", fork_group / "attempt-002" / "source")
     shutil.copy2(group / "attempt-002" / "started.json", fork_group / "attempt-002" / "started.json")
+    save_json(
+        fork_group / "started.json",
+        {
+            **group_info["started"],
+            "fork_id": FORK_ID,
+            "source_group": str(group.resolve()),
+            "imported_slots": [0, 1, 3],
+            "continuation_slot": 2,
+        },
+    )
     manifest = {
         "fork_id": FORK_ID,
         "source_checkpoint": source,
