@@ -11,9 +11,9 @@ from writing_agent.grpo_checkpoint31_fork import (
     Checkpoint31RolloutGroups,
     _check_source_checkpoint,
     _check_source_group,
+    fork_coverage,
     native_wandb_config,
     prepare_fork,
-    fork_coverage,
     verify_fork_manifest,
 )
 from writing_agent.reward import Reward
@@ -103,7 +103,10 @@ class ForkAdmissionTests(unittest.TestCase):
                 "reward": Reward("ok", value=0.25),
             }
             try:
-                result = groups([task["id"]] * 4, SimpleNamespace(state=SimpleNamespace(global_step=31)))
+                result = groups(
+                    [task["id"]] * 4,
+                    SimpleNamespace(state=SimpleNamespace(global_step=31)),
+                )
             finally:
                 groups._continue_slot002 = original
             self.assertEqual(calls, [])

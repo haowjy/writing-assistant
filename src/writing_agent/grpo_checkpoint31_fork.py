@@ -119,7 +119,9 @@ def _check_source_group(group: Path) -> dict:
     }
 
 
-def native_wandb_config(*, run_id: str, project: str = "gemma-writing", entity: str = "immpanda") -> WandbConfig:
+def native_wandb_config(
+    *, run_id: str, project: str = "gemma-writing", entity: str = "immpanda"
+) -> WandbConfig:
     """Return a scalar-only native Trainer W&B binding.
 
     The environment variables bind a caller-created run explicitly.  No W&B
@@ -183,7 +185,9 @@ def prepare_fork(source_checkpoint, source_group, output, *, wandb_run_id=None) 
     # receives only newly generated suffix evidence and never overwrites this copy.
     (fork_group / "attempt-002").mkdir()
     _copy_attempt(group / "attempt-002", fork_group / "attempt-002" / "source")
-    shutil.copy2(group / "attempt-002" / "started.json", fork_group / "attempt-002" / "started.json")
+    shutil.copy2(
+        group / "attempt-002" / "started.json", fork_group / "attempt-002" / "started.json"
+    )
     save_json(
         fork_group / "started.json",
         {
@@ -343,7 +347,9 @@ class Checkpoint31RolloutGroups(RolloutGroups):
         tokens = _read_json(source / "tokens.json")
         verify_tokens(tokens)
         visible = self.task["visible"]
-        workspace = Workspace(target / "workspace", max_total_bytes=visible["budgets"]["max_total_bytes"])
+        workspace = Workspace(
+            target / "workspace", max_total_bytes=visible["budgets"]["max_total_bytes"]
+        )
         for path, content in result["after"].items():
             workspace.write_file(path, content)
         backend = self.backend_factory(trainer.model, trainer.processing_class, result["seed"])
@@ -397,9 +403,16 @@ def fork_rollout_factory(fork_output: Path):
     # The closure names the fork root for call-site readability.  The trainer
     # passes its actual ``output`` directory below, avoiding accidental writes
     # beside the imported evidence.
-    _fork_root = Path(fork_output).resolve()
-
-    def factory(tasks, settings, output, reward_callback, backend_factory, system_prompt, *, invocation_id):
+    def factory(
+        tasks,
+        settings,
+        output,
+        reward_callback,
+        backend_factory,
+        system_prompt,
+        *,
+        invocation_id,
+    ):
         task = next(t for t in tasks if t["id"] == "wave1-train-032")
         return Checkpoint31RolloutGroups(
             tasks,
