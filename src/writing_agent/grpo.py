@@ -229,7 +229,11 @@ def train_grpo(
     tokenizer=None,
     runtime_identity=None,
     backend_factory=None,
+    rollout_factory=None,
     resume_from_checkpoint=None,
+    resume_checkpoint_identity=None,
+    report_to="none",
+    wandb_run_name=None,
     stop_after_steps=None,
     system_prompt=SYSTEM_PROMPT,
     implementation=LEGACY,
@@ -332,6 +336,9 @@ def train_grpo(
         "backend_implementation": fingerprint(
             inspect.getsource(backend_factory or NativeRolloutBackend)
         ),
+        "rollout_implementation": fingerprint(
+            inspect.getsource(rollout_factory or RolloutGroups)
+        ),
         "tokenizer": fingerprint(tokenizer.backend_tokenizer.to_str()),
         "chat_template": fingerprint(tokenizer.chat_template),
         "response_template": fingerprint(getattr(tokenizer, "response_template", None)),
@@ -352,15 +359,26 @@ def train_grpo(
     resumed_step = 0
     if resume_from_checkpoint is not None:
         resume_from_checkpoint = Path(resume_from_checkpoint)
+        external_resume = resume_from_checkpoint.resolve().parent != output.resolve()
         try:
             saved = json.loads((output / "experiment.json").read_text())
+        except (OSError, json.JSONDecodeError):
+            if not external_resume:
+                raise ValueError("Missing/truncated experiment manifest") from None
+            # Imported fork evidence can exist before model admission; bind the
+            # new output identity without touching the external source.
+            save_json(output / "experiment.json", {"identity": identity, "manifest": manifest})
+        else:
             if saved != {"identity": identity, "manifest": manifest}:
                 raise ValueError("Resume experiment identity changed")
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ValueError("Missing/truncated experiment manifest") from exc
-        if resume_from_checkpoint.resolve().parent != output.resolve():
-            raise ValueError("Resume checkpoint must belong to this output directory")
-        resumed_step = verify_checkpoint(resume_from_checkpoint, identity)
+        if external_resume and resume_checkpoint_identity is None:
+            raise ValueError("External resume requires the source checkpoint identity")
+        if not external_resume and resume_checkpoint_identity is not None:
+            raise ValueError("Source checkpoint identity is only valid for an external resume")
+        resumed_step = verify_checkpoint(
+            resume_from_checkpoint,
+            resume_checkpoint_identity if external_resume else identity,
+        )
         if resumed_step >= settings.max_steps:
             raise ValueError("Checkpoint has already exhausted this experiment's step budget")
         partial_saves = []
@@ -445,14 +463,26 @@ def train_grpo(
                 },
             )
 
-    rollouts = RolloutGroups(
-        tasks,
-        settings,
-        output,
-        reward_callback,
-        backend_factory,
-        system_prompt,
-        invocation_id=invocation.name,
+    rollouts = (
+        rollout_factory(
+            tasks,
+            settings,
+            output,
+            reward_callback,
+            backend_factory,
+            system_prompt,
+            invocation_id=invocation.name,
+        )
+        if rollout_factory is not None
+        else RolloutGroups(
+            tasks,
+            settings,
+            output,
+            reward_callback,
+            backend_factory,
+            system_prompt,
+            invocation_id=invocation.name,
+        )
     )
 
     class CheckpointLifecycle(TrainerCallback):
@@ -479,6 +509,8 @@ def train_grpo(
             use_cpu=next(model.parameters()).device.type == "cpu",
             bf16=next(model.parameters()).dtype == torch.bfloat16,
             implementation_config=verified_runtime["config"] if verified_runtime else None,
+            report_to=report_to,
+            run_name=wandb_run_name,
         )
     )
     try:
@@ -526,7 +558,16 @@ def train_grpo(
         raise
 
 
-def trainer_config(settings, output, *, use_cpu, bf16, implementation_config=None):
+def trainer_config(
+    settings,
+    output,
+    *,
+    use_cpu,
+    bf16,
+    implementation_config=None,
+    report_to="none",
+    run_name=None,
+):
     """Public TRL configuration shared by native training and controlled memory sizing."""
     return dict(
         **(implementation_config or {}),
@@ -559,7 +600,8 @@ def trainer_config(settings, output, *, use_cpu, bf16, implementation_config=Non
         loss_type=settings.loss_type,
         mask_truncated_completions=False,
         shuffle_dataset=False,
-        report_to="none",
+        report_to=report_to,
+        run_name=run_name,
         logging_steps=1,
         save_steps=1,
         save_total_limit=None if settings.runtime_profile == "intact-full48-v1" else 2,
