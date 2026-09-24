@@ -401,7 +401,7 @@ class Checkpoint31RolloutGroups(RolloutGroups):
         return {"tokens": final_tokens, "reward": reward}
 
 
-def fork_rollout_factory(fork_output: Path):
+def fork_rollout_factory(_fork_root: Path):
     """Return the factory passed to :func:`train_grpo` for a checkpoint-31 fork."""
     # The closure names the fork root for call-site readability.  The trainer
     # passes its actual ``output`` directory below, avoiding accidental writes
