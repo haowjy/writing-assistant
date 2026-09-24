@@ -1,0 +1,183 @@
+[package]
+name = "meridian-base"
+version = "0.10.12"
+description = "Core coordination primitives for Meridian — agent profiles and skills for spawning, state tracking, and session context."
+
+[dependencies]
+
+[local-dependencies.meridian-prompter]
+url = "https://github.com/meridian-flow/meridian-prompter"
+
+[settings]
+models_cache_ttl_hours = 24
+
+[models.composer]
+harness = "cursor"
+description = "Strong and cheap coding model, but only for coding. Value 10, intelligence 6, taste 3."
+model = "composer-2.5"
+provider = "cursor"
+
+[models.deepseek]
+description = "Low-cost general implementation and execution. Strong with detailed briefs; not preferred for polished prose."
+prompting = "Give the desired outcome, relevant source/design context, constraints, acceptance criteria, and concrete verification evidence. Define a coherent objective rather than prescribing each edit."
+default_effort = "high"
+match = ["deepseek*flash*"]
+exclude = [
+    "*/*",
+    "*:*",
+    "*vision*",
+    "*exp*",
+]
+
+[models.deepseekflash]
+description = "Same as deepseek (Flash family). Prefer `deepseek`."
+default_effort = "high"
+match = ["deepseek*flash*"]
+exclude = [
+    "*/*",
+    "*:*",
+    "*vision*",
+    "*exp*",
+]
+
+[models.deepseekpro]
+description = "DeepSeek Pro family. Late alternative for technical judgment and implementation; verify the resolved model and provider because retired endpoints may be remapped."
+default_effort = "high"
+match = ["deepseek*pro*"]
+exclude = [
+    "*/*",
+    "*:*",
+    "*flash*",
+]
+
+[models.opus46]
+harness = "claude"
+description = "Best at inferring human intent. Strong conversational model; preferred for interactive primaries. Value 4, intelligence 8, taste 9."
+default_effort = "high"
+model = "claude-opus-4-6"
+
+[models."opus46[1m]"]
+harness = "claude"
+description = "Opus 4.6 with 1M context window. Same taste and intent inference as opus46 with five times the context for manuscript-scale work. Value 3, intelligence 8, taste 9."
+default_effort = "high"
+model = "claude-opus-4-6[1m]"
+
+[models.opus48]
+harness = "claude"
+description = "Best at long-horizon orchestration and managing large numbers of subagents. Value 3, intelligence 8, taste 8."
+default_effort = "high"
+model = "claude-opus-4-8"
+
+[models.opus]
+harness = "claude"
+description = "Generic Opus family for deep, sustained implementation work. Use a pinned version when the task calls for that version's specific strengths."
+default_effort = "high"
+match = ["claude*opus*"]
+exclude = ["*:*"]
+
+[models.sonnet5]
+harness = "claude"
+description = "Best combination of speed and intelligence in the Sonnet tier; near-Opus quality on coding and agentic work at Sonnet cost. Value 6, intelligence 8, taste 6."
+default_effort = "high"
+model = "claude-sonnet-5"
+
+[models.sonnet]
+harness = "claude"
+description = "General implementation and execution alternative after Luna and DeepSeek. Also suitable for selected judgment and review lanes; resolves the current Sonnet family."
+default_effort = "high"
+match = ["claude*sonnet*"]
+exclude = ["*:*"]
+
+[models.fable]
+harness = "claude"
+description = "Reserve for consequential decisions and important communication that justify high-end judgment and writing quality."
+default_effort = "high"
+match = ["claude*fable*"]
+exclude = ["*:*"]
+
+[models.glm]
+harness = "opencode"
+description = "Strong coder. Codes well but lacks writing taste. Value 7, intelligence 7, taste 3."
+default_effort = "high"
+model = "opencode-go/glm-5.2"
+provider = "opencode-go"
+
+[models.kimi]
+harness = "opencode"
+description = "Strong at long-running coding and research over large inputs. Slow and token-heavy; avoid bulk work. Value 4, intelligence 8, taste 6."
+default_effort = "high"
+model = "kimi-k3"
+
+[models.muse]
+harness = "opencode"
+description = "Muse Spark 1.3 Standard for coding, browser and computer use. Supports max reasoning; prompts and completions are not used for training."
+model = "muse-spark-1.3"
+
+[models.muse-contributor]
+harness = "opencode"
+description = "Muse Spark 1.3 Contributor for coding, browser and computer use, currently through OpenCode Zen's limited-time free endpoint. Select only when training on submitted prompts/completions is acceptable. No max reasoning."
+model = "muse-spark-1.3-contributor-free"
+
+[models.grok]
+harness = "opencode"
+description = "Grok family through OpenCode/xAI. Auto-resolves the newest Grok in the cache."
+default_effort = "high"
+provider = "xai"
+match = ["grok-*"]
+exclude = [
+    "*-imagine-*",
+    "*-image*",
+    "*-video*",
+    "grok-build-*",
+]
+
+[models.gptmini]
+description = "Fast and cheap. Good for bulk exploration and simple tasks. Value 9, intelligence 5, taste 3."
+default_effort = "high"
+provider = "openai"
+match = ["gpt-5*-mini"]
+exclude = ["*-nano"]
+
+[models.sol]
+harness = "codex"
+description = "Preferred for difficult technical analysis and technically demanding implementation when cheaper workers need more depth."
+prompting = "Outcome-first executor. Include the north-star goal, success criteria, relevant high-level context, constraints, expected output shape, and concrete verification: how to prove the goal is met and what evidence to report."
+model = "gpt-5.6-sol"
+
+[models.terra]
+harness = "codex"
+description = "Best daily-driver coding value. Strong on bounded, verifiable work, but less reliable when ambiguity or taste matters. Value 9, intelligence 8, taste 4."
+prompting = "Outcome-first executor. Include the north-star goal, success criteria, relevant high-level context, constraints, expected output shape, and concrete verification: how to prove the goal is met and what evidence to report."
+model = "gpt-5.6-terra"
+
+[models.luna]
+harness = "codex"
+description = "Preferred inexpensive general worker for implementation, exploration, and bounded execution. Can own substantial coherent objectives with clear context and verification criteria."
+prompting = "Outcome-first executor. Include the north-star goal, success criteria, relevant high-level context, constraints, expected output shape, and concrete verification: how to prove the goal is met and what evidence to report."
+model = "gpt-5.6-luna"
+
+[models.gpt55]
+harness = "codex"
+description = "Temporary compatibility alias for Sol. Use sol in new model policies."
+prompting = "Outcome-first executor. Include the north-star goal, success criteria, relevant high-level context, constraints, expected output shape, and concrete verification: how to prove the goal is met and what evidence to report."
+default_effort = "low"
+model = "gpt-5.6-sol"
+
+[models.astra]
+harness = "codex"
+description = "GPT-6 Astra for consequential decisions, cross-system judgment, and important communication."
+default_effort = "high"
+model = "gpt-6-astra"
+
+[models.gpt]
+description = "Default GPT model family."
+default_effort = "high"
+match = ["gpt-*"]
+exclude = [
+    "*codex*",
+    "*-pro",
+    "*-mini",
+    "*-nano",
+    "*-chat",
+    "*-turbo",
+]

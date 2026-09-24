@@ -1,0 +1,13 @@
+[dependencies.meridian-base]
+url = "https://github.com/haowjy/meridian-base"
+
+[dependencies.meridian-dev-workflow]
+url = "https://github.com/haowjy/meridian-dev-workflow"
+
+[settings]
+targets = [
+    ".codex",
+    ".opencode",
+    ".pi",
+]
+models_cache_ttl_hours = 24

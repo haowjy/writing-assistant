@@ -1,0 +1,13 @@
+.agents/skills
+.agents/agents
+.claude/skills
+.claude/agents
+
+mars.lock
+.mars/
+.meridian/
+.opencode/
+
+CLAUDE.md
+meridian.toml
+.codex

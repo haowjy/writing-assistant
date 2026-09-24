@@ -1,0 +1,163 @@
+# meridian-dev-workflow
+
+An opinionated multi-agent dev team for structured software development,
+built on [Meridian](https://github.com/haowjy/meridian-cli)'s coordination
+primitives. Install this and your orchestrator gets a full squad: architects,
+coders, reviewers, testers, web-researchers, and documenters: plus workflow
+skills that teach it how to run a structured development lifecycle.
+
+Built on [meridian-base](https://github.com/haowjy/meridian-base). Both must
+be installed.
+
+
+## Orchestrator Topology
+
+The dev lifecycle splits across leads with distinct ownership:
+
+**product-lead** (interactive): the primary developer. Translates between
+user and technical teams. Requirements gathering, scope sizing, design
+approval, implementation routing. Spawns everything downstream.
+
+**ux-lead** (interactive): visual design and UX entry point. Gathers visual
+requirements, establishes shared design vocabulary, routes to implementation
+specialists. Gates on `visual-requirements.md`.
+
+**design-lead** (autonomous): owns the technical design. Explores structural
+options, produces high-level structure, key interfaces, boundaries, patterns,
+and tradeoffs.
+
+**tech-lead** (autonomous): owns implementation end-to-end. Decomposes work,
+coordinates specialists, verifies functionality, owns targeted boundary tests,
+safely restructures, and runs a final structural review before shipping.
+
+**kb-lead** (autonomous, conditional): coordinates knowledge capture across
+.context/, KB, and docs/ layers. Spawned when implementation produces
+understanding worth preserving; timing depends on the workflow.
+
+```bash
+# Default lifecycle:
+# product-lead -> design-lead -> tech-lead
+# ux-lead -> mockup-dev (visual iteration) -> ui-implementation/coder
+# kb-lead runs when knowledge capture is needed
+meridian spawn -a product-lead -p 'Build JWT token validation'
+```
+
+## Agents
+
+Models below are profile defaults; ordered alternatives live in each agent's
+`model-policies`. See `skills/agent-staffing/` for task-based selection.
+
+**Leads:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `product-lead` | opus46 | Primary developer: requirements gathering, routing, design approval |
+| `ux-lead` | astra | Visual design entry point: visual requirements, design vocabulary, frontend routing |
+| `design-lead` | astra | Technical design: structural options, interfaces, boundaries, tradeoffs |
+| `tech-lead` | opus46 | Implementation owner: decomposition, coordination, verification, structural review |
+
+**Design:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `architect` | astra | Explores tradeoffs and produces hierarchical design docs with spec/architecture trees |
+| `design-researcher` | sol | Researches structural options and writes analysis for the design team |
+
+**Implementation:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `coder` | deepseek | Production code writer: implements scoped tasks and behavior-preserving refactors |
+| `frontend-coder` | deepseek | Production frontend code with visual self-verification via agent-browser |
+| `gpt-dev` | astra | Direct implementation lead for well-scoped work |
+| `mockup-dev` | luna | Fast frontend mockups and throwaway POCs |
+
+**Testing & Verification:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `prober` | deepseek | Runtime verifier. Skills: probe, poc, agent-browser |
+| `reviewer` | astra | Code reviewer: static and runtime. Skills: review, probe, thermo-nuclear-review, test-architecture, review-alignment |
+
+**Review & Analysis:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `investigator` | luna | Root-cause diagnosis for broken or suspicious behavior |
+
+**Research & Documentation:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `web-researcher` | luna | External evidence: library docs, upstream issues, architecture patterns via web search |
+| `explorer` | luna | Fast, cheap codebase explorer: reads files, searches code, traces git history |
+| `source-researcher` | luna | Studies real open-source implementations for relevant patterns |
+| `kb-lead` | sol | Captures durable knowledge: mines the work, writes .context/, KB, and docs/ inline, fans out @explorer/@session-miner to read |
+
+**Visual:**
+
+| Agent | Model | Role |
+|---|---|---|
+| `browser` | muse-contributor | Browser interaction: scraping, navigation, screenshots. Training-eligible endpoint; select an approved alternative for sensitive context. |
+| `imagegen` | sol | Image generation: UI concept mockups, visual explorations, icons |
+
+## Skills
+
+**Workflow orchestration:**
+
+| Skill | What it teaches |
+|---|---|
+| `session-mining` | Session-mining workflow patterns: recover parent-session decisions and delegate bulk transcript reads |
+| `architecture` | Problem framing, tradeoff analysis, approach evaluation |
+| `agent-staffing` | Team composition: which agents to spawn, how many, what runs in parallel |
+| `parallel-execution` | Coordinate parallel spawns so edit lanes do not collide; fan in before dependent edits |
+| `dev-principles` | Simplicity, separation of concerns, structural judgment: the operating lens for code decisions |
+| `testing` | Restraint-first testing discipline: tier selection, when NOT to write tests, functional core patterns. Resources cover unit and integration patterns. |
+| `probe` | Runtime verification mode-shift: run real commands, exercise real workflows, report what breaks. Two modes: probing (exploratory) and verification (confirmatory). |
+| `poc` | Throwaway code that answers a feasibility question: logic spikes or UI exploration. Always deleted. |
+
+**Agent methodology:**
+
+| Skill | What it teaches |
+|---|---|
+| `review` | Constructive code review: judge the code as it stands, standards and design axes, quality as ease of change, redesign escalation |
+| `review-alignment` | Alignment verification: does one artifact faithfully represent another? |
+| `divergence` | Track plan divergence during multi-phase work in a `DIVERGENCE/` folder |
+| `issues` | GitHub Issues integration: labels, work-item linking, `gh` CLI patterns |
+| `react-architecture` | React-specific structural lens: tokens, state, composition, imports, component API consistency |
+| `tech-docs` | Technical writing craft: hierarchical docs, linking strategy, and progressive disclosure |
+| `unravel-codebase` | Human-invoked guided walkthrough of unfamiliar code: reads alongside you, explains how it works, and doubles as a KB/vocab cleanup pass |
+| `ui-implementation` | Production UI follow-through after visual direction is settled |
+| `thermo-nuclear-review` | Extremely strict maintainability review: abstraction quality, code judo moves |
+| `test-architecture` | Strict test structure audit: fixture sprawl, implementation-pinned tests, deletion targets, test file boundaries |
+
+## Cross-Source Dependencies
+
+Several agents load skills from both this repo and `meridian-base`:
+
+- `meridian-work-coordination` (base): how to manage work items
+- `session-mining` (base): workflow patterns for mining decisions from session history
+- `knowledge-layers` (base): where knowledge lives: AGENTS.md, .context/, KB, docs/, work directories
+
+The install engine warns about cross-source deps but doesn't fail: these
+resolve from the base source. Both sources must be installed.
+
+## Install
+
+```bash
+meridian mars add meridian-flow/meridian-base
+meridian mars add meridian-flow/meridian-dev-workflow
+meridian config set primary.agent product-lead
+```
+
+## Layout
+
+```
+agents/*.md              # Agent profiles (YAML frontmatter + markdown)
+skills/*/SKILL.md        # Skills (with optional resources/ subdirectory)
+```
+
+## See Also
+
+- [meridian-cli](https://github.com/meridian-flow/meridian-cli): the Meridian coordination engine
+- [meridian-base](https://github.com/meridian-flow/meridian-base): core coordination layer this builds on

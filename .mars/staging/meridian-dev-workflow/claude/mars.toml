@@ -1,0 +1,20 @@
+[package]
+name = "meridian-dev-workflow"
+version = "0.13.7"
+description = "Opinionated dev team for Meridian — architects, coders, reviewers, testers, and the skills that coordinate them."
+requires-mars = ">=0.14.0"
+
+[dependencies.meridian-base]
+url = "https://github.com/haowjy/meridian-base"
+version = ">=0.10.11, <0.11.0"
+
+[local-dependencies.meridian-prompter]
+url = "https://github.com/meridian-flow/meridian-prompter"
+
+[settings]
+targets = [
+    ".codex",
+    ".claude",
+    ".opencode",
+]
+models_cache_ttl_hours = 24
