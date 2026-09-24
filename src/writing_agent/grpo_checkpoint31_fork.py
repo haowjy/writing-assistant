@@ -55,11 +55,19 @@ def _source_identity(checkpoint: Path) -> str:
     return data["identity"]
 
 
+def _source_experiment(checkpoint: Path) -> dict:
+    data = _read_json(checkpoint.parent / "experiment.json")
+    if data.get("identity") != fingerprint(data.get("manifest")):
+        raise ValueError("Original experiment identity hash mismatch")
+    return data
+
+
 def _check_source_checkpoint(checkpoint: Path) -> dict:
     checkpoint = checkpoint.resolve()
     if checkpoint.name != "checkpoint-31":
         raise ValueError("Fork source must be the complete checkpoint-31")
-    identity = _source_identity(checkpoint)
+    experiment = _source_experiment(checkpoint)
+    identity = experiment["identity"]
     step = verify_checkpoint(checkpoint, identity)
     if step != GROUP_STEP:
         raise ValueError("Fork source checkpoint is not optimizer boundary 31")
@@ -73,19 +81,25 @@ def _check_source_checkpoint(checkpoint: Path) -> dict:
     return {
         "path": str(checkpoint),
         "identity": identity,
+        "experiment_manifest": experiment["manifest"],
         "complete_sha256": _sha256(checkpoint / "complete.json"),
         "files": marker["files"],
         "group_files": marker["group_files"],
     }
 
 
-def _check_source_group(group: Path) -> dict:
+def _check_source_group(group: Path, *, source_experiment: dict | None = None) -> dict:
     group = group.resolve()
     if not group.is_dir() or not group.name.startswith("step-000031-"):
         raise ValueError("Fork source must be the stopped checkpoint-31 group")
     started = _read_json(group / "started.json")
     if started.get("group") != GROUP_STEP or started.get("task") != "wave1-train-032":
         raise ValueError("Unexpected checkpoint-31 group identity")
+    if source_experiment is not None:
+        tasks = source_experiment["manifest"]["plan"]["tasks"]
+        task = next((item for item in tasks if item["id"] == started["task"]), None)
+        if task is None or fingerprint(task) != started.get("task_hash"):
+            raise ValueError("Stopped group task hash is outside the source experiment")
     if (group / "complete.json").exists():
         raise ValueError("Source group must remain unresolved before the fork")
     attempts = {}
@@ -201,6 +215,22 @@ def apply_native_wandb_binding(config: WandbConfig) -> None:
     """Bind the approved run in the current trainer process, without importing W&B."""
     if config.get("report_to") != "wandb" or not isinstance(config.get("env"), dict):
         raise ValueError("Not a native W&B configuration")
+    import sys
+
+    active = sys.modules.get("wandb")
+    run = getattr(active, "run", None) if active else None
+    if run is not None and (
+        getattr(run, "id", None) != config.get("env", {}).get("WANDB_RUN_ID")
+        or getattr(run, "entity", config["env"].get("WANDB_ENTITY"))
+        != config["env"].get("WANDB_ENTITY")
+        or getattr(run, "project_name", config["env"].get("WANDB_PROJECT"))
+        != config["env"].get("WANDB_PROJECT")
+    ):
+        raise ValueError("A different W&B run is already active")
+    for key, value in config["env"].items():
+        existing = os.environ.get(key)
+        if existing is not None and existing.lower() != str(value).lower():
+            raise ValueError(f"Existing {key} conflicts with frozen W&B binding")
     for key, value in config["env"].items():
         os.environ[key] = str(value)
 
@@ -216,8 +246,13 @@ def prepare_fork(source_checkpoint, source_group, output, *, wandb_run_id=None) 
     checkpoint = Path(source_checkpoint)
     group = Path(source_group)
     source = _check_source_checkpoint(checkpoint)
-    group_info = _check_source_group(group)
+    group_info = _check_source_group(
+        group, source_experiment={"manifest": source["experiment_manifest"]}
+    )
     output = Path(output).resolve()
+    source_root = checkpoint.parent.resolve()
+    if output == source_root or output.is_relative_to(source_root):
+        raise ValueError("Fork output must be outside immutable source tree")
     if output.exists() and any(output.iterdir()):
         raise ValueError("Fork output must be a new, empty directory")
     trainer = output / "trainer"
@@ -278,7 +313,10 @@ def verify_fork_manifest(output: Path) -> dict:
     source = _check_source_checkpoint(Path(manifest["source_checkpoint"]["path"]))
     if source != manifest["source_checkpoint"]:
         raise ValueError("Original checkpoint seal or path changed")
-    group = _check_source_group(Path(manifest["source_group"]["path"]))
+    group = _check_source_group(
+        Path(manifest["source_group"]["path"]),
+        source_experiment={"manifest": source["experiment_manifest"]},
+    )
     if group != manifest["source_group"]:
         raise ValueError("Original group evidence changed")
     fork_group = output / "trainer" / "groups" / GROUP_NAME
@@ -288,6 +326,24 @@ def verify_fork_manifest(output: Path) -> dict:
     if file_hashes(fork_group / "attempt-002" / "source") != group["attempts"]["2"]["files"]:
         raise ValueError("Imported slot002 prefix differs from source")
     return manifest
+
+
+def fork_preflight(output: Path) -> dict:
+    """Validate source/import admission before any checkpoint-32 evidence exists."""
+    output = Path(output).resolve()
+    manifest = verify_fork_manifest(output)
+    trainer = output / "trainer"
+    if (trainer / "experiment.json").exists():
+        experiment = _read_json(trainer / "experiment.json")
+        if experiment.get("manifest", {}).get("fork_manifest_identity") != manifest["identity"]:
+            raise ValueError("Trainer experiment is not bound to this fork manifest")
+    return {
+        "status": "preflight-passed",
+        "fork_id": FORK_ID,
+        "source_identity": manifest["source_checkpoint"]["identity"],
+        "first_new_checkpoint": 32,
+        "first_stop": 48,
+    }
 
 
 def fork_coverage(output: Path) -> dict:
@@ -308,20 +364,39 @@ def fork_coverage(output: Path) -> dict:
         group = trainer / "groups" / GROUP_NAME
         if _read_json(group / "complete.json") != {"status": "scored", "attempts": 4}:
             raise ValueError("Checkpoint-31 fork group is not scored")
+        results = group / "fork-results"
         for slot in range(4):
-            attempt = group / f"attempt-{slot:03d}"
-            if not (attempt / "fork_reward.json").exists():
+            reward_path = results / f"attempt-{slot:03d}" / "reward.json"
+            if not reward_path.exists():
                 raise ValueError(f"Fork reward missing for slot {slot}")
-            reward = _read_json(attempt / "fork_reward.json")
+            reward = _read_json(reward_path)
             if reward.get("status") != "ok":
                 raise ValueError(f"Fork reward unavailable for slot {slot}")
-        checkpoint = trainer / "checkpoint-32"
-        checkpoint_step = verify_checkpoint(checkpoint, fork_identity)
-        if checkpoint_step != 32:
+        checkpoints = []
+        for candidate in sorted(trainer.glob("checkpoint-*")):
+            try:
+                step = verify_checkpoint(candidate, fork_identity)
+            except ValueError:
+                continue
+            checkpoints.append((step, candidate))
+        if not checkpoints:
+            raise ValueError("No complete fork checkpoint exists")
+        checkpoint_step, checkpoint = max(checkpoints)
+        if checkpoint_step < 32:
             raise ValueError("Fork checkpoint does not seal update 32")
         marker = _read_json(checkpoint / "complete.json")
-        if marker["group_files"] != file_hashes(trainer / "groups"):
-            raise ValueError("Checkpoint-32 group seal differs from fork group files")
+        actual_group_files = file_hashes(trainer / "groups")
+        if any(
+            actual_group_files.get(path) != digest
+            for path, digest in marker["group_files"].items()
+        ):
+            raise ValueError("Latest checkpoint group seal differs from committed fork files")
+        committed_groups = {path.split("/", 1)[0] for path in marker["group_files"]}
+        pending_groups = sorted(
+            path.name
+            for path in (trainer / "groups").iterdir()
+            if path.is_dir() and path.name not in committed_groups
+        )
         started = _read_json(group / "started.json")
         if started.get("group") != GROUP_STEP or started.get("task") != "wave1-train-032":
             raise ValueError("Fork group task identity mismatch")
@@ -339,14 +414,24 @@ def fork_coverage(output: Path) -> dict:
         errors.append(str(exc))
         manifest = None
     return {
-        "status": "ready" if not errors else "blocked",
+        "status": (
+            "ready"
+            if not errors and not pending_groups
+            else ("partial" if not errors else "blocked")
+        ),
         "fork_id": FORK_ID,
         "original_prefix": {
             "source_identity": manifest["source_checkpoint"]["identity"] if manifest else None,
             "through_checkpoint": GROUP_STEP,
             "verified": manifest is not None,
         },
-        "fork_tail": {"group": GROUP_STEP, "first_new_checkpoint": 32, "verified": not errors},
+        "fork_tail": {
+            "group": GROUP_STEP,
+            "first_new_checkpoint": 32,
+            "latest_checkpoint": checkpoint_step if not errors else None,
+            "pending_groups": pending_groups if not errors else [],
+            "verified": not errors,
+        },
         "errors": errors,
     }
 
@@ -359,6 +444,7 @@ class Checkpoint31RolloutGroups(RolloutGroups):
         self.fork_output = Path(fork_output)
         self.fork_root = self.fork_output.parent
         self.fork_group = self.fork_output / "groups" / GROUP_NAME
+        self.results = self.fork_group / "fork-results"
         self.task = copy.deepcopy(task)
 
     def __call__(self, prompts, trainer):
@@ -366,6 +452,8 @@ class Checkpoint31RolloutGroups(RolloutGroups):
             return super().__call__(prompts, trainer)
         if len(prompts) != self.settings.group_size or len(set(prompts)) != 1:
             raise ProtocolError("Expected one checkpoint-31 group")
+        if prompts[0] != self.task["id"]:
+            raise ProtocolError("Checkpoint-31 prompt differs from imported task")
         verify_fork_manifest(self.fork_root)
         evidence, rewards = [], []
         for slot in (0, 1, 3):
@@ -376,7 +464,7 @@ class Checkpoint31RolloutGroups(RolloutGroups):
             reward = self.reward_callback(copy.deepcopy(self.task), copy.deepcopy(result))
             if not isinstance(reward, Reward) or reward.status != "ok":
                 raise ValueError(f"Imported slot {slot} reward unavailable")
-            save_json(attempt / "fork_reward.json", asdict(reward))
+            save_json(self.results / f"attempt-{slot:03d}" / "reward.json", asdict(reward))
             evidence.append(tokens)
             rewards.append(reward)
         slot2 = self._continue_slot002(trainer)
@@ -403,6 +491,11 @@ class Checkpoint31RolloutGroups(RolloutGroups):
     def _continue_slot002(self, trainer):
         source = self.fork_group / "attempt-002" / "source"
         target = self.fork_group / "attempt-002"
+        suffix_path = target / "continuation-trace.jsonl"
+        if suffix_path.exists():
+            raise ProtocolError(
+                "Slot002 continuation evidence already exists; inspect instead of resampling"
+            )
         result = _read_json(source / "result.json")
         tokens = _read_json(source / "tokens.json")
         verify_tokens(tokens)
@@ -443,7 +536,12 @@ class Checkpoint31RolloutGroups(RolloutGroups):
                 },
                 **{k: v for k, v in visible["budgets"].items() if k != "max_total_bytes"},
             )
-        resumed["trace"] = trace
+        # The scorer needs the complete ordered ledger. Keep the immutable source
+        # JSONL under source/ and retain the newly generated suffix separately.
+        source_trace = [
+            json.loads(line) for line in (source / "trace.jsonl").read_text().splitlines()
+        ]
+        resumed["trace"] = source_trace + trace
         resumed["before"] = visible["initial_files"]
         resumed["seed"] = result["seed"]
         resumed["after"] = workspace.snapshot()
@@ -453,11 +551,14 @@ class Checkpoint31RolloutGroups(RolloutGroups):
         final_tokens = backend.evidence()
         verify_tokens(final_tokens)
         save_json(target / "result.json", resumed)
+        with (target / "trace.jsonl").open("w") as stream:
+            for event in resumed["trace"]:
+                stream.write(json.dumps(event, ensure_ascii=False) + "\n")
         save_json(target / "tokens.json", final_tokens)
         reward = self.reward_callback(copy.deepcopy(self.task), copy.deepcopy(resumed))
         if not isinstance(reward, Reward) or reward.status != "ok":
             raise ValueError("Resumed slot002 reward unavailable; refusing optimizer update")
-        save_json(target / "fork_reward.json", asdict(reward))
+        save_json(self.results / "attempt-002" / "reward.json", asdict(reward))
         return {"tokens": final_tokens, "reward": reward}
 
 
@@ -501,11 +602,16 @@ def fork_trainer_options(fork_root, *, wandb_run_id=None) -> dict:
     """
     fork_root = Path(fork_root).resolve()
     manifest = verify_fork_manifest(fork_root)
-    logging = (
-        native_wandb_config(run_id=wandb_run_id)
-        if wandb_run_id
-        else {"report_to": "none", "run_name": None, "env": {}, "privacy": {}}
-    )
+    frozen_logging = manifest.get("wandb")
+    if frozen_logging is not None:
+        frozen_id = frozen_logging["env"]["WANDB_RUN_ID"]
+        if wandb_run_id is not None and wandb_run_id != frozen_id:
+            raise ValueError("Requested W&B run differs from frozen fork manifest")
+        logging = frozen_logging
+    elif wandb_run_id:
+        logging = native_wandb_config(run_id=wandb_run_id)
+    else:
+        logging = {"report_to": "none", "run_name": None, "env": {}, "privacy": {}}
     return {
         "resume_from_checkpoint": manifest["source_checkpoint"]["path"],
         "resume_checkpoint_identity": manifest["source_checkpoint"]["identity"],
@@ -513,5 +619,31 @@ def fork_trainer_options(fork_root, *, wandb_run_id=None) -> dict:
         "stop_after_steps": 48,
         "report_to": logging["report_to"],
         "wandb_run_name": logging["run_name"],
+        "wandb_environment": logging["env"],
         "fork_manifest_identity": manifest["identity"],
+    }
+
+
+def fork_resume_options(fork_root, *, checkpoint=48) -> dict:
+    """Explicit second invocation: resume a fork-local checkpoint to step 96."""
+    fork_root = Path(fork_root).resolve()
+    manifest = verify_fork_manifest(fork_root)
+    trainer = fork_root / "trainer"
+    experiment = _read_json(trainer / "experiment.json")
+    if experiment.get("manifest", {}).get("fork_manifest_identity") != manifest["identity"]:
+        raise ValueError("Trainer experiment is not bound to this fork manifest")
+    checkpoint_path = trainer / f"checkpoint-{checkpoint}"
+    if not checkpoint_path.exists():
+        raise ValueError("Fork-local checkpoint is missing; inspect before resuming")
+    return {
+        "resume_from_checkpoint": str(checkpoint_path),
+        "resume_checkpoint_identity": None,
+        "stop_after_steps": 96,
+        "fork_manifest_identity": manifest["identity"],
+        "report_to": experiment["manifest"].get("logging", {}).get("report_to", "none"),
+        "wandb_run_name": experiment["manifest"].get("logging", {}).get("wandb_run_name"),
+        "wandb_environment": experiment["manifest"].get("logging", {}).get(
+            "wandb_environment", {}
+        ),
+        "rollout_factory": fork_rollout_factory(fork_root),
     }

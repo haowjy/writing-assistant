@@ -20,6 +20,12 @@
   coverage can report readiness.  Trainer identity includes the fork manifest.
   Continuation now resumes from the verified generation-event count (five),
   never the one completed-turn count.
+- Separate immutable imported attempt trees from fork-derived rewards/results;
+  continuations now emit a complete source-plus-suffix scorer trace while
+  retaining the suffix audit stream.  Add source/fork contract compatibility,
+  preflight and explicit 48-to-96 resume options, pending-group coverage, frozen
+  W&B environment enforcement, and a leased checkpoint-31 fork CLI.  No launch
+  or online W&B run was performed.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of

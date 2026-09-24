@@ -1,6 +1,7 @@
 """CPU-only checkpoint-31 fork admission and imported-slot regression checks."""
 
 import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,7 @@ from writing_agent.grpo_checkpoint31_fork import (
     _check_source_checkpoint,
     _check_source_group,
     fork_coverage,
+    fork_preflight,
     fork_trainer_options,
     native_wandb_config,
     prepare_fork,
@@ -51,10 +53,13 @@ class ForkAdmissionTests(unittest.TestCase):
             report = fork_coverage(output)
             self.assertEqual(report["status"], "blocked")
             self.assertEqual(report["original_prefix"]["through_checkpoint"], 31)
+            self.assertEqual(fork_preflight(output)["status"], "preflight-passed")
             options = fork_trainer_options(output)
             self.assertEqual(options["stop_after_steps"], 48)
             self.assertEqual(options["resume_checkpoint_identity"], before_checkpoint["identity"])
             self.assertEqual(options["fork_manifest_identity"], manifest["identity"])
+            self.assertEqual(options["report_to"], "wandb")
+            self.assertEqual(options["wandb_run_name"], "h6dmlw8f")
 
     def test_wandb_binding_is_scalar_only_and_explicit(self):
         config = native_wandb_config(run_id="run-31")
@@ -87,11 +92,15 @@ class ForkAdmissionTests(unittest.TestCase):
                 calls.append(args)
                 raise AssertionError("imported slots must not construct a backend")
 
+            def reward(_task, result):
+                values = {5994: 0.1, 6042: 0.2, 6138: 0.3}
+                return Reward("ok", value=values.get(result.get("seed"), 0.8))
+
             groups = Checkpoint31RolloutGroups(
                 [task],
                 SETTINGS,
                 trainer_output,
-                lambda _task, _result: Reward("ok", value=0.25),
+                reward,
                 backend_factory,
                 "system",
                 invocation_id="fixture",
@@ -101,11 +110,11 @@ class ForkAdmissionTests(unittest.TestCase):
             original = groups._continue_slot002
             groups._continue_slot002 = lambda _trainer: {
                 "tokens": copy.deepcopy(
-                    __import__("json").loads(
+                    json.loads(
                         (GROUP / "attempt-002/tokens.json").read_text()
                     )
                 ),
-                "reward": Reward("ok", value=0.25),
+                "reward": Reward("ok", value=0.8),
             }
             try:
                 result = groups(
@@ -115,7 +124,13 @@ class ForkAdmissionTests(unittest.TestCase):
             finally:
                 groups._continue_slot002 = original
             self.assertEqual(calls, [])
-            self.assertEqual(result["rollout_rewards"], [0.25] * 4)
+            self.assertEqual(result["rollout_rewards"], [0.1, 0.2, 0.8, 0.3])
+            self.assertEqual(
+                json.loads(
+                    (trainer_output / "groups" / GROUP_NAME / "group.json").read_text()
+                )["status"],
+                "ok",
+            )
             self.assertTrue((trainer_output / "groups" / GROUP_NAME / "complete.json").exists())
 
 

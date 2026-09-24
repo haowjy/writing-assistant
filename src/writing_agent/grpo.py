@@ -234,6 +234,7 @@ def train_grpo(
     resume_checkpoint_identity=None,
     report_to="none",
     wandb_run_name=None,
+    wandb_environment=None,
     fork_manifest_identity=None,
     stop_after_steps=None,
     system_prompt=SYSTEM_PROMPT,
@@ -265,6 +266,7 @@ def train_grpo(
     if int(os.environ.get("WORLD_SIZE", "1")) != 1:
         raise ValueError("Only single-device serial execution is supported")
     output = Path(output)
+    fork_manifest = None
     if fork_manifest_identity is not None:
         try:
             fork_manifest = json.loads((output.parent / "fork.json").read_text())
@@ -272,6 +274,13 @@ def train_grpo(
             raise ValueError("Missing/truncated fork manifest") from exc
         if fork_manifest.get("identity") != fork_manifest_identity:
             raise ValueError("Fork manifest identity changed")
+        source_manifest = fork_manifest.get("source_checkpoint", {}).get("experiment_manifest")
+        if not isinstance(source_manifest, dict):
+            raise ValueError("Fork manifest lacks original experiment contract")
+        source_plan = source_manifest.get("plan", {})
+        for key in ("settings", "tasks", "reward", "admission"):
+            if source_plan.get(key) != plan.get(key):
+                raise ValueError(f"Fork/source {key} contract differs")
     if resume_from_checkpoint is None and output.exists() and any(output.iterdir()):
         raise ValueError("New output must be empty; use an explicit complete checkpoint to resume")
     if len(list((output / "invocations").glob("*"))) >= settings.max_invocations:
@@ -289,6 +298,38 @@ def train_grpo(
         raise ValueError("W&B reporting requires an explicit bound run name")
     if report_to not in ("none", "wandb") and report_to != ["wandb"]:
         raise ValueError("Only disabled reporting or native W&B reporting is admitted")
+    if wandb_reporting:
+        if not isinstance(wandb_environment, dict):
+            raise ValueError("W&B reporting requires frozen environment bindings")
+        required_env = {
+            "WANDB_RUN_ID": wandb_run_name,
+            "WANDB_LOG_MODEL": "false",
+            "WANDB_WATCH": "false",
+            "WANDB_DISABLE_CODE": "true",
+        }
+        if any(
+            str(wandb_environment.get(k, "")).lower() != v.lower()
+            for k, v in required_env.items()
+        ):
+            raise ValueError("W&B environment does not satisfy the frozen privacy/run binding")
+        for key, expected in required_env.items():
+            existing = os.environ.get(key)
+            if existing is not None and existing.lower() != expected.lower():
+                raise ValueError(f"Existing {key} conflicts with frozen W&B binding")
+        import sys
+
+        active_wandb = sys.modules.get("wandb")
+        active_run = getattr(active_wandb, "run", None) if active_wandb else None
+        if active_run is not None and (
+            getattr(active_run, "id", None) != wandb_run_name
+            or getattr(active_run, "entity", wandb_environment.get("WANDB_ENTITY"))
+            != wandb_environment.get("WANDB_ENTITY")
+            or getattr(active_run, "project_name", wandb_environment.get("WANDB_PROJECT"))
+            != wandb_environment.get("WANDB_PROJECT")
+        ):
+            raise ValueError("A different W&B run is already active")
+        for key, value in wandb_environment.items():
+            os.environ[key] = str(value)
     verified_runtime = verify_runtime(implementation)
     import torch
     from datasets import Dataset
@@ -352,7 +393,11 @@ def train_grpo(
         "rollout_implementation": fingerprint(
             inspect.getsource(rollout_factory or RolloutGroups)
         ),
-        "logging": {"report_to": report_to, "wandb_run_name": wandb_run_name},
+        "logging": {
+            "report_to": report_to,
+            "wandb_run_name": wandb_run_name,
+            "wandb_environment": wandb_environment,
+        },
         "fork_manifest_identity": fork_manifest_identity,
         "tokenizer": fingerprint(tokenizer.backend_tokenizer.to_str()),
         "chat_template": fingerprint(tokenizer.chat_template),
@@ -366,6 +411,20 @@ def train_grpo(
             for p in sorted(Path(__file__).parent.glob("*.py"))
         },
     }
+    if fork_manifest_identity is not None:
+        source_manifest = fork_manifest["source_checkpoint"]["experiment_manifest"]
+        compatibility = (
+            ("base_identity", base_identity),
+            ("tokenizer", manifest["tokenizer"]),
+            ("chat_template", manifest["chat_template"]),
+            ("response_template", manifest["response_template"]),
+            ("proposed_peft", manifest["proposed_peft"]),
+            ("model_config", manifest["model_config"]),
+            ("packages", manifest["packages"]),
+        )
+        for key, current in compatibility:
+            if source_manifest.get(key) != current:
+                raise ValueError(f"Fork/source {key} compatibility differs")
     # PEFT configs include sets; normalize once for portable JSON equality.
     manifest = json.loads(
         json.dumps(manifest, default=lambda x: sorted(x) if isinstance(x, set) else str(x))
