@@ -9,6 +9,8 @@
   resume accepts the pinned optimizer/scheduler/adapter/RNG checkpoint without
   copying or resealing it.  Native W&B configuration binds an explicit run while
   disabling model/checkpoint uploads; no GPU or online training run was started.
+  Fork coverage reports the verified v2 prefix separately from fork-local
+  checkpoint-32 evidence and refuses to claim readiness before that seal exists.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of

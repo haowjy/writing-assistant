@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import shutil
 from dataclasses import asdict
 from pathlib import Path
@@ -132,6 +133,8 @@ def native_wandb_config(*, run_id: str, project: str = "gemma-writing", entity: 
     return {
         "report_to": "wandb",
         "run_name": run_id,
+        "project": project,
+        "entity": entity,
         "env": {
             "WANDB_ENTITY": entity,
             "WANDB_PROJECT": project,
@@ -139,12 +142,21 @@ def native_wandb_config(*, run_id: str, project: str = "gemma-writing", entity: 
             "WANDB_RESUME": "allow",
             "WANDB_LOG_MODEL": "false",
             "WANDB_WATCH": "false",
+            "WANDB_DISABLE_CODE": "true",
         },
         "privacy": {
             "allow": ["trainer scalar metrics", "system metrics", "package metadata"],
             "deny": ["task text", "prose", "traces", "model weights", "checkpoints"],
         },
     }
+
+
+def apply_native_wandb_binding(config: WandbConfig) -> None:
+    """Bind the approved run in the current trainer process, without importing W&B."""
+    if config.get("report_to") != "wandb" or not isinstance(config.get("env"), dict):
+        raise ValueError("Not a native W&B configuration")
+    for key, value in config["env"].items():
+        os.environ[key] = str(value)
 
 
 def _copy_attempt(source: Path, target: Path) -> None:
