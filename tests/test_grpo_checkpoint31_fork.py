@@ -12,6 +12,7 @@ from writing_agent.grpo_checkpoint31_fork import (
     _check_source_checkpoint,
     _check_source_group,
     fork_coverage,
+    fork_trainer_options,
     native_wandb_config,
     prepare_fork,
     verify_fork_manifest,
@@ -50,6 +51,9 @@ class ForkAdmissionTests(unittest.TestCase):
             report = fork_coverage(output)
             self.assertEqual(report["status"], "blocked")
             self.assertEqual(report["original_prefix"]["through_checkpoint"], 31)
+            options = fork_trainer_options(output)
+            self.assertEqual(options["stop_after_steps"], 48)
+            self.assertEqual(options["resume_checkpoint_identity"], before_checkpoint["identity"])
 
     def test_wandb_binding_is_scalar_only_and_explicit(self):
         config = native_wandb_config(run_id="run-31")

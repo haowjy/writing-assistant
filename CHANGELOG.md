@@ -13,6 +13,8 @@
   checkpoint-32 evidence and refuses to claim readiness before that seal exists.
   W&B logging identity is now bound in the trainer manifest and fail-closed
   unless an explicit run name accompanies native reporting.
+  The guarded trainer options stop the first fork pass at checkpoint 48;
+  extending to 96 remains an explicit second invocation.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of

@@ -430,3 +430,27 @@ def fork_rollout_factory(fork_output: Path):
         )
 
     return factory
+
+
+def fork_trainer_options(fork_root, *, wandb_run_id=None) -> dict:
+    """Build the guarded public-Trainer options for the first pass.
+
+    This is configuration only.  The caller must still pass ``execute=True`` to
+    ``train_grpo`` explicitly.  The first invocation stops at checkpoint 48;
+    continuing to 96 requires a separate inspected invocation.
+    """
+    fork_root = Path(fork_root).resolve()
+    manifest = verify_fork_manifest(fork_root)
+    logging = (
+        native_wandb_config(run_id=wandb_run_id)
+        if wandb_run_id
+        else {"report_to": "none", "run_name": None, "env": {}, "privacy": {}}
+    )
+    return {
+        "resume_from_checkpoint": manifest["source_checkpoint"]["path"],
+        "resume_checkpoint_identity": manifest["source_checkpoint"]["identity"],
+        "rollout_factory": fork_rollout_factory(fork_root),
+        "stop_after_steps": 48,
+        "report_to": logging["report_to"],
+        "wandb_run_name": logging["run_name"],
+    }
