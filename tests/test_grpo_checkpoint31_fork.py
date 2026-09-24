@@ -228,6 +228,73 @@ class ForkAdmissionTests(unittest.TestCase):
                 (trainer_output / "groups" / GROUP_NAME / "complete.json").exists()
             )
 
+    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    def test_eligible_continuation_scores_complete_trace(self):
+        from writing_agent.grpo_full48_runner import SETTINGS
+
+        base = SOURCE / "experiment.json"
+        task = next(
+            item
+            for item in json.loads(base.read_text())["manifest"]["plan"]["tasks"]
+            if item["id"] == "wave1-train-032"
+        )
+        task = copy.deepcopy(task)
+        task["visible"]["followups"] = task["visible"]["followups"][:1]
+        source_attempt = GROUP / "attempt-002"
+        seen = []
+
+        class EligibleBackend(NativeRolloutBackend):
+            def __init__(self, *_args):
+                self.failure = None
+                self.prompt_ids = []
+                self.completion_ids = []
+                self.env_mask = []
+                self.boundaries = []
+                self.calls = 0
+
+            def restore_answer_followup(self, _history, evidence):
+                self.prompt_ids = list(evidence["prompt_ids"])
+                self.completion_ids = list(evidence["completion_ids"])
+                self.env_mask = list(evidence["env_mask"])
+                self.boundaries = copy.deepcopy(evidence["boundaries"])
+                self.calls = len(self.boundaries)
+
+            def complete(self, _messages, _tools, *, emit=lambda _event: None):
+                emit({"type": "model_output", "output_ids": [1], "input_ids": [1]})
+                return SimpleNamespace(
+                    message={"role": "assistant", "content": "eligible continuation"},
+                    usage={},
+                )
+
+            def evidence(self):
+                return json.loads((source_attempt / "tokens.json").read_text())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "fork"
+            prepare_fork(SOURCE / "checkpoint-31", GROUP, root, wandb_run_id="h6dmlw8f")
+            trainer_output = root / "trainer"
+
+            def reward(_task, result):
+                seen.append(result["trace"])
+                return Reward("ok", value=0.7857142857142857)
+
+            groups = Checkpoint31RolloutGroups(
+                [task],
+                SETTINGS,
+                trainer_output,
+                reward,
+                lambda *_args: EligibleBackend(),
+                SYSTEM_PROMPT,
+                invocation_id="fixture",
+                fork_output=trainer_output,
+                task=task,
+            )
+            result = groups._continue_slot002(SimpleNamespace(model=None, processing_class=None))
+            self.assertEqual(result["reward"].value, 0.7857142857142857)
+            self.assertEqual(len(seen), 1)
+            source_trace = (source_attempt / "trace.jsonl").read_text().splitlines()
+            self.assertGreater(len(seen[0]), len(source_trace))
+
 
 if __name__ == "__main__":
     unittest.main()
