@@ -15,6 +15,9 @@
   unless an explicit run name accompanies native reporting.
   The guarded trainer options stop the first fork pass at checkpoint 48;
   extending to 96 remains an explicit second invocation.
+  Source trace events are checked against the five saved slot-002 boundaries,
+  and committed-prefix seals plus fork checkpoint group seals are rehashed before
+  coverage can report readiness.  Trainer identity includes the fork manifest.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of

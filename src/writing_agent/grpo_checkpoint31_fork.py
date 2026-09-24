@@ -64,6 +64,12 @@ def _check_source_checkpoint(checkpoint: Path) -> dict:
     if step != GROUP_STEP:
         raise ValueError("Fork source checkpoint is not optimizer boundary 31")
     marker = _read_json(checkpoint / "complete.json")
+    actual_group_files = file_hashes(checkpoint.parent / "groups")
+    sealed_actual = {
+        relative: actual_group_files.get(relative) for relative in marker["group_files"]
+    }
+    if sealed_actual != marker["group_files"]:
+        raise ValueError("Original committed group files differ from checkpoint seal")
     return {
         "path": str(checkpoint),
         "identity": identity,
@@ -94,6 +100,9 @@ def _check_source_group(group: Path) -> dict:
         saved = _read_json(attempt / "started.json")
         if saved.get("slot") != slot or saved.get("group") != GROUP_STEP:
             raise ValueError(f"Source attempt {slot} identity mismatch")
+        expected_seed = 42 + (GROUP_STEP * 4 + slot) * 48
+        if saved.get("seed") != expected_seed or saved.get("task") != "wave1-train-032":
+            raise ValueError(f"Source attempt {slot} seed/task identity mismatch")
         if slot == 2:
             if result.get("failure_class") != "infrastructure":
                 raise ValueError("Slot002 is no longer the recorded infrastructure stop")
@@ -106,6 +115,9 @@ def _check_source_group(group: Path) -> dict:
                 raise ValueError("Slot002 continuation messages are missing")
             if messages[-1].get("role") != "user":
                 raise ValueError("Slot002 does not end at the saved follow-up boundary")
+            if len(evidence["boundaries"]) != 5:
+                raise ValueError("Slot002 must contain exactly five saved boundaries")
+            _verify_trace(attempt, result, evidence)
         elif reward.get("status") != "ok":
             raise ValueError(f"Saved slot {slot} does not have a usable reward")
         attempts[str(slot)] = {
@@ -120,6 +132,34 @@ def _check_source_group(group: Path) -> dict:
         "files": file_hashes(group),
         "attempts": attempts,
     }
+
+
+def _verify_trace(attempt: Path, result: dict, evidence: dict) -> None:
+    """Check every saved model input/output event against the immutable ledger."""
+    trace = result.get("trace")
+    if not isinstance(trace, list):
+        raise ValueError("Saved trace is missing")
+    try:
+        on_disk = [json.loads(line) for line in (attempt / "trace.jsonl").read_text().splitlines()]
+    except (OSError, ValueError) as exc:
+        raise ValueError("Saved trace is corrupt") from exc
+    # The embedded trace is captured by reference while the run mutates message
+    # history; the flushed JSONL stream is the immutable event record.
+    trace = on_disk
+    inputs = [event for event in trace if event.get("type") == "model_input"]
+    outputs = [event for event in trace if event.get("type") == "model_output"]
+    generations = [event for event in trace if event.get("type") == "generation"]
+    boundaries = evidence["boundaries"]
+    if not (len(inputs) == len(outputs) == len(generations) == len(boundaries)):
+        raise ValueError("Trace generation count differs from saved boundaries")
+    if [event.get("step") for event in generations] != list(range(len(boundaries))):
+        raise ValueError("Saved generation steps are not contiguous")
+    for event, boundary in zip(inputs, boundaries, strict=True):
+        if event.get("input_ids") != boundary["input_ids"]:
+            raise ValueError("Saved model input differs from token ledger")
+    for event, boundary in zip(outputs, boundaries, strict=True):
+        if event.get("output_ids") != boundary.get("output_ids"):
+            raise ValueError("Saved model output differs from token ledger")
 
 
 def native_wandb_config(
@@ -278,6 +318,22 @@ def fork_coverage(output: Path) -> dict:
         checkpoint_step = verify_checkpoint(checkpoint, fork_identity)
         if checkpoint_step != 32:
             raise ValueError("Fork checkpoint does not seal update 32")
+        marker = _read_json(checkpoint / "complete.json")
+        if marker["group_files"] != file_hashes(trainer / "groups"):
+            raise ValueError("Checkpoint-32 group seal differs from fork group files")
+        started = _read_json(group / "started.json")
+        if started.get("group") != GROUP_STEP or started.get("task") != "wave1-train-032":
+            raise ValueError("Fork group task identity mismatch")
+        for slot in range(4):
+            saved = _read_json(group / f"attempt-{slot:03d}/started.json")
+            expected_seed = 42 + (GROUP_STEP * 4 + slot) * 48
+            if (
+                saved.get("slot") != slot
+                or saved.get("group") != GROUP_STEP
+                or saved.get("task") != "wave1-train-032"
+                or saved.get("seed") != expected_seed
+            ):
+                raise ValueError(f"Fork slot {slot} seed/task identity mismatch")
     except (OSError, ValueError, KeyError, TypeError, ProtocolError) as exc:
         errors.append(str(exc))
         manifest = None
@@ -453,4 +509,5 @@ def fork_trainer_options(fork_root, *, wandb_run_id=None) -> dict:
         "stop_after_steps": 48,
         "report_to": logging["report_to"],
         "wandb_run_name": logging["run_name"],
+        "fork_manifest_identity": manifest["identity"],
     }

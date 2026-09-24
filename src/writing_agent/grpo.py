@@ -234,6 +234,7 @@ def train_grpo(
     resume_checkpoint_identity=None,
     report_to="none",
     wandb_run_name=None,
+    fork_manifest_identity=None,
     stop_after_steps=None,
     system_prompt=SYSTEM_PROMPT,
     implementation=LEGACY,
@@ -264,6 +265,13 @@ def train_grpo(
     if int(os.environ.get("WORLD_SIZE", "1")) != 1:
         raise ValueError("Only single-device serial execution is supported")
     output = Path(output)
+    if fork_manifest_identity is not None:
+        try:
+            fork_manifest = json.loads((output.parent / "fork.json").read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("Missing/truncated fork manifest") from exc
+        if fork_manifest.get("identity") != fork_manifest_identity:
+            raise ValueError("Fork manifest identity changed")
     if resume_from_checkpoint is None and output.exists() and any(output.iterdir()):
         raise ValueError("New output must be empty; use an explicit complete checkpoint to resume")
     if len(list((output / "invocations").glob("*"))) >= settings.max_invocations:
@@ -345,6 +353,7 @@ def train_grpo(
             inspect.getsource(rollout_factory or RolloutGroups)
         ),
         "logging": {"report_to": report_to, "wandb_run_name": wandb_run_name},
+        "fork_manifest_identity": fork_manifest_identity,
         "tokenizer": fingerprint(tokenizer.backend_tokenizer.to_str()),
         "chat_template": fingerprint(tokenizer.chat_template),
         "response_template": fingerprint(getattr(tokenizer, "response_template", None)),

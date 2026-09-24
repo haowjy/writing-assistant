@@ -54,6 +54,7 @@ class ForkAdmissionTests(unittest.TestCase):
             options = fork_trainer_options(output)
             self.assertEqual(options["stop_after_steps"], 48)
             self.assertEqual(options["resume_checkpoint_identity"], before_checkpoint["identity"])
+            self.assertEqual(options["fork_manifest_identity"], manifest["identity"])
 
     def test_wandb_binding_is_scalar_only_and_explicit(self):
         config = native_wandb_config(run_id="run-31")
