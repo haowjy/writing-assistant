@@ -566,9 +566,10 @@ class NativeTests(unittest.TestCase):
         )
         self.assertTrue(all(tokens["env_mask"]))
 
-    def test_final_eos_with_followup_is_a_scored_candidate_failure(self):
-        output = "Thinking<channel|>Finished.<eos>"
-        backend = self.backend([output])
+    def test_final_eos_keeps_sampled_action_and_appends_masked_followup(self):
+        first = "Finished.<eos>"
+        second = "Revision<turn|>"
+        backend = self.backend([first, second])
         with tempfile.TemporaryDirectory() as tmp:
             result = run_agent(
                 backend,
@@ -577,19 +578,36 @@ class NativeTests(unittest.TestCase):
                 tools=[],
                 followups=["Revise."],
             )
-        self.assertEqual(result["status"], "error")
-        self.assertEqual(result["failure_class"], "candidate_invalid")
-        self.assertEqual(backend.failure, "candidate_invalid")
-        self.assertEqual(len(result["turns"]), 1)
+        self.assertEqual(result["status"], "completed", result)
+        self.assertIsNone(result["failure_class"])
+        self.assertEqual([turn["output"] for turn in result["turns"]], ["Finished.", "Revision"])
         tokens = backend.evidence()
-        self.assertEqual(
-            tokens["completion_ids"], self.tokenizer.encode(output, add_special_tokens=False)
+        verify_tokens(tokens)
+        sampled = [
+            token
+            for token, mask in zip(tokens["completion_ids"], tokens["env_mask"], strict=True)
+            if mask
+        ]
+        self.assertEqual(sampled, self.tokenizer.encode(first + second, add_special_tokens=False))
+        self.assertEqual(len(tokens["boundaries"]), 2)
+        next_input = backend.model.inputs[1]
+        self.assertEqual(next_input, tokens["boundaries"][1]["input_ids"])
+        self.assertIn(
+            "<eos>\n<|turn>user\nRevise.<turn|>\n<|turn>model\n",
+            self.tokenizer.decode(next_input, skip_special_tokens=False),
         )
-        self.assertTrue(all(tokens["env_mask"]))
-        self.assertEqual(len(tokens["boundaries"]), 1)  # No new model action was sampled.
+        suffix = self.tokenizer.decode(
+            [
+                token
+                for token, mask in zip(tokens["completion_ids"], tokens["env_mask"], strict=True)
+                if not mask
+            ],
+            skip_special_tokens=False,
+        )
+        self.assertEqual(suffix, "\n<|turn>user\nRevise.<turn|>\n<|turn>model\n")
 
-        # The same boundary is valid when there is no follow-up to append.
-        standalone = self.backend([output])
+        # EOS also remains a valid last response when no follow-up is scheduled.
+        standalone = self.backend([first])
         with tempfile.TemporaryDirectory() as tmp:
             completed = run_agent(
                 standalone, Workspace(Path(tmp)), [{"role": "user", "content": "hi"}], tools=[]
@@ -641,13 +659,24 @@ class NativeTests(unittest.TestCase):
             ),
         )
 
-    def test_unsupported_eos_continuation_and_context_are_explicit(self):
+    def test_unrecognized_final_continuation_and_context_are_explicit(self):
         with self.assertRaisesRegex(ProtocolError, "stopping boundary"):
             native_suffix(
                 self.tokenizer,
                 {"role": "assistant", "content": "done"},
                 [{"role": "user", "content": "again"}],
-                [1],
+                [self.tokenizer.convert_tokens_to_ids("<|tool_response>")],
+                thinking=True,
+            )
+        with self.assertRaisesRegex(ProtocolError, "stopping boundary"):
+            native_suffix(
+                self.tokenizer,
+                {
+                    "role": "assistant",
+                    "tool_calls": [{"function": {"name": "read_file", "arguments": {}}}],
+                },
+                [{"role": "tool", "tool_call_id": "call_0", "content": "result"}],
+                [self.tokenizer.convert_tokens_to_ids("<eos>")],
                 thinking=True,
             )
         backend = self.backend(["Hi<turn|>"], context=16)
@@ -779,36 +808,40 @@ class NativeTests(unittest.TestCase):
                     self.assertEqual(result["status"], "completed")
                     self.assertEqual((attempt / "workspace/note.txt").read_text(), "after")
 
-    def test_sampled_final_eos_followup_scores_whole_group_without_retry(self):
+    def test_sampled_final_eos_followup_continues_whole_group_without_retry(self):
         trainer = SimpleNamespace(
             model=None, processing_class=None, state=SimpleNamespace(global_step=0)
         )
         scenario = task()
         scenario["visible"]["followups"] = ["Revise."]
         eos = "Finished<eos>"
+        revision = "Revised<turn|>"
         with tempfile.TemporaryDirectory() as tmp:
             groups = RolloutGroups(
                 [scenario],
-                GRPOSettings(revision=REVISION, group_size=4, max_generated_tokens=512),
+                GRPOSettings(
+                    revision=REVISION,
+                    group_size=4,
+                    max_generated_tokens=512,
+                    tie_policy="continue",
+                ),
                 Path(tmp),
                 lambda task, result: Reward("ok", 0.0 if result["status"] != "completed" else 1.0),
                 lambda model, tokenizer, seed: self.backend(
-                    [eos] if seed == 42 else ["Draft<turn|>", "Revised<turn|>"], seed=seed
+                    [eos, revision] if seed == 42 else ["Draft<turn|>", revision], seed=seed
                 ),
                 SYSTEM_PROMPT,
             )
             values = groups(["fixture"] * 4, trainer)["rollout_rewards"]
-            self.assertEqual(values, [0.0, 1.0, 1.0, 1.0])
+            self.assertEqual(values, [1.0] * 4)
             self.assertTrue(list(Path(tmp).glob("groups/*/complete.json")))
             attempts = sorted(Path(tmp).glob("groups/*/attempt-*"))
             self.assertEqual(len(attempts), 4)
-            invalid = json.loads((attempts[0] / "result.json").read_text())
+            first_result = json.loads((attempts[0] / "result.json").read_text())
             tokens = json.loads((attempts[0] / "tokens.json").read_text())
-            self.assertEqual(invalid["failure_class"], "candidate_invalid")
-            self.assertEqual(json.loads((attempts[0] / "reward.json").read_text())["value"], 0.0)
-            self.assertEqual(
-                tokens["completion_ids"], self.tokenizer.encode(eos, add_special_tokens=False)
-            )
+            self.assertEqual(first_result["status"], "completed")
+            self.assertIsNone(first_result["failure_class"])
+            self.assertEqual(len(tokens["boundaries"]), 2)
             verify_tokens(tokens)
 
     def test_workspace_host_failures_pend_group_instead_of_becoming_rewards(self):

@@ -30,24 +30,29 @@ ledger, response trace, workspace, and original unavailable reward survive under
 `trainer/groups/step-000031-87b060b85fc043198c5ef1f8807f47c5/attempt-002/`.
 All four ledgers passed `verify_tokens` in a read-only audit; checkpoint 31 passed
 `verify_checkpoint`. Scoring an *explicitly reclassified copy* of slot 002's saved
-result with the original mechanical callback returned available reward 0. Thus
-all four recorded candidate outcomes could be zeros in a **new, documented
-policy**, but the old unavailable record remains unchanged.
+result with the original mechanical callback returned available reward 0 under an
+alternative candidate-failure policy. The current EOS-continuation policy instead
+requires a new response before scoring; the old unavailable record remains unchanged.
 
-A focused regression (red before the change, green afterward) now checks that an
-EOS-ended final answer with a scheduled follow-up becomes a candidate-invalid
-failure **before another model action**, preserving its sampled token IDs. The
-same EOS answer with no follow-up remains a completed answer. A group-level
-regression checks that four attempts are scored together rather than pended;
-unknown framing and host failures remain unavailable. This is a code-path test,
-not live-model qualification or permission to mutate v2.
+The first correction classified this EOS-ended answer as a candidate-invalid
+failure. After review, that policy was revised: EOS stops one generation, not
+necessarily the task's conversation. The pinned-tokenizer regression now verifies
+a subsequent generation with the sampled EOS kept intact, followed by a masked
+external user turn. The [EOS continuation research](gemma-eos-continuation-research.md)
+distinguishes generation stops from template turn boundaries and documents external
+source limitations. The same EOS answer with no follow-up remains completed; bad
+tool-call stops and unknown framing remain separately guarded. This is CPU
+code-path evidence, not live-model qualification. A read-only audit of the
+saved slot 002 derives a 25-token masked suffix after its EOS and verifies the
+extended ledger. **No next response was sampled in v2**; that computation is not
+an update or a retroactive success.
 
-For exploratory continuation, decide explicitly whether to build a new-identity
-fork importing checkpoint 31 **and exactly these four recorded token ledgers**, or
-to archive group 32 and allow a documented resample. Neither recovery path exists
-in the current runner; normal resume refuses any sampled uncommitted group.
-A clean fresh-base rerun is a different objective and need not be assumed for
-exploratory code hardening. Mechanical rewards cannot establish prose quality.
+An exploratory fork would need to import checkpoint 31, preserve the four group-32
+sampled prefixes, and generate slot 002's missing continuation before scoring
+and updating the group. No such fork exists; ordinary resume resamples entire
+attempts and is blocked. A clean fresh-base rerun is a different objective and
+need not be assumed for exploratory code hardening. Mechanical rewards cannot
+establish prose quality.
 
 Raw run evidence:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/full48-production-v2/`.

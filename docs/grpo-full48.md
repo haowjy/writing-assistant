@@ -13,11 +13,14 @@ The v6-qualified fresh-base run retained every optimizer-boundary checkpoint but
 [stopped after checkpoint 31](../work/research-plan/gemma-full48-second-run-result.md):
 all four group-32 attempts were sampled, and an EOS-ended final answer before a
 scheduled follow-up was recorded as an unavailable protocol result. The earlier
-partial run remains terminal and separate. The corrected rollout now scores this
-specific model-caused boundary failure as candidate-invalid while preserving raw
-sampled tokens; it has CPU regression evidence, not a new GPU fit or production run.
-For exploratory recovery, importing the existing group-32 ledgers into a new-identity
-fork is a design question, not an implemented resume path. See
+partial run remains terminal and separate. The revised rollout treats `<eos>` as a stop for that generation, preserves its
+sampled token and appends the next user turn as masked environment tokens without
+inserting `<turn|>` before it. Focused CPU tests verify subsequent generation and
+the complete four-attempt group. A read-only audit derived the 25-token user suffix
+for the saved attempt and verified its extended prefix, but v2 has **no saved next
+response** under this policy. A new-identity exploratory fork would have to preserve
+its recorded actions and sample that missing continuation; it is not an implemented
+resume path. No changed-source GPU fit or new production run has occurred. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate

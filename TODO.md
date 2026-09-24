@@ -75,13 +75,17 @@ projects, supported by a maintained wiki, with better prose alongside it.
   31 complete checkpoints, 124 committed attempts, and four additional group-32
   attempts including a final-answer EOS before a scheduled follow-up that made one
   reward unavailable. The planned checkpoint-48 stop was not reached.
-- [x] Classify that exact sampled final-answer/follow-up mismatch as a candidate
-  failure without changing sampled token IDs, group membership, or host-error
-  handling. Native and group-level regression tests were red before the fix.
-- [ ] Design and verify robust EDA recovery: decide whether a separate checkpoint-31
-  fork can consume all four original group-32 ledgers and preserve optimizer/RNG
-  behavior. If not, obtain explicit consent before a documented resample. Do not
-  mutate either stopped run or call a fork an unchanged fresh-base 96-group run.
+- [x] Revise the initial candidate-failure classification of a final-answer EOS:
+  EOS stops one generation, not necessarily the user's project conversation. Preserve
+  the sampled EOS and append the next user turn as masked external tokens, without
+  inventing `<turn|>`. CPU native/group regressions were red before the revision;
+  a read-only check derives a valid 25-token suffix for the stopped v2 attempt.
+- [ ] Design and verify robust EDA recovery from checkpoint 31. A new-identity fork
+  must preserve the four recorded group-32 action prefixes and generate only the
+  **missing continuation** after slot 002's EOS, then score/update the whole group
+  with correct optimizer/RNG behavior. No saved next response exists; ordinary
+  resume resamples whole attempts. Get explicit consent before such resampling.
+  Do not mutate either stopped run or call a fork an unchanged fresh-base result.
 - [ ] Requalify changed source on controlled GPU before any new production training.
   For a clean fresh-base result, still require two complete passes / 96 groups / 384
   attempts, a verified checkpoint-48 stop and explicit resume through 96.

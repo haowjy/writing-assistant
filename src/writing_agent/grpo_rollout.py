@@ -29,9 +29,10 @@ def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):
     """Derive only external bytes using a minimal dummy chat, as TRL does.
 
     Never render the sampled action: argument sorting and old-thinking removal are
-    noninvertible. Require the native sampled stopping boundary explicitly. Gemma's
-    tool-response opener is itself sampled; its body is external. A final sampled
-    turn-end omits the template's following newline, which belongs in the suffix.
+    noninvertible. Require an explicit supported sampled stop. Gemma's
+    tool-response opener is itself sampled; its body is external. For a final
+    answer, retain either sampled <turn|> or <eos> and append only the template's
+    external newline and next user turn. Never insert a replacement <turn|>.
     """
     if not raw_ids or not external:
         raise ProtocolError("Missing sampled boundary or environment suffix")
@@ -51,7 +52,8 @@ def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):
         dummy = {"role": "assistant", "content": "dummy reply"}
         boundary = "<turn|>"
     boundary_ids = tokenizer.encode(boundary, add_special_tokens=False)
-    if len(boundary_ids) != 1 or raw_ids[-1:] != boundary_ids:
+    final_eos = not calls and raw_ids[-1] == tokenizer.convert_tokens_to_ids("<eos>")
+    if len(boundary_ids) != 1 or (raw_ids[-1] != boundary_ids[0] and not final_eos):
         raise ProtocolError(f"Unsupported raw stopping boundary; expected {boundary}")
     messages = [{"role": "user", "content": "dummy"}, dummy]
 
@@ -136,11 +138,14 @@ class NativeRolloutBackend(TransformersBackend):
                 and external[0].get("role") == "user"
                 and self.last_output
                 and self.last_output[-1] in self.model.generation_config.eos_token_id
-                and self.last_output[-1] != self.tokenizer.convert_tokens_to_ids("<turn|>")
+                and self.last_output[-1]
+                not in (
+                    self.tokenizer.convert_tokens_to_ids("<turn|>"),
+                    self.tokenizer.convert_tokens_to_ids("<eos>"),
+                )
             ):
-                # A sampled final answer may be valid alone but cannot be followed
-                # by another user after <eos> or <|tool_response>. No new action
-                # has been sampled and the existing action tokens remain intact.
+                # A final answer ending at a tool-response boundary cannot accept
+                # a user follow-up; preserve its tokens and fail before generation.
                 raise CandidateOutputError(
                     "Sampled final answer ended without <turn|>; cannot attach user follow-up"
                 )

@@ -6,8 +6,9 @@ unavailable tool-protocol attempts in group 15. The v6-qualified
 [second run](gemma-full48-second-run-result.md) stopped after checkpoint 31:
 group 32 sampled four attempts, one ending a final answer with `<eos>` before a
 scheduled follow-up. Both remain separate and terminal under the present no-resample
-runner. The second boundary shape now has a candidate-failure code fix and focused
-CPU evidence, but no new GPU qualification or production outcome. Both earlier
+runner. A first correction treated the second boundary as a candidate failure;
+the current policy keeps the sampled EOS and appends a masked user-turn suffix.
+Focused CPU tests pass, but no new GPU qualification or production outcome exists. Both earlier
 32768-token profiles OOMed before an update. V4 reduced
 only context but its observer rejected the correct DAPO denominator after the first
 forward. V5 changed only that assertion and passed native generation, four accumulated
@@ -297,11 +298,12 @@ The single [v6 controlled fit](gemma-full48-fit-v6-result.md) passed native gene
 all four accumulated microbatches, optimizer step 1 and a complete checkpoint,
 with zero GPU consumers and 24085 MiB free at all three admission points. The fresh
 pinned-base release was prepared and launched under a new identity, then stopped
-at 31 updates on a different EOS/follow-up boundary. The new rollout check
-classifies that sampled output as a candidate failure before the next generation;
-its CPU tests were red before the fix and pass now. A documented exploratory fork
-from checkpoint 31 would need a separate design for importing the saved group-32
-ledgers and preserving RNG/optimizer behavior; ordinary resume remains blocked.
+at 31 updates on a different EOS/follow-up boundary. The revised rollout keeps
+the sampled EOS and appends the next user turn as a masked external suffix;
+its CPU tests were red before the revision and pass now. A documented exploratory
+fork from checkpoint 31 would have to preserve group-32 sampled prefixes, generate
+the missing response after slot 002's EOS, and verify RNG/optimizer behavior;
+ordinary resume remains blocked.
 No changed-source fit or new production launch has occurred. Constructed complete
 paths measured only 598–4066 tokens, not sampled upper bounds; a sampled trajectory
 over 24576 fails explicitly without truncation or resampling.

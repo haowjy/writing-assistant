@@ -2,12 +2,19 @@
 
 ## [Unreleased]
 
+- Revise the final-answer EOS policy: keep `<eos>` in the sampled action ledger
+  and append the scheduled user's native turn as a masked external suffix without
+  inserting a replacement `<turn|>`. Verify the exact next input, action/mask
+  ledger and complete-group continuation with the pinned tokenizer. A read-only
+  audit of the stopped v2 attempt confirms the 25-token suffix; it does not
+  synthesize or claim a missing subsequent model response.
+
 - Preserve the second full48 production stop after checkpoint 31: group 32 sampled
   four attempts, one unavailable because a final answer ended in `<eos>` before a
-  scheduled user follow-up. Classify that model-caused stop as a candidate failure
-  without altering action tokens or treating host/protocol corruption as reward.
-  Verify the regression through native rollout and complete-group scoring; no
-  in-place resume, replay fork, or GPU requalification is claimed.
+  scheduled user follow-up. An initial correction classified it as a candidate
+  failure; the revision above instead continues a scheduled follow-up while
+  preserving sampled tokens. Neither change edits v2, resumes it, or replaces
+  genuine host/protocol failures with a reward.
 
 - Pass the single v6 headless 24576-token controlled fit with the corrected source:
   native generation, four DAPO microbatches, optimizer update and full checkpoint
