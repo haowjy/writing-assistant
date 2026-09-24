@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Add the separately identified checkpoint-31 CPU fork boundary.  The fork pins
+  the sealed v2 checkpoint and stopped group-32 attempt hashes, imports slots
+  000/001/003 byte-for-byte, and preserves slot 002 under an immutable source
+  prefix before its native follow-up continuation.  External public-Trainer
+  resume accepts the pinned optimizer/scheduler/adapter/RNG checkpoint without
+  copying or resealing it.  Native W&B configuration binds an explicit run while
+  disabling model/checkpoint uploads; no GPU or online training run was started.
+
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of
   stopped v2 slot 002 verifies five original actions and the 25 masked follow-up
