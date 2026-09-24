@@ -1,6 +1,13 @@
 # Branching fiction tasks and task-specific RL rewards
 
-Selected direction, 2026-09-15; provider updated 2026-09-19. DeepSeek V4.1 Flash
+Selected direction, 2026-09-15; runtime contract reconciled 2026-09-24. The
+[checkpointed task-graph environment](task-graph.md) is authoritative for runtime
+ownership, checkpoints and node-local GRPO groups. The provider choice below is
+an experiment proposal, not a runtime requirement; the
+[simulated-author sketch](simulated-author.md) nominated a different partner.
+Freeze the selected provider/configuration before group admission.
+
+Provider proposal, 2026-09-19: DeepSeek V4.1 Flash
 (direct API, model `deepseek-flash`) is the training judge, task generator, and
 simulated author, using separate role-specific calls. Its terms permit training-use;
 literary calibration remains unverified. Train on
@@ -26,7 +33,9 @@ quality weights remain inactive pending validation.
 
 Start with `raw = 0.40 * quality + 0.30 * intent + 0.20 * continuity + 0.10 * mechanics`.
 All four components range from zero to one. These weights are a starting hypothesis,
-not validated experimental findings or an implemented RL reward adapter.
+not validated experimental findings. The scalar and group-advantage helpers now
+exist in [`reward.py`](../../src/writing_agent/reward.py); checkpointed graph rollout
+execution and native GRPO optimization are not implemented by those helpers.
 
 | Component | Initial scorer | Meaning |
 |---|---|---|
@@ -65,13 +74,15 @@ written elsewhere does not substitute for it. A judge timeout or insufficient
 evidence is different: mark reward unavailable and leave the rollout group pending
 until resolved. Do not drop only inconvenient judgments or silently reweight them.
 
-For initial two- or three-stage sessions, propose `0.5 * mean(stage_rewards) +
+For a future explicitly versioned multi-node rollout horizon, propose `0.5 * mean(stage_rewards) +
 0.5 * final_state_reward`, applying the same critical-failure cap to unresolved
 mandatory failures. The final-state assessment checks the current manuscript/KB
 against active author requirements and persistence of earlier accepted decisions.
 Superseded requirements are removed; repeated checks are intentionally tracking
 persistence, not counted as independent evidence. Record this aggregation separately
-from the later RL algorithm's per-action credit assignment.
+from the later RL algorithm's per-action credit assignment. V1 graph training instead
+uses node-local rewards/groups; it does not combine independently sampled node groups
+under this session formula.
 
 Do not initially add MMD, n-gram distance, lexical diversity, a pretrained reward
 model score, or a token-efficiency bonus to this scalar. Retain them as diagnostics

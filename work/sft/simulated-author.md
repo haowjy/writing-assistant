@@ -1,7 +1,9 @@
 # Simulated author and the multi-turn loop
 
-Proposed design, 2026-09-21. Supplies the author's turns when no human is present, so
-multi-turn sessions can be generated and used as RL rollouts. Extends the composed-session
+Proposed collaborator behavior, updated 2026-09-24. The
+[checkpointed task-graph environment](task-graph.md) is authoritative for messages,
+state, transitions, completion, checkpoints and GRPO grouping. This page defines
+author turns when no human is present, enabling bounded multi-turn rollouts. Extends the composed-session
 sketch in [multi-turn RL](multi-turn-rl.md), which already names the controller, the
 simulated author, and the frozen-simulator constraint. The underspecification case it
 serves is defined in the [training-distribution axes](training-distribution-axes.md).
@@ -11,8 +13,10 @@ serves is defined in the [training-distribution axes](training-distribution-axes
 Mark the interaction mode when authoring a task rather than running a classifier on
 every turn. Proposed modes are `none`, `scripted`, and `simulated_author`; these are
 not yet implemented schema fields. A task that requires adaptive answers to questions
-or reactions to revisions should explicitly request `simulated_author`. Astra is the
-proposed initial model for that role; pin its model and runner configuration per run.
+or reactions to revisions should explicitly request `simulated_author`. Provider
+choice remains an experiment decision: this sketch nominated Astra, while
+[task generation](rl-task-generation.md) nominated DeepSeek. Neither is a runtime
+requirement. Pin the chosen model, instructions and runner configuration per group.
 
 The candidate is the writing assistant being trained. The simulated author plays the
 human collaborator. Both may use language models, but their roles and access differ.
@@ -26,15 +30,16 @@ flowchart LR
     C -- "No" --> D["Advance or stop under task rules"]
     C -- "Yes" --> E{"Declared interaction mode"}
     E -- "Scripted" --> F["Return applicable prepared answer"]
-    E -- "Simulated author" --> G["Astra returns one grounded author reply"]
+    E -- "Simulated author" --> G["Simulator returns one grounded author reply"]
     F --> A
     G --> A
 ```
 
-The environment controls completion and scoring. A delivered artifact may still need
+The environment controls completion and invokes independent evaluation/scoring. A delivered artifact may still need
 feedback or revision; its existence alone does not end the session. In scripted mode,
-a question outside the script must be recorded as unsupported, not answered with an
-unrelated canned reply. Allow an Astra fallback only when the task explicitly permits
+a valid declared decision request with no script answer is a coverage error, not
+answered with an unrelated canned reply. Unknown decision/option IDs are instead
+writer protocol errors under the authoritative graph contract. Allow a model-backed fallback only when the task explicitly permits
 it; otherwise stop with an environment-coverage error rather than blaming the candidate.
 Jev-based routing remains an optional idea, not a required layer.
 
@@ -44,7 +49,7 @@ Do not merge them.
 
 | Question | Owner | Nature |
 |---|---|---|
-| Is the task complete? | environment | deterministic: artifact delivered, checks pass |
+| Is the task complete? | environment | Applies the frozen completion contract to artifact/check evidence; required semantic checks may be pending |
 | Does the author have more to say? | user model | soft judgment |
 
 The user model never ends an episode; it only emits a turn. If its "done" were the gate,
@@ -54,7 +59,8 @@ author's approval is not the reward and not proof of correctness.
 
 ## Two hidden things
 
-The private package holds both, and they are revealed differently.
+Private inputs have two separate packets. The author adapter receives only the
+author-decision packet, never the evaluator packet; they are revealed differently.
 
 | Hidden content | Reveal? |
 |---|---|
@@ -66,19 +72,24 @@ for the rubric instead of the author's intent.
 
 ## Three layers
 
-1. **Environment.** Owns workspace tools, stage boundaries, budgets, termination, and
-   reward calculation. Semantic grading is separate from the partner's opinion; author
-   approval is never sufficient evidence of success.
-2. **Controller.** Follows the declared interaction mode and stage plan. It supplies
-   applicable scripted answers or invokes the simulated author when a reply is needed.
-   Natural-language question matching is not assumed to be perfectly deterministic.
+1. **Environment.** Owns workspace tools, node boundaries, budgets, committed
+   transitions and termination. It orchestrates the separate evaluator/reward adapter;
+   author approval is never sufficient evidence of success.
+2. **Controller.** Follows the declared interaction mode and graph contract. It
+   supplies applicable scripted answers or invokes the simulator, and proposes legal
+   edges for the environment to validate. The graph design defines a structured
+   `ask_author` control tool with declared decision IDs; v1 does not infer routing
+   from question marks or assume a perfect natural-language classifier.
 3. **Simulated author.** Receives the author's decisions, task goal, relevant project
    evidence, and transcript, and returns one author turn. It never receives private
-   grading criteria, solves the assignment, or edits the candidate's workspace.
+   grading criteria, solves the assignment, or edits the candidate's workspace. The
+   response contains an utterance and grounding references, never transition actions,
+   `DONE`, checks or reward. Preference disclosures require the environment's
+   authorization; simulator statements cannot create binding requirements arbitrarily.
 
 The current [`agent.py`](../../src/writing_agent/agent.py) records assistant replies,
 tool observations, and workspace snapshots, then consumes fixed follow-ups. It does
-not yet implement adaptive author replies or reliable question-to-script matching.
+not yet implement adaptive author replies or the graph's structured clarification tool.
 Artifact presence is useful evidence, not proof that the requested work is complete.
 
 ## Cost, cache, and parallelism
@@ -103,8 +114,9 @@ Artifact presence is useful evidence, not proof that the requested work is compl
   context length. Record cache usage rather than claiming a fixed saving.
 - **Parallelism is not free.** The runner is serial today and assumes one writer per run
   directory ([`suite.py`](../../src/writing_agent/suite.py)). Parallel rollouts need one
-  run directory per worker, a shared budget ledger under the existing lock, and a shared
-  cache. This is throughput work, not research, and can follow a working serial loop.
+  run directory per worker, a shared budget ledger under the existing lock, and a
+  cache that reuses only immutable exact-input responses. This is throughput work
+  and can follow a working serial loop.
 - **Control partner variability.** Freeze the author model, preferences, and instructions
   across a GRPO group. Responses may legitimately differ with candidate actions. Use
   deterministic generation settings where supported and exact-input response caching;
@@ -138,8 +150,8 @@ These are easy to violate and are already stated in [multi-turn RL](multi-turn-r
 An optional alternative is to use a frozen copy of the candidate model as the simulated
 author. This saves access to a second model family but does not make generation free or
 establish that it can simulate the author faithfully. Keep its session and private author
-preferences separate from the candidate's context, and validate its behavior against the
-Astra partner before relying on it.
+preferences separate from the candidate's context, and validate its behavior against a
+validated held-out partner before relying on it.
 
 Training both roles together is a further, unapproved experiment. It needs a separate
 author objective for faithful, consistent feedback. Rewarding both sides only for candidate
@@ -157,14 +169,16 @@ stage scores for diagnosis. If the work is complete on the final allowed turn, r
 the limit alone is not failure. Provider outages or unsupported simulator behavior are
 environment errors, not evidence that the candidate deserves a low score.
 
-Record session ID, stage IDs, turn index, partner decision, feedback provenance, and
-simulator identity. An iteration limit prevents endless self-dialogue but does not prevent
-self-approval or reward gaming; independent checks remain necessary.
+Record rollout ID, node visit IDs, turn index, disclosed decision references, feedback
+provenance and simulator identity. “Session” remains informal terminology. An
+iteration limit prevents endless self-dialogue but does not prevent self-approval
+or reward gaming; independent checks remain necessary.
 
 ## Next work
 
-Add declared interaction modes, validate a short scripted session, then a bounded
-Astra-author session with stable-prefix prompts and exact-input response caching. Verify
+Add declared interaction modes and the proposed structured clarification contract,
+validate a short scripted session, then a bounded
+model-backed author session with stable-prefix prompts and exact-input response caching. Verify
 the pi/Codex adapter's text-only operation and usage reporting rather than assuming
 OpenAI chat-completions transport. Keep author calls isolated from repository instructions,
 private rubrics, and candidate workspace tools. Defer routing classifiers, jointly trained

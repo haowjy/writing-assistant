@@ -22,5 +22,6 @@ is recorded in the relevant work item.
 - [Training-distribution axes](sft/training-distribution-axes.md): task vs nuisance variables, reward invariance, and underspecification as the primary case.
 - [Distribution fine-tuning](sft/distribution-finetuning.md): matching the human writing distribution rather than a good answer; the conditioning vector as the constraint channel, and the human-target construction we do not yet have.
 - [Simulated author](sft/simulated-author.md): the controller and user model that run multi-turn sessions without a human.
+- [Task graph](sft/task-graph.md): a task is a graph of steps; a session is one walk; a branch is a new GRPO group.
 - [Training data and task-generation research](sft/training-data-research.md): paper evidence,
   source-backed generation workflow, and the first 100 task assignments.
