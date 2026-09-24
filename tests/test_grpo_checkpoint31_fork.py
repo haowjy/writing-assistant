@@ -1,6 +1,7 @@
 """CPU-only checkpoint-31 fork admission and imported-slot regression checks."""
 
 import copy
+import importlib.util
 import json
 import tempfile
 import unittest
@@ -70,6 +71,20 @@ class ForkAdmissionTests(unittest.TestCase):
             self.assertEqual(options["fork_manifest_identity"], manifest["identity"])
             self.assertEqual(options["report_to"], "wandb")
             self.assertEqual(options["wandb_run_name"], "h6dmlw8f")
+            with self.assertRaises(ValueError):
+                fork_preflight(output, source_checkpoint=Path(tmp) / "wrong-checkpoint")
+            (output / "trainer" / "groups" / "partial-step").mkdir()
+            with self.assertRaises(ValueError):
+                fork_preflight(output)
+
+    def test_launcher_ownership_records_are_unique_without_gpu(self):
+        path = Path(__file__).parents[1] / "scripts" / "run_grpo_checkpoint31_fork.py"
+        spec = importlib.util.spec_from_file_location("fork_launcher", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        first = module._ownership_path(Path("/tmp/fork"))
+        second = module._ownership_path(Path("/tmp/fork"))
+        self.assertNotEqual(first, second)
 
     def test_wandb_binding_is_scalar_only_and_explicit(self):
         config = native_wandb_config(run_id="run-31")
