@@ -9,9 +9,15 @@ profile passed a full optimizer update and checkpoint with the exact all-linear 
 and less trajectory headroom. The first production invocation then stopped at
 checkpoint 14 on two unavailable native tool protocol results in group 15. It cannot
 resume without resampling; see the [partial result](../work/research-plan/gemma-full48-first-run-result.md).
-The corrected fresh-base run has a new identity and passed the v6 controlled fit;
-its first invocation was launched. It retains all optimizer-boundary checkpoints,
-not only the latest two. The earlier partial run remains terminal and separate. See
+The v6-qualified fresh-base run retained every optimizer-boundary checkpoint but
+[stopped after checkpoint 31](../work/research-plan/gemma-full48-second-run-result.md):
+all four group-32 attempts were sampled, and an EOS-ended final answer before a
+scheduled follow-up was recorded as an unavailable protocol result. The earlier
+partial run remains terminal and separate. The corrected rollout now scores this
+specific model-caused boundary failure as candidate-invalid while preserving raw
+sampled tokens; it has CPU regression evidence, not a new GPU fit or production run.
+For exploratory recovery, importing the existing group-32 ledgers into a new-identity
+fork is a design question, not an implemented resume path. See
 [current readiness](../work/research-plan/dapo-readiness.md).
 
 ## Inspect and validate

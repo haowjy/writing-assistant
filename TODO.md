@@ -71,11 +71,20 @@ projects, supported by a maintained wiki, with better prose alongside it.
 - [x] Qualify the changed source in the single headless [v6 fit](work/research-plan/gemma-full48-fit-v6-result.md):
   native generation, all four accumulated DAPO microbatches, optimizer step 1 and
   complete checkpoint passed. The first partial production run remains separate.
-- [ ] Complete the fresh pinned-base production run now launched under a new identity:
-  48 tasks × two passes × four fresh attempts = 96 groups / 384 attempts, with all
-  96 full checkpoints retained. No elapsed-time cutoff. Inspect the verified stop
-  at checkpoint 48 and explicitly resume through 96; unavailable or uncommitted
-  sampled evidence halts without retry. Do not pool the stopped first run.
+- [x] Preserve the [second terminal production run](work/research-plan/gemma-full48-second-run-result.md):
+  31 complete checkpoints, 124 committed attempts, and four additional group-32
+  attempts including a final-answer EOS before a scheduled follow-up that made one
+  reward unavailable. The planned checkpoint-48 stop was not reached.
+- [x] Classify that exact sampled final-answer/follow-up mismatch as a candidate
+  failure without changing sampled token IDs, group membership, or host-error
+  handling. Native and group-level regression tests were red before the fix.
+- [ ] Design and verify robust EDA recovery: decide whether a separate checkpoint-31
+  fork can consume all four original group-32 ledgers and preserve optimizer/RNG
+  behavior. If not, obtain explicit consent before a documented resample. Do not
+  mutate either stopped run or call a fork an unchanged fresh-base 96-group run.
+- [ ] Requalify changed source on controlled GPU before any new production training.
+  For a clean fresh-base result, still require two complete passes / 96 groups / 384
+  attempts, a verified checkpoint-48 stop and explicit resume through 96.
 
 ## Completed: short-context GRPO engineering proof
 

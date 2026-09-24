@@ -566,6 +566,36 @@ class NativeTests(unittest.TestCase):
         )
         self.assertTrue(all(tokens["env_mask"]))
 
+    def test_final_eos_with_followup_is_a_scored_candidate_failure(self):
+        output = "Thinking<channel|>Finished.<eos>"
+        backend = self.backend([output])
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_agent(
+                backend,
+                Workspace(Path(tmp)),
+                [{"role": "user", "content": "write then revise"}],
+                tools=[],
+                followups=["Revise."],
+            )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["failure_class"], "candidate_invalid")
+        self.assertEqual(backend.failure, "candidate_invalid")
+        self.assertEqual(len(result["turns"]), 1)
+        tokens = backend.evidence()
+        self.assertEqual(
+            tokens["completion_ids"], self.tokenizer.encode(output, add_special_tokens=False)
+        )
+        self.assertTrue(all(tokens["env_mask"]))
+        self.assertEqual(len(tokens["boundaries"]), 1)  # No new model action was sampled.
+
+        # The same boundary is valid when there is no follow-up to append.
+        standalone = self.backend([output])
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = run_agent(
+                standalone, Workspace(Path(tmp)), [{"role": "user", "content": "hi"}], tools=[]
+            )
+        self.assertEqual(completed["status"], "completed")
+
     def test_mixed_content_tool_call_preserves_raw_actions_and_external_suffix(self):
         first = (
             'A note before the edit. <|tool_call>call:write_file{path:<|"|>note.txt<|"|>,'
@@ -748,6 +778,38 @@ class NativeTests(unittest.TestCase):
                 if index == 1:
                     self.assertEqual(result["status"], "completed")
                     self.assertEqual((attempt / "workspace/note.txt").read_text(), "after")
+
+    def test_sampled_final_eos_followup_scores_whole_group_without_retry(self):
+        trainer = SimpleNamespace(
+            model=None, processing_class=None, state=SimpleNamespace(global_step=0)
+        )
+        scenario = task()
+        scenario["visible"]["followups"] = ["Revise."]
+        eos = "Finished<eos>"
+        with tempfile.TemporaryDirectory() as tmp:
+            groups = RolloutGroups(
+                [scenario],
+                GRPOSettings(revision=REVISION, group_size=4, max_generated_tokens=512),
+                Path(tmp),
+                lambda task, result: Reward("ok", 0.0 if result["status"] != "completed" else 1.0),
+                lambda model, tokenizer, seed: self.backend(
+                    [eos] if seed == 42 else ["Draft<turn|>", "Revised<turn|>"], seed=seed
+                ),
+                SYSTEM_PROMPT,
+            )
+            values = groups(["fixture"] * 4, trainer)["rollout_rewards"]
+            self.assertEqual(values, [0.0, 1.0, 1.0, 1.0])
+            self.assertTrue(list(Path(tmp).glob("groups/*/complete.json")))
+            attempts = sorted(Path(tmp).glob("groups/*/attempt-*"))
+            self.assertEqual(len(attempts), 4)
+            invalid = json.loads((attempts[0] / "result.json").read_text())
+            tokens = json.loads((attempts[0] / "tokens.json").read_text())
+            self.assertEqual(invalid["failure_class"], "candidate_invalid")
+            self.assertEqual(json.loads((attempts[0] / "reward.json").read_text())["value"], 0.0)
+            self.assertEqual(
+                tokens["completion_ids"], self.tokenizer.encode(eos, add_special_tokens=False)
+            )
+            verify_tokens(tokens)
 
     def test_workspace_host_failures_pend_group_instead_of_becoming_rewards(self):
         trainer = SimpleNamespace(

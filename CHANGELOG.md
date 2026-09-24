@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Preserve the second full48 production stop after checkpoint 31: group 32 sampled
+  four attempts, one unavailable because a final answer ended in `<eos>` before a
+  scheduled user follow-up. Classify that model-caused stop as a candidate failure
+  without altering action tokens or treating host/protocol corruption as reward.
+  Verify the regression through native rollout and complete-group scoring; no
+  in-place resume, replay fork, or GPU requalification is claimed.
+
 - Pass the single v6 headless 24576-token controlled fit with the corrected source:
   native generation, four DAPO microbatches, optimizer update and full checkpoint
   verification. Launch the separately preflighted fresh-base 96-group run, keeping

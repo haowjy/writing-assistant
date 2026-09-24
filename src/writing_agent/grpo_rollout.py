@@ -129,10 +129,25 @@ class NativeRolloutBackend(TransformersBackend):
             prefix = self.previous_history + [self.previous]
             if messages[: len(prefix)] != prefix:
                 raise ProtocolError("Harness rewrote sampled history")
+            external = messages[len(prefix) :]
+            if (
+                not self.previous.get("tool_calls")
+                and len(external) == 1
+                and external[0].get("role") == "user"
+                and self.last_output
+                and self.last_output[-1] in self.model.generation_config.eos_token_id
+                and self.last_output[-1] != self.tokenizer.convert_tokens_to_ids("<turn|>")
+            ):
+                # A sampled final answer may be valid alone but cannot be followed
+                # by another user after <eos> or <|tool_response>. No new action
+                # has been sampled and the existing action tokens remain intact.
+                raise CandidateOutputError(
+                    "Sampled final answer ended without <turn|>; cannot attach user follow-up"
+                )
             suffix = native_suffix(
                 self.tokenizer,
                 self.previous,
-                messages[len(prefix) :],
+                external,
                 self.last_output,
                 thinking=self.config["enable_thinking"],
             )

@@ -53,8 +53,11 @@ test. Demonstrations and SFT are conditional, not on the critical path.
   unavailable for this model (`global_head_dim` 512 exceeds the FA limit), so
   memory-efficient SDPA is the only O(n) attention path. Re-run
   `scripts/probe_context_budget.py` before quoting any length.
-- [ ] Add optional W&B tracking for scores, written critiques, prose, and versioned
-  artifacts while retaining local outputs. Logging is currently disabled.
+- [ ] Enable native W&B scalar tracking **before the next separately identified
+  training experiment** while retaining complete local evidence. Verify credentials,
+  destination, connectivity and logging during preflight; define privacy and consent
+  separately before sending task text, written critiques, prose or artifacts. Do not
+  retrofit either stopped full48 run. Current training has `report_to="none"`.
 - [ ] Summarize failure types from the [custom50 assessments](../custom-eval-suite/astra-grading.md):
   prose weaknesses, continuity errors, failed file delivery, and KB navigation.
   Aggregate counts are recorded in the [SFT plan](../sft/plan.md); retain representative

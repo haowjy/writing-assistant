@@ -1,12 +1,14 @@
 # DAPO full-round readiness
 
-**The 24576-token controlled v5 RTX 3090 fit passed; the first intact 48-task run
-stopped at checkpoint 14 and cannot resume.** Group 15 sampled four attempts, two
-with unavailable native tool protocol evidence. Preserve that partial run separately;
-see the [first-run result](gemma-full48-first-run-result.md). A corrected fresh-base
-run required a new identity and v6 fit validation of the changed source; the single
-v6 fit passed and fresh production was launched. Both earlier 32768-token profiles OOMed
-before an update. V4 reduced
+**Two fresh-base attempts stopped before the planned 48-group pause.** The
+[first run](gemma-full48-first-run-result.md) stopped after checkpoint 14 with two
+unavailable tool-protocol attempts in group 15. The v6-qualified
+[second run](gemma-full48-second-run-result.md) stopped after checkpoint 31:
+group 32 sampled four attempts, one ending a final answer with `<eos>` before a
+scheduled follow-up. Both remain separate and terminal under the present no-resample
+runner. The second boundary shape now has a candidate-failure code fix and focused
+CPU evidence, but no new GPU qualification or production outcome. Both earlier
+32768-token profiles OOMed before an update. V4 reduced
 only context but its observer rejected the correct DAPO denominator after the first
 forward. V5 changed only that assertion and passed native generation, four accumulated
 microbatches, one optimizer update and a complete checkpoint. This qualifies controlled
@@ -294,11 +296,15 @@ The new protocol handling and all-checkpoint policy have CPU regression evidence
 The single [v6 controlled fit](gemma-full48-fit-v6-result.md) passed native generation,
 all four accumulated microbatches, optimizer step 1 and a complete checkpoint,
 with zero GPU consumers and 24085 MiB free at all three admission points. The fresh
-pinned-base release was prepared and preflighted under a new identity and its first
-invocation was launched. Repeat headless admission on train and resume; production
-coverage and quality outcomes are not established by the fit. Constructed complete paths measured only 598–4066 tokens, not
-sampled upper bounds; a sampled trajectory over 24576 fails explicitly without
-truncation or resampling.
+pinned-base release was prepared and launched under a new identity, then stopped
+at 31 updates on a different EOS/follow-up boundary. The new rollout check
+classifies that sampled output as a candidate failure before the next generation;
+its CPU tests were red before the fix and pass now. A documented exploratory fork
+from checkpoint 31 would need a separate design for importing the saved group-32
+ledgers and preserving RNG/optimizer behavior; ordinary resume remains blocked.
+No changed-source fit or new production launch has occurred. Constructed complete
+paths measured only 598–4066 tokens, not sampled upper bounds; a sampled trajectory
+over 24576 fails explicitly without truncation or resampling.
 
 Detailed evidence is in the local work item:
 `/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/`.
@@ -322,8 +328,9 @@ their adjacent runtime files. Durable summaries are
 [gemma-full48-fit-v4-result.md](gemma-full48-fit-v4-result.md), and
 [gemma-full48-fit-v5-result.md](gemma-full48-fit-v5-result.md). A failed postprocessing
 hook assumption is preserved; correction required no package changes or model reruns.
-Original data and previous GPU runs were not modified. The controlled GPU fit passed,
-but production training, model downloads and paid judge calls did not occur.
+Original data and previous GPU runs were not modified. The controlled v6 GPU fit passed and two separate production training attempts
+ran, but neither completed all 96 groups. No paid judge calls occurred; mechanical
+scores do not establish writing quality.
 
 See [current work order](../../TODO.md), [GRPO usage](../../docs/grpo.md), and the
 [previous short-run result](gemma-microbatch-result.md).
