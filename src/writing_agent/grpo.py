@@ -303,6 +303,7 @@ def train_grpo(
             raise ValueError("W&B reporting requires frozen environment bindings")
         required_env = {
             "WANDB_RUN_ID": wandb_run_name,
+            "WANDB_MODE": "online",
             "WANDB_LOG_MODEL": "false",
             "WANDB_WATCH": "false",
             "WANDB_DISABLE_CODE": "true",

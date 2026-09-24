@@ -210,6 +210,7 @@ def native_wandb_config(
             "WANDB_PROJECT": project,
             "WANDB_RUN_ID": run_id,
             "WANDB_RESUME": "allow",
+            "WANDB_MODE": "online",
             "WANDB_LOG_MODEL": "false",
             "WANDB_WATCH": "false",
             "WANDB_DISABLE_CODE": "true",

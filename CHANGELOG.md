@@ -29,6 +29,8 @@
 - Bind the stopped group invocation to the same original experiment as checkpoint
   31, reject source-tree output paths, and validate task/seed provenance before
   any continuation.
+- Freeze W&B online mode alongside the approved run/entity/project binding;
+  inherited offline or mismatched settings now fail closed before Trainer setup.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of
