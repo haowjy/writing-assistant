@@ -226,6 +226,9 @@ def native_wandb_config(
             "WANDB_LOG_MODEL": "false",
             "WANDB_WATCH": "false",
             "WANDB_DISABLE_CODE": "true",
+            # The trainer logs scalars/system state; stdout can contain failures
+            # with task content and must never be synced as output.log.
+            "WANDB_CONSOLE": "off",
         },
         "privacy": {
             "allow": ["trainer scalar metrics", "system metrics", "package metadata"],

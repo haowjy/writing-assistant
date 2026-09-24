@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Disable W&B console capture for fork training: native TRL scalar/system metrics
+  and package metadata remain available, while stdout/stderr cannot become a
+  synced `output.log` carrying task content or failure traces.
+
 - Pin the complete local Python training runtime for checkpoint-31 fork admission
   and reject an interrupted slot-002 suffix at its actual on-disk location before
   GPU admission, rather than relying only on the later no-resample guard.

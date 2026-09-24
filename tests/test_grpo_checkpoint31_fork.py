@@ -128,6 +128,7 @@ class ForkAdmissionTests(unittest.TestCase):
         self.assertEqual(config["report_to"], "wandb")
         self.assertEqual(config["env"]["WANDB_RUN_ID"], "run-31")
         self.assertEqual(config["env"]["WANDB_LOG_MODEL"], "false")
+        self.assertEqual(config["env"]["WANDB_CONSOLE"], "off")
         self.assertIn("task text", config["privacy"]["deny"])
 
     def test_wandb_existing_wrong_project_is_rejected(self):
