@@ -134,7 +134,7 @@ def _check_source_group(group: Path) -> dict:
     }
 
 
-def _verify_trace(attempt: Path, result: dict, evidence: dict) -> None:
+def _verify_trace(attempt: Path, result: dict, evidence: dict) -> int:
     """Check every saved model input/output event against the immutable ledger."""
     trace = result.get("trace")
     if not isinstance(trace, list):
@@ -160,6 +160,7 @@ def _verify_trace(attempt: Path, result: dict, evidence: dict) -> None:
     for event, boundary in zip(outputs, boundaries, strict=True):
         if event.get("output_ids") != boundary.get("output_ids"):
             raise ValueError("Saved model output differs from token ledger")
+    return len(generations)
 
 
 def native_wandb_config(
@@ -405,6 +406,9 @@ class Checkpoint31RolloutGroups(RolloutGroups):
         result = _read_json(source / "result.json")
         tokens = _read_json(source / "tokens.json")
         verify_tokens(tokens)
+        saved_generations = _verify_trace(source, result, tokens)
+        if saved_generations != len(tokens["boundaries"]):
+            raise ProtocolError("Saved generation count differs from token boundaries")
         visible = self.task["visible"]
         workspace = Workspace(
             target / "workspace", max_total_bytes=visible["budgets"]["max_total_bytes"]
@@ -435,7 +439,7 @@ class Checkpoint31RolloutGroups(RolloutGroups):
                         "messages", "turns", "tool_calls", "attempted_tool_calls",
                         "tool_errors", "read_tokens", "read_tokenizer", "usage",
                     )},
-                    "step": len(result["turns"]),
+                    "step": saved_generations,
                 },
                 **{k: v for k, v in visible["budgets"].items() if k != "max_total_bytes"},
             )
