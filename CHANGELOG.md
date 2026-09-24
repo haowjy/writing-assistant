@@ -31,6 +31,7 @@
   any continuation.
 - Freeze W&B online mode alongside the approved run/entity/project binding;
   inherited offline or mismatched settings now fail closed before Trainer setup.
+- Ruff import checks pass for the fork module, CLI, and CPU regression tests.
 
 - Add a guarded agent continuation boundary and native sampled-token restoration
   for a final answer followed by a scheduled user turn. A read-only CPU replay of

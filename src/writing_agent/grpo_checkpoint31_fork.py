@@ -29,7 +29,6 @@ from writing_agent.grpo_rollout import (
 from writing_agent.reward import Reward, group_advantages
 from writing_agent.workspace import Workspace
 
-
 FORK_ID = "checkpoint31-dapo-native-fork-v1"
 GROUP_STEP = 31
 GROUP_NAME = "step-000031-checkpoint31-fork"

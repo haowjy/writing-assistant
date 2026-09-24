@@ -11,6 +11,7 @@ import os
 import sys
 from pathlib import Path
 
+from writing_agent.grpo import train_grpo
 from writing_agent.grpo_checkpoint31_fork import (
     fork_preflight,
     fork_resume_options,
@@ -22,7 +23,6 @@ from writing_agent.grpo_full48_runner import SETTINGS
 from writing_agent.grpo_full48_supervisor import supervise, verify_lease
 from writing_agent.grpo_gpu import HEADLESS_POLICY, admit_gpu, configure_cuda_allocator
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
-from writing_agent.grpo import train_grpo
 
 
 def _execute(args, *, resume, lease_fd):

@@ -21,7 +21,6 @@ from writing_agent.grpo_checkpoint31_fork import (
 )
 from writing_agent.reward import Reward
 
-
 SOURCE = Path(
     "/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/"
     "full48-production-v2/trainer"
