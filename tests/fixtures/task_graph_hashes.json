@@ -1,0 +1,10 @@
+{
+  "canonical": "{\"a\":[1,true,null],\"b\":\"é\"}",
+  "file": "c73868a4ac4a56a7d2c8d16450a7d1c56bd47853f72acf7b0711a365bcdebbca",
+  "tree": "9e855682d92fa69ccbf3d2cd890dcf3008b715efd0fad33769157eeced5f04fc",
+  "message": "050751820eb7a82214a0af25f63682e4b4208a257ae3af54b1f0eb1473fecf8b",
+  "context": "d95f566edcd888b7132a1ef264f95e35d5adcb75cdd70b3a708fa1c2e8442c96",
+  "state": "380a09d11971724eab52d874be75d0fde1498cd692bb605ee9c304c621ab9895",
+  "checkpoint": "816b6c1f59432aff86ec9d54ceb912b00d6b8f179603cd95e8bb3e4e176b48f0",
+  "event": "358009d684a71260a986d4b079d13291cf3cc09e6ec416b34cad4c3c5a2c9c80"
+}
