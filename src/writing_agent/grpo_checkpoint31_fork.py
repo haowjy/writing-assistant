@@ -101,7 +101,10 @@ def _check_source_group(group: Path) -> dict:
                 raise ValueError("Slot002 historical unavailable reward changed")
             if not (group / "stopped.json").exists():
                 raise ValueError("Slot002 stopped evidence is missing")
-            if result.get("messages", [])[-1].get("role") != "user":
+            messages = result.get("messages")
+            if not isinstance(messages, list) or not messages or not isinstance(messages[-1], dict):
+                raise ValueError("Slot002 continuation messages are missing")
+            if messages[-1].get("role") != "user":
                 raise ValueError("Slot002 does not end at the saved follow-up boundary")
         elif reward.get("status") != "ok":
             raise ValueError(f"Saved slot {slot} does not have a usable reward")
