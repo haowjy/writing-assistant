@@ -42,6 +42,18 @@ class ForkAdmissionTests(unittest.TestCase):
         self.assertEqual(canonical_json_value(source), canonical_json_value(current))
 
     @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    def test_pinned_source_model_config_normalizes_integer_labels(self):
+        source = _check_source_checkpoint(SOURCE / "checkpoint-31")["experiment_manifest"]
+        model_config = copy.deepcopy(source["model_config"])
+        labels = model_config.get("id2label")
+        if labels:
+            current = {
+                **model_config,
+                "id2label": {int(key): value for key, value in labels.items()},
+            }
+            self.assertEqual(canonical_json_value(model_config), canonical_json_value(current))
+
+    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
     def test_manifest_pins_source_and_preserves_bytes(self):
         before_checkpoint = _check_source_checkpoint(SOURCE / "checkpoint-31")
         before_group = _check_source_group(GROUP)
