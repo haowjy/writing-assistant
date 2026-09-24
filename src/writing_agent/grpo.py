@@ -31,6 +31,20 @@ from writing_agent.inference import PROTOCOL, checkpoint_identity
 from writing_agent.workspace import TOOL_SCHEMAS
 
 
+def canonical_json_value(value):
+    """Normalize JSON-equivalent mappings (notably integer config keys)."""
+    if isinstance(value, dict):
+        return {
+            str(key): canonical_json_value(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [canonical_json_value(item) for item in value]
+    if isinstance(value, set):
+        return sorted(canonical_json_value(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True)
 class GRPOSettings:
     model_id: str = "google/gemma-4-E2B-it"
@@ -303,11 +317,15 @@ def train_grpo(
             raise ValueError("W&B reporting requires frozen environment bindings")
         required_env = {
             "WANDB_RUN_ID": wandb_run_name,
+            "WANDB_ENTITY": wandb_environment.get("WANDB_ENTITY"),
+            "WANDB_PROJECT": wandb_environment.get("WANDB_PROJECT"),
             "WANDB_MODE": "online",
             "WANDB_LOG_MODEL": "false",
             "WANDB_WATCH": "false",
             "WANDB_DISABLE_CODE": "true",
         }
+        if not required_env["WANDB_ENTITY"] or not required_env["WANDB_PROJECT"]:
+            raise ValueError("W&B reporting requires explicit entity and project bindings")
         if any(
             str(wandb_environment.get(k, "")).lower() != v.lower()
             for k, v in required_env.items()
@@ -323,9 +341,9 @@ def train_grpo(
         active_run = getattr(active_wandb, "run", None) if active_wandb else None
         if active_run is not None and (
             getattr(active_run, "id", None) != wandb_run_name
-            or getattr(active_run, "entity", wandb_environment.get("WANDB_ENTITY"))
+            or getattr(active_run, "entity", None)
             != wandb_environment.get("WANDB_ENTITY")
-            or getattr(active_run, "project_name", wandb_environment.get("WANDB_PROJECT"))
+            or getattr(active_run, "project", None)
             != wandb_environment.get("WANDB_PROJECT")
         ):
             raise ValueError("A different W&B run is already active")
@@ -424,7 +442,7 @@ def train_grpo(
             ("packages", manifest["packages"]),
         )
         for key, current in compatibility:
-            if source_manifest.get(key) != current:
+            if canonical_json_value(source_manifest.get(key)) != canonical_json_value(current):
                 raise ValueError(f"Fork/source {key} compatibility differs")
     # PEFT configs include sets; normalize once for portable JSON equality.
     manifest = json.loads(

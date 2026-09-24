@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Tighten checkpoint-31 fork admission: preserve infrastructure continuation
+  failures as unavailable/GroupPending, reject mismatched active W&B runs,
+  validate ordered fork schedules and complete checkpoint seals, canonicalize
+  model-config keys, pin implementation hashes, require frozen W&B before
+  Trainer options, and allocate unique ownership records for every launch.
+  Phase preflight remains CPU-only and no GPU or W&B run was started.
+
 - Add the separately identified checkpoint-31 CPU fork boundary.  The fork pins
   the sealed v2 checkpoint and stopped group-32 attempt hashes, imports slots
   000/001/003 byte-for-byte, and preserves slot 002 under an immutable source

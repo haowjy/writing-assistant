@@ -6,12 +6,17 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from writing_agent.agent import SYSTEM_PROMPT
+from writing_agent.catalog import fingerprint, save_json
+from writing_agent.grpo import canonical_json_value
 from writing_agent.grpo_checkpoint31_fork import (
     GROUP_NAME,
     Checkpoint31RolloutGroups,
     _check_source_checkpoint,
     _check_source_group,
+    apply_native_wandb_binding,
     fork_coverage,
     fork_preflight,
     fork_trainer_options,
@@ -19,6 +24,7 @@ from writing_agent.grpo_checkpoint31_fork import (
     prepare_fork,
     verify_fork_manifest,
 )
+from writing_agent.grpo_rollout import GroupPending, NativeRolloutBackend
 from writing_agent.reward import Reward
 
 SOURCE = Path(
@@ -29,6 +35,11 @@ GROUP = SOURCE / "groups/step-000031-87b060b85fc043198c5ef1f8807f47c5"
 
 
 class ForkAdmissionTests(unittest.TestCase):
+    def test_model_config_integer_keys_canonicalize(self):
+        source = {"id2label": {"0": "LABEL_0", "1": "LABEL_1"}}
+        current = {"id2label": {0: "LABEL_0", 1: "LABEL_1"}}
+        self.assertEqual(canonical_json_value(source), canonical_json_value(current))
+
     @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
     def test_manifest_pins_source_and_preserves_bytes(self):
         before_checkpoint = _check_source_checkpoint(SOURCE / "checkpoint-31")
@@ -67,11 +78,20 @@ class ForkAdmissionTests(unittest.TestCase):
         self.assertEqual(config["env"]["WANDB_LOG_MODEL"], "false")
         self.assertIn("task text", config["privacy"]["deny"])
 
+    def test_wandb_existing_wrong_project_is_rejected(self):
+        config = native_wandb_config(run_id="run-31")
+        fake = SimpleNamespace(
+            run=SimpleNamespace(id="run-31", entity="immpanda", project="wrong-project")
+        )
+        with patch.dict("sys.modules", {"wandb": fake}):
+            with self.assertRaises(ValueError):
+                apply_native_wandb_binding(config)
+
     @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
     def test_imported_slots_do_not_call_model(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "fork"
-            prepare_fork(SOURCE / "checkpoint-31", GROUP, root)
+            prepare_fork(SOURCE / "checkpoint-31", GROUP, root, wandb_run_id="h6dmlw8f")
             trainer_output = root / "trainer"
             task = {
                 "id": "wave1-train-032",
@@ -84,6 +104,9 @@ class ForkAdmissionTests(unittest.TestCase):
                 },
             }
             from writing_agent.grpo_full48_runner import SETTINGS
+
+            invocation = trainer_output / "invocations" / "fixture" / "started.json"
+            save_json(invocation, {"identity": fingerprint({"fixture": True})})
 
             calls = []
 
@@ -101,7 +124,7 @@ class ForkAdmissionTests(unittest.TestCase):
                 trainer_output,
                 reward,
                 backend_factory,
-                "system",
+                SYSTEM_PROMPT,
                 invocation_id="fixture",
                 fork_output=trainer_output,
                 task=task,
@@ -131,6 +154,64 @@ class ForkAdmissionTests(unittest.TestCase):
                 "ok",
             )
             self.assertTrue((trainer_output / "groups" / GROUP_NAME / "complete.json").exists())
+
+    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    def test_infrastructure_continuation_stays_pending(self):
+        from writing_agent.grpo_full48_runner import SETTINGS
+
+        source_attempt = GROUP / "attempt-002"
+        experiment = json.loads((SOURCE / "experiment.json").read_text())
+        task = next(
+            item
+            for item in experiment["manifest"]["plan"]["tasks"]
+            if item["id"] == "wave1-train-032"
+        )
+        before = (source_attempt / "result.json").read_bytes()
+
+        class FailingBackend(NativeRolloutBackend):
+            def __init__(self, *_args):
+                self.failure = None
+                self.prompt_ids = []
+                self.completion_ids = []
+                self.env_mask = []
+                self.boundaries = []
+                self.calls = 0
+
+            def restore_answer_followup(self, _history, evidence):
+                self.prompt_ids = list(evidence["prompt_ids"])
+                self.completion_ids = list(evidence["completion_ids"])
+                self.env_mask = list(evidence["env_mask"])
+                self.boundaries = copy.deepcopy(evidence["boundaries"])
+                self.calls = len(self.boundaries)
+
+            def complete(self, _messages, _tools, *, emit=lambda _event: None):
+                self.failure = "infrastructure"
+                raise OSError("host unavailable")
+
+            def evidence(self):
+                return json.loads((source_attempt / "tokens.json").read_text())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "fork"
+            prepare_fork(SOURCE / "checkpoint-31", GROUP, root, wandb_run_id="h6dmlw8f")
+            trainer_output = root / "trainer"
+            groups = Checkpoint31RolloutGroups(
+                [task],
+                SETTINGS,
+                trainer_output,
+                lambda _task, _result: Reward("ok", value=0.8),
+                lambda *_args: FailingBackend(),
+                SYSTEM_PROMPT,
+                invocation_id="fixture",
+                fork_output=trainer_output,
+                task=task,
+            )
+            with self.assertRaises(GroupPending):
+                groups._continue_slot002(SimpleNamespace(model=None, processing_class=None))
+            self.assertEqual(before, (source_attempt / "result.json").read_bytes())
+            self.assertFalse(
+                (trainer_output / "groups" / GROUP_NAME / "complete.json").exists()
+            )
 
 
 if __name__ == "__main__":

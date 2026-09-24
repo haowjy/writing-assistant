@@ -10,6 +10,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 from writing_agent.grpo import train_grpo
 from writing_agent.grpo_checkpoint31_fork import (
@@ -25,11 +26,25 @@ from writing_agent.grpo_gpu import HEADLESS_POLICY, admit_gpu, configure_cuda_al
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 
 
+def _ownership_path(output: Path) -> Path:
+    """Return a durable per-admission record path (safe across resume)."""
+    return output / "ownership" / uuid4().hex
+
+
 def _execute(args, *, resume, lease_fd):
     verify_lease(args.output, lease_fd)
+    fork_preflight(
+        args.output,
+        release=args.release,
+        source_checkpoint=args.source_checkpoint,
+        source_group=args.source_group,
+        resume=resume,
+    )
     verify_runtime(STREAMING)
     configure_cuda_allocator()
-    admit_gpu(args.output / "ownership" / "fork-launch", policy=HEADLESS_POLICY)
+    # Every admission gets a durable unique record; resuming must never reuse
+    # the first launch's ownership directory.
+    admit_gpu(_ownership_path(args.output), policy=HEADLESS_POLICY)
     data = load_full48_release(args.release)
     options = (
         fork_resume_options(args.output)
@@ -73,13 +88,25 @@ def main():
             args.source_group,
             args.output,
             wandb_run_id=args.wandb_run_id,
+            release=args.release,
         )
     elif args.phase == "preflight":
         if args.execute or args._lease_fd is not None:
             parser.error("preflight is read-only and does not accept --execute")
-        result = fork_preflight(args.output)
+        result = fork_preflight(
+            args.output,
+            release=args.release,
+            source_checkpoint=args.source_checkpoint,
+            source_group=args.source_group,
+        )
     elif not args.execute:
-        result = {"execute": False, "phase": args.phase}
+        result = fork_preflight(
+            args.output,
+            release=args.release,
+            source_checkpoint=args.source_checkpoint,
+            source_group=args.source_group,
+            resume=args.phase == "resume",
+        )
     elif args._lease_fd is not None:
         if args.phase not in {"launch", "resume"}:
             parser.error("worker lease requires launch or resume")
@@ -97,7 +124,13 @@ def main():
         result = supervise(
             args.output,
             command,
-            admit=lambda: fork_preflight(args.output),
+            admit=lambda: fork_preflight(
+                args.output,
+                release=args.release,
+                source_checkpoint=args.source_checkpoint,
+                source_group=args.source_group,
+                resume=args.phase == "resume",
+            ),
         )
     print(json.dumps(result, indent=2, default=str))
 
