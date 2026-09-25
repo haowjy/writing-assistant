@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Close Phase 5 authority and recovery gaps: anchor strict event dispatch to
+  the admitted entry, require complete atomic author replies, unify writer
+  exhaustion with typed incomplete outcome/reward records, enforce tool/author
+  budget precedence, and reject progress-only reward inputs and private bytes
+  in public vocabulary at admission.
+
 - Add an opt-in deterministic scripted-author graph slice: role-typed author and
   evaluator packets, structured `ask_author`, durable request/reply and disclosure
   updates, ordered mandatory feedback and preauthorized requirement supersession,

@@ -195,6 +195,8 @@ class ScriptedAuthorRuntimeV1:
             >= node.contract.budget_contract.max_author_calls
         ):
             raise WriterRuntimeError("author-call budget exhausted")
+        if budget["consumed"].get("tool_calls", 0) >= budget["limits"]["tool_calls"]:
+            raise WriterRuntimeError("tool-call budget exhausted")
         decisions = self.store.get_artifact(state.decisions_ref, expected_domain="payload")
         validate_ask_semantics(call["arguments"], node, decisions)
         request_id = f"{self.writer.rollout_id}:author:{budget['consumed'].get('author_calls', 0)}"
@@ -353,9 +355,7 @@ class ScriptedAuthorRuntimeV1:
         next_budget = json.loads(canonical_json(budget))
         consumed = next_budget["consumed"]
         consumed["attempted_tool_calls"] = consumed.get("attempted_tool_calls", 0) + 1
-        consumed["tool_calls"] = min(
-            consumed.get("tool_calls", 0) + 1, budget["limits"]["tool_calls"]
-        )
+        consumed["tool_calls"] = consumed.get("tool_calls", 0) + 1
         budget_ref = self.store.put_artifact(next_budget)
         continuation = current.to_dict()["continuation"]
         continuation["next_call"] += 1

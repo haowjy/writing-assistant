@@ -414,6 +414,17 @@ class TaskGraphStore:
             # and requires exact full-state equality before any new immutable is
             # written.
             validator.validate(("commit", commit.identity()))
+            phase5_base = self._phase5_base_checkpoint(base_checkpoint)
+            if phase5_base is not None:
+                from writing_agent.task_graph_projection import project_writer_context
+
+                project_writer_context(
+                    self,
+                    phase5_base,
+                    base_checkpoint,
+                    candidate_events=batch,
+                    candidate_state=next_state,
+                )
             for event in batch:
                 self.persist(event)
             self.persist(checkpoint)
@@ -631,14 +642,41 @@ class TaskGraphStore:
         self._validate_writer_history(current_id)
         return current_id
 
-    def _validate_writer_history(self, checkpoint_id: str) -> None:
-        """Apply Phase 4 semantics to a writer-indexed lineage suffix.
+    def _phase5_base_checkpoint(self, checkpoint_id: str) -> str | None:
+        """Find the immutable Phase 5 entry capability in checkpoint ancestry."""
+        # A Phase 5 entry is an immutable ancestor capability. Do not decide
+        # whether to run semantic recovery from the child's mutable log or
+        # author_packet_ref: an adversarial effect may replace either one.
+        from writing_agent.task_graph_contracts import NodeContractV1
 
-        Generic Phase 2 effects deliberately remain schema-agnostic. A writer log
-        opts its lineage suffix into the stricter causal/execution contract; a
-        writer_runtime stop actor cannot opt out by dropping that log.
-        """
+        phase5_base = None
+        ancestor = self.load_checkpoint(checkpoint_id)
+        while True:
+            instance = self.load_instance(ancestor.state.instance_ref)
+            spec = next(
+                (node for node in instance.nodes if node.id == ancestor.state.position["node_id"]),
+                None,
+            )
+            if spec is not None:
+                body = self.get_artifact(spec.entry_contract)
+                if isinstance(body, dict) and body.get("artifact_type") == "NodeContractV1":
+                    contract = NodeContractV1.from_dict(body)
+                    if contract.interaction_contract.mode == "scripted_author":
+                        phase5_base = ancestor.identity()
+            if not ancestor.parents:
+                break
+            ancestor = self.load_checkpoint(ancestor.parents[0])
+        return phase5_base
+
+    def _validate_writer_history(self, checkpoint_id: str) -> None:
+        """Apply strict Phase 5 or indexed Phase 4 semantics on recovery."""
         checkpoint = self.load_checkpoint(checkpoint_id)
+        phase5_base = self._phase5_base_checkpoint(checkpoint_id)
+        if phase5_base is not None:
+            from writing_agent.task_graph_projection import project_writer_context
+
+            project_writer_context(self, phase5_base, checkpoint_id)
+            return
         body = self.get_artifact(checkpoint.state.external_inputs_ref, expected_domain="payload")
         if not isinstance(body, dict) or body.get("record_type") != "WriterRuntimeLogV1":
             # Generic Phase 2 fixtures may use logical result IDs. A writer-

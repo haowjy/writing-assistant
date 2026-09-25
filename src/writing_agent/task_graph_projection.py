@@ -176,23 +176,26 @@ def validate_writer_effect(before, after, event, effect, *, store=None) -> None:
             old["continuation"]["tool_queue"]
         ):
             raise ProjectionError("writer stop has illegal phase or pending queue")
-        if store is not None:
-            outcome = store.get_artifact(after.outcome_ref, expected_domain="payload")
-            if (
-                not isinstance(outcome, dict)
-                or outcome
-                != {
-                    "schema": 1,
-                    "task_status": "incomplete",
-                    "execution_status": "valid",
-                    "stop_reason": outcome.get("stop_reason"),
-                    "reward_status": "pending",
-                    "training_eligibility": "pending",
-                }
-                or outcome["stop_reason"]
-                not in {"writer_budget", "generated_tokens_budget", "total_tokens_budget"}
-            ):
-                raise ProjectionError("writer stop has illegal outcome status")
+
+
+def _writer_stop_outcome(before, candidate_checkpoint, reason, *, phase5):
+    outcome = {
+        "schema": 1,
+        "task_status": "incomplete",
+        "execution_status": "valid",
+        "stop_reason": reason,
+        "reward_status": "pending",
+        "training_eligibility": "pending",
+    }
+    if phase5:
+        outcome.update(
+            record_type="TerminalOutcomeV1",
+            candidate_checkpoint=candidate_checkpoint,
+            check_result_refs=[],
+            transition_edge_id=None,
+            requirement_version=before.requirements_ref,
+        )
+    return outcome
 
 
 def validate_action_trace(
@@ -325,12 +328,19 @@ def validate_result_production(
         raise ProjectionError("tool result has false file delta")
     old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
     new_budget = store.get_artifact(after.budgets_ref, expected_domain="payload")
-    if call["name"] == "ask_author" and (
-        old_budget["consumed"].get("author_calls", 0) < old_budget["limits"].get("author_calls", 0)
-        or record["observation"]
-        != {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
-    ):
-        raise ProjectionError("ask_author error was not justified by exhausted author budget")
+    if old_budget["consumed"].get("tool_calls", 0) >= old_budget["limits"]["tool_calls"]:
+        expected_error = {"ok": False, "valid": True, "error": "Tool-call budget exceeded"}
+    elif action["validation_error"] is not None:
+        expected_error = {"ok": False, "valid": False, "error": action["validation_error"]}
+    elif call["name"] == "ask_author":
+        if old_budget["consumed"].get("author_calls", 0) >= old_budget["limits"]["author_calls"]:
+            expected_error = {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
+        else:
+            raise ProjectionError("eligible ask_author was incorrectly drained as an error")
+    else:
+        expected_error = None
+    if expected_error is not None and record["observation"] != expected_error:
+        raise ProjectionError("tool error contradicts budget or syntax precedence")
     consumed = old_budget["consumed"]
     call_charge = int(consumed.get("tool_calls", 0) < old_budget["limits"]["tool_calls"])
     read_charge = 0
@@ -475,11 +485,27 @@ def project_writer_context(
     if base.state.instance_ref != target.state.instance_ref:
         raise ProjectionError("projection crosses graph instances")
     ancestor = target
+    checkpoint_ancestry = {target_checkpoint_id}
     while ancestor.identity() != base_checkpoint_id:
         if not ancestor.parents:
             raise ProjectionError("target checkpoint is not descended from projection base")
         ancestor = store.load_checkpoint(ancestor.parents[0])
+        checkpoint_ancestry.add(ancestor.identity())
     baseline = store.load_context(base.state.context_ref)
+    # The immutable node entry contract, not a replaceable state field, is the
+    # Phase 5 capability. Reject even a null/replaced packet in the entry.
+    from writing_agent.task_graph_contracts import NodeContractV1
+
+    instance = store.load_instance(base.state.instance_ref)
+    spec = next(
+        (node for node in instance.nodes if node.id == base.state.position["node_id"]), None
+    )
+    if spec is None:
+        raise ProjectionError("projection entry names an unknown node")
+    contract = NodeContractV1.from_dict(store.get_artifact(spec.entry_contract))
+    phase5 = contract.interaction_contract.mode == "scripted_author"
+    if phase5 and base.state.author_packet_ref != contract.interaction_contract.author_packet_ref:
+        raise ProjectionError("entry lacks its admitted author capability")
     messages = list(baseline.messages)
     if (
         len(messages) < 2
@@ -524,12 +550,24 @@ def project_writer_context(
     last_source = baseline.event_head
     latest_context_ref = base.state.context_ref
     state = base.state
-    call_sources: dict[str, tuple[str, dict]] = {}
+    call_sources: dict[str, tuple[str, dict, dict]] = {}
     seen_entries: list[dict] = []
+    reply_stage = None
     for event in events:
         effect = store.get_artifact(event.payload_ref, expected_domain="payload")
         before = state
         state = store._apply_recorded_effect_body(before, event, effect)
+        if phase5 and state.author_packet_ref != base.state.author_packet_ref:
+            raise ProjectionError("event replaced the admitted author capability")
+        if reply_stage in {"ack", "disclosure", "update", "turn"}:
+            expected = {
+                "ack": {"decision_disclosed"},
+                "disclosure": {"author_turn"},
+                "update": {"author_turn"},
+                "turn": {"context_changed"},
+            }[reply_stage]
+            if event.kind not in expected:
+                raise ProjectionError("author reply transaction is incomplete or reordered")
         writer_stop = _is_writer_stop(store, event, state)
         if event.kind in {"writer_action", "tool_result"} or writer_stop:
             if not (event.kind == "tool_result" and before.position["phase"] == "awaiting_author"):
@@ -542,6 +580,7 @@ def project_writer_context(
                 )
 
                 validate_author_request_effect(store, before, state, event, effect, entry)
+                reply_stage = "request"
             else:
                 from writing_agent.task_graph_checks import validate_check_batch_effect
 
@@ -558,10 +597,13 @@ def project_writer_context(
         if (
             event.kind in {"transition_committed", "termination_recorded", "external_response"}
             and before.author_packet_ref is not None
+            and not writer_stop
         ):
             entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
             record = store.get_artifact(entry["record_ref"])
             if record.get("record_type") == "ScriptCoverageFailureV1":
+                if event.kind != "termination_recorded":
+                    raise ProjectionError("coverage failure used the wrong event kind")
                 from writing_agent.task_graph_author_validation import (
                     validate_coverage_failure_effect,
                 )
@@ -574,6 +616,8 @@ def project_writer_context(
             seen_entries.append(entry)
             continue
         if event.kind == "tool_result" and before.position["phase"] == "awaiting_author":
+            if reply_stage != "request":
+                raise ProjectionError("author acknowledgement is out of order")
             from writing_agent.task_graph_author_validation import validate_author_ack_effect
 
             entry = _writer_log_entry(store, state, event, seen_entries, has_message=True)
@@ -587,8 +631,11 @@ def project_writer_context(
             result_ids.append(f"{event.rollout_id}:tool_result:{len(result_ids)}")
             seen_entries.append(entry)
             last_source = event.id
+            reply_stage = "ack"
             continue
         if event.kind == "decision_disclosed" and before.author_packet_ref is not None:
+            if reply_stage != "ack":
+                raise ProjectionError("decision disclosure lacks author acknowledgement")
             from writing_agent.task_graph_author_validation import (
                 validate_decision_disclosure_effect,
             )
@@ -596,8 +643,11 @@ def project_writer_context(
             entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
             validate_decision_disclosure_effect(store, before, state, event, effect, entry)
             seen_entries.append(entry)
+            reply_stage = "disclosure"
             continue
         if event.kind == "requirements_changed" and before.author_packet_ref is not None:
+            if reply_stage != "request":
+                raise ProjectionError("feedback update is out of order")
             from writing_agent.task_graph_author_validation import (
                 validate_requirement_update_effect,
             )
@@ -605,8 +655,22 @@ def project_writer_context(
             entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
             validate_requirement_update_effect(store, before, state, event, effect, entry)
             seen_entries.append(entry)
+            reply_stage = "update"
             continue
         if event.kind == "author_turn" and before.author_packet_ref is not None:
+            if before.continuation["author_request"] is None:
+                raise ProjectionError("author turn has no outstanding request")
+            request = store.get_artifact(before.continuation["author_request"], private=True)
+            required_stage = "disclosure" if request["source"] == "writer_request" else None
+            if request["source"] == "mandatory_feedback":
+                required_stage = "update" if reply_stage == "update" else "request"
+            if reply_stage != required_stage:
+                raise ProjectionError("author turn lacks complete preceding effects")
+            if request["source"] == "writer_request" and (
+                before.continuation["next_call"] != len(before.continuation["tool_queue"])
+                or pending
+            ):
+                raise ProjectionError("author turn cannot clear an undrained control call")
             from writing_agent.task_graph_author_validation import validate_author_turn_effect
 
             entry = _writer_log_entry(store, state, event, seen_entries, has_message=True)
@@ -617,6 +681,7 @@ def project_writer_context(
             messages.append(message)
             seen_entries.append(entry)
             last_source = event.id
+            reply_stage = "turn"
             continue
         if event.kind == "context_changed":
             if event.actor != "environment" or "writer" in event.audience:
@@ -627,6 +692,7 @@ def project_writer_context(
                 set(effect["set"]) != {"context_ref"}
                 or effect["history_set"]
                 or effect["file_delta"]
+                or state.context_ref == before.context_ref
                 or state.files != before.files
                 or state.budgets_ref != before.budgets_ref
                 or state.continuation != before.continuation
@@ -642,6 +708,8 @@ def project_writer_context(
                 or revision.messages != tuple(messages)
             ):
                 raise ProjectionError("context revision has false source-event provenance")
+            if reply_stage == "turn":
+                reply_stage = None
             continue
         if event.kind == "budget_charged" and writer_stop:
             entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
@@ -708,15 +776,18 @@ def project_writer_context(
                 or trace.get("raw_output_ref") != record["raw_output_ref"]
                 or not exceeded
                 or record["reason"] != f"{exceeded[0]}_budget"
+                or not isinstance(outcome, dict)
                 or outcome
-                != {
-                    "schema": 1,
-                    "task_status": "incomplete",
-                    "execution_status": "valid",
-                    "stop_reason": record["reason"],
-                    "reward_status": "pending",
-                    "training_eligibility": "pending",
-                }
+                != _writer_stop_outcome(
+                    before, outcome.get("candidate_checkpoint"), record["reason"], phase5=phase5
+                )
+                or (
+                    phase5
+                    and (
+                        outcome["candidate_checkpoint"] not in checkpoint_ancestry
+                        or store.load_checkpoint(outcome["candidate_checkpoint"]).state != before
+                    )
+                )
                 or new_budget != expected
                 or state.files != before.files
                 or state.context_ref != before.context_ref
@@ -745,15 +816,18 @@ def project_writer_context(
             )
             if (
                 not exhausted
+                or not isinstance(outcome, dict)
                 or outcome
-                != {
-                    "schema": 1,
-                    "task_status": "incomplete",
-                    "execution_status": "valid",
-                    "stop_reason": reason,
-                    "reward_status": "pending",
-                    "training_eligibility": "pending",
-                }
+                != _writer_stop_outcome(
+                    before, outcome.get("candidate_checkpoint"), reason, phase5=phase5
+                )
+                or (
+                    phase5
+                    and (
+                        outcome["candidate_checkpoint"] not in checkpoint_ancestry
+                        or store.load_checkpoint(outcome["candidate_checkpoint"]).state != before
+                    )
+                )
                 or event.actor != "writer_runtime"
                 or "writer" in event.audience
                 or record != {"record_type": "WriterExhaustedStopV1", "reason": reason}
@@ -768,6 +842,8 @@ def project_writer_context(
             seen_entries.append(entry)
             continue
         if event.kind not in {"writer_action", "tool_result"}:
+            if phase5:
+                raise ProjectionError("unsupported event in admitted Phase 5 lineage")
             if state.context_ref != before.context_ref:
                 raise ProjectionError("context revision was changed outside a context event")
             if state.files != before.files:
@@ -880,9 +956,16 @@ def project_writer_context(
             for index, part in enumerate(calls):
                 if part["id"] in seen_calls:
                     raise ProjectionError("duplicate logical call ID")
+                validation_error = record["calls"][index]["validation_error"]
+                if (queue[index]["name"] == "invalid_call") is not (validation_error is not None):
+                    raise ProjectionError("call validity contradicts its queued tool name")
                 seen_calls.add(part["id"])
                 pending.append(part["id"])
-                call_sources[part["id"]] = (record["action_id"], queue[index])
+                call_sources[part["id"]] = (
+                    record["action_id"],
+                    queue[index],
+                    record["calls"][index],
+                )
         else:
             if (
                 not isinstance(record, dict)
@@ -929,11 +1012,13 @@ def project_writer_context(
                 record,
                 message,
                 effect,
-                {"action_id": source[0]},
+                {"action_id": source[0], "validation_error": source[2]["validation_error"]},
             )
         messages.append(message)
         last_source = event.id
     expected_state = candidate_state if candidate_state is not None else target.state
+    if reply_stage in {"ack", "disclosure", "update", "turn"}:
+        raise ProjectionError("author reply transaction ended before its context publication")
     actual = store.load_context(expected_state.context_ref)
     if state != expected_state:
         raise ProjectionError("semantic history does not reconstruct target state")

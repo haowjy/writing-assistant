@@ -1,9 +1,11 @@
 """High-risk scripted-author boundary tests through the real commit store."""
 
+import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 from tests.test_task_graph_writer import WriterFixture
-from writing_agent.task_graph import ContextRevisionV1, EnvironmentStateV1
+from writing_agent.task_graph import ContextRevisionV1, EnvironmentStateV1, MessageV1
 from writing_agent.task_graph_admission import AdmissionError, StoreArtifactResolver, admit_graph
 from writing_agent.task_graph_author_validation import validate_author_request_effect
 from writing_agent.task_graph_checks import (
@@ -22,8 +24,8 @@ from writing_agent.task_graph_contracts import (
     RewardContractV1,
     ScriptedAuthorV1,
 )
-from writing_agent.task_graph_projection import ProjectionError
-from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
+from writing_agent.task_graph_projection import ProjectionError, project_writer_context
+from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1, _log
 from writing_agent.task_graph_terminal import ScriptedTerminalV1, validate_terminal_effect
 from writing_agent.task_graph_writer import (
     TransactionalWriterV1,
@@ -152,6 +154,316 @@ class ScriptedFixture(WriterFixture):
         self.author = ScriptedAuthorRuntimeV1(self.writer)
         self.checks = DeterministicChecksV1(self.writer)
         self.terminal = ScriptedTerminalV1(self.writer)
+
+    def test_phase5_fallback_events_and_replaced_anchors_reject_on_recovery(self):
+        state = self.runtime.state
+        head = self.store.read_head("rollout-1")
+        alternate = self.store.put_artifact({"forged": True})
+        private_alternate = self.writer.graph.node("legacy-writer").evaluator_packet.identity()
+        poisoned_requirements = self.store.put_artifact(
+            {
+                "record_type": "RequirementLedgerV1",
+                "schema": 1,
+                "active": {"r1": "AUTHOR UNILATERAL CHANGE"},
+                "superseded": {},
+            }
+        )
+        for kind in (
+            "rollout_started",
+            "request_entered",
+            "seed_attached",
+            "fetch_recorded",
+            "budget_charged",
+        ):
+            effect = self.writer._effect(state, changes={"requirements_ref": poisoned_requirements})
+            event = self.writer._event(
+                state,
+                kind,
+                self.store.put_artifact(effect),
+                actor="author",
+                audience=("controller",),
+            )
+            self.store.persist(event)
+            final = self.writer._reduced(state, event, effect)
+            with self.subTest(publication_kind=kind), self.assertRaises(ProjectionError):
+                self.store.publish("rollout-1", None, (event,), final, parent_checkpoint=self.start)
+            self.assertEqual(self.store.read_head("rollout-1"), head)
+            for field, value in (
+                ("requirements_ref", alternate),
+                ("decisions_ref", alternate),
+                ("disclosures_ref", alternate),
+                ("author_packet_ref", None),
+                ("author_packet_ref", private_alternate),
+                ("outcome_ref", alternate),
+                ("external_inputs_ref", alternate),
+                ("position", {**state.to_dict()["position"], "phase": "terminal"}),
+                ("continuation", {**state.to_dict()["continuation"], "feedback_cursor": 1}),
+            ):
+                with self.subTest(kind=kind, field=field, value=value):
+                    effect = self.writer._effect(state, changes={field: value})
+                    effect_ref = self.store.put_artifact(effect)
+                    event = self.writer._event(
+                        state, kind, effect_ref, actor="author", audience=("controller",)
+                    )
+                    self.store.persist(event)
+                    final = self.writer._reduced(state, event, effect)
+                    with self.assertRaises(ProjectionError):
+                        project_writer_context(
+                            self.store,
+                            self.start,
+                            self.start,
+                            candidate_events=(event,),
+                            candidate_state=final,
+                        )
+                    candidate = self.store.save_checkpoint(final, parent=self.start)
+                    with self.assertRaises(ProjectionError):
+                        self.store.restore(candidate, self.root / f"forged-{kind}-{field}")
+                    self.assertEqual(self.store.read_head("rollout-1"), head)
+
+    def test_public_schema_vocabulary_cannot_project_private_canaries(self):
+        node = self.writer.graph.node("legacy-writer")
+        secret = node.author_packet.requirements["r1"]
+        projected = project_writer_context(self.store, self.start, self.start)
+        self.assertNotIn(secret, str(projected.tools))
+        for public_id, label, packet in (
+            (secret, "safe label", node.author_packet),
+            ("door", secret, node.author_packet),
+            ("door", "safe\nbad", node.author_packet),
+            (
+                "HiddenCanary7",
+                "safe label",
+                replace(node.author_packet, requirements={"r1": "HiddenCanary7"}),
+            ),
+        ):
+            with self.subTest(public_id=public_id, label=label):
+                self.store.put_artifact(packet.to_dict(), private=True)
+                policy = replace(
+                    node.interaction_policy,
+                    public_decisions=({"id": public_id, "label": label},),
+                )
+                self.store.put_artifact(policy.to_dict())
+                script = ScriptedAuthorV1(answers={public_id: node.script.answers["door"]})
+                self.store.put_artifact(script.to_dict(), private=True)
+                bindings = DecisionBindingsV1(bindings={public_id: "hidden-choice"})
+                self.store.put_artifact(bindings.to_dict(), private=True)
+                contract = replace(
+                    node.contract,
+                    interaction=replace(
+                        node.contract.interaction_contract,
+                        script_ref=script.identity(),
+                        author_packet_ref=packet.identity(),
+                        interaction_policy_ref=policy.identity(),
+                        decision_bindings_ref=bindings.identity(),
+                    ),
+                )
+                self.store.put_artifact(contract.to_dict())
+                instance = replace(
+                    self.writer.graph.instance,
+                    nodes=(replace(node.spec, entry_contract=contract.identity()),),
+                )
+                self.store.persist(instance)
+                with self.assertRaises(AdmissionError) as raised:
+                    admit_graph(instance, StoreArtifactResolver(self.store))
+                self.assertEqual(raised.exception.code, "visibility")
+
+    def test_progress_only_reward_is_rejected_at_admission(self):
+        node = self.writer.graph.node("legacy-writer")
+        check = node.checks["nonempty"]
+        progress = replace(
+            check,
+            id="progress",
+            required=False,
+            applicability="before_feedback:f1",
+            spec={**check.spec, "id": "progress", "required": False},
+        )
+        reward = RewardContractV1(components={"progress": 10000})
+        evaluation = EvaluatorPacketV1(
+            reward_contract_ref=reward.identity(), check_ids=("nonempty", "progress")
+        )
+        script = ScriptedAuthorV1(
+            answers=node.script.answers,
+            feedback=(
+                {
+                    "id": "f1",
+                    "utterance": "Please revise.",
+                    "prerequisite_check_ids": ["progress"],
+                    "requirement_update_ref": None,
+                },
+            ),
+        )
+        policy = replace(node.interaction_policy, mandatory_feedback=("f1",))
+        for item in (progress, reward, evaluation, script):
+            self.store.put_artifact(item.to_dict(), private=True)
+        self.store.put_artifact(policy.to_dict())
+        contract = replace(
+            node.contract,
+            optional_checks=(progress.identity(),),
+            completion=replace(
+                node.contract.completion_contract, evaluation_packet_ref=evaluation.identity()
+            ),
+            interaction=replace(
+                node.contract.interaction_contract,
+                script_ref=script.identity(),
+                interaction_policy_ref=policy.identity(),
+                mandatory_feedback=("f1",),
+            ),
+        )
+        self.store.put_artifact(contract.to_dict())
+        instance = replace(
+            self.writer.graph.instance,
+            nodes=(replace(node.spec, entry_contract=contract.identity()),),
+        )
+        self.store.persist(instance)
+        with self.assertRaises(AdmissionError) as raised:
+            admit_graph(instance, StoreArtifactResolver(self.store))
+        self.assertEqual(raised.exception.code, "reward_coverage")
+
+    def test_author_reply_requires_ack_and_complete_atomic_context(self):
+        ask = self.call(
+            "ask_author",
+            {"question": "Which?", "decision_ids": ["door"], "proposals": [], "option_refs": []},
+        )
+        action = self.writer.submit_action(self.runtime, self.action(ask))
+        request = self.writer.step_tool(action.runtime)
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["events"] = args[2]
+            raise RuntimeError("capture before publication")
+
+        with patch.object(self.store, "publish", side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, "capture before publication"):
+                self.author.reply(request.runtime)
+        events = captured["events"]
+        state = request.runtime.state
+        for length in (1, 2, 3):
+            current = state
+            for event in events[:length]:
+                current = self.store._apply_recorded_effect_body(
+                    current, event, self.store.get_artifact(event.payload_ref)
+                )
+            with self.subTest(split_at=length), self.assertRaises(ProjectionError):
+                project_writer_context(
+                    self.store,
+                    self.start,
+                    request.runtime.checkpoint_id,
+                    candidate_events=events[:length],
+                    candidate_state=current,
+                )
+            checkpoint = self.store.save_checkpoint(current, parent=request.runtime.checkpoint_id)
+            with self.subTest(recovery_split_at=length), self.assertRaises(ProjectionError):
+                self.store.restore(checkpoint, self.root / f"split-{length}")
+        current = state
+        rebuilt = []
+        for old in events:
+            if old.kind not in {"decision_disclosed", "author_turn"}:
+                continue
+            old_effect = self.store.get_artifact(old.payload_ref)
+            entry = self.store.get_artifact(old_effect["set"]["external_inputs_ref"])["entries"][-1]
+            changes = {k: v for k, v in old_effect["set"].items() if k != "external_inputs_ref"}
+            if old.kind == "author_turn":
+                changes["continuation"] = current.to_dict()["continuation"]
+                changes["continuation"]["author_request"] = None
+                message = MessageV1.from_dict(self.store.get_artifact(entry["message_ref"]))
+            changes["external_inputs_ref"] = _log(
+                self.writer, current, old.kind, entry["record_ref"], entry.get("message_ref")
+            )
+            effect = self.writer._effect(current, changes=changes)
+            event = self.writer._event(
+                current,
+                old.kind,
+                self.store.put_artifact(effect),
+                actor=old.actor,
+                audience=old.audience,
+            )
+            self.store.persist(event)
+            rebuilt.append(event)
+            current = self.writer._reduced(current, event, effect)
+        context = ContextRevisionV1(
+            messages=(*request.runtime.context.messages, message),
+            tools=request.runtime.context.tools,
+            event_head=rebuilt[-1].id,
+            provenance_refs=(rebuilt[-1].id,),
+            rendering=request.runtime.context.rendering,
+        )
+        self.store.persist(context)
+        effect = self.writer._effect(current, changes={"context_ref": context.identity()})
+        event = self.writer._event(
+            current,
+            "context_changed",
+            self.store.put_artifact(effect),
+            actor="environment",
+            audience=("controller", "trainer"),
+        )
+        self.store.persist(event)
+        rebuilt.append(event)
+        current = self.writer._reduced(current, event, effect)
+        with self.assertRaises(ProjectionError):
+            project_writer_context(
+                self.store,
+                self.start,
+                request.runtime.checkpoint_id,
+                candidate_events=tuple(rebuilt),
+                candidate_state=current,
+            )
+        checkpoint = self.store.save_checkpoint(current, parent=request.runtime.checkpoint_id)
+        with self.assertRaises(ProjectionError):
+            self.store.restore(checkpoint, self.root / "ackless")
+        self.assertEqual(self.store.read_head("rollout-1"), request.commit_id)
+
+        def repeat_effect(old, before):
+            original = self.store.get_artifact(old.payload_ref)
+            entry = self.store.get_artifact(original["set"]["external_inputs_ref"])["entries"][-1]
+            changes = {k: v for k, v in original["set"].items() if k != "external_inputs_ref"}
+            changes["external_inputs_ref"] = _log(
+                self.writer, before, old.kind, entry["record_ref"], entry.get("message_ref")
+            )
+            effect = self.writer._effect(before, changes=changes, history=original["history_set"])
+            event = self.writer._event(
+                before,
+                old.kind,
+                self.store.put_artifact(effect),
+                actor=old.actor,
+                audience=old.audience,
+            )
+            self.store.persist(event)
+            return event, self.writer._reduced(before, event, effect)
+
+        ack_state = self.store._apply_recorded_effect_body(
+            state, events[0], self.store.get_artifact(events[0].payload_ref)
+        )
+        for name, prefix, before, source in (
+            ("reordered-disclosure", (), state, events[1]),
+            ("duplicate-ack", (events[0],), ack_state, events[0]),
+        ):
+            mutant, final = repeat_effect(source, before)
+            with self.subTest(name=name), self.assertRaises(ProjectionError):
+                project_writer_context(
+                    self.store,
+                    self.start,
+                    request.runtime.checkpoint_id,
+                    candidate_events=(*prefix, mutant),
+                    candidate_state=final,
+                )
+            checkpoint = self.store.save_checkpoint(final, parent=request.runtime.checkpoint_id)
+            with self.subTest(recovery=name), self.assertRaises(ProjectionError):
+                self.store.restore(checkpoint, self.root / name)
+            self.assertEqual(self.store.read_head("rollout-1"), request.commit_id)
+
+        replied = self.author.reply(request.runtime)
+        mutant, final = repeat_effect(events[2], replied.runtime.state)
+        with self.assertRaises(ProjectionError):
+            project_writer_context(
+                self.store,
+                self.start,
+                replied.runtime.checkpoint_id,
+                candidate_events=(mutant,),
+                candidate_state=final,
+            )
+        checkpoint = self.store.save_checkpoint(final, parent=replied.runtime.checkpoint_id)
+        with self.assertRaises(ProjectionError):
+            self.store.restore(checkpoint, self.root / "duplicate-author-turn")
+        self.assertEqual(self.store.read_head("rollout-1"), replied.commit_id)
 
     def test_request_reply_replays_without_author_provider(self):
         ask = self.call(
@@ -765,3 +1077,163 @@ class ScriptedFixture(WriterFixture):
             ),
             reward.runtime.checkpoint_id,
         )
+
+
+class AskAuthorBudgetMatrix(unittest.TestCase):
+    def test_tool_author_and_syntax_precedence_in_production_and_recovery(self):
+        for tool_remaining in (True, False):
+            for author_remaining in (True, False):
+                for valid in (True, False):
+                    with self.subTest(
+                        tool_remaining=tool_remaining,
+                        author_remaining=author_remaining,
+                        valid=valid,
+                    ):
+                        fixture = ScriptedFixture()
+                        fixture.setUp()
+                        try:
+                            state = fixture.runtime.state.to_dict()
+                            budget = fixture.store.get_artifact(state["budgets_ref"])
+                            if not tool_remaining:
+                                budget["consumed"]["tool_calls"] = budget["limits"]["tool_calls"]
+                            if not author_remaining:
+                                budget["consumed"]["author_calls"] = budget["limits"][
+                                    "author_calls"
+                                ]
+                            state["budgets_ref"] = fixture.store.put_artifact(budget)
+                            start = fixture.store.save_checkpoint(
+                                EnvironmentStateV1.from_dict(state)
+                            )
+                            runtime = fixture.store.restore(start, fixture.root / "matrix-entry")
+                            writer = TransactionalWriterV1(
+                                fixture.store, fixture.writer.graph, "rollout-1", start
+                            )
+                            author = ScriptedAuthorRuntimeV1(writer)
+                            ask = fixture.call(
+                                "ask_author",
+                                {
+                                    "question": "Which?",
+                                    "decision_ids": ["door" if valid else "unknown"],
+                                    "proposals": [],
+                                    "option_refs": [],
+                                },
+                            )
+                            action = writer.submit_action(runtime, fixture.action(ask))
+                            result = writer.step_tool(action.runtime)
+                            commits = [action.commit_id, result.commit_id]
+                            if tool_remaining and author_remaining and valid:
+                                self.assertEqual(
+                                    result.runtime.state.position["phase"], "awaiting_author"
+                                )
+                                result = author.reply(result.runtime)
+                                commits.append(result.commit_id)
+                                self.assertEqual(result.runtime.state.continuation["next_call"], 1)
+                            else:
+                                observation = result.runtime.context.messages[-1].content[0][
+                                    "content"
+                                ]
+                                expected = (
+                                    "Tool-call budget exceeded"
+                                    if not tool_remaining
+                                    else "undeclared decision"
+                                    if not valid
+                                    else "Author-call budget exceeded"
+                                )
+                                self.assertIn(expected, observation["error"])
+                                self.assertEqual(result.runtime.state.continuation["next_call"], 1)
+                            consumed = fixture.store.get_artifact(result.runtime.state.budgets_ref)[
+                                "consumed"
+                            ]
+                            self.assertEqual(consumed["attempted_tool_calls"], 1)
+                            self.assertEqual(
+                                consumed["tool_calls"],
+                                budget["consumed"].get("tool_calls", 0) + int(tool_remaining),
+                            )
+                            self.assertEqual(
+                                fixture.store.replay("rollout-1", start, commits),
+                                result.runtime.checkpoint_id,
+                            )
+                        finally:
+                            fixture.doCleanups()
+
+
+class WriterBudgetLifecycleMatrix(unittest.TestCase):
+    def test_every_exhaustion_has_typed_reward_and_offline_replay(self):
+        for scenario in ("first", "last_tool", "post_author", "generated", "total"):
+            with self.subTest(scenario=scenario):
+                fixture = ScriptedFixture()
+                fixture.setUp()
+                try:
+                    state = fixture.runtime.state.to_dict()
+                    budget = fixture.store.get_artifact(state["budgets_ref"])
+                    if scenario == "first":
+                        budget["consumed"]["writer_turns"] = budget["limits"]["writer_turns"]
+                    elif scenario in {"post_author", "generated", "total"}:
+                        budget["limits"][
+                            "total_tokens" if scenario == "total" else "generated_tokens"
+                        ] = 1
+                    state["budgets_ref"] = fixture.store.put_artifact(budget)
+                    start = fixture.store.save_checkpoint(EnvironmentStateV1.from_dict(state))
+                    runtime = fixture.store.restore(start, fixture.root / "exhaustion-entry")
+                    writer = TransactionalWriterV1(
+                        fixture.store, fixture.writer.graph, "rollout-1", start
+                    )
+                    author = ScriptedAuthorRuntimeV1(writer)
+                    terminal = ScriptedTerminalV1(writer)
+                    commits = []
+                    if scenario == "first":
+                        stopped = writer.stop_exhausted(runtime)
+                    elif scenario == "last_tool":
+                        for index in range(budget["limits"]["writer_turns"]):
+                            action = writer.submit_action(
+                                runtime,
+                                fixture.action(fixture.call("list_dir", {}, f"list-{index}")),
+                            )
+                            result = writer.step_tool(action.runtime)
+                            commits.extend((action.commit_id, result.commit_id))
+                            runtime = result.runtime
+                        stopped = writer.stop_exhausted(runtime)
+                    elif scenario == "post_author":
+                        ask = fixture.call(
+                            "ask_author",
+                            {
+                                "question": "Which?",
+                                "decision_ids": ["door"],
+                                "proposals": [],
+                                "option_refs": [],
+                            },
+                        )
+                        action = writer.submit_action(
+                            runtime, fixture.action(ask), usage={"completion_tokens": 1}
+                        )
+                        request = writer.step_tool(action.runtime)
+                        reply = author.reply(request.runtime)
+                        commits.extend((action.commit_id, request.commit_id, reply.commit_id))
+                        runtime = reply.runtime
+                        stopped = writer.stop_exhausted(runtime)
+                    else:
+                        stopped = writer.submit_action(
+                            runtime,
+                            fixture.action(content="over budget"),
+                            usage={"prompt_tokens": 2, "completion_tokens": 2, "total_tokens": 4},
+                        )
+                    rewarded = terminal.reward(stopped.runtime)
+                    outcome = fixture.store.get_artifact(stopped.runtime.state.outcome_ref)
+                    availability = fixture.store.get_artifact(rewarded.runtime.state.outcome_ref)
+                    reward = fixture.store.get_artifact(availability["reward_ref"])
+                    self.assertEqual(outcome["record_type"], "TerminalOutcomeV1")
+                    self.assertEqual(outcome["candidate_checkpoint"], runtime.checkpoint_id)
+                    self.assertEqual(outcome["task_status"], "incomplete")
+                    self.assertEqual(
+                        reward["numerator"],
+                        writer.graph.node("legacy-writer").reward_contract.incomplete_score,
+                    )
+                    self.assertEqual(availability["reward_status"], "available")
+                    self.assertEqual(
+                        fixture.store.replay(
+                            "rollout-1", start, (*commits, stopped.commit_id, rewarded.commit_id)
+                        ),
+                        rewarded.runtime.checkpoint_id,
+                    )
+                finally:
+                    fixture.doCleanups()

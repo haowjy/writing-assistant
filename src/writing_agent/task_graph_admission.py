@@ -8,6 +8,7 @@ wire identities, while this module decides whether those values are runnable.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -305,6 +306,13 @@ def admit_graph(
                 raise AdmissionError("evaluator_coverage", "evaluator packet check IDs differ")
             if set(reward_contract.components) - set(checks):
                 raise AdmissionError("reward_coverage", "reward names undeclared checks")
+            if any(
+                checks[check_id].applicability not in {"each_turn", "node_exit_candidate"}
+                for check_id in reward_contract.components
+            ):
+                raise AdmissionError(
+                    "reward_coverage", "reward component lacks terminal check evidence"
+                )
         edges, guards = _validate_edges(resolver, spec, specs, edge_ids)
         if interaction.mode == "scripted_author" and any(
             edge.effect != "terminate" for edge in edges
@@ -518,17 +526,27 @@ def _validate_scripted_author(
         raise AdmissionError("script_coverage", f"node {spec.id} needs exact decision coverage")
     if set(bindings.bindings.values()) - set(packet.preferences):
         raise AdmissionError("script_coverage", "decision binding names missing author preference")
-    public_labels = "\n".join(item["label"] for item in policy.public_decisions)
+    public_values = [value for item in policy.public_decisions for value in item.values()]
     if any(
-        private_text in public_labels
-        for private_text in (
-            *packet.preferences.values(),
-            *packet.requirements.values(),
-            *(rule["utterance"] for rule in script.answers.values()),
-            *(rule["utterance"] for rule in script.feedback),
-        )
+        re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", item["id"]) is None
+        for item in policy.public_decisions
     ):
-        raise AdmissionError("visibility", "public decision label contains private author text")
+        raise AdmissionError("visibility", "public decision ID must use bounded safe syntax")
+    if any(
+        len(item["label"]) > 256
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in item["label"])
+        for item in policy.public_decisions
+    ):
+        raise AdmissionError("visibility", "public decision label must be bounded printable text")
+    private_values = [
+        *packet.preferences.keys(),
+        *packet.preferences.values(),
+        *packet.requirements.keys(),
+        *packet.requirements.values(),
+        *(rule["utterance"] for rule in script.answers.values()),
+        *(rule["value"] for rule in script.answers.values()),
+        *(rule["utterance"] for rule in script.feedback),
+    ]
     if tuple(rule["id"] for rule in script.feedback) != policy.mandatory_feedback or (
         policy.mandatory_feedback != interaction.mandatory_feedback
     ):
@@ -556,6 +574,8 @@ def _validate_scripted_author(
         update_ref = feedback["requirement_update_ref"]
         if update_ref is not None:
             update = _contract(resolver, update_ref, RequirementUpdateV1, private=True)
+            private_values.append(update.id)
+            private_values.append(update.replacement)
             if (
                 update.supersedes not in packet.requirements
                 or update.supersedes in superseded_ids
@@ -565,6 +585,14 @@ def _validate_scripted_author(
                 raise AdmissionError("requirement_update", "unauthorized superseded requirement")
             superseded_ids.add(update.supersedes)
             replacement_ids.add(update.id)
+    if any(
+        private_text and private_text in public
+        for public in public_values
+        for private_text in private_values
+    ):
+        raise AdmissionError(
+            "visibility", "public decision vocabulary contains private author text"
+        )
     return packet, policy, bindings
 
 

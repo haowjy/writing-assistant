@@ -98,8 +98,8 @@ compiler. Admission resolves role-typed private author/evaluator packets, the pu
 decision policy, exact private script, check programs and reward weights before a
 writer turn. An `ask_author` action is committed before its private request; a
 replayed/restored outstanding request produces the same author reply without a
-provider call. Request and reply boundaries are durable; only explicit author
-utterances and public decisions enter writer context. Final writer turns freeze an
+provider call. Request and reply boundaries are durable; only the paired tool
+acknowledgement and explicit author utterance enter writer context. Final writer turns freeze an
 immutable candidate before deterministic file checks. Check results name that
 candidate, admitted check and evaluator packet, requirement version and recomputed
 evidence. Environment transition and terminal outcome records remain separate from
@@ -109,6 +109,20 @@ staged events before publication and on restore/replay. The evaluator cannot edi
 files or the terminal task/execution status; reward arithmetic is exact integer
 normalization. Model-backed author, semantic judge, compaction and native on-policy
 eligibility are not implemented.
+
+The immutable admitted entry contract, not a child state field or runtime log,
+anchors Phase 5 semantic recovery. Its event dispatch is closed; other generic
+event kinds reject before publication and on restore. A writer-request reply
+commits its exact acknowledgement, disclosure, author turn and final context
+together, with a drained cursor before the request clears. Admission screens
+public decision IDs and labels as disclosure surfaces and allows only bounded
+ASCII IDs. Exact-byte canaries are a guard, not semantic secrecy. Tool and
+author eligibility is decided before dispatch: tool exhaustion wins, then
+malformed syntax, then author exhaustion. Attempted calls charge once; an
+exhausted tool counter never authorizes an acknowledgement. Terminal reward
+components must have terminal check scope. Writer turn and measured token
+exhaustion in this slice produce typed incomplete outcomes with a frozen
+checkpoint and declared reward availability, not legacy untyped stops.
 
 The graph writer uses a separate tool dispatch boundary so expected writer-operational
 path/patch/policy failures can be observed without converting disk, permission or

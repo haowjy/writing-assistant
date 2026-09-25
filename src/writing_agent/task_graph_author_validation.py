@@ -93,6 +93,12 @@ def validate_author_request_effect(store, before, after, event, effect, entry) -
         interaction_policy = policy
 
     if request["source"] == "writer_request":
+        request_budget = store.get_artifact(before.budgets_ref)
+        if (
+            request_budget["consumed"].get("tool_calls", 0)
+            >= request_budget["limits"]["tool_calls"]
+        ):
+            raise ProjectionError("author request exceeded tool-call budget")
         try:
             validate_ask_semantics(
                 request["arguments"], _Node(), store.get_artifact(before.decisions_ref)
@@ -105,6 +111,8 @@ def validate_author_request_effect(store, before, after, event, effect, entry) -
         queue = before.continuation["tool_queue"]
         if (
             before.position["phase"] != "ready_writer"
+            or len(queue) != 1
+            or cursor != 0
             or cursor >= len(queue)
             or canonical_json(queue[cursor])
             != canonical_json(
@@ -202,9 +210,9 @@ def validate_author_ack_effect(store, before, after, event, effect, entry, messa
     expected_budget = json.loads(canonical_json(old_budget))
     consumed = expected_budget["consumed"]
     consumed["attempted_tool_calls"] = consumed.get("attempted_tool_calls", 0) + 1
-    consumed["tool_calls"] = min(
-        consumed.get("tool_calls", 0) + 1, expected_budget["limits"]["tool_calls"]
-    )
+    if consumed.get("tool_calls", 0) >= expected_budget["limits"]["tool_calls"]:
+        raise ProjectionError("author acknowledgement exceeded tool-call budget")
+    consumed["tool_calls"] = consumed.get("tool_calls", 0) + 1
     continuation = before.to_dict()["continuation"]
     continuation["next_call"] += 1
     if (

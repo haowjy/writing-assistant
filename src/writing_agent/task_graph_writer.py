@@ -229,6 +229,7 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("entry must be an admitted, unsampled ready-writer checkpoint")
         node = graph.node(entry.state.position["node_id"])
+        self.phase5 = node.contract.interaction_contract.mode == "scripted_author"
         if node.contract.interaction_contract.mode == "scripted_author":
             if (
                 entry.state.author_packet_ref
@@ -965,16 +966,23 @@ class TransactionalWriterV1:
         )
         consumed["total_tokens"] = consumed.get("total_tokens", 0) + total_usage
         budget_ref = self.store.put_artifact(next_budget)
-        outcome_ref = self.store.put_artifact(
-            {
-                "schema": 1,
-                "task_status": "incomplete",
-                "execution_status": "valid",
-                "stop_reason": f"{exceeded}_budget",
-                "reward_status": "pending",
-                "training_eligibility": "pending",
-            }
-        )
+        outcome = {
+            "schema": 1,
+            "task_status": "incomplete",
+            "execution_status": "valid",
+            "stop_reason": f"{exceeded}_budget",
+            "reward_status": "pending",
+            "training_eligibility": "pending",
+        }
+        if self.phase5:
+            outcome.update(
+                record_type="TerminalOutcomeV1",
+                candidate_checkpoint=runtime.checkpoint_id,
+                check_result_refs=[],
+                transition_edge_id=None,
+                requirement_version=state.requirements_ref,
+            )
+        outcome_ref = self.store.put_artifact(outcome)
         record_ref = self.store.put_artifact(
             {
                 "record_type": "WriterSampledBudgetStopV1",
@@ -1086,6 +1094,7 @@ class TransactionalWriterV1:
         if (
             call["name"] == "ask_author"
             and metadata["validation_error"] is None
+            and budget["consumed"].get("tool_calls", 0) < budget["limits"]["tool_calls"]
             and not author_exhausted
         ):
             from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
@@ -1148,8 +1157,8 @@ class TransactionalWriterV1:
         next_budget = json.loads(canonical_json(budget))
         consumed = next_budget["consumed"]
         consumed["attempted_tool_calls"] = consumed.get("attempted_tool_calls", 0) + 1
-        consumed["tool_calls"] = min(
-            consumed.get("tool_calls", 0) + 1, budget["limits"]["tool_calls"]
+        consumed["tool_calls"] = consumed.get("tool_calls", 0) + int(
+            consumed.get("tool_calls", 0) < budget["limits"]["tool_calls"]
         )
         consumed["read_tokens"] = consumed.get("read_tokens", 0) + read_charge
         consumed["storage_bytes"] = after_bytes
@@ -1262,6 +1271,14 @@ class TransactionalWriterV1:
             "reward_status": "pending",
             "training_eligibility": "pending",
         }
+        if self.phase5:
+            outcome.update(
+                record_type="TerminalOutcomeV1",
+                candidate_checkpoint=runtime.checkpoint_id,
+                check_result_refs=[],
+                transition_edge_id=None,
+                requirement_version=state.requirements_ref,
+            )
         outcome_ref = self.store.put_artifact(outcome)
         record_ref = self.store.put_artifact(
             {"record_type": "WriterExhaustedStopV1", "reason": outcome["stop_reason"]}
