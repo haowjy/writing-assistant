@@ -23,6 +23,7 @@ _DOMAINS = {
     "state": b"task-graph:state:v1\0",
     "event": b"task-graph:event:v1\0",
     "context": b"task-graph:context:v1\0",
+    "context_content": b"task-graph:context-content:v1\0",
     "checkpoint": b"task-graph:checkpoint:v1\0",
     "commit": b"task-graph:commit:v1\0",
     "instance": b"task-graph:instance:v1\0",
@@ -558,7 +559,7 @@ class ContextContentV1(_Record):
     template_ref: str = "0" * 64
     tokenizer_ref: str = "0" * 64
     tool_schema_ref: str = "0" * 64
-    DOMAIN: ClassVar[str] = "context"
+    DOMAIN: ClassVar[str] = "context_content"
 
     @classmethod
     def from_revision(cls, revision: ContextRevisionV1) -> ContextContentV1:
