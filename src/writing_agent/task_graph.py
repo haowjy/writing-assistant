@@ -576,7 +576,7 @@ class EventV1(_Record):
         _logical_id(self.lineage_id, "event lineage_id")
         if self.kind not in EVENT_KINDS:
             raise ValueError("unknown event kind")
-        if self.actor not in {"writer", "author", "environment", "evaluator"}:
+        if self.actor not in {"writer", "author", "environment", "evaluator", "writer_runtime"}:
             raise ValueError("invalid event actor")
         for value, label in (
             (self.rollout_id, "rollout_id"),

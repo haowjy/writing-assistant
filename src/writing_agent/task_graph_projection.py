@@ -11,6 +11,8 @@ from collections.abc import Mapping
 
 from writing_agent.task_graph import (
     ContextRevisionV1,
+    EnvironmentStateV1,
+    EventV1,
     MessageV1,
     canonical_json,
     context_content_hash,
@@ -99,10 +101,10 @@ _TRACE_FIELDS = {
 
 
 def validate_writer_effect(before, after, event, effect, *, store=None) -> None:
-    """Enforce the complete Phase 4 field-ownership and phase boundary.
+    """Enforce Phase 4 field ownership and phase boundaries.
 
     The generic Phase 2 reducer intentionally does not know event authority. This
-    check is used both before publication and while projecting restored history.
+    check is one part of the shared history-aware projection contract.
     """
     allowed_set, allowed_history = _WRITER_EFFECT_FIELDS[event.kind]
     if set(effect["set"]) != allowed_set or set(effect["history_set"]) != allowed_history:
@@ -240,7 +242,9 @@ def validate_action_trace(
         "model": record["model"],
         "seed": record["seed"],
     }
-    if any(trace.get(key) != value for key, value in claims.items()):
+    if record["action_id"] != action_id or any(
+        trace.get(key) != value for key, value in claims.items()
+    ):
         raise ProjectionError("writer trace contradicts its action")
     for key in ("request_ref", "raw_output_ref"):
         if record[key] is not None:
@@ -250,9 +254,13 @@ def validate_action_trace(
     if canonical_json(trace.get("rendering")) != canonical_json(rendering):
         raise ProjectionError("writer trace rendering differs from context")
     adapter = trace.get("adapter_trace")
+    if adapter is None and trace["logprob_ref"] is not None:
+        raise ProjectionError("adapter trace lost its logprob reference")
     if adapter is not None and (
         not isinstance(adapter, dict)
         or any(key in adapter and adapter[key] != trace[key] for key in ("model", "seed", "usage"))
+        or adapter.get("per_token_logprobs_ref") != trace["logprob_ref"]
+        or ("per_token_logprobs_ref" in adapter) != (trace["logprob_ref"] is not None)
         or "native_on_policy_eligible" in adapter
     ):
         raise ProjectionError("adapter trace contradicts sampling claims")
@@ -395,16 +403,65 @@ def execution_value(store, state, context, budget) -> str:
     )
 
 
+def _is_writer_stop(store: TaskGraphStore, event: EventV1, state: EnvironmentStateV1) -> bool:
+    if event.kind not in {"budget_charged", "termination_recorded"}:
+        return False
+    # The source actor makes a first stop recognizable even if its log is lost.
+    # A forged actor alone cannot turn an indexed stop into a generic event.
+    # An unrelated Phase 2 budget event may still carry an older log.
+    if event.actor == "writer_runtime":
+        return True
+    log = store.get_artifact(state.external_inputs_ref, expected_domain="payload")
+    return (
+        isinstance(log, dict)
+        and log.get("record_type") == "WriterRuntimeLogV1"
+        and log.get("rollout_id") == event.rollout_id
+        and isinstance(log.get("entries"), list)
+        and bool(log["entries"])
+        and isinstance(log["entries"][-1], dict)
+        and log["entries"][-1].get("seq") == event.seq
+        and log["entries"][-1].get("kind") == event.kind
+    )
+
+
+def _writer_log_entry(store, state, event, seen_entries, *, has_message):
+    log = store.get_artifact(state.external_inputs_ref, expected_domain="payload")
+    keys = (
+        {"seq", "kind", "record_ref", "message_ref"}
+        if has_message
+        else {"seq", "kind", "record_ref"}
+    )
+    if (
+        not isinstance(log, dict)
+        or set(log) != {"record_type", "rollout_id", "entries"}
+        or log["record_type"] != "WriterRuntimeLogV1"
+        or log["rollout_id"] != event.rollout_id
+        or not isinstance(log["entries"], list)
+        or len(log["entries"]) != len(seen_entries) + 1
+        or log["entries"][:-1] != seen_entries
+        or not isinstance(log["entries"][-1], dict)
+        or set(log["entries"][-1]) != keys
+        or log["entries"][-1]["seq"] != event.seq
+        or log["entries"][-1]["kind"] != event.kind
+    ):
+        raise ProjectionError("writer event lacks its exact runtime-log entry")
+    return log["entries"][-1]
+
+
 def project_writer_context(
     store: TaskGraphStore,
     base_checkpoint_id: str,
     target_checkpoint_id: str,
+    *,
+    candidate_events: tuple[EventV1, ...] = (),
+    candidate_state: EnvironmentStateV1 | None = None,
 ) -> ContextRevisionV1:
     """Rebuild the exact active writer messages from one admitted entry and suffix.
 
     The baseline is trusted only as an admitted seed/request projection and is
     always zero-mask. No file tree, private packet, check, reward, sibling event,
-    or environment payload is copied into messages.
+    or environment payload is copied into messages. Candidate events/state use this
+    identical walk before the producer publishes a new head.
     """
     base = store.load_checkpoint(base_checkpoint_id)
     target = store.load_checkpoint(target_checkpoint_id)
@@ -451,6 +508,12 @@ def project_writer_context(
         events.append(event)
         cursor = event.previous
     events.reverse()
+    if candidate_events:
+        if candidate_state is None:
+            raise ProjectionError("candidate events require a proposed final state")
+        events.extend(candidate_events)
+    elif candidate_state is not None:
+        raise ProjectionError("candidate state requires proposed events")
     last_source = baseline.event_head
     latest_context_ref = base.state.context_ref
     state = base.state
@@ -460,7 +523,8 @@ def project_writer_context(
         effect = store.get_artifact(event.payload_ref, expected_domain="payload")
         before = state
         state = store._apply_recorded_effect_body(before, event, effect)
-        if event.kind in _WRITER_EFFECT_FIELDS:
+        writer_stop = _is_writer_stop(store, event, state)
+        if event.kind in {"writer_action", "tool_result"} or writer_stop:
             validate_writer_effect(before, state, event, effect, store=store)
         if event.kind == "context_changed":
             if event.actor != "environment" or "writer" in event.audience:
@@ -487,14 +551,15 @@ def project_writer_context(
             ):
                 raise ProjectionError("context revision has false source-event provenance")
             continue
-        if event.kind == "budget_charged":
-            log = store.get_artifact(state.external_inputs_ref, expected_domain="payload")
-            if not isinstance(log, dict) or log.get("record_type") != "WriterRuntimeLogV1":
-                if seen_entries:
-                    raise ProjectionError("writer budget event lost its runtime log")
-                continue
-            entry = log["entries"][-1]
+        if event.kind == "budget_charged" and writer_stop:
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
             record = store.get_artifact(entry["record_ref"], expected_domain="payload")
+            if (
+                not isinstance(record, dict)
+                or set(record) != _STOP_RECORD_FIELDS
+                or record.get("record_type") != "WriterSampledBudgetStopV1"
+            ):
+                raise ProjectionError("sampled stop log names an invalid record")
             trace = store.get_artifact(record["trace_ref"], expected_domain="payload")
             validate_action_trace(
                 store,
@@ -539,13 +604,8 @@ def project_writer_context(
             ]
             outcome = store.get_artifact(state.outcome_ref, expected_domain="payload")
             if (
-                event.actor != "environment"
+                event.actor != "writer_runtime"
                 or "writer" in event.audience
-                or entry["seq"] != event.seq
-                or entry["kind"] != event.kind
-                or log["rollout_id"] != event.rollout_id
-                or record["record_type"] != "WriterSampledBudgetStopV1"
-                or log["entries"] != [*seen_entries, entry]
                 or trace.get("action_id") != f"{event.rollout_id}:action:{len(action_ids)}"
                 or trace.get("context_content_hash")
                 != context_content_hash(
@@ -575,13 +635,8 @@ def project_writer_context(
                 raise ProjectionError("sampled budget stop has false accounting or authority")
             seen_entries.append(entry)
             continue
-        if event.kind == "termination_recorded":
-            log = store.get_artifact(state.external_inputs_ref, expected_domain="payload")
-            if not isinstance(log, dict) or log.get("record_type") != "WriterRuntimeLogV1":
-                if seen_entries:
-                    raise ProjectionError("writer termination lost its runtime log")
-                continue
-            entry = log["entries"][-1]
+        if event.kind == "termination_recorded" and writer_stop:
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
             record = store.get_artifact(entry["record_ref"], expected_domain="payload")
             old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
             outcome = store.get_artifact(state.outcome_ref, expected_domain="payload")
@@ -607,12 +662,8 @@ def project_writer_context(
                     "reward_status": "pending",
                     "training_eligibility": "pending",
                 }
-                or event.actor != "environment"
+                or event.actor != "writer_runtime"
                 or "writer" in event.audience
-                or log["rollout_id"] != event.rollout_id
-                or log["entries"] != [*seen_entries, entry]
-                or entry["seq"] != event.seq
-                or entry["kind"] != event.kind
                 or record != {"record_type": "WriterExhaustedStopV1", "reason": reason}
                 or state.position["phase"] != "terminal"
                 or state.files != before.files
@@ -642,27 +693,19 @@ def project_writer_context(
             raise ProjectionError("writer-visible event has invalid actor or audience")
         if effect.get("artifact_type") != "Phase2RecordedEffectV1":
             raise ProjectionError("writer event has no replayable effect")
-        log_ref = effect["set"].get("external_inputs_ref")
-        if not isinstance(log_ref, str):
-            raise ProjectionError("writer event lacks its canonical metadata index")
-        log = store.get_artifact(log_ref, expected_domain="payload")
-        if log.get("record_type") != "WriterRuntimeLogV1" or not log.get("entries"):
-            raise ProjectionError("writer event metadata index is invalid")
-        entry = log["entries"][-1]
-        if (
-            entry["seq"] != event.seq
-            or entry["kind"] != event.kind
-            or log["rollout_id"] != event.rollout_id
-            or log["entries"] != [*seen_entries, entry]
-        ):
-            raise ProjectionError("writer event metadata is not causally bound")
+        entry = _writer_log_entry(store, state, event, seen_entries, has_message=True)
         seen_entries.append(entry)
         record = store.get_artifact(entry["record_ref"], expected_domain="payload")
         message = MessageV1.from_dict(
             store.get_artifact(entry["message_ref"], expected_domain="message")
         )
         if event.kind == "writer_action":
-            if pending or record.get("record_type") != "WriterActionV1":
+            if (
+                pending
+                or not isinstance(record, dict)
+                or set(record) != _ACTION_RECORD_FIELDS
+                or record.get("record_type") != "WriterActionV1"
+            ):
                 raise ProjectionError("writer action starts before prior calls finish")
             if (
                 message.role != "assistant"
@@ -675,7 +718,7 @@ def project_writer_context(
                 store,
                 record,
                 trace,
-                record["action_id"],
+                f"{event.rollout_id}:action:{len(action_ids)}",
                 context_content_hash(
                     tuple(messages), tools=baseline.tools, rendering=baseline.rendering
                 ),
@@ -747,7 +790,11 @@ def project_writer_context(
                 pending.append(part["id"])
                 call_sources[part["id"]] = (record["action_id"], queue[index])
         else:
-            if record.get("record_type") != "WriterToolResultV1":
+            if (
+                not isinstance(record, dict)
+                or set(record) != _RESULT_RECORD_FIELDS
+                or record.get("record_type") != "WriterToolResultV1"
+            ):
                 raise ProjectionError("tool event metadata has wrong type")
             if (
                 message.role != "tool"
@@ -791,10 +838,11 @@ def project_writer_context(
             )
         messages.append(message)
         last_source = event.id
-    actual = store.load_context(target.state.context_ref)
-    if state != target.state:
+    expected_state = candidate_state if candidate_state is not None else target.state
+    actual = store.load_context(expected_state.context_ref)
+    if state != expected_state:
         raise ProjectionError("semantic history does not reconstruct target state")
-    if target.state.context_ref != latest_context_ref:
+    if expected_state.context_ref != latest_context_ref:
         raise ProjectionError("context revision was changed outside a context event")
     if (
         tuple(messages) != actual.messages
@@ -806,13 +854,13 @@ def project_writer_context(
         raise ProjectionError("context revision lacks latest source-event provenance")
     if pending != [
         call["call_id"]
-        for call in target.state.continuation["tool_queue"][
-            target.state.continuation["next_call"] :
+        for call in expected_state.continuation["tool_queue"][
+            expected_state.continuation["next_call"] :
         ]
     ]:
         raise ProjectionError("pending calls differ from continuation cursor")
-    if action_ids != list(target.state.history["action_ids"]) or result_ids != list(
-        target.state.history["tool_result_ids"]
+    if action_ids != list(expected_state.history["action_ids"]) or result_ids != list(
+        expected_state.history["tool_result_ids"]
     ):
         raise ProjectionError("logical action/result history differs from visible events")
     return actual

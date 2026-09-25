@@ -81,19 +81,24 @@ the queue/files/budgets and metadata index; the second effect updates `context_r
 after the revision can name the already-hashed source event. This preserves the
 approved content/provenance split without changing the Phase 2 reducer or any frozen
 identity. A tool-only exhausted turn may append `termination_recorded`; a final
-reply enters `checking`, not automatic task completion. Native token loss masks and
-author/check execution remain unimplemented.
+reply enters `checking`, not automatic task completion. Writer-produced
+`budget_charged` and `termination_recorded` use the explicit `writer_runtime` actor
+and require their runtime-log entry even as a first event; generic Phase 2 events
+retain their ordinary source. Native token loss masks and author/check execution
+remain unimplemented.
 
 The graph writer uses a separate tool dispatch boundary so expected writer-operational
 path/patch/policy failures can be observed without converting disk, permission or
 corruption failures into writer mistakes. Raw call-array elements normalize to safe
 queue syntax and escaped evidence; each declared malformed call remains paired and
 charged without dispatch. Current lineage authority is checked before staging and
-again by publication CAS. Restore, projection, and replay apply Phase 4 semantic
-validation to writer-log histories (including exact per-event state/history ownership,
-legal phases and stop statuses, action-trace attribution, origin, execution fingerprints,
-file delta, queue cursor, and budget charges). The producer checks those contracts
-before publication; the generic Phase 2 reducer stays unchanged. Argument JSON and
+again by publication CAS. Producer, restore, projection, and replay use one complete
+history-aware Phase 4 semantic walk (including exact per-event state/history ownership,
+legal phases and stop statuses, independently derived action/result ordinals,
+record/trace/prepared/log bindings, origin, execution fingerprints, file delta,
+queue cursor, and budget charges). The producer stages immutable candidates and
+validates them before publication; invalid candidates leave the head unchanged.
+The generic Phase 2 reducer stays unchanged. Argument JSON and
 raw call evidence have size/nesting bounds before decoding or serialization.
 Known zero token capacity rejects request preparation and can be sealed as a classified
 terminal stop. Already-sampled token overrun commits usage/output evidence and a

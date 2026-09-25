@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Validate complete writer histories against staged candidates before publication,
+  require explicit writer-stop log attribution from the first event, and bind
+  action/stop ordinals and adapter logprob references on production and recovery.
+
 - Complete Phase 4 writer event ownership and trace attribution checks before
   publication and on restore/replay; classify parent-file conflicts as observations,
   preserve staging corruption as infrastructure interruption, and bound malformed

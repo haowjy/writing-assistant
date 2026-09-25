@@ -1,6 +1,8 @@
 import errno
 import tempfile
 import unittest
+from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -192,6 +194,378 @@ class WriterFixture(unittest.TestCase):
 
 
 class TransactionalWriterTest(WriterFixture):
+    def test_generic_phase2_budget_event_is_not_a_writer_stop(self):
+        effect = self.writer._effect(self.runtime.state, changes={})
+        effect_ref = self.store.put_artifact(effect)
+        event = self.writer._event(
+            self.runtime.state,
+            "budget_charged",
+            effect_ref,
+            audience=("controller",),
+            actor="environment",
+        )
+        next_state = self.store._apply_recorded_effect_body(self.runtime.state, event, effect)
+        commit = self.store.publish(
+            "rollout-1",
+            None,
+            (event,),
+            next_state,
+            parent_checkpoint=self.start,
+            artifact_refs=(effect_ref,),
+        )
+        checkpoint = self.store.load_commit(commit).checkpoint
+        self.store.restore(checkpoint, self.root / "generic-restored")
+        project_writer_context(self.store, self.start, checkpoint)
+        self.assertEqual(self.store.replay("rollout-1", self.start, [commit]), checkpoint)
+
+    def test_generic_budget_event_can_follow_a_writer_log_without_claiming_it(self):
+        action = self.writer.submit_action(
+            self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
+        )
+        effect = self.writer._effect(action.runtime.state, changes={})
+        effect_ref = self.store.put_artifact(effect)
+        event = self.writer._event(
+            action.runtime.state,
+            "budget_charged",
+            effect_ref,
+            audience=("controller",),
+            actor="environment",
+        )
+        next_state = self.store._apply_recorded_effect_body(action.runtime.state, event, effect)
+        commit = self.store.publish(
+            "rollout-1", action.commit_id, (event,), next_state, artifact_refs=(effect_ref,)
+        )
+        checkpoint = self.store.load_commit(commit).checkpoint
+        self.store.restore(checkpoint, self.root / "generic-after-writer")
+        project_writer_context(self.store, self.start, checkpoint)
+        self.assertEqual(
+            self.store.replay("rollout-1", self.start, [action.commit_id, commit]), checkpoint
+        )
+
+    def _assert_mutation_rejected(self, prepare, mutate, submit):
+        """The same one-field forgery must fail before CAS and after forced persistence."""
+        for force_persistence in (False, True):
+            fixture = WriterFixture()
+            fixture.setUp()
+            try:
+                writer, runtime, start = prepare(fixture)
+                bypass = (
+                    patch.object(task_graph_writer, "project_writer_context")
+                    if force_persistence
+                    else nullcontext()
+                )
+                with mutate(fixture, writer), bypass:
+                    with self.assertRaises(ProjectionError):
+                        submit(fixture, writer, runtime)
+                head = fixture.store.read_head("rollout-1")
+                if force_persistence:
+                    self.assertIsNotNone(head)
+                    checkpoint = fixture.store.load_commit(head).checkpoint
+                    with self.assertRaises(ProjectionError):
+                        fixture.store.restore(checkpoint, fixture.root / "forged-restore")
+                    with self.assertRaises(ProjectionError):
+                        project_writer_context(fixture.store, start, checkpoint)
+                    with self.assertRaises(ProjectionError):
+                        fixture.store.replay("rollout-1", start, [head])
+                else:
+                    self.assertIsNone(head)
+                    fixture.store.restore(start, fixture.root / "unchanged-restore")
+            finally:
+                fixture.doCleanups()
+
+    def test_owned_action_values_reject_before_cas_and_on_recovery(self):
+        def prepare(fixture):
+            return fixture.writer, fixture.runtime, fixture.start
+
+        def submit(fixture, writer, runtime):
+            writer.submit_action(runtime, fixture.action(content="done"))
+
+        for field in ("action_ids", "model_calls"):
+            with self.subTest(field=field):
+
+                def mutate(fixture, writer, field=field):
+                    original = writer._publish
+
+                    def forged(*args, **kwargs):
+                        if field == "action_ids":
+                            kwargs["history"]["action_ids"] = ["forged:action:99"]
+                        else:
+                            budget = fixture.store.get_artifact(kwargs["changes"]["budgets_ref"])
+                            budget["consumed"]["model_calls"] = 99
+                            kwargs["changes"]["budgets_ref"] = fixture.store.put_artifact(budget)
+                        return original(*args, **kwargs)
+
+                    return patch.object(writer, "_publish", forged)
+
+                self._assert_mutation_rejected(prepare, mutate, submit)
+
+    def test_action_and_result_cannot_drop_runtime_log(self):
+        for kind in ("writer_action", "tool_result"):
+            for force_persistence in (False, True):
+                with self.subTest(kind=kind, force_persistence=force_persistence):
+                    fixture = WriterFixture()
+                    fixture.setUp()
+                    try:
+                        writer = fixture.writer
+                        runtime = fixture.runtime
+                        previous = None
+                        commits = []
+                        if kind == "tool_result":
+                            action = writer.submit_action(
+                                runtime,
+                                fixture.action(fixture.call("read_file", {"path": "draft.txt"})),
+                            )
+                            runtime = action.runtime
+                            previous = action.commit_id
+                            commits.append(previous)
+                        original = writer._effect
+
+                        def forged(state, *, changes, history=(), delta=(), original=original):
+                            changes = dict(changes)
+                            if "external_inputs_ref" in changes:
+                                changes["external_inputs_ref"] = state.external_inputs_ref
+                            return original(state, changes=changes, history=history, delta=delta)
+
+                        bypass = (
+                            patch.object(task_graph_writer, "project_writer_context")
+                            if force_persistence
+                            else nullcontext()
+                        )
+                        with patch.object(writer, "_effect", forged), bypass:
+                            with self.assertRaises(ProjectionError):
+                                if kind == "tool_result":
+                                    writer.step_tool(runtime)
+                                else:
+                                    writer.submit_action(runtime, fixture.action(content="done"))
+                        head = fixture.store.read_head("rollout-1")
+                        if force_persistence:
+                            self.assertNotEqual(head, previous)
+                            checkpoint = fixture.store.load_commit(head).checkpoint
+                            with self.assertRaises(ProjectionError):
+                                fixture.store.restore(checkpoint, fixture.root / "forged-restore")
+                            with self.assertRaises(ProjectionError):
+                                project_writer_context(fixture.store, fixture.start, checkpoint)
+                            with self.assertRaises(ProjectionError):
+                                fixture.store.replay("rollout-1", fixture.start, [*commits, head])
+                        else:
+                            self.assertEqual(head, previous)
+                            fixture.store.restore(
+                                runtime.checkpoint_id, fixture.root / "unchanged-restore"
+                            )
+                    finally:
+                        fixture.doCleanups()
+
+    def test_first_stop_log_reason_and_ordinal_mutation_matrix(self):
+        for stop_kind, field in (
+            ("sampled", "log"),
+            ("sampled", "log_entries"),
+            ("sampled", "log_record_ref"),
+            ("sampled", "reason"),
+            ("sampled", "record_action_id"),
+            ("sampled", "budget"),
+            ("sampled", "actor"),
+            ("exhausted", "log"),
+            ("exhausted", "log_entries"),
+            ("exhausted", "log_record_ref"),
+            ("exhausted", "reason"),
+            ("exhausted", "actor"),
+        ):
+            with self.subTest(stop_kind=stop_kind, field=field):
+
+                def prepare(fixture, stop_kind=stop_kind):
+                    limit = {"generated_tokens": 1 if stop_kind == "sampled" else 0}
+                    return fixture.entry_with_budget(limits=limit)
+
+                def submit(fixture, writer, runtime, stop_kind=stop_kind):
+                    if stop_kind == "sampled":
+                        writer.submit_action(
+                            runtime,
+                            fixture.action(content="overrun"),
+                            usage={"completion_tokens": 2},
+                        )
+                    else:
+                        writer.stop_exhausted(runtime)
+
+                def mutate(fixture, writer, field=field, stop_kind=stop_kind):
+                    if field == "actor":
+                        original_event = writer._event
+
+                        def forged_event(*args, **kwargs):
+                            return replace(
+                                original_event(*args, **kwargs), id=None, actor="environment"
+                            )
+
+                        return patch.object(writer, "_event", forged_event)
+                    if field in {"log", "log_entries", "log_record_ref", "budget"}:
+                        original = writer._effect
+
+                        def forged(state, *, changes, history=(), delta=()):
+                            changes = dict(changes)
+                            if field == "log":
+                                changes["external_inputs_ref"] = state.external_inputs_ref
+                            elif field in {"log_entries", "log_record_ref"}:
+                                log = fixture.store.get_artifact(changes["external_inputs_ref"])
+                                if field == "log_entries":
+                                    log["entries"] = []
+                                else:
+                                    log["entries"][-1]["record_ref"] = fixture.store.put_artifact(
+                                        {"forged": "record"}
+                                    )
+                                changes["external_inputs_ref"] = fixture.store.put_artifact(log)
+                            else:
+                                budget = fixture.store.get_artifact(changes["budgets_ref"])
+                                budget["consumed"]["model_calls"] = 99
+                                changes["budgets_ref"] = fixture.store.put_artifact(budget)
+                            return original(state, changes=changes, history=history, delta=delta)
+
+                        return patch.object(writer, "_effect", forged)
+                    original = fixture.store.put_artifact
+                    record_kind = (
+                        "WriterSampledBudgetStopV1"
+                        if stop_kind == "sampled"
+                        else "WriterExhaustedStopV1"
+                    )
+
+                    def forged(body, *args, **kwargs):
+                        if isinstance(body, dict) and body.get("record_type") == record_kind:
+                            body = dict(body)
+                            if field == "reason":
+                                body["reason"] = "total_tokens_budget"
+                            else:
+                                body["action_id"] = "forged:action:99"
+                        return original(body, *args, **kwargs)
+
+                    return patch.object(fixture.store, "put_artifact", forged)
+
+                self._assert_mutation_rejected(prepare, mutate, submit)
+
+    def test_action_and_sampled_trace_cross_binding_matrix(self):
+        fields = (
+            "record.action_id",
+            "record.trace_ref",
+            "record.request_ref",
+            "record.prepared_request_ref",
+            "record.raw_output_ref",
+            "record.logprob_ref",
+            "record.usage",
+            "record.model",
+            "record.seed",
+            "trace.action_id",
+            "trace.context_content_hash",
+            "trace.context_revision_ref",
+            "trace.rendering",
+            "trace.exact_request_ref",
+            "trace.prepared_request_ref",
+            "trace.raw_output_ref",
+            "trace.logprob_ref",
+            "trace.adapter_trace",
+            "trace.usage",
+            "trace.model",
+            "trace.seed",
+            "adapter.model",
+            "adapter.seed",
+            "adapter.usage",
+            "adapter.per_token_logprobs_ref",
+            "adapter.missing_logprob_ref",
+        )
+        for stop_kind in ("action", "sampled"):
+            for field in fields:
+                with self.subTest(stop_kind=stop_kind, field=field):
+
+                    def prepare(fixture, stop_kind=stop_kind):
+                        if stop_kind == "sampled":
+                            return fixture.entry_with_budget(limits={"generated_tokens": 1})
+                        return fixture.writer, fixture.runtime, fixture.start
+
+                    def submit(fixture, writer, runtime):
+                        logprob = fixture.store.put_bytes_artifact(b"original-logprobs")
+                        prepared = writer.prepare_request(runtime, b"exact request")
+                        writer.submit_action(
+                            runtime,
+                            fixture.action(content="sampled text"),
+                            prepared_request_ref=prepared,
+                            raw_output=b"raw output",
+                            trace={
+                                "model": "model-a",
+                                "seed": 7,
+                                "usage": {"completion_tokens": 2},
+                                "per_token_logprobs_ref": logprob,
+                            },
+                            usage={"completion_tokens": 2},
+                        )
+
+                    def mutate(fixture, writer, field=field, stop_kind=stop_kind):
+                        alternate_ref = fixture.store.put_artifact({"alternate": True})
+                        alternate_logprob = fixture.store.put_bytes_artifact(b"other-logprobs")
+                        original = fixture.store.put_artifact
+
+                        def forged(body, *args, **kwargs):
+                            record_kind = (
+                                "WriterActionV1"
+                                if stop_kind == "action"
+                                else "WriterSampledBudgetStopV1"
+                            )
+                            if isinstance(body, dict) and (
+                                body.get("record_type") == "WriterActionTraceV1"
+                                and not field.startswith("record.")
+                                or body.get("record_type") == record_kind
+                                and field.startswith("record.")
+                            ):
+                                body = dict(body)
+                                if field.startswith("record."):
+                                    name = field.removeprefix("record.")
+                                    body[name] = {
+                                        "action_id": "forged:action:99",
+                                        "trace_ref": alternate_ref,
+                                        "request_ref": alternate_ref,
+                                        "prepared_request_ref": alternate_ref,
+                                        "raw_output_ref": alternate_ref,
+                                        "logprob_ref": alternate_logprob,
+                                        "usage": {"completion_tokens": 99},
+                                        "model": "model-b",
+                                        "seed": 8,
+                                    }[name]
+                                elif (
+                                    field.startswith("trace.")
+                                    and body.get("record_type") == "WriterActionTraceV1"
+                                ):
+                                    name = field.removeprefix("trace.")
+                                    body[name] = {
+                                        "action_id": "forged:action:99",
+                                        "context_content_hash": "0" * 64,
+                                        "context_revision_ref": alternate_ref,
+                                        "rendering": {"projection_version": "forged"},
+                                        "exact_request_ref": alternate_ref,
+                                        "prepared_request_ref": alternate_ref,
+                                        "raw_output_ref": alternate_ref,
+                                        "logprob_ref": alternate_logprob,
+                                        "adapter_trace": None,
+                                        "usage": {"completion_tokens": 99},
+                                        "model": "model-b",
+                                        "seed": 8,
+                                    }[name]
+                                elif (
+                                    field.startswith("adapter.")
+                                    and body.get("record_type") == "WriterActionTraceV1"
+                                ):
+                                    adapter = dict(body["adapter_trace"])
+                                    name = field.removeprefix("adapter.")
+                                    if name == "missing_logprob_ref":
+                                        adapter.pop("per_token_logprobs_ref")
+                                    else:
+                                        adapter[name] = {
+                                            "model": "model-b",
+                                            "seed": 8,
+                                            "usage": {"completion_tokens": 99},
+                                            "per_token_logprobs_ref": alternate_logprob,
+                                        }[name]
+                                    body["adapter_trace"] = adapter
+                            return original(body, *args, **kwargs)
+
+                        return patch.object(fixture.store, "put_artifact", forged)
+
+                    self._assert_mutation_rejected(prepare, mutate, submit)
+
     def test_action_authority_and_trace_forgery_fail_before_publication(self):
         original = self.writer._publish
         for forged in ("outcome_ref", "trace_action_id"):
@@ -242,14 +616,9 @@ class TransactionalWriterTest(WriterFixture):
                             record["trace_ref"] = fixture.store.put_artifact(trace)
                         return original(*args, **kwargs)
 
-                    validator = (
-                        "validate_writer_effect"
-                        if forged == "outcome_ref"
-                        else "validate_action_trace"
-                    )
                     with (
                         patch.object(fixture.writer, "_publish", publish),
-                        patch.object(task_graph_writer, validator),
+                        patch.object(task_graph_writer, "project_writer_context"),
                     ):
                         with self.assertRaises(ProjectionError):
                             fixture.writer.submit_action(
@@ -506,6 +875,26 @@ class TransactionalWriterTest(WriterFixture):
                         self.runtime.context.rendering,
                         action.runtime.context.messages[-1],
                     )
+        # Presence is also a claim: an adapter cannot supply logprobs when the
+        # owning record and outer trace explicitly say they are absent.
+        forged = {
+            **trace,
+            "adapter_trace": {
+                **trace["adapter_trace"],
+                "per_token_logprobs_ref": self.store.put_bytes_artifact(b"unowned-logprobs"),
+            },
+        }
+        with self.assertRaises(ProjectionError):
+            validate_action_trace(
+                self.store,
+                record,
+                forged,
+                record["action_id"],
+                self.runtime.context.content_hash,
+                self.runtime.context.identity(),
+                self.runtime.context.rendering,
+                action.runtime.context.messages[-1],
+            )
 
     def test_parent_file_conflict_commits_but_decode_corruption_interrupts(self):
         action = self.writer.submit_action(
@@ -713,7 +1102,7 @@ class TransactionalWriterTest(WriterFixture):
 
         with (
             patch.object(self.writer, "_publish", forged),
-            patch.object(task_graph_writer, "validate_result_production"),
+            patch.object(task_graph_writer, "project_writer_context"),
         ):
             with self.assertRaises(ProjectionError):
                 self.writer.step_tool(action.runtime)
@@ -769,7 +1158,7 @@ class TransactionalWriterTest(WriterFixture):
 
                     with (
                         patch.object(fixture.writer, "_publish", forged),
-                        patch.object(task_graph_writer, "validate_result_production"),
+                        patch.object(task_graph_writer, "project_writer_context"),
                     ):
                         with self.assertRaises(ProjectionError):
                             fixture.writer.step_tool(action.runtime)

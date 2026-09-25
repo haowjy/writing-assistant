@@ -632,10 +632,11 @@ class TaskGraphStore:
         return current_id
 
     def _validate_writer_history(self, checkpoint_id: str) -> None:
-        """Apply Phase 4 semantics when the checkpoint carries a writer runtime log.
+        """Apply Phase 4 semantics to a writer-indexed lineage suffix.
 
         Generic Phase 2 effects deliberately remain schema-agnostic. A writer log
-        opts its lineage suffix into the stricter causal/execution contract.
+        opts its lineage suffix into the stricter causal/execution contract; a
+        writer_runtime stop actor cannot opt out by dropping that log.
         """
         checkpoint = self.load_checkpoint(checkpoint_id)
         body = self.get_artifact(checkpoint.state.external_inputs_ref, expected_domain="payload")
@@ -645,7 +646,12 @@ class TaskGraphStore:
             cursor = checkpoint.event_head
             while cursor is not None:
                 event = self.load_event(cursor)
-                if event.kind in {"writer_action", "tool_result"} and "writer" in event.audience:
+                if (
+                    event.kind in {"writer_action", "tool_result"} and "writer" in event.audience
+                ) or (
+                    event.kind in {"budget_charged", "termination_recorded"}
+                    and event.actor == "writer_runtime"
+                ):
                     from writing_agent.task_graph_projection import ProjectionError
 
                     raise ProjectionError("writer history lacks its semantic runtime log")

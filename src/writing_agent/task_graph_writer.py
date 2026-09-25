@@ -31,9 +31,6 @@ from writing_agent.task_graph_projection import (
     NATIVE_TRACE_REASON,
     execution_value,
     project_writer_context,
-    validate_action_trace,
-    validate_result_production,
-    validate_writer_effect,
 )
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
@@ -388,36 +385,10 @@ class TransactionalWriterV1:
         effect_ref = self.store.put_artifact(effect)
         primary = self._event(state, kind, effect_ref, audience=audience, actor=actor)
         intermediate = self._reduced(state, primary, effect)
-        validate_writer_effect(state, intermediate, primary, effect, store=self.store)
-        if kind == "writer_action":
-            validate_action_trace(
-                self.store,
-                record,
-                self.store.get_artifact(record["trace_ref"]),
-                record["action_id"],
-                runtime.context.content_hash,
-                runtime.context.identity(),
-                runtime.context.rendering,
-                message,
-            )
+        # A context revision names its source event; staging the immutable event
+        # makes typed reference closure checkable before any head publication.
+        self.store.persist(primary)
         context = self._context(runtime.context, message, primary)
-        if kind == "tool_result":
-            action = next(
-                self.store.get_artifact(entry["record_ref"])
-                for entry in reversed(self._ledger(state))
-                if entry["kind"] == "writer_action"
-            )
-            validate_result_production(
-                self.store,
-                state,
-                intermediate,
-                runtime.context,
-                context,
-                record,
-                message,
-                effect,
-                action,
-            )
         self.store.persist(context)
         context_effect = self._effect(intermediate, changes={"context_ref": context.identity()})
         context_effect_ref = self.store.put_artifact(context_effect)
@@ -429,6 +400,14 @@ class TransactionalWriterV1:
             actor="environment",
         )
         final = self._reduced(intermediate, context_event, context_effect)
+        self.store.persist(context_event)
+        project_writer_context(
+            self.store,
+            self.entry_checkpoint_id,
+            runtime.checkpoint_id,
+            candidate_events=(primary, context_event),
+            candidate_state=final,
+        )
         extra_refs = tuple(
             record[name]
             for name in (
@@ -950,18 +929,16 @@ class TransactionalWriterV1:
             "budget_charged",
             effect_ref,
             audience=("controller", "evaluator", "trainer"),
-            actor="environment",
+            actor="writer_runtime",
         )
         final = self._reduced(state, event, effect)
-        validate_writer_effect(state, final, event, effect, store=self.store)
-        validate_action_trace(
+        self.store.persist(event)
+        project_writer_context(
             self.store,
-            self.store.get_artifact(record_ref),
-            self.store.get_artifact(trace_ref),
-            self.store.get_artifact(record_ref)["action_id"],
-            runtime.context.content_hash,
-            runtime.context.identity(),
-            runtime.context.rendering,
+            self.entry_checkpoint_id,
+            runtime.checkpoint_id,
+            candidate_events=(event,),
+            candidate_state=final,
         )
         commit = self.store.publish(
             state.position["lineage_id"],
@@ -1211,10 +1188,17 @@ class TransactionalWriterV1:
             "termination_recorded",
             effect_ref,
             audience=("controller", "evaluator", "trainer"),
-            actor="environment",
+            actor="writer_runtime",
         )
         final = self._reduced(state, event, effect)
-        validate_writer_effect(state, final, event, effect, store=self.store)
+        self.store.persist(event)
+        project_writer_context(
+            self.store,
+            self.entry_checkpoint_id,
+            runtime.checkpoint_id,
+            candidate_events=(event,),
+            candidate_state=final,
+        )
         commit = self.store.publish(
             state.position["lineage_id"],
             head,
