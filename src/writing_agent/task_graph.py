@@ -12,6 +12,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import field as dataclass_field
 from types import MappingProxyType
 from typing import Any, ClassVar
 
@@ -441,7 +442,7 @@ class GraphInstanceV1(_Record):
     source_refs: tuple[str, ...] = ()
     request_refs: tuple[str, ...] = ()
     requirements_ref: str | None = None
-    budgets: Mapping[str, int] = MappingProxyType({})
+    budgets: Mapping[str, int] = dataclass_field(default_factory=dict)
     DOMAIN: ClassVar[str] = "instance"
 
     def __post_init__(self) -> None:
@@ -702,7 +703,7 @@ class ContextRevisionV1(_Record):
     content_hash: str | None = None
     event_head: str | None = None
     provenance_refs: tuple[str, ...] = ()
-    rendering: Mapping[str, str] = _DEFAULT_RENDERING
+    rendering: Mapping[str, str] = dataclass_field(default_factory=lambda: dict(_DEFAULT_RENDERING))
     DOMAIN: ClassVar[str] = "context"
 
     def __post_init__(self) -> None:
@@ -751,10 +752,10 @@ class ContextRevisionV1(_Record):
 @dataclass(frozen=True)
 class EnvironmentStateV1(_Record):
     instance_ref: str = ""
-    position: Mapping[str, Any] = MappingProxyType({})
-    files: Mapping[str, str] = MappingProxyType({})
+    position: Mapping[str, Any] = dataclass_field(default_factory=dict)
+    files: Mapping[str, str] = dataclass_field(default_factory=dict)
     tree_hash: str = ""
-    history: Mapping[str, Any] = MappingProxyType({})
+    history: Mapping[str, Any] = dataclass_field(default_factory=dict)
     context_ref: str = ""
     requirements_ref: str = ""
     decisions_ref: str = ""
@@ -766,7 +767,9 @@ class EnvironmentStateV1(_Record):
     external_inputs_ref: str = ""
     outcome_ref: str = ""
     provenance_ref: str = ""
-    continuation: Mapping[str, Any] = MappingProxyType({"tool_queue": (), "next_call": 0})
+    continuation: Mapping[str, Any] = dataclass_field(
+        default_factory=lambda: {"tool_queue": (), "next_call": 0}
+    )
     in_flight_effects: tuple[Any, ...] = ()
     DOMAIN: ClassVar[str] = "state"
 

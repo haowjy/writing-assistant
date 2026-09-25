@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
+from dataclasses import field as dataclass_field
 from types import MappingProxyType
 from typing import Any, ClassVar, Self
 
@@ -279,7 +280,7 @@ class CheckContractV1(_Contract):
     required: bool = True
     public_evidence_refs: tuple[str, ...] = ()
     private_evidence_refs: tuple[str, ...] = ()
-    spec: Mapping[str, Any] = MappingProxyType({})
+    spec: Mapping[str, Any] = dataclass_field(default_factory=dict)
     ARTIFACT_TYPE: ClassVar[str] = "CheckContractV1"
 
     def validate(self) -> None:
@@ -317,7 +318,7 @@ class CheckContractV1(_Contract):
 @dataclass(frozen=True)
 class ScriptContractV1(_Contract):
     fixed_followups: tuple[str, ...] = ()
-    responses: Mapping[str, str] = MappingProxyType({})
+    responses: Mapping[str, str] = dataclass_field(default_factory=dict)
     ARTIFACT_TYPE: ClassVar[str] = "ScriptContractV1"
 
     def validate(self) -> None:
@@ -336,8 +337,8 @@ class ScriptContractV1(_Contract):
 class AuthorPacketV1(_Contract):
     """Private author facts, never an evaluator packet or a writer message."""
 
-    preferences: Mapping[str, str] = MappingProxyType({})
-    requirements: Mapping[str, str] = MappingProxyType({})
+    preferences: Mapping[str, str] = dataclass_field(default_factory=dict)
+    requirements: Mapping[str, str] = dataclass_field(default_factory=dict)
     ARTIFACT_TYPE: ClassVar[str] = "AuthorPacketV1"
 
     def validate(self) -> None:
@@ -391,7 +392,7 @@ class InteractionPolicyV1(_Contract):
 
 @dataclass(frozen=True)
 class DecisionBindingsV1(_Contract):
-    bindings: Mapping[str, str] = MappingProxyType({})
+    bindings: Mapping[str, str] = dataclass_field(default_factory=dict)
     ARTIFACT_TYPE: ClassVar[str] = "DecisionBindingsV1"
 
     def validate(self) -> None:
@@ -421,7 +422,7 @@ class RequirementUpdateV1(_Contract):
 class ScriptedAuthorV1(_Contract):
     """Exact prepared answers and ordered feedback, never executable code."""
 
-    answers: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
+    answers: Mapping[str, Mapping[str, Any]] = dataclass_field(default_factory=dict)
     feedback: tuple[Mapping[str, Any], ...] = ()
     ARTIFACT_TYPE: ClassVar[str] = "ScriptedAuthorV1"
 
@@ -488,7 +489,7 @@ class ScriptedAuthorV1(_Contract):
 class RewardContractV1(_Contract):
     """Integer basis-point weights make scoring exact and replayable."""
 
-    components: Mapping[str, int] = MappingProxyType({})
+    components: Mapping[str, int] = dataclass_field(default_factory=dict)
     normalization: int = 10000
     incomplete_score: int = 0
     ARTIFACT_TYPE: ClassVar[str] = "RewardContractV1"
@@ -525,7 +526,7 @@ class EvaluatorPacketV1(_Contract):
 @dataclass(frozen=True)
 class GuardContractV1(_Contract):
     kind: str = "always"
-    arguments: Mapping[str, Any] = MappingProxyType({})
+    arguments: Mapping[str, Any] = dataclass_field(default_factory=dict)
     ARTIFACT_TYPE: ClassVar[str] = "GuardContractV1"
 
     def validate(self) -> None:
@@ -576,10 +577,10 @@ class GuardContractV1(_Contract):
 class NodeContractV1(_Contract):
     node_id: str = ""
     node_kind: str = "writer"
-    entry: Mapping[str, Any] = MappingProxyType({})
-    interaction: Mapping[str, Any] = MappingProxyType({})
-    budgets: Mapping[str, Any] = MappingProxyType({})
-    completion: Mapping[str, Any] = MappingProxyType({})
+    entry: Mapping[str, Any] = dataclass_field(default_factory=dict)
+    interaction: Mapping[str, Any] = dataclass_field(default_factory=dict)
+    budgets: Mapping[str, Any] = dataclass_field(default_factory=dict)
+    completion: Mapping[str, Any] = dataclass_field(default_factory=dict)
     mandatory_checks: tuple[str, ...] = ()
     optional_checks: tuple[str, ...] = ()
     ARTIFACT_TYPE: ClassVar[str] = "NodeContractV1"

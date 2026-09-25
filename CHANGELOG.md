@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Use per-instance mapping default factories for frozen task-graph records so
+  supported Python 3.11 can import them; post-initialization still freezes the
+  same values and preserves canonical identities.
+
 - Scope CI Ruff checks to product source, scripts, and tests so research work
   artifacts and agent configuration are not treated as package Python code.
 

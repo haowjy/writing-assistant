@@ -7,7 +7,7 @@ is carried for auditability but is deliberately absent from every routing predic
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from writing_agent.task_graph_admission import AdmissionError, AdmittedGraphV1, AdmittedNodeV1
@@ -67,10 +67,10 @@ class ControllerViewV1:
     writer_turn_complete: bool = False
     pending_author_request: str | None = None
     outstanding_checks: tuple[str, ...] = ()
-    check_status: Mapping[str, str] = MappingProxyType({})
+    check_status: Mapping[str, str] = field(default_factory=dict)
     interaction_complete: bool = False
     continuation_allowed: bool = False
-    budgets_remaining: Mapping[str, int] = MappingProxyType({})
+    budgets_remaining: Mapping[str, int] = field(default_factory=dict)
     author_utterance: str | None = None
     schema: int = 1
 

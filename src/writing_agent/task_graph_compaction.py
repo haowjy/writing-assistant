@@ -8,8 +8,7 @@ that projection without invoking a summarizer.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from types import MappingProxyType
+from dataclasses import dataclass, field
 from typing import Any
 
 from writing_agent.task_graph import (
@@ -51,7 +50,7 @@ class ContextOperationV1(_Record):
     new_content_hash: str = ""
     new_messages: tuple[Mapping[str, Any], ...] = ()
     dropped_messages: tuple[Mapping[str, Any], ...] = ()
-    charges: Mapping[str, Any] = MappingProxyType({})
+    charges: Mapping[str, Any] = field(default_factory=dict)
     DOMAIN = "payload"
 
     def validate(self) -> None:
