@@ -38,8 +38,9 @@ from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_sampling import (
     ProjectionError,
     SamplingEvidenceV1,
+    TrainingEligibilityBindingV1,
     bind_group_sampling_claims,
-    decode_training_eligibility,
+    decode_and_bind_sampling,
 )
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 
@@ -631,7 +632,9 @@ class GroupCoordinatorV1:
                 reward = self.store.get_artifact(availability["reward_ref"])
                 eligibility = self.store.get_artifact(availability["eligibility_ref"])
                 try:
-                    decode_training_eligibility(eligibility, result.terminal_outcome_ref)
+                    decode_and_bind_sampling(
+                        TrainingEligibilityBindingV1(eligibility, result.terminal_outcome_ref)
+                    )
                 except ProjectionError as exc:
                     raise GroupError("reward/eligibility contract is misbound") from exc
                 if (

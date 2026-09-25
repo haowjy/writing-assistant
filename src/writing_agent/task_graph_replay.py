@@ -33,6 +33,7 @@ from writing_agent.task_graph_accounting import (
     tool_result_charge,
 )
 from writing_agent.task_graph_sampling import (
+    ActionSamplingBindingV1,
     ProjectionError,
     decode_and_bind_sampling,
 )
@@ -726,15 +727,19 @@ class SemanticReplayEngine(ReplayCursor):
             raise ProjectionError("sampled stop log names an invalid record")
         trace = store.get_artifact(record["trace_ref"], expected_domain="payload")
         sampled = decode_and_bind_sampling(
-            store,
-            record,
-            trace,
-            f"{event.rollout_id}:action:{len(self.action_ids)}",
-            context_content_hash(
-                tuple(self.messages), tools=self.baseline.tools, rendering=self.baseline.rendering
-            ),
-            self.latest_context_ref,
-            self.baseline.rendering,
+            ActionSamplingBindingV1(
+                store,
+                record,
+                trace,
+                f"{event.rollout_id}:action:{len(self.action_ids)}",
+                context_content_hash(
+                    tuple(self.messages),
+                    tools=self.baseline.tools,
+                    rendering=self.baseline.rendering,
+                ),
+                self.latest_context_ref,
+                self.baseline.rendering,
+            )
         )
         usage = json.loads(sampled.record.usage_json)
         old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
@@ -843,18 +848,20 @@ class SemanticReplayEngine(ReplayCursor):
                 raise ProjectionError("writer action starts before prior calls finish")
             trace = store.get_artifact(record["trace_ref"], expected_domain="payload")
             sampled = decode_and_bind_sampling(
-                store,
-                record,
-                trace,
-                f"{event.rollout_id}:action:{len(self.action_ids)}",
-                context_content_hash(
-                    tuple(self.messages),
-                    tools=self.baseline.tools,
-                    rendering=self.baseline.rendering,
-                ),
-                self.latest_context_ref,
-                self.baseline.rendering,
-                message,
+                ActionSamplingBindingV1(
+                    store,
+                    record,
+                    trace,
+                    f"{event.rollout_id}:action:{len(self.action_ids)}",
+                    context_content_hash(
+                        tuple(self.messages),
+                        tools=self.baseline.tools,
+                        rendering=self.baseline.rendering,
+                    ),
+                    self.latest_context_ref,
+                    self.baseline.rendering,
+                    message,
+                )
             )
             calls = [part for part in message.content if part["type"] == "tool_call"]
             if [part["id"] for part in calls] != [call["call_id"] for call in record["calls"]]:

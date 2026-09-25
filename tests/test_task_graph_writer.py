@@ -23,7 +23,7 @@ from writing_agent.task_graph_projection import (
     project_writer_context,
     validate_writer_effect,
 )
-from writing_agent.task_graph_sampling import decode_and_bind_sampling
+from writing_agent.task_graph_sampling import ActionSamplingBindingV1, decode_and_bind_sampling
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_writer import TransactionalWriterV1, WriterRuntimeError
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
@@ -882,14 +882,16 @@ class TransactionalWriterTest(WriterFixture):
                 forged = {**trace, field: value}
                 with self.assertRaises(ProjectionError):
                     decode_and_bind_sampling(
-                        self.store,
-                        record,
-                        forged,
-                        record["action_id"],
-                        self.runtime.context.content_hash,
-                        self.runtime.context.identity(),
-                        self.runtime.context.rendering,
-                        action.runtime.context.messages[-1],
+                        ActionSamplingBindingV1(
+                            self.store,
+                            record,
+                            forged,
+                            record["action_id"],
+                            self.runtime.context.content_hash,
+                            self.runtime.context.identity(),
+                            self.runtime.context.rendering,
+                            action.runtime.context.messages[-1],
+                        )
                     )
         # Presence is also a claim: an adapter cannot supply logprobs when the
         # owning record and outer trace explicitly say they are absent.
@@ -902,14 +904,16 @@ class TransactionalWriterTest(WriterFixture):
         }
         with self.assertRaises(ProjectionError):
             decode_and_bind_sampling(
-                self.store,
-                record,
-                forged,
-                record["action_id"],
-                self.runtime.context.content_hash,
-                self.runtime.context.identity(),
-                self.runtime.context.rendering,
-                action.runtime.context.messages[-1],
+                ActionSamplingBindingV1(
+                    self.store,
+                    record,
+                    forged,
+                    record["action_id"],
+                    self.runtime.context.content_hash,
+                    self.runtime.context.identity(),
+                    self.runtime.context.rendering,
+                    action.runtime.context.messages[-1],
+                )
             )
 
     def test_parent_file_conflict_commits_but_decode_corruption_interrupts(self):

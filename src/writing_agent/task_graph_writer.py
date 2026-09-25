@@ -52,6 +52,7 @@ from writing_agent.task_graph_projection import (
     project_writer_context,
 )
 from writing_agent.task_graph_sampling import (
+    ActionSamplingBindingV1,
     PreparedRequestV1,
     ProjectionError,
     VerifiedMessagesStaleError,
@@ -602,14 +603,16 @@ class TransactionalWriterV1:
     def _bind_sample(self, record, trace, runtime, message=None):
         try:
             return decode_and_bind_sampling(
-                self.store,
-                record,
-                trace,
-                record["action_id"],
-                runtime.context.content_hash,
-                runtime.context.identity(),
-                runtime.context.rendering,
-                message,
+                ActionSamplingBindingV1(
+                    self.store,
+                    record,
+                    trace,
+                    record["action_id"],
+                    runtime.context.content_hash,
+                    runtime.context.identity(),
+                    runtime.context.rendering,
+                    message,
+                )
             )
         except VerifiedMessagesStaleError as exc:
             raise WriterRuntimeError("verified request messages are stale") from exc

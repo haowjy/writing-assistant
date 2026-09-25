@@ -10,7 +10,11 @@ from writing_agent.task_graph_controller import (
     evaluate_guard,
 )
 from writing_agent.task_graph_environment import WriterRuntimeError
-from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY, decode_training_eligibility
+from writing_agent.task_graph_sampling import (
+    CURRENT_ELIGIBILITY,
+    TrainingEligibilityBindingV1,
+    decode_and_bind_sampling,
+)
 
 
 def current_check_results(store, state):
@@ -529,7 +533,10 @@ def validate_terminal_effect(store, before, after, event, effect, entry):
                 "reward_status": "available",
                 "training_eligibility": CURRENT_ELIGIBILITY.training_status,
             }
-            or decode_training_eligibility(eligibility, before.outcome_ref) != CURRENT_ELIGIBILITY
+            or decode_and_bind_sampling(
+                TrainingEligibilityBindingV1(eligibility, before.outcome_ref)
+            )
+            != CURRENT_ELIGIBILITY
             or reward
             != {
                 "record_type": "RewardV1",

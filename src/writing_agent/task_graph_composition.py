@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import canonical_json, load_canonical_json
+from writing_agent.task_graph import canonical_json, load_canonical_json, validate_hash
 from writing_agent.task_graph_environment import EnvironmentTransactionService
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
@@ -78,6 +78,7 @@ class RuntimeSession:
             or not isinstance(seed.get("group_id"), str)
         ):
             raise ValueError("group member lacks its sealed seed witness")
+        validate_hash(seed["group_id"])
         from writing_agent.task_graph_group_contract import GroupSpecV1
 
         path = store.root / "groups" / seed["group_id"] / "spec.json"

@@ -191,7 +191,7 @@ class EligibilityDecisionV1:
 CURRENT_ELIGIBILITY = EligibilityDecisionV1()
 
 
-def decode_training_eligibility(value: Any, outcome_ref: str) -> EligibilityDecisionV1:
+def _decode_training_eligibility(value: Any, outcome_ref: str) -> EligibilityDecisionV1:
     try:
         matches = canonical_bytes(value) == canonical_bytes(
             CURRENT_ELIGIBILITY.training_wire(outcome_ref)
@@ -365,6 +365,44 @@ class BoundSamplingV1:
     eligibility: EligibilityDecisionV1
 
 
+@dataclass(frozen=True)
+class ActionSamplingBindingV1:
+    store: Any
+    record: Mapping[str, Any]
+    trace: Mapping[str, Any]
+    action_id: str
+    context_content_hash: str
+    context_revision_ref: str
+    rendering: Mapping[str, Any]
+    message: Any = None
+
+
+@dataclass(frozen=True)
+class TrainingEligibilityBindingV1:
+    wire: Any
+    outcome_ref: str
+
+
+def decode_and_bind_sampling(
+    binding: ActionSamplingBindingV1 | TrainingEligibilityBindingV1,
+) -> BoundSamplingV1 | EligibilityDecisionV1:
+    """The only public decoder for V1 action and terminal sampling claims."""
+    if isinstance(binding, TrainingEligibilityBindingV1):
+        return _decode_training_eligibility(binding.wire, binding.outcome_ref)
+    if not isinstance(binding, ActionSamplingBindingV1):
+        raise TypeError("unsupported sampling binding request")
+    return _decode_action_sampling(
+        binding.store,
+        binding.record,
+        binding.trace,
+        binding.action_id,
+        binding.context_content_hash,
+        binding.context_revision_ref,
+        binding.rendering,
+        binding.message,
+    )
+
+
 def bind_group_sampling_claims(
     policy: Mapping[str, str], writer_seed: int, trace: Mapping[str, Any], claims: Any
 ) -> None:
@@ -395,7 +433,7 @@ def bind_group_sampling_claims(
             raise ProjectionError(f"writer sample request/adapter changed {field}")
 
 
-def decode_and_bind_sampling(
+def _decode_action_sampling(
     store, record, trace, action_id, context_hash, context_ref, rendering, message=None
 ) -> BoundSamplingV1:
     """Bind every duplicated sampling claim to the owning action and request."""

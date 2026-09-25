@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Route action and terminal training-eligibility claims through one typed public
+  sampling decoder, including exact outcome binding and native-ineligible policy.
+
 - Bind started group members back to the exact sealed adapter manifest before
   any writer operation; a separately sealed A-vs-B session cannot act on A's branch.
 

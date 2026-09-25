@@ -2,14 +2,28 @@ import unittest
 
 from writing_agent.task_graph import canonical_bytes
 from writing_agent.task_graph_sampling import (
+    CURRENT_ELIGIBILITY,
     AdapterEvidenceV1,
     PreparedRequestV1,
     ProjectionError,
     SamplingEvidenceV1,
+    TrainingEligibilityBindingV1,
+    decode_and_bind_sampling,
 )
 
 
 class SamplingCodecTests(unittest.TestCase):
+    def test_training_eligibility_uses_the_same_public_decoder(self):
+        outcome_ref = "a" * 64
+        wire = CURRENT_ELIGIBILITY.training_wire(outcome_ref)
+        self.assertEqual(
+            decode_and_bind_sampling(TrainingEligibilityBindingV1(wire, outcome_ref)),
+            CURRENT_ELIGIBILITY,
+        )
+        for forged in ({**wire, "status": "eligible"}, {**wire, "schema": True}):
+            with self.assertRaises(ProjectionError):
+                decode_and_bind_sampling(TrainingEligibilityBindingV1(forged, outcome_ref))
+
     def test_prepared_request_v1_round_trip_preserves_wire_identity(self):
         wire = {
             "record_type": "PreparedWriterRequestV1",
