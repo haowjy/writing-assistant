@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Close Phase 4 transactional writer review findings: preserve infrastructure
+  failures, normalize malformed calls without dispatch, reject stale handles before
+  tools, validate result provenance/execution/charges on restore and replay, and
+  durably stop on token exhaustion while rejecting unenforceable context limits.
+
 - Add an opt-in transactional task-graph writer/text-tool runtime with committed
   call queues, per-call observations and budget charges, exact event-derived writer
   context projection, restore/replay, and explicit non-native loss eligibility.

@@ -535,6 +535,7 @@ class TaskGraphStore:
         fault: FaultHook | None = None,
     ) -> RuntimeHandle:
         checkpoint = self.load_checkpoint(checkpoint_id)
+        self._validate_writer_history(checkpoint_id)
         workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
         try:
             context = self.load_context(checkpoint.state.context_ref)
@@ -596,6 +597,7 @@ class TaskGraphStore:
         current = validator.validate(("checkpoint", current_id))
         suffix = tuple(committed_suffix)
         if not suffix:
+            self._validate_writer_history(current_id)
             return current_id
         if self._read_head(lineage_id, validator) != suffix[-1]:
             raise ReplayError("the supplied suffix is not the published lineage head")
@@ -626,7 +628,45 @@ class TaskGraphStore:
             current_id = commit.checkpoint
             current = target
             prior_commit = commit_id
+        self._validate_writer_history(current_id)
         return current_id
+
+    def _validate_writer_history(self, checkpoint_id: str) -> None:
+        """Apply Phase 4 semantics when the checkpoint carries a writer runtime log.
+
+        Generic Phase 2 effects deliberately remain schema-agnostic. A writer log
+        opts its lineage suffix into the stricter causal/execution contract.
+        """
+        checkpoint = self.load_checkpoint(checkpoint_id)
+        body = self.get_artifact(checkpoint.state.external_inputs_ref, expected_domain="payload")
+        if not isinstance(body, dict) or body.get("record_type") != "WriterRuntimeLogV1":
+            # Generic Phase 2 fixtures may use logical result IDs. A writer-
+            # visible source event cannot become valid by dropping its index.
+            cursor = checkpoint.event_head
+            while cursor is not None:
+                event = self.load_event(cursor)
+                if event.kind in {"writer_action", "tool_result"} and "writer" in event.audience:
+                    from writing_agent.task_graph_projection import ProjectionError
+
+                    raise ProjectionError("writer history lacks its semantic runtime log")
+                cursor = event.previous
+            return
+        ancestor = checkpoint
+        while ancestor.parents:
+            parent = self.load_checkpoint(ancestor.parents[0])
+            parent_body = self.get_artifact(
+                parent.state.external_inputs_ref, expected_domain="payload"
+            )
+            if (
+                not isinstance(parent_body, dict)
+                or parent_body.get("record_type") != "WriterRuntimeLogV1"
+            ):
+                break
+            ancestor = parent
+        base_id = ancestor.parents[0] if ancestor.parents else ancestor.identity()
+        from writing_agent.task_graph_projection import project_writer_context
+
+        project_writer_context(self, base_id, checkpoint_id)
 
     # -- validation --------------------------------------------------------------
 

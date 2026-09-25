@@ -1,7 +1,10 @@
+import errno
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from writing_agent import task_graph_writer
 from writing_agent.agent import SYSTEM_PROMPT
 from writing_agent.legacy_graph import compile_legacy_scenario
 from writing_agent.task_graph import (
@@ -14,7 +17,7 @@ from writing_agent.task_graph import (
 from writing_agent.task_graph_projection import ProjectionError, project_writer_context
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_writer import TransactionalWriterV1, WriterRuntimeError
-from writing_agent.workspace import TOOL_SCHEMAS
+from writing_agent.workspace import TOOL_SCHEMAS, Workspace
 
 
 def scenario():
@@ -184,6 +187,206 @@ class WriterFixture(unittest.TestCase):
 
 
 class TransactionalWriterTest(WriterFixture):
+    def test_non_array_call_batch_rejected_without_publication(self):
+        with self.assertRaisesRegex(WriterRuntimeError, "tool_calls must be an array"):
+            self.writer.submit_action(
+                self.runtime, {"role": "assistant", "content": "", "tool_calls": None}
+            )
+        self.assertIsNone(self.store.read_head("rollout-1"))
+
+    def test_malformed_envelopes_are_paired_charged_and_nonmutating(self):
+        calls = [
+            None,
+            {},
+            {
+                **self.call("write_file", {"path": "bad.txt", "content": "bad"}, "wrong"),
+                "type": "other",
+            },
+            self.call(
+                "write_file", '{"path":"a.txt","path":"bad.txt","content":"bad"}', "duplicate"
+            ),
+            self.call("bad tool", {}, "space"),
+            self.call("bad\x00tool", {}, "nul"),
+            self.call([], {}, "non-string-name"),
+            self.call("write_file", '{"path":"bad.txt","content":"\\ud800"}', "surrogate"),
+            self.call("write_file", {"path": "bad.txt", "content": "\ud800"}, "literal"),
+            self.call("write_file", b'{"path":"bad.txt","content":"\xff"}', "invalid-bytes"),
+        ]
+        action = self.writer.submit_action(self.runtime, self.action(*calls))
+        self.assertEqual(len(self.record(action)["calls"]), len(calls))
+        runtime = action.runtime
+        for _ in calls:
+            result = self.writer.step_tool(runtime)
+            runtime = result.runtime
+            self.assertFalse(self.record(result)["observation"]["valid"])
+        self.assertEqual(runtime.state.files, self.runtime.state.files)
+        self.assertEqual(runtime.state.continuation["next_call"], len(calls))
+        self.assertEqual(
+            self.store.get_artifact(runtime.state.budgets_ref)["consumed"]["attempted_tool_calls"],
+            len(calls),
+        )
+        self.assertEqual(
+            self.store.replay("rollout-1", self.start, self._commits()), runtime.checkpoint_id
+        )
+
+    def _commits(self):
+        head = self.store.read_head("rollout-1")
+        commits = []
+        while head:
+            commits.append(head)
+            head = self.store.load_commit(head).parent_commit
+        return list(reversed(commits))
+
+    def test_infrastructure_failure_interrupts_without_call_charge(self):
+        action = self.writer.submit_action(
+            self.runtime,
+            self.action(self.call("write_file", {"path": "new.txt", "content": "yes"})),
+        )
+        head = self.store.read_head("rollout-1")
+        with patch.object(Workspace, "write_file", side_effect=OSError(errno.ENOSPC, "disk full")):
+            with self.assertRaises(OSError):
+                self.writer.step_tool(action.runtime)
+        self.assertEqual(self.store.read_head("rollout-1"), head)
+        self.assertEqual(action.runtime.state.continuation["next_call"], 0)
+        self.assertEqual(
+            self.store.get_artifact(action.runtime.state.budgets_ref)["consumed"].get(
+                "attempted_tool_calls", 0
+            ),
+            0,
+        )
+        retry = self.writer.step_tool(action.runtime)
+        self.assertEqual(retry.runtime.state.files["new.txt"], "yes")
+
+    def test_graph_dispatch_preserves_other_infrastructure_failures(self):
+        for code in (errno.EIO, errno.EROFS, errno.EACCES):
+            with self.subTest(errno=code):
+                with patch.object(
+                    Workspace, "write_file", side_effect=OSError(code, "I/O failure")
+                ):
+                    with self.assertRaises(OSError):
+                        task_graph_writer._graph_dispatch(
+                            Workspace(self.root / "dispatch-stage"),
+                            "write_file",
+                            {"path": "draft.txt", "content": "new"},
+                        )
+
+    def test_stale_handle_dispatches_zero_times(self):
+        action = self.writer.submit_action(
+            self.runtime,
+            self.action(self.call("write_file", {"path": "new.txt", "content": "yes"})),
+        )
+        self.writer.step_tool(action.runtime)
+        with patch.object(
+            task_graph_writer, "_graph_dispatch", side_effect=AssertionError("dispatched")
+        ):
+            with self.assertRaisesRegex(WriterRuntimeError, "stale runtime handle"):
+                self.writer.step_tool(action.runtime)
+
+    def test_forged_result_origin_hash_and_charge_fail_restore_projection_replay(self):
+        action = self.writer.submit_action(
+            self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
+        )
+        publish = self.writer._publish
+
+        def forged(*args, **kwargs):
+            record = kwargs["record"]
+            record["action_id"] = "unrelated:action:99"
+            record["before_execution_hash"] = "0" * 64
+            record["after_execution_hash"] = "0" * 64
+            record["budget_charge"]["read_tokens"] = 999
+            message = kwargs["message"].to_dict()
+            message["origin"] = "unrelated:action:99"
+            kwargs["message"] = MessageV1.from_dict(message)
+            return publish(*args, **kwargs)
+
+        with patch.object(self.writer, "_publish", forged):
+            with self.assertRaises(ProjectionError):
+                self.writer.step_tool(action.runtime)
+        head = self.store.read_head("rollout-1")
+        checkpoint = self.store.load_commit(head).checkpoint
+        with self.assertRaises(ProjectionError):
+            self.store.restore(checkpoint, self.root / "forged-restore")
+        with self.assertRaises(ProjectionError):
+            project_writer_context(self.store, self.start, checkpoint)
+        with self.assertRaises(ProjectionError):
+            self.store.replay("rollout-1", self.start, self._commits())
+
+    def test_independent_forged_result_fields_fail_semantic_validation(self):
+        for field in (
+            "origin",
+            "before_execution_hash",
+            "after_execution_hash",
+            "budget_charge",
+            "file_delta",
+        ):
+            with self.subTest(field=field):
+                fixture = WriterFixture()
+                fixture.setUp()
+                try:
+                    action = fixture.writer.submit_action(
+                        fixture.runtime,
+                        fixture.action(fixture.call("read_file", {"path": "draft.txt"})),
+                    )
+                    original = fixture.writer._publish
+
+                    def forged(*args, field=field, original=original, **kwargs):
+                        record = kwargs["record"]
+                        if field == "origin":
+                            record["action_id"] = "unrelated:action:99"
+                            message = kwargs["message"].to_dict()
+                            message["origin"] = "unrelated:action:99"
+                            kwargs["message"] = MessageV1.from_dict(message)
+                        elif field in {"before_execution_hash", "after_execution_hash"}:
+                            record[field] = "0" * 64
+                        elif field == "budget_charge":
+                            record[field]["read_tokens"] = 999
+                        else:
+                            record[field] = {"draft.txt": {"before": "alpha\n", "after": "forged"}}
+                        return original(*args, **kwargs)
+
+                    with patch.object(fixture.writer, "_publish", forged):
+                        with self.assertRaises(ProjectionError):
+                            fixture.writer.step_tool(action.runtime)
+                    head = fixture.store.read_head("rollout-1")
+                    checkpoint = fixture.store.load_commit(head).checkpoint
+                    with self.assertRaises(ProjectionError):
+                        project_writer_context(fixture.store, fixture.start, checkpoint)
+                    with self.assertRaises(ProjectionError):
+                        fixture.store.replay("rollout-1", fixture.start, [action.commit_id, head])
+                finally:
+                    fixture.doCleanups()
+
+    def test_context_event_cannot_hide_unattributed_file_change(self):
+        action = self.writer.submit_action(
+            self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
+        )
+        state = action.runtime.state
+        effect = {
+            "artifact_type": "Phase2RecordedEffectV1",
+            "before_state_ref": state.identity(),
+            "file_delta": {"injected.txt": {"before": None, "after": "private"}},
+            "set": {"context_ref": state.context_ref},
+            "history_set": {},
+        }
+        event = EventV1(
+            previous=state.history["head"],
+            seq=state.history["seq"] + 1,
+            lineage_id="rollout-1",
+            kind="context_changed",
+            actor="environment",
+            audience=("controller", "trainer"),
+            payload_ref=self.store.put_artifact(effect),
+            versions_ref=state.versions_ref,
+            provenance_ref=state.provenance_ref,
+        )
+        next_state = self.store._apply_recorded_effect_body(state, event, effect)
+        commit = self.store.publish("rollout-1", action.commit_id, (event,), next_state)
+        checkpoint = self.store.load_commit(commit).checkpoint
+        with self.assertRaisesRegex(ProjectionError, "unrelated execution effect"):
+            project_writer_context(self.store, self.start, checkpoint)
+        with self.assertRaises(ProjectionError):
+            self.store.replay("rollout-1", self.start, [action.commit_id, commit])
+
     def test_interruption_restore_replay_projection_and_final_reply(self):
         prepared_ref = self.writer.prepare_request(
             self.runtime, {"rendered": "exact bytes\n", "template": "v1"}
@@ -632,51 +835,22 @@ class TransactionalWriterTest(WriterFixture):
         self.assertNotIn("blocked.txt", result.runtime.state.files)
 
     def test_optional_token_limits_require_evidence_and_do_not_infer_masks(self):
-        writer, runtime, _ = self.entry_with_budget(
-            limits={"generated_tokens": 2, "total_tokens": 7, "context_tokens": 10}
+        with self.assertRaisesRegex(WriterRuntimeError, "context_tokens cannot be enforced"):
+            self.entry_with_budget(limits={"context_tokens": 10})
+        writer, runtime, start = self.entry_with_budget(
+            limits={"generated_tokens": 2, "total_tokens": 7}
         )
         with self.assertRaisesRegex(WriterRuntimeError, "usage evidence"):
             writer.submit_action(runtime, self.action(content="Reply"))
-        with self.assertRaisesRegex(WriterRuntimeError, "generated_tokens budget"):
-            writer.submit_action(
-                runtime,
-                self.action(content="Reply"),
-                usage={"prompt_tokens": 4, "completion_tokens": 3},
-            )
-        with self.assertRaisesRegex(WriterRuntimeError, "context.*exact token counts"):
-            writer.submit_action(
-                runtime,
-                self.action(content="Reply"),
-                usage={"prompt_tokens": 5, "completion_tokens": 2},
-            )
-        with self.assertRaisesRegex(WriterRuntimeError, "context capacity"):
-            writer.submit_action(
-                runtime,
-                self.action(content="Reply"),
-                usage={"prompt_tokens": 5, "completion_tokens": 2},
-                trace={"input_tokens": 9, "reserved_output_tokens": 2},
-            )
-        with self.assertRaisesRegex(WriterRuntimeError, "binary artifact"):
-            writer.submit_action(
-                runtime,
-                self.action(content="Reply"),
-                usage={"prompt_tokens": 5, "completion_tokens": 2},
-                trace={
-                    "input_tokens": 8,
-                    "reserved_output_tokens": 2,
-                    "per_token_logprobs": ["-1.0"],
-                },
-            )
         logprob_ref = self.store.put_bytes_artifact(b"opaque-logprob-tensor")
+        prepared = writer.prepare_request(runtime, b"exact request")
         action = writer.submit_action(
             runtime,
             self.action(content="Reply"),
+            prepared_request_ref=prepared,
+            raw_output=b"Reply",
             usage={"prompt_tokens": 5, "completion_tokens": 2},
-            trace={
-                "input_tokens": 8,
-                "reserved_output_tokens": 2,
-                "per_token_logprobs_ref": logprob_ref,
-            },
+            trace={"per_token_logprobs_ref": logprob_ref},
         )
         trace = self.store.get_artifact(self.record(action)["trace_ref"])
         self.assertEqual(trace["logprob_evidence"], "supplied")
@@ -684,6 +858,93 @@ class TransactionalWriterTest(WriterFixture):
         self.assertEqual(
             self.store.get_artifact(logprob_ref, expected_domain="payload:bytes"),
             b"opaque-logprob-tensor",
+        )
+        self.assertEqual(
+            self.store.replay("rollout-1", start, [action.commit_id]), action.runtime.checkpoint_id
+        )
+
+    def test_sampled_token_overshoot_is_durable_and_terminal(self):
+        writer, runtime, start = self.entry_with_budget(limits={"generated_tokens": 1})
+        prepared = writer.prepare_request(runtime, b"paid request")
+        stop = writer.submit_action(
+            runtime,
+            self.action(self.call("write_file", {"path": "no.txt", "content": "no"})),
+            prepared_request_ref=prepared,
+            raw_output=b"sampled raw",
+            usage={"prompt_tokens": 5, "completion_tokens": 2},
+        )
+        self.assertEqual(stop.runtime.state.position["phase"], "terminal")
+        self.assertNotIn("no.txt", stop.runtime.state.files)
+        self.assertEqual(
+            self.store.get_artifact(stop.runtime.state.outcome_ref)["stop_reason"],
+            "generated_tokens_budget",
+        )
+        self.assertEqual(
+            self.store.get_artifact(stop.runtime.state.budgets_ref)["consumed"]["generated_tokens"],
+            2,
+        )
+        self.assertEqual(self.record(stop)["raw_output_ref"] is not None, True)
+        self.assertEqual(
+            self.store.replay("rollout-1", start, [stop.commit_id]), stop.runtime.checkpoint_id
+        )
+        with self.assertRaises(WriterRuntimeError):
+            writer.prepare_request(stop.runtime, b"retry")
+        with self.assertRaises(WriterRuntimeError):
+            writer.step_tool(stop.runtime)
+
+    def test_zero_token_capacity_rejected_before_preparation(self):
+        writer, runtime, start = self.entry_with_budget(limits={"generated_tokens": 0})
+        with self.assertRaisesRegex(WriterRuntimeError, "before sampling"):
+            writer.prepare_request(runtime, b"must not prepare")
+        stopped = writer.stop_exhausted(runtime)
+        self.assertEqual(
+            self.store.get_artifact(stopped.runtime.state.outcome_ref)["stop_reason"],
+            "generated_tokens_budget",
+        )
+        self.assertEqual(
+            self.store.replay("rollout-1", start, [stopped.commit_id]),
+            stopped.runtime.checkpoint_id,
+        )
+
+    def test_total_token_overshoot_retains_usage_and_rejects_retry(self):
+        writer, runtime, start = self.entry_with_budget(limits={"total_tokens": 3})
+        prepared = writer.prepare_request(runtime, b"request")
+        stopped = writer.submit_action(
+            runtime,
+            self.action(content="sampled reply"),
+            prepared_request_ref=prepared,
+            raw_output=b"sampled reply",
+            usage={"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4},
+        )
+        self.assertEqual(
+            self.store.get_artifact(stopped.runtime.state.outcome_ref)["stop_reason"],
+            "total_tokens_budget",
+        )
+        self.assertEqual(
+            self.store.get_artifact(stopped.runtime.state.budgets_ref)["consumed"]["total_tokens"],
+            4,
+        )
+        self.assertEqual(self.record(stopped)["usage"]["total_tokens"], 4)
+        self.assertEqual(
+            self.store.replay("rollout-1", start, [stopped.commit_id]),
+            stopped.runtime.checkpoint_id,
+        )
+        with self.assertRaisesRegex(WriterRuntimeError, "stale runtime handle"):
+            writer.submit_action(runtime, self.action(content="retry"))
+
+    def test_sampled_overrun_is_durable_even_with_bad_batch_envelope(self):
+        writer, runtime, start = self.entry_with_budget(limits={"generated_tokens": 1})
+        stopped = writer.submit_action(
+            runtime,
+            {"role": "assistant", "content": "", "tool_calls": None},
+            raw_output=b"bad parsed envelope",
+            usage={"completion_tokens": 2},
+        )
+        self.assertEqual(stopped.runtime.state.position["phase"], "terminal")
+        self.assertEqual(self.record(stopped)["usage"]["completion_tokens"], 2)
+        self.assertEqual(
+            self.store.replay("rollout-1", start, [stopped.commit_id]),
+            stopped.runtime.checkpoint_id,
         )
 
     def test_storage_limit_rejects_write_without_effect(self):

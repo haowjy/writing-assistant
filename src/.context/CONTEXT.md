@@ -84,6 +84,19 @@ identity. A tool-only exhausted turn may append `termination_recorded`; a final
 reply enters `checking`, not automatic task completion. Native token loss masks and
 author/check execution remain unimplemented.
 
+The graph writer uses a separate tool dispatch boundary so expected writer-operational
+path/patch/policy failures can be observed without converting disk, permission or
+corruption failures into writer mistakes. Raw call-array elements normalize to safe
+queue syntax and escaped evidence; each declared malformed call remains paired and
+charged without dispatch. Current lineage authority is checked before staging and
+again by publication CAS. Restore, projection, and replay apply Phase 4 semantic
+validation to writer-log histories (including origin, execution fingerprints, file
+delta, queue cursor, and budget charges); the generic Phase 2 reducer stays unchanged.
+Known zero token capacity rejects request preparation and can be sealed as a classified
+terminal stop. Already-sampled token overrun commits usage/output evidence and a
+terminal budget stop without tool execution. Exact pre-sampling context-token capacity
+and non-whitespace read counting are not supported and fail at runtime initialization.
+
 Reference closure uses one operation-scoped typed traversal with loaded, active, and
 completed sets. Checkpoint/commit/event depth is traversed iteratively; supplemental
 and imported references cannot bypass the validators for their resolved record domain.
