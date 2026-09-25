@@ -228,10 +228,13 @@ def domain_hash(domain: str, value: Any) -> str:
 def domain_hash_bytes(domain: str, value: bytes) -> str:
     """Hash an opaque binary artifact under an explicit ``:bytes`` domain.
 
-    This is not the file codec: text files must use :func:`file_hash`, which
-    hashes their exact UTF-8 bytes under the file domain. Structured JSON and
-    opaque bytes intentionally use separate tags, so callers must opt into a
-    ``:bytes`` domain rather than accidentally hashing bytes as JSON.
+    ``domain`` is the base domain name (for example ``"payload"``); this
+    helper appends ``":bytes"`` itself. Passing a name that already ends in
+    ``":bytes"`` is rejected. This is not the file codec: text files must use
+    :func:`file_hash`, which hashes their exact UTF-8 bytes under the file
+    domain. Structured JSON and opaque bytes intentionally use separate tags,
+    so callers must choose this helper rather than accidentally hashing bytes
+    as JSON.
     """
     try:
         tag = _DOMAINS[f"{domain}:bytes"]

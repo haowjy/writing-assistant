@@ -1,3 +1,4 @@
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -274,12 +275,16 @@ class TaskGraphRecordsTest(unittest.TestCase):
             nodes=(NodeSpecV1(id="n", entry_contract=H),),
         )
         for field in ("source_refs", "request_refs"):
-            for malformed in ({"ref": H}, "not-an-array", 7, True, None):
+            for malformed in ({H: "discarded?"}, {}, "", {"ref": H}, "not-an-array", 7, True, None):
                 with self.subTest(field=field, malformed=malformed):
                     with self.assertRaises(TypeError):
                         GraphInstanceV1(**{**base.to_dict(), field: malformed})
                     with self.assertRaises(TypeError):
                         GraphInstanceV1.from_dict({**base.to_dict(), field: malformed})
+                    with self.assertRaises(TypeError):
+                        GraphInstanceV1.from_json(
+                            canonical_json({**base.to_dict(), field: malformed})
+                        )
             for valid in ([], [H]):
                 with self.subTest(field=field, valid=valid):
                     record = GraphInstanceV1(**{**base.to_dict(), field: valid})
@@ -377,21 +382,102 @@ class TaskGraphRecordsTest(unittest.TestCase):
             self.assertEqual(type(record).from_json(record.to_json()), record)
 
     def test_independent_content_event_revision_checkpoint_commit_fixture(self):
+        def independent_hash(domain, body):
+            tag_name = {"context_content": "context-content"}.get(domain, domain)
+            tag = f"task-graph:{tag_name}:v1\0".encode("ascii")
+            return hashlib.sha256(tag + canonical_json(body).encode("utf-8")).hexdigest()
+
         payloads = CHAIN_FIXTURE["payloads"]
         for payload in payloads.values():
             body = load_canonical_json(payload["body"])
             self.assertEqual(canonical_json(body), payload["body"])
-            self.assertEqual(domain_hash("payload", body), payload["hash"])
+            self.assertEqual(independent_hash("payload", body), payload["hash"])
+
+        typed_domains = {
+            "pre_action_input": "context_content",
+            "assistant_output": "message",
+            "content_before_observation": "context_content",
+            "revision_before_observation": "context",
+            "event_action": "event",
+            "state_p1": "state",
+            "p1": "checkpoint",
+            "k1": "commit",
+            "content_after_observation": "context_content",
+            "event_result": "event",
+            "revision_after_observation": "context",
+            "state_p2": "state",
+            "p2": "checkpoint",
+            "k2": "commit",
+            "p0": "checkpoint",
+        }
+        for key, domain in typed_domains.items():
+            entry = CHAIN_FIXTURE[key]
+            body = load_canonical_json(entry["body"])
+            identity_body = dict(body)
+            if domain == "event":
+                identity_body.pop("id")
+            self.assertEqual(independent_hash(domain, identity_body), entry["hash"], key)
+
         scenario = CHAIN_FIXTURE["scenario"]
+        request_payload = load_canonical_json(payloads["request"]["body"])
         action_payload = load_canonical_json(payloads["action"]["body"])
         trace_payload = load_canonical_json(payloads["trace"]["body"])
         result_payload = load_canonical_json(payloads["result"]["body"])
+        budget_before = load_canonical_json(payloads["budget_before"]["body"])
+        budget_after = load_canonical_json(payloads["budget_after"]["body"])
+        execution_before = load_canonical_json(payloads["execution_before"]["body"])
+        execution_after = load_canonical_json(payloads["execution_after"]["body"])
         self.assertEqual(action_payload["action_id"], scenario["action_id"])
         self.assertEqual(action_payload["call_ids"], [scenario["call_id"]])
         self.assertEqual(trace_payload["action_id"], scenario["action_id"])
         self.assertEqual(result_payload["action_id"], scenario["action_id"])
         self.assertEqual(result_payload["call_id"], scenario["call_id"])
         self.assertEqual(result_payload["result_id"], scenario["result_id"])
+
+        pre_input = ContextContentV1.from_json(CHAIN_FIXTURE["pre_action_input"]["body"])
+        assistant_output = MessageV1.from_json(CHAIN_FIXTURE["assistant_output"]["body"])
+        post_action = ContextContentV1.from_json(
+            CHAIN_FIXTURE["content_before_observation"]["body"]
+        )
+        post_result = ContextContentV1.from_json(CHAIN_FIXTURE["content_after_observation"]["body"])
+        self.assertEqual(request_payload["context_ref"], pre_input.identity())
+        self.assertEqual(trace_payload["context_id"], pre_input.identity())
+        self.assertEqual(trace_payload["exact_request_ref"], payloads["request"]["hash"])
+        self.assertNotIn(
+            post_action.identity(),
+            (trace_payload["context_id"], trace_payload["exact_request_ref"]),
+        )
+        self.assertEqual(action_payload["message_ref"], assistant_output.identity())
+        self.assertNotEqual(action_payload["message_ref"], pre_input.identity())
+        self.assertEqual(post_action.messages[-1], assistant_output)
+        self.assertEqual(post_result.messages[:2], post_action.messages)
+        self.assertEqual(
+            result_payload["before_execution_hash"], payloads["execution_before"]["hash"]
+        )
+        self.assertEqual(
+            result_payload["after_execution_hash"], payloads["execution_after"]["hash"]
+        )
+        self.assertEqual(result_payload["budget_before_ref"], payloads["budget_before"]["hash"])
+        self.assertEqual(result_payload["budget_after_ref"], payloads["budget_after"]["hash"])
+        self.assertNotEqual(payloads["budget_before"]["hash"], payloads["budget_after"]["hash"])
+        self.assertEqual(budget_before["consumed"]["tool_calls"], 0)
+        self.assertEqual(budget_after["consumed"]["tool_calls"], 1)
+        self.assertEqual(budget_after["parent_ref"], payloads["budget_before"]["hash"])
+        self.assertEqual(result_payload["budget_charge"], {"tool_calls": 1})
+        self.assertEqual(execution_before["files"], {"a.txt": "hi"})
+        self.assertEqual(execution_after["files"], {"a.txt": "hello"})
+        self.assertEqual(execution_before["budgets"]["tool_calls"], 0)
+        self.assertEqual(execution_after["budgets"]["tool_calls"], 1)
+        tool_call = {
+            "call_id": "call-1",
+            "name": "write_file",
+            "arguments": {"content": "hello", "path": "a.txt"},
+        }
+        self.assertEqual(execution_before["tool_queue"], [tool_call])
+        self.assertEqual(execution_after["tool_queue"], [])
+
+        for alias in ("content", "event", "revision", "state", "checkpoint", "commit"):
+            self.assertNotIn(alias, CHAIN_FIXTURE)
 
         records = (
             CheckpointV1.from_json(CHAIN_FIXTURE["p0"]["body"]),
@@ -452,6 +538,10 @@ class TaskGraphRecordsTest(unittest.TestCase):
         self.assertIn(event2.identity(), revision2.provenance_refs)
         self.assertEqual(state1.context_ref, revision1.identity())
         self.assertEqual(state2.context_ref, revision2.identity())
+        self.assertEqual(state1.budgets_ref, payloads["budget_before"]["hash"])
+        self.assertEqual(state2.budgets_ref, payloads["budget_after"]["hash"])
+        self.assertIn(payloads["execution_before"]["hash"], p1.artifact_refs)
+        self.assertIn(payloads["execution_after"]["hash"], p2.artifact_refs)
         self.assertEqual(p1.parents, (p0.identity(),))
         self.assertEqual(p2.parents, (p1.identity(),))
         self.assertEqual(k1.parent_commit, None)
