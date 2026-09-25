@@ -57,8 +57,10 @@ def applicable_checks(node, feedback_cursor: int) -> tuple[CheckContractV1, ...]
 
 
 class DeterministicChecksV1:
-    def __init__(self, writer):
+    def __init__(self, writer, dependencies=None):
         self.writer = writer
+        self.dependencies = dependencies or writer.dependencies
+        self.environment = self.dependencies.environment
         self.store = writer.store
 
     def request_checks(self, runtime):
@@ -100,7 +102,7 @@ class DeterministicChecksV1:
         continuation["check_requests"] = request_refs
         position = state.to_dict()["position"]
         position["phase"] = "awaiting_checks"
-        return self.writer.environment.publish_record(
+        return self.environment.publish_record(
             runtime,
             "external_requested",
             "environment",
@@ -120,7 +122,7 @@ class DeterministicChecksV1:
         request = self.store.get_artifact(request_ref, private=True)
         target = self.store.load_checkpoint(request["target_checkpoint"])
         check = node.checks[request["check_id"]]
-        status, evidence = deterministic_check(check, target.state.files)
+        status, evidence = self.dependencies.evaluator.evaluate(check, target.state.files)
         evidence_ref = self.store.put_artifact(
             {
                 "record_type": "DeterministicCheckEvidenceV1",
@@ -150,7 +152,7 @@ class DeterministicChecksV1:
             *state.continuation["applied_responses"],
             request["request_id"],
         ]
-        return self.writer.environment.publish_record(
+        return self.environment.publish_record(
             runtime,
             "check_recorded",
             "evaluator",

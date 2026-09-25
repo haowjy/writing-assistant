@@ -26,13 +26,13 @@ from writing_agent.task_graph_contracts import (
     RewardContractV1,
     ScriptedAuthorV1,
 )
+from writing_agent.task_graph_local import writer_tool_schemas
 from writing_agent.task_graph_projection import ProjectionError, project_writer_context
 from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
 from writing_agent.task_graph_terminal import ScriptedTerminalV1, validate_terminal_effect
 from writing_agent.task_graph_writer import (
     TransactionalWriterV1,
     WriterRuntimeError,
-    writer_tool_schemas,
 )
 
 

@@ -17,6 +17,7 @@ from writing_agent.task_graph import (
     tree_hash,
 )
 from writing_agent.task_graph_environment import EnvironmentBatch
+from writing_agent.task_graph_local import _graph_dispatch
 from writing_agent.task_graph_projection import (
     ProjectionError,
     project_writer_context,
@@ -1080,7 +1081,7 @@ class TransactionalWriterTest(WriterFixture):
                     Workspace, "write_file", side_effect=OSError(code, "I/O failure")
                 ):
                     with self.assertRaises(OSError):
-                        task_graph_writer._graph_dispatch(
+                        _graph_dispatch(
                             Workspace(self.root / "dispatch-stage"),
                             "write_file",
                             {"path": "draft.txt", "content": "new"},
@@ -1093,7 +1094,7 @@ class TransactionalWriterTest(WriterFixture):
         )
         self.writer.step_tool(action.runtime)
         with patch.object(
-            task_graph_writer, "_graph_dispatch", side_effect=AssertionError("dispatched")
+            self.writer.dependencies.tools, "execute", side_effect=AssertionError("dispatched")
         ):
             with self.assertRaisesRegex(WriterRuntimeError, "stale runtime handle"):
                 self.writer.step_tool(action.runtime)

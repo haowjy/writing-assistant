@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add injected sampling, environment, text-tool, and evaluator ports with current
+  offline adapters and immutable content-addressed runtime manifests. Exercise
+  alternate fake adapters through the same writer/check flow and seal a manifest
+  in an existing group policy reference without changing group wire identity.
+
 - Split semantic replay from visible-context projection: a typed cursor and closed
   event-handler registry validate admitted writer histories and emit authorized
   message/provenance contributions. Represent author reply progress with an

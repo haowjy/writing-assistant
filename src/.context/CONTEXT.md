@@ -37,6 +37,11 @@ retains its smoke-evaluation and training-format workflows.
   retain their approved identities. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
+  [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines the injected
+  sampling, environment, tool and evaluator ports with immutable content-addressed
+  descriptors/manifests; [task_graph_local.py](../writing_agent/task_graph_local.py)
+  composes the current offline implementations. Injection does not override
+  admitted program schemas or semantic replay validation.
   A capable adapter calls
   `prepare_request` before sampling to pin caller-owned request/context evidence;
   that path does not verify payload messages. `prepare_verified_messages` checks a

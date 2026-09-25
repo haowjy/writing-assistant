@@ -33,6 +33,12 @@ class WriterStepV1:
 class EnvironmentTransactionService:
     """One composition-owned transaction entry point; no role-specific policy."""
 
+    @property
+    def descriptor(self):
+        from writing_agent.task_graph_ports import PortDescriptorV1
+
+        return PortDescriptorV1("environment", "local-task-graph-cas-v1", "1")
+
     def __init__(self, store: TaskGraphStore, rollout_id: str, entry_checkpoint_id: str):
         self.store = store
         self.rollout_id = rollout_id

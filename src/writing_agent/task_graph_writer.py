@@ -8,10 +8,7 @@ already-hashed observation as provenance without making a hash cycle.
 from __future__ import annotations
 
 import json
-import shutil
-import tempfile
 from collections.abc import Callable, Mapping
-from pathlib import Path
 from typing import Any
 
 from writing_agent.task_graph import (
@@ -39,61 +36,16 @@ from writing_agent.task_graph_compaction import (
     select_context,
 )
 from writing_agent.task_graph_environment import (
-    EnvironmentTransactionService,
     WriterRuntimeError,
     WriterStepV1,
 )
+from writing_agent.task_graph_ports import RuntimeDependenciesV1, local_runtime_dependencies
 from writing_agent.task_graph_projection import (
     execution_value,
     project_writer_context,
 )
-from writing_agent.task_graph_sampling import (
-    AdapterEvidenceV1,
-    PreparedRequestV1,
-    SamplingEvidenceV1,
-    _validate_prepared_request,
-)
+from writing_agent.task_graph_sampling import PreparedRequestV1, _validate_prepared_request
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
-from writing_agent.workspace import TOOL_SCHEMAS, Workspace
-
-ASK_AUTHOR_SCHEMA = {
-    "type": "function",
-    "function": {
-        "name": "ask_author",
-        "description": "Ask about declared public decision IDs. This must be the only tool call.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "question": {"type": "string"},
-                "decision_ids": {"type": "array", "items": {"type": "string"}},
-                "proposals": {"type": "array", "items": {"type": "object"}},
-                "option_refs": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["question", "decision_ids", "proposals", "option_refs"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-
-def writer_tool_schemas(
-    allowlist: tuple[str, ...], interaction_policy=None
-) -> tuple[dict[str, Any], ...]:
-    schemas = tuple(schema for schema in TOOL_SCHEMAS if schema["function"]["name"] in allowlist)
-    if "ask_author" not in allowlist:
-        return schemas
-    if interaction_policy is None:
-        raise ValueError("ask_author schema requires admitted public decision declarations")
-    schema = json.loads(canonical_json(ASK_AUTHOR_SCHEMA))
-    declared = interaction_policy.public_decisions
-    schema["function"]["description"] += " Public decisions: " + "; ".join(
-        f"{item['id']}: {item['label']}" for item in declared
-    )
-    schema["function"]["parameters"]["properties"]["decision_ids"]["items"]["enum"] = [
-        item["id"] for item in declared
-    ]
-    return (*schemas, schema)
-
 
 _MAX_ARGUMENT_BYTES = 65_536
 _MAX_CALL_EVIDENCE = 131_072
@@ -170,33 +122,6 @@ def _bounded_call_evidence(value: Any) -> tuple[bool, str]:
     return True, _safe_evidence(value)
 
 
-def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) -> dict:
-    """Legacy dispatch catches all OSError; this boundary must not hide I/O failure."""
-    schemas = {schema["function"]["name"]: schema["function"] for schema in TOOL_SCHEMAS}
-    if name not in schemas:
-        return {"ok": False, "valid": False, "error": f"Unknown tool: {name}"}
-    params = schemas[name]["parameters"]
-    if set(arguments) - params["properties"].keys() or set(params["required"]) - arguments.keys():
-        return {"ok": False, "valid": False, "error": "Tool arguments do not match schema"}
-    try:
-        return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
-    except UnicodeError:
-        raise
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError) as exc:
-        return {"ok": False, "valid": True, "error": str(exc)}
-    except FileExistsError as exc:
-        # mkdir on a writer-selected child of an existing file is a path conflict.
-        if name in {"write_file", "patch_file"} and "path" in arguments:
-            parent = (workspace.root / arguments["path"]).parent
-            if any(
-                ancestor.is_file()
-                for ancestor in (parent, *parent.parents)
-                if ancestor != workspace.root
-            ):
-                return {"ok": False, "valid": True, "error": str(exc)}
-        raise
-
-
 class TransactionalWriterV1:
     """A serial, explicit writer adapter; never invokes a model or author service."""
 
@@ -209,6 +134,7 @@ class TransactionalWriterV1:
         *,
         count_tokens: Callable[[str], int] = _count_whitespace,
         read_tokenizer: str = "whitespace-v1",
+        dependencies: RuntimeDependenciesV1 | None = None,
     ) -> None:
         if not isinstance(graph, AdmittedGraphV1):
             raise TypeError("writer runtime requires an admitted graph")
@@ -285,7 +211,11 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("entry request differs from admitted node request")
         self.entry_checkpoint_id = entry_checkpoint_id
-        self.environment = EnvironmentTransactionService(store, rollout_id, entry_checkpoint_id)
+        self.dependencies = dependencies or local_runtime_dependencies(
+            store, rollout_id, entry_checkpoint_id
+        )
+        self.dependencies.manifest()
+        self.environment = self.dependencies.environment
         entry_budget = store.get_artifact(entry.state.budgets_ref, expected_domain="payload")
         if isinstance(entry_budget, dict) and "context_tokens" in entry_budget.get("limits", {}):
             raise WriterRuntimeError("context_tokens cannot be enforced before sampling")
@@ -312,7 +242,7 @@ class TransactionalWriterV1:
             or runtime.state.position["entry_contract"] != node.spec.entry_contract
         ):
             raise WriterRuntimeError("not an admitted writer-node entry")
-        expected_tools = writer_tool_schemas(
+        expected_tools = self.dependencies.tools.schemas(
             node.contract.entry_contract.tool_allowlist, node.interaction_policy
         )
         if canonical_json(runtime.context.tools) != canonical_json(expected_tools):
@@ -620,13 +550,9 @@ class TransactionalWriterV1:
             else self.store.put_artifact(exact_request)
         )
         return self.store.put_artifact(
-            PreparedRequestV1(
-                "PreparedWriterRequestV1",
-                runtime.context.content_hash,
-                runtime.context.identity(),
-                canonical_json(runtime.context.rendering),
-                payload_ref,
-            ).to_wire()
+            self.dependencies.sampling.prepared_request(
+                runtime.context, payload_ref, verified=False
+            )
         )
 
     def prepare_verified_messages(
@@ -644,9 +570,11 @@ class TransactionalWriterV1:
         prepared_ref = self.prepare_request(runtime, dict(exact_request))
         prepared = self.store.get_artifact(prepared_ref, expected_domain="payload")
         return self.store.put_artifact(
-            PreparedRequestV1.from_wire(
-                {**prepared, "record_type": "VerifiedWriterMessagesV1"}
-            ).to_wire()
+            self.dependencies.sampling.prepared_request(
+                runtime.context,
+                PreparedRequestV1.from_wire(prepared).payload_ref,
+                verified=True,
+            )
         )
 
     def submit_action(
@@ -796,20 +724,15 @@ class TransactionalWriterV1:
             if raw_output is not None
             else None
         )
-        trace_body = SamplingEvidenceV1(
-            action_id=action_id,
-            context_content_hash=runtime.context.content_hash,
-            context_revision_ref=runtime.context.identity(),
-            rendering_json=canonical_json(runtime.context.rendering),
-            exact_request_ref=request_ref,
-            prepared_request_ref=prepared_request_ref,
-            raw_output_ref=raw_output_ref,
-            logprob_ref=trace.get("per_token_logprobs_ref") if trace is not None else None,
-            usage_json=canonical_json(usage),
-            model=trace.get("model") if trace is not None else None,
-            seed=trace.get("seed") if trace is not None else None,
-            adapter=AdapterEvidenceV1.from_wire(trace),
-        ).to_wire()
+        trace_body = self.dependencies.sampling.evidence(
+            action_id,
+            runtime.context,
+            request_ref,
+            prepared_request_ref,
+            raw_output_ref,
+            usage,
+            trace,
+        )
         trace_ref = self.store.put_artifact(trace_body)
         if exceeded is not None:
             return self._sampled_budget_stop(
@@ -1011,47 +934,39 @@ class TransactionalWriterV1:
         if predispatch_error is not None:
             observation = predispatch_error
         else:
-            stage = Path(tempfile.mkdtemp(prefix="writer-stage-", dir=runtime.workspace.parent))
-            try:
-                for path, text in files.items():
-                    target = stage / path
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(text.encode("utf-8"))
-                workspace = Workspace(
-                    stage,
-                    self.store.max_file_bytes,
-                    min(self.store.max_workspace_bytes, budget["limits"]["storage_bytes"]),
-                    strict_decode=True,
+            execution = self.dependencies.tools.execute(
+                files,
+                call["name"],
+                dict(call["arguments"]),
+                stage_parent=runtime.workspace.parent,
+                max_file_bytes=self.store.max_file_bytes,
+                max_workspace_bytes=min(
+                    self.store.max_workspace_bytes, budget["limits"]["storage_bytes"]
+                ),
+            )
+            observation = execution.observation
+            if observation["ok"] and call["name"] in READ_TOOLS:
+                charge = (
+                    observation_read_tokens(observation, call["name"], self.read_tokenizer)
+                    if self.read_tokenizer == "whitespace-v1"
+                    else self.count_tokens(json.dumps(observation["result"], ensure_ascii=False))
                 )
-                observation = _graph_dispatch(workspace, call["name"], dict(call["arguments"]))
-                if not observation["ok"] and "error" in observation:
-                    observation["error"] = observation["error"].replace(str(stage), "<workspace>")
-                if observation["ok"] and call["name"] in READ_TOOLS:
-                    charge = (
-                        observation_read_tokens(observation, call["name"], self.read_tokenizer)
-                        if self.read_tokenizer == "whitespace-v1"
-                        else self.count_tokens(
-                            json.dumps(observation["result"], ensure_ascii=False)
-                        )
-                    )
-                    if type(charge) is not int or charge < 0:
-                        raise WriterRuntimeError("read tokenizer returned an invalid charge")
-                    if (
-                        budget["consumed"].get("read_tokens", 0) + charge
-                        > budget["limits"]["read_tokens"]
-                    ):
-                        observation = {
-                            "ok": False,
-                            "valid": True,
-                            "error": "Read-token budget exceeded",
-                        }
-                    else:
-                        read_charge = charge
-                        files = workspace.snapshot()
-                elif observation["ok"]:
-                    files = workspace.snapshot()
-            finally:
-                shutil.rmtree(stage)
+                if type(charge) is not int or charge < 0:
+                    raise WriterRuntimeError("read tokenizer returned an invalid charge")
+                if (
+                    budget["consumed"].get("read_tokens", 0) + charge
+                    > budget["limits"]["read_tokens"]
+                ):
+                    observation = {
+                        "ok": False,
+                        "valid": True,
+                        "error": "Read-token budget exceeded",
+                    }
+                else:
+                    read_charge = charge
+                    files = execution.files
+            elif observation["ok"]:
+                files = execution.files
         delta = {
             path: {"before": state.files.get(path), "after": files.get(path)}
             for path in sorted(set(state.files) | set(files))

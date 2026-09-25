@@ -121,8 +121,10 @@ def applicable_feedback_checks(node, state):
 
 
 class ScriptedTerminalV1:
-    def __init__(self, writer):
+    def __init__(self, writer, dependencies=None):
         self.writer = writer
+        self.dependencies = dependencies or writer.dependencies
+        self.environment = self.dependencies.environment
         self.store = writer.store
 
     def transition(self, runtime):
@@ -170,7 +172,7 @@ class ScriptedTerminalV1:
         }
         position = state.to_dict()["position"]
         position["phase"] = "ready_transition"
-        return self.writer.environment.publish_record(
+        return self.environment.publish_record(
             runtime,
             "transition_committed",
             "environment",
@@ -223,7 +225,7 @@ class ScriptedTerminalV1:
             "schema": 1,
             "outcome_ref": outcome_ref,
         }
-        return self.writer.environment.publish_record(
+        return self.environment.publish_record(
             runtime,
             "termination_recorded",
             "environment",
@@ -256,7 +258,7 @@ class ScriptedTerminalV1:
         outcome_ref = self.store.put_artifact(outcome)
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        return self.writer.environment.publish_record(
+        return self.environment.publish_record(
             runtime,
             "termination_recorded",
             "environment",
@@ -332,7 +334,7 @@ class ScriptedTerminalV1:
             "schema": 1,
             "availability_ref": availability_ref,
         }
-        return self.writer.environment.publish_record(
+        return self.environment.publish_record(
             runtime,
             "external_response",
             "evaluator",
