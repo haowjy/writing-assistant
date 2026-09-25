@@ -2,10 +2,10 @@ import errno
 import tempfile
 import unittest
 from contextlib import ExitStack, nullcontext
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.task_graph_forgery import forged_effect, forged_event
 from writing_agent import task_graph_writer
 from writing_agent.agent import SYSTEM_PROMPT
 from writing_agent.legacy_graph import compile_legacy_scenario
@@ -16,6 +16,7 @@ from writing_agent.task_graph import (
     MessageV1,
     tree_hash,
 )
+from writing_agent.task_graph_environment import EnvironmentBatch
 from writing_agent.task_graph_projection import (
     ProjectionError,
     project_writer_context,
@@ -203,9 +204,10 @@ class WriterFixture(unittest.TestCase):
 
 class TransactionalWriterTest(WriterFixture):
     def test_generic_phase2_budget_event_is_rejected_on_admitted_writer(self):
-        effect = self.writer._effect(self.runtime.state, changes={})
+        effect = forged_effect(self.runtime.state, changes={})
         effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
+        event = forged_event(
+            self.writer,
             self.runtime.state,
             "budget_charged",
             effect_ref,
@@ -228,9 +230,10 @@ class TransactionalWriterTest(WriterFixture):
         action = self.writer.submit_action(
             self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
         )
-        effect = self.writer._effect(action.runtime.state, changes={})
+        effect = forged_effect(action.runtime.state, changes={})
         effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
+        event = forged_event(
+            self.writer,
             action.runtime.state,
             "budget_charged",
             effect_ref,
@@ -289,7 +292,7 @@ class TransactionalWriterTest(WriterFixture):
             with self.subTest(field=field):
 
                 def mutate(fixture, writer, field=field):
-                    original = writer._publish
+                    original = EnvironmentBatch.append_record
 
                     def forged(*args, **kwargs):
                         if field == "action_ids":
@@ -300,7 +303,7 @@ class TransactionalWriterTest(WriterFixture):
                             kwargs["changes"]["budgets_ref"] = fixture.store.put_artifact(budget)
                         return original(*args, **kwargs)
 
-                    return patch.object(writer, "_publish", forged)
+                    return patch.object(EnvironmentBatch, "append_record", forged)
 
                 self._assert_mutation_rejected(prepare, mutate, submit)
 
@@ -323,18 +326,18 @@ class TransactionalWriterTest(WriterFixture):
                             runtime = action.runtime
                             previous = action.commit_id
                             commits.append(previous)
-                        original = writer._effect
+                        original = EnvironmentBatch._effect
 
-                        def forged(state, *, changes, history=(), delta=(), original=original):
+                        def forged(batch, changes, history=(), delta=(), original=original):
                             changes = dict(changes)
                             if "external_inputs_ref" in changes:
-                                changes["external_inputs_ref"] = state.external_inputs_ref
-                            return original(state, changes=changes, history=history, delta=delta)
+                                changes["external_inputs_ref"] = batch.current.external_inputs_ref
+                            return original(batch, changes, history, delta)
 
                         bypass = (
                             bypass_semantic_projection() if force_persistence else nullcontext()
                         )
-                        with patch.object(writer, "_effect", forged), bypass:
+                        with patch.object(EnvironmentBatch, "_effect", forged), bypass:
                             if force_persistence:
                                 if kind == "tool_result":
                                     writer.step_tool(runtime)
@@ -399,21 +402,23 @@ class TransactionalWriterTest(WriterFixture):
 
                 def mutate(fixture, writer, field=field, stop_kind=stop_kind):
                     if field == "actor":
-                        original_event = writer._event
+                        original_event = EnvironmentBatch._append_effect
 
-                        def forged_event(*args, **kwargs):
-                            return replace(
-                                original_event(*args, **kwargs), id=None, actor="environment"
+                        def forged_event(
+                            batch, kind, actor, audience, changes, history=(), delta=()
+                        ):
+                            return original_event(
+                                batch, kind, "environment", audience, changes, history, delta
                             )
 
-                        return patch.object(writer, "_event", forged_event)
+                        return patch.object(EnvironmentBatch, "_append_effect", forged_event)
                     if field in {"log", "log_entries", "log_record_ref", "budget"}:
-                        original = writer._effect
+                        original = EnvironmentBatch._effect
 
-                        def forged(state, *, changes, history=(), delta=()):
+                        def forged(batch, changes, history=(), delta=()):
                             changes = dict(changes)
                             if field == "log":
-                                changes["external_inputs_ref"] = state.external_inputs_ref
+                                changes["external_inputs_ref"] = batch.current.external_inputs_ref
                             elif field in {"log_entries", "log_record_ref"}:
                                 log = fixture.store.get_artifact(changes["external_inputs_ref"])
                                 if field == "log_entries":
@@ -427,9 +432,9 @@ class TransactionalWriterTest(WriterFixture):
                                 budget = fixture.store.get_artifact(changes["budgets_ref"])
                                 budget["consumed"]["model_calls"] = 99
                                 changes["budgets_ref"] = fixture.store.put_artifact(budget)
-                            return original(state, changes=changes, history=history, delta=delta)
+                            return original(batch, changes, history, delta)
 
-                        return patch.object(writer, "_effect", forged)
+                        return patch.object(EnvironmentBatch, "_effect", forged)
                     original = fixture.store.put_artifact
                     record_kind = (
                         "WriterSampledBudgetStopV1"
@@ -578,7 +583,7 @@ class TransactionalWriterTest(WriterFixture):
                     self._assert_mutation_rejected(prepare, mutate, submit)
 
     def test_action_authority_and_trace_forgery_fail_before_publication(self):
-        original = self.writer._publish
+        original = EnvironmentBatch.append_record
         for forged in ("outcome_ref", "trace_action_id"):
             with self.subTest(forged=forged):
 
@@ -598,7 +603,7 @@ class TransactionalWriterTest(WriterFixture):
                         record["trace_ref"] = self.store.put_artifact(trace)
                     return original(*args, **kwargs)
 
-                with patch.object(self.writer, "_publish", publish):
+                with patch.object(EnvironmentBatch, "append_record", publish):
                     with self.assertRaises(ProjectionError):
                         self.writer.submit_action(self.runtime, self.action(content="done"))
                 self.assertIsNone(self.store.read_head("rollout-1"))
@@ -609,7 +614,7 @@ class TransactionalWriterTest(WriterFixture):
                 fixture = WriterFixture()
                 fixture.setUp()
                 try:
-                    original = fixture.writer._publish
+                    original = EnvironmentBatch.append_record
 
                     def publish(*args, forged=forged, fixture=fixture, original=original, **kwargs):
                         if forged == "outcome_ref":
@@ -628,7 +633,7 @@ class TransactionalWriterTest(WriterFixture):
                         return original(*args, **kwargs)
 
                     with (
-                        patch.object(fixture.writer, "_publish", publish),
+                        patch.object(EnvironmentBatch, "append_record", publish),
                         bypass_semantic_projection(),
                     ):
                         fixture.writer.submit_action(
@@ -1097,7 +1102,7 @@ class TransactionalWriterTest(WriterFixture):
         action = self.writer.submit_action(
             self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
         )
-        publish = self.writer._publish
+        publish = EnvironmentBatch.append_record
 
         def forged(*args, **kwargs):
             record = kwargs["record"]
@@ -1111,7 +1116,7 @@ class TransactionalWriterTest(WriterFixture):
             return publish(*args, **kwargs)
 
         with (
-            patch.object(self.writer, "_publish", forged),
+            patch.object(EnvironmentBatch, "append_record", forged),
             bypass_semantic_projection(),
         ):
             self.writer.step_tool(action.runtime)
@@ -1142,7 +1147,7 @@ class TransactionalWriterTest(WriterFixture):
                         fixture.runtime,
                         fixture.action(fixture.call("read_file", {"path": "draft.txt"})),
                     )
-                    original = fixture.writer._publish
+                    original = EnvironmentBatch.append_record
 
                     def forged(*args, field=field, original=original, **kwargs):
                         record = kwargs["record"]
@@ -1166,7 +1171,7 @@ class TransactionalWriterTest(WriterFixture):
                         return original(*args, **kwargs)
 
                     with (
-                        patch.object(fixture.writer, "_publish", forged),
+                        patch.object(EnvironmentBatch, "append_record", forged),
                         bypass_semantic_projection(),
                     ):
                         fixture.writer.step_tool(action.runtime)
@@ -1197,7 +1202,7 @@ class TransactionalWriterTest(WriterFixture):
                         fixture.runtime,
                         fixture.action(fixture.call("read_file", {"path": "draft.txt"})),
                     )
-                    original = fixture.writer._publish
+                    original = EnvironmentBatch.append_record
 
                     def forged(*args, field=field, original=original, **kwargs):
                         record = kwargs["record"]
@@ -1217,7 +1222,7 @@ class TransactionalWriterTest(WriterFixture):
                             kwargs["message"] = MessageV1.from_dict(message)
                         return original(*args, **kwargs)
 
-                    with patch.object(fixture.writer, "_publish", forged):
+                    with patch.object(EnvironmentBatch, "append_record", forged):
                         with self.assertRaises(ProjectionError):
                             fixture.writer.step_tool(action.runtime)
                     self.assertEqual(fixture.store.read_head("rollout-1"), action.commit_id)

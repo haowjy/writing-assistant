@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Mapping
 
 from writing_agent.task_graph import file_hash
@@ -11,9 +10,7 @@ from writing_agent.task_graph_contracts import (
     InteractionPolicyV1,
     NodeContractV1,
 )
-from writing_agent.task_graph_projection import project_writer_context
-from writing_agent.task_graph_scripted import _log
-from writing_agent.task_graph_writer import WriterRuntimeError, WriterStepV1
+from writing_agent.task_graph_environment import WriterRuntimeError
 
 
 def deterministic_check(check: CheckContractV1, files: Mapping[str, str]) -> tuple[str, dict]:
@@ -64,47 +61,8 @@ class DeterministicChecksV1:
         self.writer = writer
         self.store = writer.store
 
-    def _result(self, runtime, commit, event):
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"check-{uuid.uuid4().hex}"
-        restored = self.store.restore(checkpoint_id, fresh)
-        return WriterStepV1(restored, commit, event.id, event.payload_ref)
-
-    def _publish(self, runtime, kind, actor, record, changes, *, private=False, artifact_refs=()):
-        state = runtime.state
-        record_ref = self.store.put_artifact(record, private=private)
-        log_ref = _log(self.writer, state, kind, record_ref)
-        effect = self.writer._effect(state, changes={**changes, "external_inputs_ref": log_ref})
-        effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
-            state,
-            kind,
-            effect_ref,
-            actor=actor,
-            audience=("controller", "evaluator", "trainer"),
-        )
-        final = self.writer._reduced(state, event, effect)
-        head, parent = self.writer._head(runtime)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(record_ref, log_ref, effect_ref, *artifact_refs),
-        )
-        return self._result(runtime, commit, event)
-
     def request_checks(self, runtime):
-        node, _ = self.writer._check(runtime)
+        node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
         if node.contract.interaction_contract.mode != "scripted_author":
             raise WriterRuntimeError("strict checks require scripted-author admission")
@@ -142,17 +100,19 @@ class DeterministicChecksV1:
         continuation["check_requests"] = request_refs
         position = state.to_dict()["position"]
         position["phase"] = "awaiting_checks"
-        return self._publish(
+        return self.writer.environment.publish_record(
             runtime,
             "external_requested",
             "environment",
-            record,
-            {"continuation": continuation, "position": position},
-            artifact_refs=tuple(request_refs),
+            record=record,
+            changes={"continuation": continuation, "position": position},
+            extra_refs=tuple(request_refs),
+            restore_prefix="check",
+            result_effect=True,
         )
 
     def check_next(self, runtime):
-        node, _ = self.writer._check(runtime)
+        node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
         if state.position["phase"] != "awaiting_checks" or not state.continuation["check_requests"]:
             raise WriterRuntimeError("no outstanding frozen check request")
@@ -190,13 +150,15 @@ class DeterministicChecksV1:
             *state.continuation["applied_responses"],
             request["request_id"],
         ]
-        return self._publish(
+        return self.writer.environment.publish_record(
             runtime,
             "check_recorded",
             "evaluator",
-            result,
-            {"continuation": continuation},
-            artifact_refs=(evidence_ref,),
+            record=result,
+            changes={"continuation": continuation},
+            extra_refs=(evidence_ref,),
+            restore_prefix="check",
+            result_effect=True,
         )
 
 

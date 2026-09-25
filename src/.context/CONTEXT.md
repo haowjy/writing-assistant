@@ -23,7 +23,10 @@ retains its smoke-evaluation and training-format workflows.
   author transition/completion claims, or mutate runtime state.
 - [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
-  handle. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
+  handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)
+  stages typed record/log/effect/context batches and owns semantic prepublication,
+  atomic CAS, and fresh restore for writer, author, checks, terminal, and context
+  operations. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
   reconstructs writer context from the entry checkpoint and authorized causal
   events; it never renders the private event log wholesale.
   [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1

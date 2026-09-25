@@ -10,16 +10,13 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
-import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from writing_agent.task_graph import (
     ContextRevisionV1,
     EnvironmentStateV1,
-    EventV1,
     MessageV1,
     canonical_json,
     safe_path,
@@ -28,7 +25,6 @@ from writing_agent.task_graph import (
 )
 from writing_agent.task_graph_accounting import (
     READ_TOOLS,
-    charge_context_append,
     exhausted_stop_reason,
     observation_read_tokens,
     sampled_usage_charge,
@@ -41,6 +37,11 @@ from writing_agent.task_graph_compaction import (
     make_record,
     require_quiescent,
     select_context,
+)
+from writing_agent.task_graph_environment import (
+    EnvironmentTransactionService,
+    WriterRuntimeError,
+    WriterStepV1,
 )
 from writing_agent.task_graph_projection import (
     execution_value,
@@ -196,18 +197,6 @@ def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) 
         raise
 
 
-class WriterRuntimeError(ValueError):
-    """The supplied action or restored state violates the graph writer contract."""
-
-
-@dataclass(frozen=True)
-class WriterStepV1:
-    runtime: RuntimeHandle
-    commit_id: str
-    event_id: str
-    record_ref: str
-
-
 class TransactionalWriterV1:
     """A serial, explicit writer adapter; never invokes a model or author service."""
 
@@ -296,6 +285,7 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("entry request differs from admitted node request")
         self.entry_checkpoint_id = entry_checkpoint_id
+        self.environment = EnvironmentTransactionService(store, rollout_id, entry_checkpoint_id)
         entry_budget = store.get_artifact(entry.state.budgets_ref, expected_domain="payload")
         if isinstance(entry_budget, dict) and "context_tokens" in entry_budget.get("limits", {}):
             raise WriterRuntimeError("context_tokens cannot be enforced before sampling")
@@ -306,7 +296,7 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("unsupported read tokenizer for semantic validation")
 
-    def _check(self, runtime: RuntimeHandle) -> tuple[Any, dict[str, Any]]:
+    def validate_runtime(self, runtime: RuntimeHandle) -> tuple[Any, dict[str, Any]]:
         checkpoint = self.store.load_checkpoint(runtime.checkpoint_id)
         if (
             checkpoint.state != runtime.state
@@ -369,182 +359,13 @@ class TransactionalWriterV1:
             raise WriterRuntimeError("storage counter differs from checkpoint files")
         return node, budget
 
-    def _head(self, runtime: RuntimeHandle) -> tuple[str | None, str | None]:
-        lineage = runtime.state.position["lineage_id"]
-        head = self.store.read_head(lineage)
-        if head is None:
-            return None, runtime.checkpoint_id
-        if self.store.load_commit(head).checkpoint != runtime.checkpoint_id:
-            raise WriterRuntimeError("stale runtime handle: lineage head moved")
-        return head, None
-
-    @staticmethod
-    def _effect(
-        state: EnvironmentStateV1,
-        *,
-        changes: Mapping[str, Any],
-        history: Mapping[str, Any] = (),
-        delta: Mapping[str, Any] = (),
-    ) -> dict[str, Any]:
-        return {
-            "artifact_type": "Phase2RecordedEffectV1",
-            "before_state_ref": state.identity(),
-            "file_delta": dict(delta),
-            "set": dict(changes),
-            "history_set": dict(history),
-        }
-
-    def _event(
-        self,
-        state: EnvironmentStateV1,
-        kind: str,
-        payload_ref: str,
-        *,
-        audience: tuple[str, ...],
-        actor: str,
-    ) -> EventV1:
-        return EventV1(
-            previous=state.history["head"],
-            seq=state.history["seq"] + 1,
-            lineage_id=state.position["lineage_id"],
-            rollout_id=self.rollout_id,
-            node_visit_id=state.position["visit_id"],
-            kind=kind,
-            actor=actor,
-            audience=audience,
-            payload_ref=payload_ref,
-            versions_ref=state.versions_ref,
-            provenance_ref=state.provenance_ref,
-        )
-
-    def _reduced(
-        self, state: EnvironmentStateV1, event: EventV1, effect: dict[str, Any]
-    ) -> EnvironmentStateV1:
-        # Use the actual Phase 2 reducer, not a parallel state-transition model.
-        return self.store._apply_recorded_effect_body(state, event, effect)
-
-    def _ledger(self, state: EnvironmentStateV1) -> list[dict[str, Any]]:
-        body = self.store.get_artifact(state.external_inputs_ref, expected_domain="payload")
-        if isinstance(body, dict) and body.get("record_type") == "WriterRuntimeLogV1":
-            if body.get("rollout_id") != self.rollout_id:
-                raise WriterRuntimeError("restored runtime belongs to another rollout")
-            return list(body["entries"])
-        if state.history["action_ids"] or state.history["tool_result_ids"]:
-            raise WriterRuntimeError("missing writer runtime log")
-        return []
-
-    @staticmethod
-    def _context(old: ContextRevisionV1, message: MessageV1, source: EventV1) -> ContextRevisionV1:
-        return ContextRevisionV1(
-            messages=(*old.messages, message),
-            tools=old.tools,
-            event_head=source.id,
-            provenance_refs=(source.id,),
-            rendering=old.rendering,
-        )
-
-    def _publish(
-        self,
-        runtime: RuntimeHandle,
-        *,
-        kind: str,
-        actor: str,
-        audience: tuple[str, ...],
-        message: MessageV1,
-        record: dict[str, Any],
-        changes: Mapping[str, Any],
-        history: Mapping[str, Any],
-        delta: Mapping[str, Any] = (),
-    ) -> WriterStepV1:
-        state = runtime.state
-        head, parent = self._head(runtime)
-        record_ref = self.store.put_artifact(record)
-        message_ref = self.store.persist(message)
-        entries = self._ledger(state)
-        entries.append(
-            {
-                "seq": state.history["seq"] + 1,
-                "kind": kind,
-                "record_ref": record_ref,
-                "message_ref": message_ref,
-            }
-        )
-        log_ref = self.store.put_artifact(
-            {"record_type": "WriterRuntimeLogV1", "rollout_id": self.rollout_id, "entries": entries}
-        )
-        primary_changes = {**changes, "external_inputs_ref": log_ref}
-        effect = self._effect(state, changes=primary_changes, history=history, delta=delta)
-        effect_ref = self.store.put_artifact(effect)
-        primary = self._event(state, kind, effect_ref, audience=audience, actor=actor)
-        intermediate = self._reduced(state, primary, effect)
-        # A context revision names its source event; staging the immutable event
-        # makes typed reference closure checkable before any head publication.
-        self.store.persist(primary)
-        context = self._context(runtime.context, message, primary)
-        self.store.persist(context)
-        context_changes = {"context_ref": context.identity()}
-        charged_context = charge_context_append(
-            self.store.get_artifact(intermediate.budgets_ref, expected_domain="payload"),
-            context,
-        )
-        if charged_context is not None:
-            context_changes["budgets_ref"] = self.store.put_artifact(charged_context)
-        context_effect = self._effect(intermediate, changes=context_changes)
-        context_effect_ref = self.store.put_artifact(context_effect)
-        context_event = self._event(
-            intermediate,
-            "context_changed",
-            context_effect_ref,
-            audience=("controller", "trainer"),
-            actor="environment",
-        )
-        final = self._reduced(intermediate, context_event, context_effect)
-        self.store.persist(context_event)
-        project_writer_context(
-            self.store,
-            self.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(primary, context_event),
-            candidate_state=final,
-        )
-        extra_refs = tuple(
-            record[name]
-            for name in (
-                "trace_ref",
-                "request_ref",
-                "prepared_request_ref",
-                "raw_output_ref",
-                "logprob_ref",
-            )
-            if isinstance(record.get(name), str)
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (primary, context_event),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(
-                record_ref,
-                message_ref,
-                log_ref,
-                effect_ref,
-                context_effect_ref,
-                *extra_refs,
-            ),
-        )
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"writer-{uuid.uuid4().hex}"
-        restored = self.store.restore(checkpoint_id, fresh)
-        return WriterStepV1(restored, commit, primary.id, record_ref)
-
     def change_context(self, runtime: RuntimeHandle, policy: ContextPolicyV1) -> WriterStepV1:
         """Publish one fixed, zero-mask context operation at a completed exchange."""
         if not isinstance(policy, ContextPolicyV1):
             raise TypeError("context policy must be ContextPolicyV1")
-        _, budget = self._check(runtime)
+        _, budget = self.validate_runtime(runtime)
         require_quiescent(runtime.state)
-        head, parent = self._head(runtime)
+        self.environment.head(runtime)
         sources: list[str | None] = []
         project_writer_context(
             self.store,
@@ -609,64 +430,21 @@ class TransactionalWriterV1:
             seed=seed,
             seed_sources=tuple(seed_sources),
         )
-        record_ref = self.store.put_artifact(record)
-        entries = self._ledger(runtime.state)
-        entries.append(
-            {
-                "seq": runtime.state.history["seq"] + 1,
-                "kind": "context_changed",
-                "record_ref": record_ref,
-            }
-        )
-        log_ref = self.store.put_artifact(
-            {
-                "record_type": "WriterRuntimeLogV1",
-                "rollout_id": self.rollout_id,
-                "entries": entries,
-            }
-        )
         budget_ref = self.store.put_artifact(new_budget)
-        effect = self._effect(
-            runtime.state,
-            changes={
-                "context_ref": context.identity(),
-                "budgets_ref": budget_ref,
-                "external_inputs_ref": log_ref,
-            },
-        )
-        effect_ref = self.store.put_artifact(effect)
-        event = self._event(
-            runtime.state,
+        batch = self.environment.batch(runtime, restore_prefix="context")
+        event, record_ref = batch.append_record(
             "context_changed",
-            effect_ref,
+            "environment",
+            record=record,
+            changes={"context_ref": context.identity(), "budgets_ref": budget_ref},
             audience=("controller", "trainer"),
-            actor="environment",
         )
-        final = self._reduced(runtime.state, event, effect)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        refs = [policy_ref, record_ref, log_ref, budget_ref, effect_ref]
+        refs = [policy_ref, budget_ref]
         if summary_ref is not None:
             refs.append(summary_ref)
         if policy.seed_checkpoint_ref is not None:
             refs.append(policy.seed_checkpoint_ref)
-        commit = self.store.publish(
-            runtime.state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=tuple(refs),
-        )
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"context-{uuid.uuid4().hex}"
-        return WriterStepV1(self.store.restore(checkpoint_id, fresh), commit, event.id, record_ref)
+        return batch.publish(event, record_ref, extra_refs=tuple(refs))
 
     @staticmethod
     def _parsed_calls(
@@ -815,7 +593,7 @@ class TransactionalWriterV1:
         """
         if exact_request is None:
             raise WriterRuntimeError("prepared request requires exact backend input")
-        _, budget = self._check(runtime)
+        _, budget = self.validate_runtime(runtime)
         state = runtime.state
         if (
             state.position["phase"] != "ready_writer"
@@ -835,7 +613,7 @@ class TransactionalWriterV1:
                 and budget["consumed"].get(name, 0) >= budget["limits"][name]
             ):
                 raise WriterRuntimeError(f"{name} budget exhausted before sampling")
-        self._head(runtime)
+        self.environment.head(runtime)
         payload_ref = (
             self.store.put_bytes_artifact(exact_request)
             if isinstance(exact_request, bytes)
@@ -882,7 +660,7 @@ class TransactionalWriterV1:
         trace: Mapping[str, Any] | None = None,
         usage: Mapping[str, int] | None = None,
     ) -> WriterStepV1:
-        node, budget = self._check(runtime)
+        node, budget = self.validate_runtime(runtime)
         state = runtime.state
         if state.position["phase"] != "ready_writer" or state.continuation["next_call"] != len(
             state.continuation["tool_queue"]
@@ -896,7 +674,7 @@ class TransactionalWriterV1:
                 and budget["consumed"].get(name, 0) >= budget["limits"][name]
             ):
                 raise WriterRuntimeError(f"{name} budget exhausted before sampling")
-        self._head(runtime)
+        self.environment.head(runtime)
         if not isinstance(message, Mapping) or message.get("role") != "assistant":
             raise WriterRuntimeError("backend adapter must supply an assistant message")
         content = message.get("content")
@@ -908,7 +686,7 @@ class TransactionalWriterV1:
         action_id = f"{self.rollout_id}:action:{action_ordinal}"
         prior_raw_ids = {
             call["raw_id"]
-            for entry in self._ledger(state)
+            for entry in self.environment.runtime_log(state)
             if entry["kind"] == "writer_action"
             for call in self.store.get_artifact(entry["record_ref"])["calls"]
             if call["raw_id"] is not None
@@ -1090,15 +868,31 @@ class TransactionalWriterV1:
                 "environment": False,
             },
         }
-        return self._publish(
-            runtime,
-            kind="writer_action",
-            actor="writer",
-            audience=("controller", "trainer", "writer"),
-            message=assistant,
+        batch = self.environment.batch(runtime, restore_prefix="writer")
+        event, record_ref = batch.append_record(
+            "writer_action",
+            "writer",
             record=record,
+            message=assistant,
             changes={"continuation": continuation, "position": position, "budgets_ref": budget_ref},
             history={"action_ids": [*state.history["action_ids"], action_id]},
+            audience=("controller", "trainer", "writer"),
+        )
+        batch.append_visible((assistant,), event)
+        return batch.publish(
+            event,
+            record_ref,
+            extra_refs=tuple(
+                record[name]
+                for name in (
+                    "trace_ref",
+                    "request_ref",
+                    "prepared_request_ref",
+                    "raw_output_ref",
+                    "logprob_ref",
+                )
+                if isinstance(record.get(name), str)
+            ),
         )
 
     def _sampled_budget_stop(
@@ -1115,7 +909,7 @@ class TransactionalWriterV1:
     ) -> WriterStepV1:
         """Account a sampled overrun without accepting call syntax or executing tools."""
         state = runtime.state
-        head, parent = self._head(runtime)
+        self.environment.head(runtime)
         next_budget, actual_exceeded = sampled_usage_charge(budget, usage)
         if actual_exceeded != exceeded:
             raise WriterRuntimeError("sampled stop no longer matches its budget")
@@ -1137,97 +931,57 @@ class TransactionalWriterV1:
                 requirement_version=state.requirements_ref,
             )
         outcome_ref = self.store.put_artifact(outcome)
-        record_ref = self.store.put_artifact(
-            {
-                "record_type": "WriterSampledBudgetStopV1",
-                "action_id": self.store.get_artifact(trace_ref)["action_id"],
-                "reason": f"{exceeded}_budget",
-                "usage": dict(usage),
-                "model": self.store.get_artifact(trace_ref)["model"],
-                "seed": self.store.get_artifact(trace_ref)["seed"],
-                "parsed_message_json": _safe_evidence(message),
-                "trace_ref": trace_ref,
-                "request_ref": request_ref,
-                "prepared_request_ref": prepared_request_ref,
-                "raw_output_ref": raw_output_ref,
-                "logprob_ref": self.store.get_artifact(trace_ref)["logprob_ref"],
-            }
-        )
-        entries = self._ledger(state)
-        entries.append(
-            {"seq": state.history["seq"] + 1, "kind": "budget_charged", "record_ref": record_ref}
-        )
-        log_ref = self.store.put_artifact(
-            {
-                "record_type": "WriterRuntimeLogV1",
-                "rollout_id": self.rollout_id,
-                "entries": entries,
-            }
-        )
+        record = {
+            "record_type": "WriterSampledBudgetStopV1",
+            "action_id": self.store.get_artifact(trace_ref)["action_id"],
+            "reason": f"{exceeded}_budget",
+            "usage": dict(usage),
+            "model": self.store.get_artifact(trace_ref)["model"],
+            "seed": self.store.get_artifact(trace_ref)["seed"],
+            "parsed_message_json": _safe_evidence(message),
+            "trace_ref": trace_ref,
+            "request_ref": request_ref,
+            "prepared_request_ref": prepared_request_ref,
+            "raw_output_ref": raw_output_ref,
+            "logprob_ref": self.store.get_artifact(trace_ref)["logprob_ref"],
+        }
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        effect = self._effect(
-            state,
-            changes={
-                "position": position,
-                "budgets_ref": budget_ref,
-                "outcome_ref": outcome_ref,
-                "external_inputs_ref": log_ref,
-            },
-        )
-        effect_ref = self.store.put_artifact(effect)
-        event = self._event(
-            state,
+        batch = self.environment.batch(runtime, restore_prefix="writer")
+        event, record_ref = batch.append_record(
             "budget_charged",
-            effect_ref,
+            "writer_runtime",
+            record=record,
+            changes={"position": position, "budgets_ref": budget_ref, "outcome_ref": outcome_ref},
             audience=("controller", "evaluator", "trainer"),
-            actor="writer_runtime",
         )
-        final = self._reduced(state, event, effect)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=tuple(
+        return batch.publish(
+            event,
+            record_ref,
+            extra_refs=tuple(
                 ref
                 for ref in (
-                    record_ref,
-                    log_ref,
                     outcome_ref,
                     budget_ref,
-                    effect_ref,
                     trace_ref,
                     request_ref,
                     prepared_request_ref,
                     raw_output_ref,
-                    self.store.get_artifact(trace_ref)["logprob_ref"],
+                    record["logprob_ref"],
                 )
                 if ref is not None
             ),
         )
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"writer-{uuid.uuid4().hex}"
-        return WriterStepV1(self.store.restore(checkpoint_id, fresh), commit, event.id, record_ref)
 
     def step_tool(self, runtime: RuntimeHandle) -> WriterStepV1:
-        _, budget = self._check(runtime)
-        self._head(runtime)
+        _, budget = self.validate_runtime(runtime)
+        self.environment.head(runtime)
         state = runtime.state
         queue = state.continuation["tool_queue"]
         cursor = state.continuation["next_call"]
         if state.position["phase"] != "ready_writer" or cursor >= len(queue):
             raise WriterRuntimeError("no queued tool call to resume")
-        entries = self._ledger(state)
+        entries = self.environment.runtime_log(state)
         action = next(
             (
                 self.store.get_artifact(entry["record_ref"])
@@ -1347,17 +1101,19 @@ class TransactionalWriterV1:
             "budget_charge": budget_charge,
             "loss_eligibility": {"tool_observation": False},
         }
-        return self._publish(
-            runtime,
-            kind="tool_result",
-            actor="environment",
-            audience=("controller", "trainer", "writer"),
-            message=tool_message,
+        batch = self.environment.batch(runtime, restore_prefix="writer")
+        event, record_ref = batch.append_record(
+            "tool_result",
+            "environment",
             record=record,
+            message=tool_message,
             changes={"continuation": continuation, "position": position, "budgets_ref": budget_ref},
             history={"tool_result_ids": [*state.history["tool_result_ids"], result_id]},
             delta=delta,
+            audience=("controller", "trainer", "writer"),
         )
+        batch.append_visible((tool_message,), event)
+        return batch.publish(event, record_ref)
 
     def drain_tools(self, runtime: RuntimeHandle) -> RuntimeHandle:
         """Resume only uncommitted queued calls; each iteration publishes one result."""
@@ -1375,7 +1131,7 @@ class TransactionalWriterV1:
         A final assistant reply is in ``checking`` and cannot take this path: its
         checks must run before anyone decides whether the task was complete.
         """
-        _, budget = self._check(runtime)
+        _, budget = self.validate_runtime(runtime)
         state = runtime.state
         reason = exhausted_stop_reason(budget)
         if (
@@ -1384,7 +1140,7 @@ class TransactionalWriterV1:
             or reason is None
         ):
             raise WriterRuntimeError("writer budget is not exhausted at a drained boundary")
-        head, parent = self._head(runtime)
+        self.environment.head(runtime)
         outcome = {
             "schema": 1,
             "task_status": "incomplete",
@@ -1402,55 +1158,15 @@ class TransactionalWriterV1:
                 requirement_version=state.requirements_ref,
             )
         outcome_ref = self.store.put_artifact(outcome)
-        record_ref = self.store.put_artifact(
-            {"record_type": "WriterExhaustedStopV1", "reason": outcome["stop_reason"]}
-        )
-        entries = self._ledger(state)
-        entries.append(
-            {
-                "seq": state.history["seq"] + 1,
-                "kind": "termination_recorded",
-                "record_ref": record_ref,
-            }
-        )
-        log_ref = self.store.put_artifact(
-            {"record_type": "WriterRuntimeLogV1", "rollout_id": self.rollout_id, "entries": entries}
-        )
+        record = {"record_type": "WriterExhaustedStopV1", "reason": outcome["stop_reason"]}
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        effect = self._effect(
-            state,
-            changes={
-                "position": position,
-                "outcome_ref": outcome_ref,
-                "external_inputs_ref": log_ref,
-            },
-        )
-        effect_ref = self.store.put_artifact(effect)
-        event = self._event(
-            state,
+        batch = self.environment.batch(runtime, restore_prefix="writer")
+        event, record_ref = batch.append_record(
             "termination_recorded",
-            effect_ref,
+            "writer_runtime",
+            record=record,
+            changes={"position": position, "outcome_ref": outcome_ref},
             audience=("controller", "evaluator", "trainer"),
-            actor="writer_runtime",
         )
-        final = self._reduced(state, event, effect)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(effect_ref, outcome_ref, record_ref, log_ref),
-        )
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"writer-{uuid.uuid4().hex}"
-        return WriterStepV1(self.store.restore(checkpoint_id, fresh), commit, event.id, outcome_ref)
+        return batch.publish(event, outcome_ref, extra_refs=(outcome_ref,))

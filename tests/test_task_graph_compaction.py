@@ -6,6 +6,7 @@ from dataclasses import replace as replace_record
 from unittest.mock import patch
 
 from tests import test_task_graph_scripted as scripted_tests
+from tests.task_graph_forgery import forged_effect, forged_event, forged_reduced
 from tests.test_task_graph_writer import WriterFixture
 from writing_agent.task_graph import ContextRevisionV1, MessageV1
 from writing_agent.task_graph_compaction import ContextPolicyV1, completed_exchanges
@@ -38,7 +39,7 @@ def assert_envelope_bound(test, fixture):
     for name, value in cases.items():
         with test.subTest(lineage=type(fixture).__name__, field=name):
             event = replace_record(original, **{name: value}, id=None)
-            state = fixture.writer._reduced(fixture.runtime.state, event, effect)
+            state = forged_reduced(fixture.writer, fixture.runtime.state, event, effect)
             with test.assertRaises(ValueError):
                 fixture.store.publish(
                     lineage, head, (event,), state, parent_checkpoint=fixture.start
@@ -84,7 +85,7 @@ def assert_runtime_log_sequences_are_exact(test, fixture):
                     test.assertEqual(fixture.store.read_head(lineage), head)
                     continue
                 log_ref = fixture.store.put_artifact(log)
-                effect = fixture.writer._effect(
+                effect = forged_effect(
                     runtime.state,
                     changes={
                         "context_ref": final.context_ref,
@@ -92,14 +93,15 @@ def assert_runtime_log_sequences_are_exact(test, fixture):
                         "external_inputs_ref": log_ref,
                     },
                 )
-                event = fixture.writer._event(
+                event = forged_event(
+                    fixture.writer,
                     runtime.state,
                     "context_changed",
                     fixture.store.put_artifact(effect),
                     actor="environment",
                     audience=("controller", "trainer"),
                 )
-                state = fixture.writer._reduced(runtime.state, event, effect)
+                state = forged_reduced(fixture.writer, runtime.state, event, effect)
                 kwargs = {"parent_checkpoint": fixture.start} if head is None else {}
                 try:
                     with test.assertRaises(ValueError):
@@ -375,7 +377,7 @@ class ContextOperationsTest(WriterFixture):
         log = self.store.get_artifact(final.external_inputs_ref)
         log["entries"][-1]["record_ref"] = forged_ref
         log_ref = self.store.put_artifact(log)
-        effect = self.writer._effect(
+        effect = forged_effect(
             result.runtime.state,
             changes={
                 "context_ref": final.context_ref,
@@ -384,14 +386,15 @@ class ContextOperationsTest(WriterFixture):
             },
         )
         effect_ref = self.store.put_artifact(effect)
-        mutant = self.writer._event(
+        mutant = forged_event(
+            self.writer,
             result.runtime.state,
             "context_changed",
             effect_ref,
             actor="environment",
             audience=("controller", "trainer"),
         )
-        mutant_state = self.writer._reduced(result.runtime.state, mutant, effect)
+        mutant_state = forged_reduced(self.writer, result.runtime.state, mutant, effect)
         self.assertEqual(self.store.read_head(lineage), head)
         with self.assertRaises(ValueError):
             self.store.publish(
@@ -475,7 +478,7 @@ class ContextOperationsTest(WriterFixture):
                 forged_log = deepcopy(log)
                 forged_log["entries"][-1]["record_ref"] = forged_ref
                 log_ref = self.store.put_artifact(forged_log)
-                effect = self.writer._effect(
+                effect = forged_effect(
                     result.runtime.state,
                     changes={
                         "context_ref": final.context_ref,
@@ -485,14 +488,15 @@ class ContextOperationsTest(WriterFixture):
                     },
                 )
                 effect_ref = self.store.put_artifact(effect)
-                event = self.writer._event(
+                event = forged_event(
+                    self.writer,
                     result.runtime.state,
                     "context_changed",
                     effect_ref,
                     actor=actor,
                     audience=("controller", "trainer"),
                 )
-                state = self.writer._reduced(result.runtime.state, event, effect)
+                state = forged_reduced(self.writer, result.runtime.state, event, effect)
                 with self.assertRaises(ValueError):
                     self.store.publish(
                         lineage,
@@ -576,7 +580,7 @@ class ContextOperationsTest(WriterFixture):
         )
         self.store.persist(forged)
         untyped = self.store.put_artifact({"untyped_log": True})
-        effect = self.writer._effect(
+        effect = forged_effect(
             self.runtime.state,
             changes={
                 "context_ref": forged.identity(),
@@ -584,14 +588,15 @@ class ContextOperationsTest(WriterFixture):
                 "external_inputs_ref": untyped,
             },
         )
-        event = self.writer._event(
+        event = forged_event(
+            self.writer,
             self.runtime.state,
             "context_changed",
             self.store.put_artifact(effect),
             actor="environment",
             audience=("controller", "trainer"),
         )
-        state = self.writer._reduced(self.runtime.state, event, effect)
+        state = forged_reduced(self.writer, self.runtime.state, event, effect)
         with self.assertRaises(ValueError):
             self.store.publish(lineage, head, (event,), state, parent_checkpoint=self.start)
         with patch("writing_agent.task_graph_projection.project_writer_context"):
@@ -667,7 +672,7 @@ class ContextOperationsTest(WriterFixture):
                     changed_log["entries"][-1]["record_ref"] = false_record
                 if variant == "retyped-log":
                     changed_log["entries"][-1]["kind"] = "writer_action"
-                effect = self.writer._effect(
+                effect = forged_effect(
                     observed.runtime.state,
                     changes={
                         "context_ref": final.context_ref,
@@ -675,25 +680,27 @@ class ContextOperationsTest(WriterFixture):
                         "external_inputs_ref": self.store.put_artifact(changed_log),
                     },
                 )
-                event = self.writer._event(
+                event = forged_event(
+                    self.writer,
                     observed.runtime.state,
                     "context_changed",
                     self.store.put_artifact(effect),
                     actor="environment",
                     audience=("controller", "trainer"),
                 )
-                state = self.writer._reduced(observed.runtime.state, event, effect)
+                state = forged_reduced(self.writer, observed.runtime.state, event, effect)
                 events = [event]
                 if variant in {"multi-event", "valid-first-invalid-second"}:
-                    next_effect = self.writer._effect(state, changes={})
-                    extra = self.writer._event(
+                    next_effect = forged_effect(state, changes={})
+                    extra = forged_event(
+                        self.writer,
                         state,
                         "budget_charged",
                         self.store.put_artifact(next_effect),
                         actor="environment",
                         audience=("controller",),
                     )
-                    state = self.writer._reduced(state, extra, next_effect)
+                    state = forged_reduced(self.writer, state, extra, next_effect)
                     events.append(extra)
                 with self.assertRaises(ValueError):
                     self.store.publish(lineage, head, events, state)
@@ -749,7 +756,7 @@ class ContextOperationsTest(WriterFixture):
                 changed = {**record, **claims}
                 changed_log = deepcopy(log)
                 changed_log["entries"][-1]["record_ref"] = self.store.put_artifact(changed)
-                effect = self.writer._effect(
+                effect = forged_effect(
                     observed.runtime.state,
                     changes={
                         "context_ref": final.context_ref,
@@ -757,14 +764,15 @@ class ContextOperationsTest(WriterFixture):
                         "external_inputs_ref": self.store.put_artifact(changed_log),
                     },
                 )
-                event = self.writer._event(
+                event = forged_event(
+                    self.writer,
                     observed.runtime.state,
                     "context_changed",
                     self.store.put_artifact(effect),
                     actor="environment",
                     audience=("controller", "trainer"),
                 )
-                state = self.writer._reduced(observed.runtime.state, event, effect)
+                state = forged_reduced(self.writer, observed.runtime.state, event, effect)
                 with self.assertRaises(ValueError):
                     self.store.publish(lineage, head, (event,), state)
                 with patch("writing_agent.task_graph_projection.project_writer_context"):

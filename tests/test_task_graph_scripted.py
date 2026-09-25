@@ -4,6 +4,7 @@ import unittest
 from dataclasses import replace
 from unittest.mock import patch
 
+from tests.task_graph_forgery import forged_effect, forged_event, forged_log, forged_reduced
 from tests.test_task_graph_writer import WriterFixture
 from writing_agent.task_graph import ContextRevisionV1, EnvironmentStateV1, MessageV1
 from writing_agent.task_graph_admission import AdmissionError, StoreArtifactResolver, admit_graph
@@ -26,7 +27,7 @@ from writing_agent.task_graph_contracts import (
     ScriptedAuthorV1,
 )
 from writing_agent.task_graph_projection import ProjectionError, project_writer_context
-from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1, _log
+from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
 from writing_agent.task_graph_terminal import ScriptedTerminalV1, validate_terminal_effect
 from writing_agent.task_graph_writer import (
     TransactionalWriterV1,
@@ -450,8 +451,9 @@ class ScriptedFixture(WriterFixture):
             "fetch_recorded",
             "budget_charged",
         ):
-            effect = self.writer._effect(state, changes={"requirements_ref": poisoned_requirements})
-            event = self.writer._event(
+            effect = forged_effect(state, changes={"requirements_ref": poisoned_requirements})
+            event = forged_event(
+                self.writer,
                 state,
                 kind,
                 self.store.put_artifact(effect),
@@ -459,7 +461,7 @@ class ScriptedFixture(WriterFixture):
                 audience=("controller",),
             )
             self.store.persist(event)
-            final = self.writer._reduced(state, event, effect)
+            final = forged_reduced(self.writer, state, event, effect)
             with self.subTest(publication_kind=kind), self.assertRaises(ProjectionError):
                 self.store.publish("rollout-1", None, (event,), final, parent_checkpoint=self.start)
             self.assertEqual(self.store.read_head("rollout-1"), head)
@@ -475,13 +477,18 @@ class ScriptedFixture(WriterFixture):
                 ("continuation", {**state.to_dict()["continuation"], "feedback_cursor": 1}),
             ):
                 with self.subTest(kind=kind, field=field, value=value):
-                    effect = self.writer._effect(state, changes={field: value})
+                    effect = forged_effect(state, changes={field: value})
                     effect_ref = self.store.put_artifact(effect)
-                    event = self.writer._event(
-                        state, kind, effect_ref, actor="author", audience=("controller",)
+                    event = forged_event(
+                        self.writer,
+                        state,
+                        kind,
+                        effect_ref,
+                        actor="author",
+                        audience=("controller",),
                     )
                     self.store.persist(event)
-                    final = self.writer._reduced(state, event, effect)
+                    final = forged_reduced(self.writer, state, event, effect)
                     with self.assertRaises(ProjectionError):
                         project_writer_context(
                             self.store,
@@ -640,11 +647,12 @@ class ScriptedFixture(WriterFixture):
                 changes["continuation"] = current.to_dict()["continuation"]
                 changes["continuation"]["author_request"] = None
                 message = MessageV1.from_dict(self.store.get_artifact(entry["message_ref"]))
-            changes["external_inputs_ref"] = _log(
+            changes["external_inputs_ref"] = forged_log(
                 self.writer, current, old.kind, entry["record_ref"], entry.get("message_ref")
             )
-            effect = self.writer._effect(current, changes=changes)
-            event = self.writer._event(
+            effect = forged_effect(current, changes=changes)
+            event = forged_event(
+                self.writer,
                 current,
                 old.kind,
                 self.store.put_artifact(effect),
@@ -653,7 +661,7 @@ class ScriptedFixture(WriterFixture):
             )
             self.store.persist(event)
             rebuilt.append(event)
-            current = self.writer._reduced(current, event, effect)
+            current = forged_reduced(self.writer, current, event, effect)
         context = ContextRevisionV1(
             messages=(*request.runtime.context.messages, message),
             tools=request.runtime.context.tools,
@@ -662,8 +670,9 @@ class ScriptedFixture(WriterFixture):
             rendering=request.runtime.context.rendering,
         )
         self.store.persist(context)
-        effect = self.writer._effect(current, changes={"context_ref": context.identity()})
-        event = self.writer._event(
+        effect = forged_effect(current, changes={"context_ref": context.identity()})
+        event = forged_event(
+            self.writer,
             current,
             "context_changed",
             self.store.put_artifact(effect),
@@ -672,7 +681,7 @@ class ScriptedFixture(WriterFixture):
         )
         self.store.persist(event)
         rebuilt.append(event)
-        current = self.writer._reduced(current, event, effect)
+        current = forged_reduced(self.writer, current, event, effect)
         with self.assertRaises(ProjectionError):
             project_writer_context(
                 self.store,
@@ -690,11 +699,12 @@ class ScriptedFixture(WriterFixture):
             original = self.store.get_artifact(old.payload_ref)
             entry = self.store.get_artifact(original["set"]["external_inputs_ref"])["entries"][-1]
             changes = {k: v for k, v in original["set"].items() if k != "external_inputs_ref"}
-            changes["external_inputs_ref"] = _log(
+            changes["external_inputs_ref"] = forged_log(
                 self.writer, before, old.kind, entry["record_ref"], entry.get("message_ref")
             )
-            effect = self.writer._effect(before, changes=changes, history=original["history_set"])
-            event = self.writer._event(
+            effect = forged_effect(before, changes=changes, history=original["history_set"])
+            event = forged_event(
+                self.writer,
                 before,
                 old.kind,
                 self.store.put_artifact(effect),
@@ -702,7 +712,7 @@ class ScriptedFixture(WriterFixture):
                 audience=old.audience,
             )
             self.store.persist(event)
-            return event, self.writer._reduced(before, event, effect)
+            return event, forged_reduced(self.writer, before, event, effect)
 
         ack_state = self.store._apply_recorded_effect_body(
             state, events[0], self.store.get_artifact(events[0].payload_ref)

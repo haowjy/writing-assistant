@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import uuid
 from types import MappingProxyType
 
 from writing_agent.task_graph_controller import (
@@ -10,10 +9,8 @@ from writing_agent.task_graph_controller import (
     OutcomeStatusV1,
     evaluate_guard,
 )
-from writing_agent.task_graph_projection import project_writer_context
+from writing_agent.task_graph_environment import WriterRuntimeError
 from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY
-from writing_agent.task_graph_scripted import _log
-from writing_agent.task_graph_writer import WriterRuntimeError, WriterStepV1
 
 
 def current_check_results(store, state):
@@ -128,44 +125,8 @@ class ScriptedTerminalV1:
         self.writer = writer
         self.store = writer.store
 
-    def _publish(self, runtime, kind, record, changes, *, actor="environment", refs=()):
-        state = runtime.state
-        record_ref = self.store.put_artifact(record)
-        log_ref = _log(self.writer, state, kind, record_ref)
-        effect = self.writer._effect(state, changes={**changes, "external_inputs_ref": log_ref})
-        effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
-            state,
-            kind,
-            effect_ref,
-            actor=actor,
-            audience=("controller", "evaluator", "trainer"),
-        )
-        final = self.writer._reduced(state, event, effect)
-        head, parent = self.writer._head(runtime)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(record_ref, log_ref, effect_ref, *refs),
-        )
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"terminal-{uuid.uuid4().hex}"
-        restored = self.store.restore(checkpoint_id, fresh)
-        return WriterStepV1(restored, commit, event.id, record_ref)
-
     def transition(self, runtime):
-        node, _ = self.writer._check(runtime)
+        node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
         if state.position["phase"] != "awaiting_checks" or state.continuation["check_requests"]:
             raise WriterRuntimeError("transition needs all required check results")
@@ -209,12 +170,18 @@ class ScriptedTerminalV1:
         }
         position = state.to_dict()["position"]
         position["phase"] = "ready_transition"
-        return self._publish(
-            runtime, "transition_committed", record, {"position": position}, refs=tuple(refs)
+        return self.writer.environment.publish_record(
+            runtime,
+            "transition_committed",
+            "environment",
+            record=record,
+            changes={"position": position},
+            extra_refs=tuple(refs),
+            restore_prefix="terminal",
         )
 
     def terminal_outcome(self, runtime):
-        node, _ = self.writer._check(runtime)
+        node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
         if state.continuation["feedback_cursor"] < len(node.script.feedback):
             raise WriterRuntimeError("mandatory feedback requires delivery or verified stop")
@@ -256,17 +223,19 @@ class ScriptedTerminalV1:
             "schema": 1,
             "outcome_ref": outcome_ref,
         }
-        return self._publish(
+        return self.writer.environment.publish_record(
             runtime,
             "termination_recorded",
-            record,
-            {"position": position, "outcome_ref": outcome_ref},
-            refs=(outcome_ref,),
+            "environment",
+            record=record,
+            changes={"position": position, "outcome_ref": outcome_ref},
+            extra_refs=(outcome_ref,),
+            restore_prefix="terminal",
         )
 
     def stop_incomplete(self, runtime):
         """Seal a verifiable feedback prerequisite or budget failure."""
-        node, _ = self.writer._check(runtime)
+        node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
         candidate, refs, reason = _feedback_stop_evidence(
             self.store, state, node, runtime.checkpoint_id
@@ -287,16 +256,22 @@ class ScriptedTerminalV1:
         outcome_ref = self.store.put_artifact(outcome)
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        return self._publish(
+        return self.writer.environment.publish_record(
             runtime,
             "termination_recorded",
-            {"record_type": "TerminalOutcomeCommitV1", "schema": 1, "outcome_ref": outcome_ref},
-            {"position": position, "outcome_ref": outcome_ref},
-            refs=(outcome_ref,),
+            "environment",
+            record={
+                "record_type": "TerminalOutcomeCommitV1",
+                "schema": 1,
+                "outcome_ref": outcome_ref,
+            },
+            changes={"position": position, "outcome_ref": outcome_ref},
+            extra_refs=(outcome_ref,),
+            restore_prefix="terminal",
         )
 
     def reward(self, runtime):
-        node, _ = self.writer._check(runtime)
+        node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
         if state.position["phase"] != "terminal":
             raise WriterRuntimeError("reward requires a terminal outcome")
@@ -357,13 +332,14 @@ class ScriptedTerminalV1:
             "schema": 1,
             "availability_ref": availability_ref,
         }
-        return self._publish(
+        return self.writer.environment.publish_record(
             runtime,
             "external_response",
-            record,
-            {"outcome_ref": availability_ref},
-            actor="evaluator",
-            refs=(reward_ref, availability_ref, eligibility_ref),
+            "evaluator",
+            record=record,
+            changes={"outcome_ref": availability_ref},
+            extra_refs=(reward_ref, availability_ref, eligibility_ref),
+            restore_prefix="terminal",
         )
 
 

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Move causal event/effect/log/context staging and atomic CAS publication into an
+  environment-owned batch service. Writer, scripted author, deterministic checks,
+  terminal routing, and compaction use the same publisher; remove their duplicate
+  publisher plumbing and writer-private transaction API.
+
 - Share pure sampled-usage, tool-attempt/result, context-append, and exhaustion
   accounting across writer/author production and semantic replay. Replay still
   compares independently loaded persisted claims to recomputed charges.

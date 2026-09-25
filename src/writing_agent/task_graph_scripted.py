@@ -7,14 +7,12 @@ author model, interpret prose, run checks, or decide completion.
 from __future__ import annotations
 
 import json
-import uuid
 from collections.abc import Mapping
 from typing import Any
 
-from writing_agent.task_graph import ContextRevisionV1, MessageV1, canonical_json
-from writing_agent.task_graph_accounting import charge_context_append, charge_tool_attempt
-from writing_agent.task_graph_projection import project_writer_context
-from writing_agent.task_graph_writer import WriterRuntimeError, WriterStepV1
+from writing_agent.task_graph import MessageV1, canonical_json
+from writing_agent.task_graph_accounting import charge_tool_attempt
+from writing_agent.task_graph_environment import WriterRuntimeError
 
 
 def validate_ask_shape(arguments: Mapping[str, Any]) -> None:
@@ -85,17 +83,6 @@ def validate_ask_semantics(arguments, node, decisions) -> None:
         raise ValueError("ask_author references an undeclared proposal")
     if {item["id"] for item in arguments["proposals"]} & set(prior):
         raise ValueError("ask_author redefines a prior proposal")
-
-
-def _log(writer, state, kind, record_ref, message_ref=None):
-    entries = writer._ledger(state)
-    entry = {"seq": state.history["seq"] + 1, "kind": kind, "record_ref": record_ref}
-    if message_ref is not None:
-        entry["message_ref"] = message_ref
-    entries.append(entry)
-    return writer.store.put_artifact(
-        {"record_type": "WriterRuntimeLogV1", "rollout_id": writer.rollout_id, "entries": entries}
-    )
 
 
 def frozen_prerequisite_results(store, state):
@@ -172,18 +159,12 @@ class ScriptedAuthorRuntimeV1:
         self.store = writer.store
 
     def _node(self, runtime):
-        node, budget = self.writer._check(runtime)
+        node, budget = self.writer.validate_runtime(runtime)
         if node.contract.interaction_contract.mode != "scripted_author":
             raise WriterRuntimeError("not an admitted scripted-author node")
         if runtime.state.author_packet_ref != node.contract.interaction_contract.author_packet_ref:
             raise WriterRuntimeError("runtime author packet differs from admitted author packet")
         return node, budget
-
-    def _result(self, runtime, commit, event):
-        checkpoint_id = self.store.load_commit(commit).checkpoint
-        fresh = runtime.workspace.parent / f"scripted-{uuid.uuid4().hex}"
-        restored = self.store.restore(checkpoint_id, fresh)
-        return WriterStepV1(restored, commit, event.id, event.payload_ref)
 
     def request(self, runtime, call, action):
         """Commit the request after its writer action, before resolving a reply."""
@@ -224,47 +205,21 @@ class ScriptedAuthorRuntimeV1:
         next_budget = json.loads(canonical_json(budget))
         next_budget["consumed"]["author_calls"] = next_budget["consumed"].get("author_calls", 0) + 1
         budget_ref = self.store.put_artifact(next_budget)
-        log_ref = _log(self.writer, state, "external_requested", request_ref)
         position = state.to_dict()["position"]
         position["phase"] = "awaiting_author"
         continuation = state.to_dict()["continuation"]
         continuation["author_request"] = request_ref
-        effect = self.writer._effect(
-            state,
-            changes={
-                "position": position,
-                "continuation": continuation,
-                "budgets_ref": budget_ref,
-                "external_inputs_ref": log_ref,
-            },
-        )
-        effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
-            state,
+        return self.writer.environment.publish_record(
+            runtime,
             "external_requested",
-            effect_ref,
-            actor="environment",
+            "environment",
+            record_ref=request_ref,
+            changes={"position": position, "continuation": continuation, "budgets_ref": budget_ref},
             audience=("controller", "trainer"),
+            extra_refs=(budget_ref,),
+            restore_prefix="scripted",
+            result_effect=True,
         )
-        final = self.writer._reduced(state, event, effect)
-        head, parent = self.writer._head(runtime)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(request_ref, budget_ref, log_ref, effect_ref),
-        )
-        return self._result(runtime, commit, event)
 
     def reply(self, runtime):
         """Resolve one committed request without any live provider or model call."""
@@ -322,40 +277,10 @@ class ScriptedAuthorRuntimeV1:
             origin=request["request_id"],
             content=({"type": "text", "text": utterance},),
         )
-        ack_message_ref = self.store.persist(ack_message)
-        author_message_ref = self.store.persist(author_message)
-        events = []
-        effects = []
-        current = state
-
-        def append(kind, actor, record, changes, history=None, message_ref=None):
-            nonlocal current
-            record_ref = self.store.put_artifact(record)
-            log_ref = _log(self.writer, current, kind, record_ref, message_ref)
-            effect = self.writer._effect(
-                current,
-                changes={**changes, "external_inputs_ref": log_ref},
-                history=history or {},
-            )
-            effect_ref = self.store.put_artifact(effect)
-            event = self.writer._event(
-                current,
-                kind,
-                effect_ref,
-                actor=actor,
-                audience=("controller", "trainer", "writer")
-                if message_ref
-                else ("controller", "evaluator", "trainer"),
-            )
-            current = self.writer._reduced(current, event, effect)
-            events.append(event)
-            effects.append(effect_ref)
-            self.store.persist(event)
-            return event
-
+        batch = self.writer.environment.batch(runtime, restore_prefix="scripted")
         next_budget, _ = charge_tool_attempt(budget)
         budget_ref = self.store.put_artifact(next_budget)
-        continuation = current.to_dict()["continuation"]
+        continuation = batch.current.to_dict()["continuation"]
         continuation["next_call"] += 1
         ack_record = {
             "record_type": "AuthorToolAckV1",
@@ -365,13 +290,13 @@ class ScriptedAuthorRuntimeV1:
             "call_id": request["call_id"],
             "action_id": request["action_id"],
         }
-        ack_event = append(
+        ack_event, _ = batch.append_record(
             "tool_result",
             "environment",
-            ack_record,
-            {"continuation": continuation, "budgets_ref": budget_ref},
-            {"tool_result_ids": [*state.history["tool_result_ids"], ack_id]},
-            ack_message_ref,
+            record=ack_record,
+            message=ack_message,
+            changes={"continuation": continuation, "budgets_ref": budget_ref},
+            history={"tool_result_ids": [*state.history["tool_result_ids"], ack_id]},
         )
         disclosure_record = {
             "record_type": "DecisionDisclosureV1",
@@ -381,15 +306,15 @@ class ScriptedAuthorRuntimeV1:
             "decisions_ref": decisions_ref,
             "disclosures_ref": disclosures_ref,
         }
-        append(
+        batch.append_record(
             "decision_disclosed",
             "environment",
-            disclosure_record,
-            {"decisions_ref": decisions_ref, "disclosures_ref": disclosures_ref},
+            record=disclosure_record,
+            changes={"decisions_ref": decisions_ref, "disclosures_ref": disclosures_ref},
         )
-        position = current.to_dict()["position"]
+        position = batch.current.to_dict()["position"]
         position["phase"] = "ready_writer"
-        continuation = current.to_dict()["continuation"]
+        continuation = batch.current.to_dict()["continuation"]
         continuation["author_request"] = None
         turn_record = {
             "record_type": "AuthorTurnV1",
@@ -397,66 +322,19 @@ class ScriptedAuthorRuntimeV1:
             "request_ref": request_ref,
             "reply_ref": reply_ref,
         }
-        turn_event = append(
+        turn_event, _ = batch.append_record(
             "author_turn",
             "author",
-            turn_record,
-            {"position": position, "continuation": continuation},
-            message_ref=author_message_ref,
+            record=turn_record,
+            message=author_message,
+            changes={"position": position, "continuation": continuation},
         )
-        context = ContextRevisionV1(
-            messages=(*runtime.context.messages, ack_message, author_message),
-            tools=runtime.context.tools,
-            event_head=turn_event.id,
-            provenance_refs=(turn_event.id,),
-            rendering=runtime.context.rendering,
+        batch.append_visible((ack_message, author_message), turn_event)
+        return batch.publish(
+            ack_event,
+            ack_event.payload_ref,
+            extra_refs=(reply_ref, decisions_ref, disclosures_ref, budget_ref),
         )
-        self.store.persist(context)
-        context_changes = {"context_ref": context.identity()}
-        charged_context = charge_context_append(
-            self.store.get_artifact(current.budgets_ref, expected_domain="payload"),
-            context,
-        )
-        if charged_context is not None:
-            context_changes["budgets_ref"] = self.store.put_artifact(charged_context)
-        context_effect = self.writer._effect(current, changes=context_changes)
-        context_effect_ref = self.store.put_artifact(context_effect)
-        context_event = self.writer._event(
-            current,
-            "context_changed",
-            context_effect_ref,
-            actor="environment",
-            audience=("controller", "trainer"),
-        )
-        current = self.writer._reduced(current, context_event, context_effect)
-        events.append(context_event)
-        effects.append(context_effect_ref)
-        self.store.persist(context_event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=tuple(events),
-            candidate_state=current,
-        )
-        head, parent = self.writer._head(runtime)
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            tuple(events),
-            current,
-            parent_checkpoint=parent,
-            artifact_refs=(
-                reply_ref,
-                decisions_ref,
-                disclosures_ref,
-                ack_message_ref,
-                author_message_ref,
-                budget_ref,
-                *effects,
-            ),
-        )
-        return self._result(runtime, commit, ack_event)
 
     def _coverage_failure(self, runtime, request_ref):
         state = runtime.state
@@ -477,48 +355,25 @@ class ScriptedAuthorRuntimeV1:
             "request_ref": request_ref,
             "outcome_ref": outcome_ref,
         }
-        record_ref = self.store.put_artifact(record)
-        log_ref = _log(self.writer, state, "termination_recorded", record_ref)
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
         continuation = state.to_dict()["continuation"]
         continuation["author_request"] = None
-        effect = self.writer._effect(
-            state,
+        return self.writer.environment.publish_record(
+            runtime,
+            "termination_recorded",
+            "environment",
+            record=record,
             changes={
                 "position": position,
                 "continuation": continuation,
                 "outcome_ref": outcome_ref,
-                "external_inputs_ref": log_ref,
             },
-        )
-        effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
-            state,
-            "termination_recorded",
-            effect_ref,
-            actor="environment",
             audience=("controller", "trainer"),
+            extra_refs=(outcome_ref,),
+            restore_prefix="scripted",
+            result_effect=True,
         )
-        final = self.writer._reduced(state, event, effect)
-        head, parent = self.writer._head(runtime)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(outcome_ref, record_ref, log_ref, effect_ref),
-        )
-        return self._result(runtime, commit, event)
 
     def request_feedback(self, runtime):
         """Issue one frozen feedback item after its declared progress prerequisites."""
@@ -573,47 +428,21 @@ class ScriptedAuthorRuntimeV1:
         next_budget = json.loads(canonical_json(budget))
         next_budget["consumed"]["author_calls"] = next_budget["consumed"].get("author_calls", 0) + 1
         budget_ref = self.store.put_artifact(next_budget)
-        log_ref = _log(self.writer, state, "external_requested", request_ref)
         position = state.to_dict()["position"]
         position["phase"] = "awaiting_author"
         continuation = state.to_dict()["continuation"]
         continuation["author_request"] = request_ref
-        effect = self.writer._effect(
-            state,
-            changes={
-                "position": position,
-                "continuation": continuation,
-                "budgets_ref": budget_ref,
-                "external_inputs_ref": log_ref,
-            },
-        )
-        effect_ref = self.store.put_artifact(effect)
-        event = self.writer._event(
-            state,
+        return self.writer.environment.publish_record(
+            runtime,
             "external_requested",
-            effect_ref,
-            actor="environment",
+            "environment",
+            record_ref=request_ref,
+            changes={"position": position, "continuation": continuation, "budgets_ref": budget_ref},
             audience=("controller", "trainer"),
+            extra_refs=(budget_ref,),
+            restore_prefix="scripted",
+            result_effect=True,
         )
-        final = self.writer._reduced(state, event, effect)
-        head, parent = self.writer._head(runtime)
-        self.store.persist(event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=(event,),
-            candidate_state=final,
-        )
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            (event,),
-            final,
-            parent_checkpoint=parent,
-            artifact_refs=(request_ref, budget_ref, log_ref, effect_ref),
-        )
-        return self._result(runtime, commit, event)
 
     def _feedback_reply(self, runtime, request_ref, request):
         node, _ = self._node(runtime)
@@ -637,33 +466,7 @@ class ScriptedAuthorRuntimeV1:
             origin=request["request_id"],
             content=({"type": "text", "text": rule["utterance"]},),
         )
-        message_ref = self.store.persist(author_message)
-        current = state
-        events = []
-        effect_refs = []
-
-        def append(kind, actor, record, changes, message=None):
-            nonlocal current
-            record_ref = self.store.put_artifact(record)
-            log_ref = _log(self.writer, current, kind, record_ref, message)
-            effect = self.writer._effect(
-                current, changes={**changes, "external_inputs_ref": log_ref}
-            )
-            effect_ref = self.store.put_artifact(effect)
-            event = self.writer._event(
-                current,
-                kind,
-                effect_ref,
-                actor=actor,
-                audience=("controller", "trainer", "writer")
-                if message
-                else ("controller", "evaluator", "trainer"),
-            )
-            current = self.writer._reduced(current, event, effect)
-            events.append(event)
-            effect_refs.append(effect_ref)
-            self.store.persist(event)
-            return event
+        batch = self.writer.environment.batch(runtime, restore_prefix="scripted")
 
         if rule["requirement_update_ref"] is not None:
             from writing_agent.task_graph_contracts import RequirementUpdateV1
@@ -671,7 +474,7 @@ class ScriptedAuthorRuntimeV1:
             update = RequirementUpdateV1.from_dict(
                 self.store.get_artifact(rule["requirement_update_ref"], private=True)
             )
-            ledger = self.store.get_artifact(current.requirements_ref)
+            ledger = self.store.get_artifact(batch.current.requirements_ref)
             if ledger.get("record_type") != "RequirementLedgerV1" or (
                 update.supersedes not in ledger["active"]
             ):
@@ -681,81 +484,38 @@ class ScriptedAuthorRuntimeV1:
             next_ledger["superseded"][update.supersedes] = old
             next_ledger["active"][update.id] = update.replacement
             requirement_ref = self.store.put_artifact(next_ledger)
-            append(
+            batch.append_record(
                 "requirements_changed",
                 "environment",
-                {
+                record={
                     "record_type": "RequirementSupersessionV1",
                     "schema": 1,
                     "request_ref": request_ref,
                     "update_ref": rule["requirement_update_ref"],
-                    "before_ref": current.requirements_ref,
+                    "before_ref": batch.current.requirements_ref,
                     "after_ref": requirement_ref,
                 },
-                {"requirements_ref": requirement_ref},
+                changes={"requirements_ref": requirement_ref},
             )
-        position = current.to_dict()["position"]
+        position = batch.current.to_dict()["position"]
         position["phase"] = "ready_writer"
-        continuation = current.to_dict()["continuation"]
+        continuation = batch.current.to_dict()["continuation"]
         continuation["author_request"] = None
         continuation["feedback_cursor"] += 1
-        turn_event = append(
+        turn_event, _ = batch.append_record(
             "author_turn",
             "author",
-            {
+            record={
                 "record_type": "AuthorTurnV1",
                 "schema": 1,
                 "request_ref": request_ref,
                 "reply_ref": reply_ref,
             },
-            {"position": position, "continuation": continuation},
-            message_ref,
+            message=author_message,
+            changes={"position": position, "continuation": continuation},
         )
-        context = ContextRevisionV1(
-            messages=(*runtime.context.messages, author_message),
-            tools=runtime.context.tools,
-            event_head=turn_event.id,
-            provenance_refs=(turn_event.id,),
-            rendering=runtime.context.rendering,
-        )
-        self.store.persist(context)
-        context_changes = {"context_ref": context.identity()}
-        charged_context = charge_context_append(
-            self.store.get_artifact(current.budgets_ref, expected_domain="payload"),
-            context,
-        )
-        if charged_context is not None:
-            context_changes["budgets_ref"] = self.store.put_artifact(charged_context)
-        context_effect = self.writer._effect(current, changes=context_changes)
-        context_effect_ref = self.store.put_artifact(context_effect)
-        context_event = self.writer._event(
-            current,
-            "context_changed",
-            context_effect_ref,
-            actor="environment",
-            audience=("controller", "trainer"),
-        )
-        current = self.writer._reduced(current, context_event, context_effect)
-        events.append(context_event)
-        effect_refs.append(context_effect_ref)
-        self.store.persist(context_event)
-        project_writer_context(
-            self.store,
-            self.writer.entry_checkpoint_id,
-            runtime.checkpoint_id,
-            candidate_events=tuple(events),
-            candidate_state=current,
-        )
-        head, parent = self.writer._head(runtime)
-        commit = self.store.publish(
-            state.position["lineage_id"],
-            head,
-            tuple(events),
-            current,
-            parent_checkpoint=parent,
-            artifact_refs=(reply_ref, message_ref, *effect_refs),
-        )
-        return self._result(runtime, commit, turn_event)
+        batch.append_visible((author_message,), turn_event)
+        return batch.publish(turn_event, turn_event.payload_ref, extra_refs=(reply_ref,))
 
 
 class ScriptCoverageError(RuntimeError):
