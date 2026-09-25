@@ -33,6 +33,7 @@ from writing_agent.task_graph_store import (
 
 class StoreFixture:
     def __init__(self, root: Path, **limits):
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.store = TaskGraphStore(root / "store", **limits)
         self.common = {}
         for name in (
@@ -607,6 +608,133 @@ class TaskGraphStoreTest(unittest.TestCase):
         with self.assertRaises(MissingReferenceError):
             self.store.save_checkpoint(broken_state)
 
+    def test_recorded_effect_reference_edges_are_typed_and_transient(self):
+        root, state = self.fixture.root()
+        missing = "0" * 64
+        position = state.to_dict()["position"]
+        continuation = state.to_dict()["continuation"]
+        cases = {
+            "instance_ref": ({"instance_ref": missing}, {}),
+            "position.entry_contract": (
+                {"position": {**position, "entry_contract": missing}},
+                {},
+            ),
+            "position.start_checkpoint": (
+                {"position": {**position, "start_checkpoint": missing}},
+                {},
+            ),
+            "context_ref": ({"context_ref": missing}, {}),
+            "requirements_ref": ({"requirements_ref": missing}, {}),
+            "decisions_ref": ({"decisions_ref": missing}, {}),
+            "disclosures_ref": ({"disclosures_ref": missing}, {}),
+            "author_packet_ref": ({"author_packet_ref": missing}, {}),
+            "versions_ref": ({"versions_ref": missing}, {}),
+            "budgets_ref": ({"budgets_ref": missing}, {}),
+            "rng_ref": ({"rng_ref": missing}, {}),
+            "external_inputs_ref": ({"external_inputs_ref": missing}, {}),
+            "outcome_ref": ({"outcome_ref": missing}, {}),
+            "provenance_ref": ({"provenance_ref": missing}, {}),
+            "continuation.author_request": (
+                {"continuation": {**continuation, "author_request": missing}},
+                {},
+            ),
+            "continuation.check_requests": (
+                {"continuation": {**continuation, "check_requests": (missing,)}},
+                {},
+            ),
+            "history.branch_base": ({}, {"branch_base": missing}),
+            "history.imported_refs": ({}, {"imported_refs": (missing,)}),
+        }
+        for label, (set_values, history_set) in cases.items():
+            with self.subTest(edge=label):
+                effect = self.store.put_artifact(
+                    {
+                        "artifact_type": "Phase2RecordedEffectV1",
+                        "before_state_ref": state.identity(),
+                        "file_delta": {},
+                        "set": set_values,
+                        "history_set": history_set,
+                    }
+                )
+                with self.assertRaises(MissingReferenceError):
+                    self.store.save_checkpoint(state, parent=root, artifact_refs=(effect,))
+
+        wrong_domain_cases = {
+            "instance": ({"instance_ref": state.budgets_ref}, {}),
+            "context": ({"context_ref": state.budgets_ref}, {}),
+            "private": ({"author_packet_ref": state.budgets_ref}, {}),
+            "checkpoint": (
+                {"position": {**position, "start_checkpoint": state.budgets_ref}},
+                {},
+            ),
+            "event": ({}, {"branch_base": state.budgets_ref}),
+        }
+        for label, (set_values, history_set) in wrong_domain_cases.items():
+            with self.subTest(wrong_domain=label):
+                effect = self.store.put_artifact(
+                    {
+                        "artifact_type": "Phase2RecordedEffectV1",
+                        "before_state_ref": state.identity(),
+                        "file_delta": {},
+                        "set": set_values,
+                        "history_set": history_set,
+                    }
+                )
+                with self.assertRaises(WrongRecordDomainError):
+                    self.store.save_checkpoint(state, parent=root, artifact_refs=(effect,))
+
+        private_effect = self.store.put_artifact(
+            {
+                "artifact_type": "Phase2RecordedEffectV1",
+                "before_state_ref": state.identity(),
+                "file_delta": {"private-probe": {"before": None, "after": "x"}},
+                "set": {"budgets_ref": missing},
+                "history_set": {},
+            },
+            private=True,
+        )
+        private_body = state.to_dict()
+        private_body["continuation"]["check_requests"] = [private_effect]
+        with self.assertRaises(MissingReferenceError):
+            self.store.save_checkpoint(EnvironmentStateV1.from_dict(private_body))
+
+        # before_state_ref is a replay assertion over an EnvironmentStateV1
+        # identity, not a reference to a separately persisted state object.
+        assertion_only = self.store.put_artifact(
+            {
+                "artifact_type": "Phase2RecordedEffectV1",
+                "before_state_ref": missing,
+                "file_delta": {},
+                "set": {},
+                "history_set": {},
+            }
+        )
+        self.store.save_checkpoint(state, parent=root, artifact_refs=(assertion_only,))
+
+        first, transient, first_effect = self.fixture.effect_event_state(
+            state,
+            lineage="main",
+            set_values={
+                "position": {**state.position, "lineage_id": "main"},
+                "budgets_ref": missing,
+            },
+        )
+        second, final, second_effect = self.fixture.effect_event_state(
+            transient,
+            lineage="main",
+            set_values={"budgets_ref": state.budgets_ref},
+        )
+        with self.assertRaises(MissingReferenceError):
+            self.store.publish(
+                "main",
+                None,
+                (first, second),
+                final,
+                parent_checkpoint=root,
+                artifact_refs=(first_effect, second_effect),
+            )
+        self.assertIsNone(self.store.read_head("main"))
+
     def test_artifact_schemas_and_locations_fail_closed(self):
         _, state = self.fixture.root()
         malformed = self.store.put_artifact(
@@ -890,6 +1018,144 @@ class TaskGraphStoreTest(unittest.TestCase):
             self.assertTrue(any(call.args[0].name == "refs" for call in barrier.call_args_list))
         self.assertEqual(resumed.read_head("main"), commit)
 
+    def test_branch_retry_repairs_post_replace_barrier_and_conflicts_stay_distinct(self):
+        for reopen in (False, True):
+            with self.subTest(reopen=reopen):
+                fixture = StoreFixture(self.root / f"branch-retry-{reopen}")
+                parent, before = fixture.root()
+                event, after, effect = fixture.effect_event_state(
+                    before,
+                    lineage="child",
+                    set_values={
+                        "position": {
+                            **before.position,
+                            "lineage_id": "child",
+                            "start_checkpoint": parent,
+                        }
+                    },
+                    history_set={"branch_base": before.history["head"]},
+                    kind="rollout_started",
+                )
+                arguments = (parent, "child", (event,), after)
+                keywords = {"artifact_refs": (effect,)}
+                real_barrier = fixture.store._fsync_directory
+                failed = False
+
+                def fail_refs_once(path, _barrier=real_barrier):
+                    nonlocal failed
+                    if not failed and path.name == "refs":
+                        failed = True
+                        raise OSError("injected refs fsync failure")
+                    return _barrier(path)
+
+                with mock.patch.object(
+                    fixture.store, "_fsync_directory", side_effect=fail_refs_once
+                ):
+                    with self.assertRaises(OSError):
+                        fixture.store.branch(*arguments, **keywords)
+
+                store = TaskGraphStore(fixture.store.root) if reopen else fixture.store
+                with mock.patch.object(
+                    store, "_fsync_directory", wraps=store._fsync_directory
+                ) as barrier:
+                    commit = store.branch(*arguments, **keywords)
+                    self.assertTrue(
+                        any(call.args[0].name == "refs" for call in barrier.call_args_list)
+                    )
+                self.assertEqual(store.read_head("child"), commit)
+
+                other_event, other_state, other_effect = fixture.effect_event_state(
+                    before,
+                    lineage="child",
+                    set_values={
+                        "position": {
+                            **before.position,
+                            "lineage_id": "child",
+                            "start_checkpoint": parent,
+                            "phase": "checking",
+                        }
+                    },
+                    history_set={"branch_base": before.history["head"]},
+                    kind="rollout_started",
+                )
+                with self.assertRaises(ConcurrentUpdateError):
+                    store.branch(
+                        parent,
+                        "child",
+                        (other_event,),
+                        other_state,
+                        artifact_refs=(other_effect,),
+                    )
+
+    def test_lineage_authority_is_bound_to_target_checkpoint(self):
+        parent, before = self.fixture.root()
+        event, after, effect = self.fixture.effect_event_state(
+            before,
+            lineage="child",
+            set_values={
+                "position": {
+                    **before.position,
+                    "lineage_id": "child",
+                    "start_checkpoint": parent,
+                }
+            },
+            history_set={"branch_base": before.history["head"]},
+            kind="rollout_started",
+        )
+        commit = self.store.branch(parent, "child", (event,), after, artifact_refs=(effect,))
+        shutil.copyfile(
+            self.store.root / "refs" / "child.json",
+            self.store.root / "refs" / "imposter.json",
+        )
+        with self.assertRaises(CorruptRecordError):
+            self.store.read_head("imposter")
+        with self.assertRaises(CorruptRecordError):
+            self.store.replay("imposter", parent, (commit,))
+        imposter_event, imposter_state, imposter_effect = self.fixture.effect_event_state(
+            after,
+            lineage="imposter",
+            set_values={
+                "position": {
+                    **after.position,
+                    "lineage_id": "imposter",
+                }
+            },
+        )
+        with self.assertRaises(CorruptRecordError):
+            self.store.publish(
+                "imposter",
+                commit,
+                (imposter_event,),
+                imposter_state,
+                artifact_refs=(imposter_effect,),
+            )
+
+        child_checkpoint = self.store.load_commit(commit).checkpoint
+        foreign_event, foreign_state, foreign_effect = self.fixture.effect_event_state(
+            after,
+            lineage="foreign",
+            set_values={
+                "position": {
+                    **after.position,
+                    "lineage_id": "foreign",
+                }
+            },
+        )
+        self.store.persist(foreign_event)
+        foreign_checkpoint = self.store.save_checkpoint(
+            foreign_state,
+            parent=child_checkpoint,
+            artifact_refs=(foreign_effect,),
+        )
+        foreign_commit = CommitV1(
+            parent_commit=commit,
+            events=(foreign_event.identity(),),
+            checkpoint=foreign_checkpoint,
+        )
+        self.store.persist(foreign_commit)
+        with self.assertRaises(CorruptRecordError):
+            self.store.load_commit(foreign_commit.identity())
+
     def test_store_root_ancestry_and_restore_cleanup(self):
         durable_root = self.root / "durable-store"
         with mock.patch.object(
@@ -910,7 +1176,51 @@ class TaskGraphStoreTest(unittest.TestCase):
             TaskGraphStore(alias / "store")
         self.assertFalse((real / "store").exists())
 
+        with self.assertRaises(MaterializationError):
+            TaskGraphStore(self.root / "missing" / "parent" / "store")
+        self.assertFalse((self.root / "missing").exists())
+
+        public_parent = self.root / "public-parent"
+        public_parent.mkdir(mode=0o700)
+        public_parent.chmod(0o755)
+        with self.assertRaises(MaterializationError):
+            TaskGraphStore(public_parent / "store")
+        self.assertFalse((public_parent / "store").exists())
+
+        with self.assertRaises(MaterializationError):
+            TaskGraphStore(self.root / "component" / ".." / "lexical-store")
+        self.assertFalse((self.root / "lexical-store").exists())
+
+        retry_parent = self.root / "retry-parent"
+        retry_parent.mkdir(mode=0o700)
+        retry_root = retry_parent / "store"
+        real_barrier = TaskGraphStore._fsync_directory
+        failed = False
+
+        def fail_parent_once(path):
+            nonlocal failed
+            if not failed and path == retry_parent:
+                failed = True
+                raise OSError("injected root-name barrier failure")
+            return real_barrier(path)
+
+        with mock.patch.object(TaskGraphStore, "_fsync_directory", side_effect=fail_parent_once):
+            with self.assertRaises(OSError):
+                TaskGraphStore(retry_root)
+        self.assertTrue(retry_root.is_dir())
+        with mock.patch.object(TaskGraphStore, "_fsync_directory", wraps=real_barrier) as barrier:
+            TaskGraphStore(retry_root)
+        self.assertIn(retry_parent, (call.args[0] for call in barrier.call_args_list))
+
         checkpoint, _ = self.fixture.root()
+        inside = self.store.root / "inside"
+        inside.mkdir(mode=0o700)
+        jump = self.root / "jump"
+        jump.symlink_to(inside, target_is_directory=True)
+        with self.assertRaises(MaterializationError):
+            self.store.materialize(checkpoint, jump / ".." / "worker")
+        self.assertFalse((self.store.root / "worker").exists())
+
         workspace = self.root / "restore-cleanup"
         with mock.patch.object(
             self.store,

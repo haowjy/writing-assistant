@@ -5,9 +5,10 @@ canonical ``refs`` file is the only mutable authority, and replacing that file i
 the publication linearization point.  Writer workspaces are disposable, private
 materializations and never contain store metadata or private artifacts.
 
-Existing path components are checked for static symlinks and store/workspace trees
-may not overlap. This trusted-harness boundary does not attempt to defeat a process
-that races path replacement after validation.
+Lexical parent traversal and static symlink ancestry are rejected before one absolute
+path is used for checks and creation; store/workspace trees may not overlap. This
+trusted-harness boundary does not attempt to defeat a process that races path
+replacement after validation.
 """
 
 from __future__ import annotations
@@ -49,6 +50,42 @@ from writing_agent.task_graph import (
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _REPLAY_EFFECT = "Phase2RecordedEffectV1"
+_RECORDED_SET_FIELDS = frozenset(
+    {
+        "instance_ref",
+        "position",
+        "context_ref",
+        "requirements_ref",
+        "decisions_ref",
+        "disclosures_ref",
+        "author_packet_ref",
+        "versions_ref",
+        "budgets_ref",
+        "rng_ref",
+        "external_inputs_ref",
+        "outcome_ref",
+        "provenance_ref",
+        "continuation",
+        "in_flight_effects",
+    }
+)
+_RECORDED_HISTORY_SET_FIELDS = frozenset(
+    {"branch_base", "imported_refs", "action_ids", "tool_result_ids"}
+)
+_RECORDED_DIRECT_REF_KINDS = {
+    "instance_ref": "instance",
+    "context_ref": "context",
+    "requirements_ref": "artifact",
+    "decisions_ref": "artifact",
+    "disclosures_ref": "artifact",
+    "author_packet_ref": "private",
+    "versions_ref": "artifact",
+    "budgets_ref": "artifact",
+    "rng_ref": "artifact",
+    "external_inputs_ref": "artifact",
+    "outcome_ref": "artifact",
+    "provenance_ref": "artifact",
+}
 
 
 class StoreError(RuntimeError):
@@ -155,7 +192,7 @@ class TaskGraphStore:
             raise ValueError("max_file_bytes must be a nonnegative integer")
         if type(max_record_bytes) is not int or max_record_bytes <= 0:
             raise ValueError("max_record_bytes must be a positive integer")
-        self.root = Path(root)
+        self.root = self._verified_absolute_path(Path(root), MaterializationError)
         self.max_workspace_bytes = max_workspace_bytes
         self.max_file_bytes = max_file_bytes
         self.max_record_bytes = max_record_bytes
@@ -277,7 +314,13 @@ class TaskGraphStore:
         except (TypeError, ValueError) as exc:
             raise CorruptRecordError(f"invalid lineage head: {path}") from exc
         if head is not None:
-            validator.validate(("commit", head))
+            commit = validator.validate(("commit", head))
+            checkpoint = validator.validate(("checkpoint", commit.checkpoint))
+            if checkpoint.state.position["lineage_id"] != lineage_id:
+                raise CorruptRecordError(
+                    f"lineage authority {lineage_id!r} targets "
+                    f"{checkpoint.state.position['lineage_id']!r}"
+                )
         return head
 
     def publish(
@@ -380,8 +423,6 @@ class TaskGraphStore:
         """Publish the first commit of a new lineage from an immutable parent."""
         validator = self._validator()
         parent = validator.validate(("checkpoint", parent_checkpoint))
-        if self._read_head(lineage_id, validator) is not None:
-            raise ConcurrentUpdateError("a branch lineage must be new")
         if dict(next_state.files) != dict(parent.state.files):
             raise ValueError("branch initialization must start with the parent's full file state")
         if next_state.position["start_checkpoint"] != parent_checkpoint:
@@ -426,10 +467,9 @@ class TaskGraphStore:
         if any(len(value) > self.max_file_bytes for value in encoded.values()):
             raise MaterializationError("workspace file exceeds UTF-8 byte limit")
 
-        destination = Path(fresh_root)
-        self._reject_symlink_ancestry(destination, MaterializationError)
-        store = Path(os.path.abspath(self.root))
-        workspace = Path(os.path.abspath(destination))
+        destination = self._verified_absolute_path(Path(fresh_root), MaterializationError)
+        store = self.root
+        workspace = destination
         if workspace == store or workspace.is_relative_to(store) or store.is_relative_to(workspace):
             raise MaterializationError("workspace and canonical store trees must not overlap")
         hook = fault or _noop_fault
@@ -650,22 +690,18 @@ class TaskGraphStore:
     # -- filesystem internals ----------------------------------------------------
 
     def _prepare_store(self) -> None:
-        self._reject_symlink_ancestry(self.root, MaterializationError)
-        absolute = Path(os.path.abspath(self.root))
-        missing: list[Path] = []
-        cursor = absolute
-        while not cursor.exists():
-            missing.append(cursor)
-            cursor = cursor.parent
-        for path in reversed(missing):
-            path.mkdir(mode=0o700)
-            self._require_private_directory(path)
-            self._fsync_directory(path.parent)
-        self._require_private_directory(absolute)
-        # Reopening repairs an initialization whose mkdir became visible but whose
-        # parent-directory barrier previously failed.
-        self._fsync_directory(absolute.parent)
-        self.root = absolute
+        # The caller supplies one already-established durable parent.  We create
+        # only the configured root and its fixed children, so every possible
+        # visible mkdir has one unambiguous containing-directory barrier to retry.
+        self._require_private_directory(self.root.parent)
+        try:
+            self.root.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        self._require_private_directory(self.root)
+        # Repeat even when root was already visible: a prior constructor may have
+        # failed after mkdir and before this barrier completed.
+        self._fsync_directory(self.root.parent)
         for name in (
             "instances",
             "checkpoints",
@@ -687,17 +723,28 @@ class TaskGraphStore:
 
     @staticmethod
     def _require_private_directory(path: Path) -> None:
-        info = path.lstat()
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise MaterializationError(f"missing or inaccessible directory: {path}") from exc
         if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
             raise MaterializationError(f"not a real directory: {path}")
         if info.st_mode & 0o077:
             raise MaterializationError(f"directory is not private: {path}")
 
     @staticmethod
+    def _verified_absolute_path(path: Path, error_type: type[Exception]) -> Path:
+        """Reject lexical traversal, inspect static ancestry, and normalize once."""
+        if ".." in path.parts:
+            raise error_type(f"parent traversal is not allowed: {path}")
+        absolute = Path(os.path.abspath(path))
+        TaskGraphStore._reject_symlink_ancestry(absolute, error_type)
+        return absolute
+
+    @staticmethod
     def _reject_symlink_ancestry(path: Path, error_type: type[Exception]) -> None:
         """Reject existing symlinks in a lexical path; races are out of scope."""
-        absolute = Path(os.path.abspath(path))
-        components = (absolute, *absolute.parents)
+        components = (path, *path.parents)
         for component in reversed(components):
             try:
                 info = component.lstat()
@@ -707,7 +754,7 @@ class TaskGraphStore:
                 raise error_type(f"cannot inspect path ancestry: {component}") from exc
             if stat.S_ISLNK(info.st_mode):
                 raise error_type(f"symlink ancestry is not allowed: {component}")
-            if component != absolute and not stat.S_ISDIR(info.st_mode):
+            if component != path and not stat.S_ISDIR(info.st_mode):
                 raise error_type(f"path ancestor is not a directory: {component}")
 
     @staticmethod
@@ -1103,43 +1150,18 @@ class _ClosureValidator:
                 ("artifact", getattr(value, name))
                 for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
             ]
+        if kind in {"artifact", "private"}:
+            if (
+                value.domain == "payload"
+                and isinstance(value.value, Mapping)
+                and "artifact_type" in value.value
+            ):
+                return self._recorded_effect_edges(value.value)
+            return []
         if kind == "checkpoint":
-            state = value.state
             edges = [("checkpoint", identity) for identity in value.parents]
-            edges.extend(
-                [
-                    ("instance", state.instance_ref),
-                    ("context", state.context_ref),
-                    *(
-                        ("artifact", identity)
-                        for identity in (
-                            state.position["entry_contract"],
-                            state.requirements_ref,
-                            state.decisions_ref,
-                            state.disclosures_ref,
-                            state.versions_ref,
-                            state.budgets_ref,
-                            state.rng_ref,
-                            state.external_inputs_ref,
-                            state.outcome_ref,
-                            state.provenance_ref,
-                        )
-                    ),
-                    *(("any", identity) for identity in state.history["imported_refs"]),
-                    *(("any", identity) for identity in value.artifact_refs),
-                ]
-            )
-            if state.author_packet_ref is not None:
-                edges.append(("private", state.author_packet_ref))
-            if state.continuation["author_request"] is not None:
-                edges.append(("private", state.continuation["author_request"]))
-            edges.extend(("private", identity) for identity in state.continuation["check_requests"])
-            if state.history["branch_base"] is not None:
-                edges.append(("event", state.history["branch_base"]))
-            if state.position["start_checkpoint"] is not None:
-                edges.append(("checkpoint", state.position["start_checkpoint"]))
-            if value.event_head is not None:
-                edges.append(("event", value.event_head))
+            edges.extend(self._state_edges(value.state))
+            edges.extend(("any", identity) for identity in value.artifact_refs)
             return edges
         if kind == "commit":
             edges = [("checkpoint", value.checkpoint)]
@@ -1148,6 +1170,127 @@ class _ClosureValidator:
             edges.extend(("event", identity) for identity in value.events)
             return edges
         return []
+
+    @staticmethod
+    def _state_edges(state: EnvironmentStateV1) -> list[tuple[str, str]]:
+        edges = [
+            ("instance", state.instance_ref),
+            ("context", state.context_ref),
+            *(
+                ("artifact", identity)
+                for identity in (
+                    state.position["entry_contract"],
+                    state.requirements_ref,
+                    state.decisions_ref,
+                    state.disclosures_ref,
+                    state.versions_ref,
+                    state.budgets_ref,
+                    state.rng_ref,
+                    state.external_inputs_ref,
+                    state.outcome_ref,
+                    state.provenance_ref,
+                )
+            ),
+            *(("any", identity) for identity in state.history["imported_refs"]),
+        ]
+        if state.author_packet_ref is not None:
+            edges.append(("private", state.author_packet_ref))
+        if state.continuation["author_request"] is not None:
+            edges.append(("private", state.continuation["author_request"]))
+        edges.extend(("private", identity) for identity in state.continuation["check_requests"])
+        if state.history["branch_base"] is not None:
+            edges.append(("event", state.history["branch_base"]))
+        if state.position["start_checkpoint"] is not None:
+            edges.append(("checkpoint", state.position["start_checkpoint"]))
+        if state.history["head"] is not None:
+            edges.append(("event", state.history["head"]))
+        return edges
+
+    @staticmethod
+    def _recorded_effect_edges(body: Mapping[str, Any]) -> list[tuple[str, str]]:
+        required = {
+            "artifact_type",
+            "before_state_ref",
+            "file_delta",
+            "set",
+            "history_set",
+        }
+        if body["artifact_type"] != _REPLAY_EFFECT:
+            raise WrongRecordDomainError(
+                f"unsupported typed payload artifact: {body['artifact_type']!r}"
+            )
+        if set(body) != required:
+            raise CorruptRecordError("invalid Phase2RecordedEffectV1 envelope")
+        changes = body["set"]
+        history_changes = body["history_set"]
+        if not all(
+            isinstance(body[name], Mapping) for name in ("file_delta", "set", "history_set")
+        ):
+            raise CorruptRecordError("invalid recorded-effect object fields")
+        try:
+            validate_hash(body["before_state_ref"])
+        except (TypeError, ValueError) as exc:
+            raise CorruptRecordError("invalid recorded-effect state assertion") from exc
+        if not set(changes) <= _RECORDED_SET_FIELDS:
+            raise CorruptRecordError("recorded effect changes protected state fields")
+        if not set(history_changes) <= _RECORDED_HISTORY_SET_FIELDS:
+            raise CorruptRecordError("recorded effect changes protected history fields")
+
+        edges: list[tuple[str, str]] = []
+        try:
+            for field, kind in _RECORDED_DIRECT_REF_KINDS.items():
+                if field not in changes:
+                    continue
+                identity = changes[field]
+                validate_hash(identity, optional=field == "author_packet_ref")
+                if identity is not None:
+                    edges.append((kind, identity))
+
+            if "position" in changes:
+                position = changes["position"]
+                if (
+                    not isinstance(position, Mapping)
+                    or set(position) != EnvironmentStateV1.POSITION_FIELDS
+                ):
+                    raise TypeError("position is not a complete object")
+                validate_hash(position["entry_contract"])
+                validate_hash(position["start_checkpoint"], optional=True)
+                edges.append(("artifact", position["entry_contract"]))
+                if position["start_checkpoint"] is not None:
+                    edges.append(("checkpoint", position["start_checkpoint"]))
+
+            if "continuation" in changes:
+                continuation = changes["continuation"]
+                if (
+                    not isinstance(continuation, Mapping)
+                    or set(continuation) != EnvironmentStateV1.CONTINUATION_FIELDS
+                ):
+                    raise TypeError("continuation is not a complete object")
+                validate_hash(continuation["author_request"], optional=True)
+                if continuation["author_request"] is not None:
+                    edges.append(("private", continuation["author_request"]))
+                check_requests = continuation["check_requests"]
+                if not isinstance(check_requests, (list, tuple)):
+                    raise TypeError("check_requests is not an array")
+                for identity in check_requests:
+                    validate_hash(identity)
+                    edges.append(("private", identity))
+
+            if "branch_base" in history_changes:
+                identity = history_changes["branch_base"]
+                validate_hash(identity, optional=True)
+                if identity is not None:
+                    edges.append(("event", identity))
+            if "imported_refs" in history_changes:
+                imported = history_changes["imported_refs"]
+                if not isinstance(imported, (list, tuple)):
+                    raise TypeError("imported_refs is not an array")
+                for identity in imported:
+                    validate_hash(identity)
+                    edges.append(("any", identity))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CorruptRecordError("invalid recorded-effect reference field") from exc
+        return edges
 
     def _validate_after(self, key: tuple[str, str], value: Any) -> None:
         kind, identity = key
@@ -1175,8 +1318,7 @@ class _ClosureValidator:
         elif kind == "commit":
             self._validate_commit(value)
 
-    @staticmethod
-    def _validate_artifact(artifact: _Artifact, identity: str) -> None:
+    def _validate_artifact(self, artifact: _Artifact, identity: str) -> None:
         if artifact.domain in {"payload", "payload:bytes"}:
             body = artifact.value
             if (
@@ -1188,23 +1330,7 @@ class _ClosureValidator:
                     raise WrongRecordDomainError(
                         f"unsupported typed payload artifact: {body['artifact_type']!r}"
                     )
-                required = {
-                    "artifact_type",
-                    "before_state_ref",
-                    "file_delta",
-                    "set",
-                    "history_set",
-                }
-                if set(body) != required:
-                    raise CorruptRecordError("invalid Phase2RecordedEffectV1 envelope")
-                try:
-                    validate_hash(body["before_state_ref"])
-                except (TypeError, ValueError) as exc:
-                    raise CorruptRecordError("invalid recorded-effect state reference") from exc
-                if not all(
-                    isinstance(body[name], Mapping) for name in ("file_delta", "set", "history_set")
-                ):
-                    raise CorruptRecordError("invalid recorded-effect edge fields")
+                self._recorded_effect_edges(body)
             return
         if artifact.domain == "message" and not artifact.private:
             try:
@@ -1248,6 +1374,12 @@ class _ClosureValidator:
             parent_id = parent_commit.checkpoint
             if checkpoint.parents != (parent_id,):
                 raise CorruptRecordError("commit checkpoint does not descend from parent commit")
+            parent_checkpoint = self.loaded[("checkpoint", parent_id)]
+            if (
+                parent_checkpoint.state.position["lineage_id"]
+                != checkpoint.state.position["lineage_id"]
+            ):
+                raise CorruptRecordError("ordinary commit ancestry crosses lineages")
         elif checkpoint.parents:
             parent_id = checkpoint.parents[0]
         else:
@@ -1268,6 +1400,11 @@ class _ClosureValidator:
                 state = self.store._apply_recorded_effect_body(state, event, payload.value)
             except ReplayError:
                 raise
+            # Validate each reduced state immediately. A later effect may replace
+            # a reference, but cannot hide that a committed intermediate state
+            # was not closed at its own event boundary.
+            for edge in self._state_edges(state):
+                self.validate(edge)
             previous = event_id
             sequence = event.seq
         if previous != checkpoint.event_head or sequence != checkpoint.state.history["seq"]:

@@ -49,16 +49,21 @@ Restore always creates a new private directory and returns a trusted runtime han
 it never rewinds an event log. The Phase 2 replay reducer accepts only persisted
 `Phase2RecordedEffectV1` payloads and makes no model, network, or tool calls.
 Publication reduces that supported event batch from the actual parent checkpoint and
-requires exact complete-state equality before writing or moving authority. Unsupported
-transition envelopes fail at the reducer seam. Branch initialization is the same
-recorded parent-to-child transition, not a pre-mutated state.
+requires typed reference closure after every intermediate effect as well as exact
+complete-state equality before writing or moving authority. The effect's
+`before_state_ref` is a state-identity assertion, not a persisted-object edge.
+Unsupported transition envelopes fail at the reducer seam. Branch initialization is
+the same recorded parent-to-child transition, not a pre-mutated state.
 
 Reference closure uses one operation-scoped typed traversal with loaded, active, and
 completed sets. Checkpoint/commit/event depth is traversed iteratively; supplemental
 and imported references cannot bypass the validators for their resolved record domain.
 There is no process-global validation cache. Immutable-name and ref-name retries repeat
 their containing-directory durability barrier even when equal bytes or the matching
-head are already visible. Store-directory creation is durably flushed.
+head are already visible; identical `branch` retries use that same head-repair path.
+Every non-null authority head must target a checkpoint in its named lineage. A first
+commit may explicitly start from a checkpoint in another lineage, but later commit
+ancestry may not cross lineages.
 
 Catalog records carry normalized content in `text`; local imports also preserve raw
 bytes and a text file, with hashes for both representations. Content from the imported
@@ -68,9 +73,11 @@ the same canonical text.
 Compiled releases separate visible packages from private labels. Runtime workspaces
 contain only initial files supplied by the visible package. These path-constrained
 file tools are not an OS sandbox; no arbitrary shell is exposed to candidates.
-Store roots and workspace destinations reject static symlink ancestry and any tree
-overlap before creation. Concurrent hostile path replacement remains outside this
-trusted-harness threat model.
+Store roots and workspace destinations reject lexical `..`, static symlink ancestry,
+and any tree overlap before creation, then use the one checked absolute path. A store
+root's parent must already be a real private directory; initialization creates only the
+root and its fixed children and repeats each containing-directory fsync on retry.
+Concurrent hostile path replacement remains outside this trusted-harness threat model.
 
 Resume identity covers visible inputs, experimental observation metadata (including
 builder identity and condition), model configuration, and package source hashes.
