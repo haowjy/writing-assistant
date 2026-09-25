@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Make group collection and offline finalization share complete result admission,
+  and reject sampled budget-stop seed/model or declared policy drift before credit.
+
 - Add an isolated deterministic Phase 7 GRPO group coordinator with full start-contract sealing, domain-separated member seeds, resumable member branches, immutable terminal/reward binding, exact symbolic group advantages, pending/tie/invalid handling, and writer-only segment credit without fabricated native traces or optimizer updates.
 
 - Reject non-integer or noncontiguous writer runtime-log sequence witnesses and

@@ -8,7 +8,7 @@ from fractions import Fraction
 from unittest.mock import patch
 
 from tests import test_task_graph_scripted as scripted
-from writing_agent.task_graph import EnvironmentStateV1, domain_hash
+from writing_agent.task_graph import EnvironmentStateV1, canonical_bytes, domain_hash
 from writing_agent.task_graph_checks import DeterministicChecksV1
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_group import (
@@ -282,6 +282,251 @@ class GroupCoordinatorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.coordinator.resume(spec.group_id)
 
+    def test_result_admission_collect_and_reopened_finalize_parity(self):
+        spec = self.group(sequence=10, mode="fixture")
+        starts = self.starts(spec)
+        refs = [
+            self.coordinator.collect_scripted(spec, ordinal, reward=Fraction(ordinal))
+            for ordinal in range(2)
+        ]
+        results = [GroupMemberResultV1.from_dict(self.store.get_artifact(ref)) for ref in refs]
+        directory = self.store.root / "groups" / spec.group_id
+        start_path = directory / "start-0.json"
+        result_path = directory / "result-0.json"
+        original_start, original_result = start_path.read_bytes(), result_path.read_bytes()
+        fixture = self.store.get_artifact(results[0].fixture_ref)
+        wrong_reward = self.store.put_artifact(
+            {**fixture, "reward": {"numerator": 1, "denominator": 0}}
+        )
+        wrong_terminal = self.store.put_artifact(
+            {**fixture, "start_checkpoint_id": starts[1].checkpoint_id}
+        )
+        cases = {
+            "start": (replace(results[0], start_checkpoint_id=self.start), original_start),
+            "member": (replace(results[0], member_id=spec.members[1].member_id), original_start),
+            "group": (replace(results[0], group_id="0" * 64), original_start),
+            "terminal": (replace(results[0], fixture_ref=wrong_terminal), original_start),
+            "reward": (replace(results[0], fixture_ref=wrong_reward), original_start),
+            "missing_receipt": (results[0], None),
+            "corrupt_receipt": (results[0], b'{"member_id":"wrong"}'),
+        }
+        for name, (candidate, start_bytes) in cases.items():
+            with self.subTest(case=name):
+                if start_bytes is None:
+                    start_path.unlink()
+                else:
+                    start_path.write_bytes(start_bytes)
+                with self.assertRaises((ValueError, FileNotFoundError, KeyError, TypeError)):
+                    self.coordinator.collect(spec, candidate)
+                result_ref = self.store.put_artifact(candidate.to_dict())
+                result_path.write_bytes(canonical_bytes({"result_ref": result_ref}))
+                offline = GroupCoordinatorV1(
+                    TaskGraphStore(self.store.root), self.root / "reopened-admission"
+                )
+                with self.assertRaises((ValueError, FileNotFoundError, KeyError, TypeError)):
+                    offline.finalize(offline.resume(spec.group_id))
+                result_path.write_bytes(original_result)
+                start_path.write_bytes(original_start)
+        self.assertEqual(self.coordinator.finalize(spec).status, "ready")
+
+    def test_real_group_rejects_forged_fixture_on_reopen(self):
+        spec = self.group(sequence=11)
+        starts = self.starts(spec)
+        directory = self.store.root / "groups" / spec.group_id
+        mode_only_fixture = self.store.put_artifact(
+            {
+                "record_type": "GroupScriptedTerminalV1",
+                "schema": 1,
+                "group_id": spec.group_id,
+                "member_id": spec.members[0].member_id,
+                "start_checkpoint_id": starts[0].checkpoint_id,
+                "execution_status": "valid",
+                "reward_status": "available",
+                "reward": {"numerator": 0, "denominator": 1},
+                "native_optimizer_eligible": False,
+            }
+        )
+        mode_only = GroupMemberResultV1(
+            group_id=spec.group_id,
+            member_id=spec.members[0].member_id,
+            start_checkpoint_id=starts[0].checkpoint_id,
+            fixture_ref=mode_only_fixture,
+            execution_status="valid",
+        )
+        with self.assertRaises(GroupError):
+            self.coordinator.collect(spec, mode_only)
+        mode_ref = self.store.put_artifact(mode_only.to_dict())
+        mode_path = directory / "result-0.json"
+        mode_path.write_bytes(canonical_bytes({"result_ref": mode_ref}))
+        offline = GroupCoordinatorV1(TaskGraphStore(self.store.root), self.root / "reopened-mode")
+        with self.assertRaises(GroupError):
+            offline.finalize(offline.resume(spec.group_id))
+        mode_path.unlink()
+        for ordinal, member in enumerate(spec.members):
+            fixture_ref = self.store.put_artifact(
+                {
+                    "record_type": "GroupScriptedTerminalV1",
+                    "schema": 1,
+                    "group_id": spec.group_id,
+                    "member_id": member.member_id,
+                    "start_checkpoint_id": self.start,
+                    "execution_status": "valid",
+                    "reward_status": "available",
+                    "reward": {"numerator": ordinal, "denominator": 1},
+                    "native_optimizer_eligible": False,
+                }
+            )
+            forged = GroupMemberResultV1(
+                group_id=spec.group_id,
+                member_id=member.member_id,
+                start_checkpoint_id=self.start,
+                fixture_ref=fixture_ref,
+                execution_status="valid",
+            )
+            with self.assertRaises(GroupError):
+                self.coordinator.collect(spec, forged)
+            ref = self.store.put_artifact(forged.to_dict())
+            (directory / f"result-{ordinal}.json").write_bytes(canonical_bytes({"result_ref": ref}))
+            (directory / f"start-{ordinal}.json").unlink()
+        with self.assertRaises((ValueError, FileNotFoundError)):
+            offline.finalize(offline.resume(spec.group_id))
+
+    def test_sampled_budget_stop_obeys_sealed_policy_and_counts_as_writer_failure(self):
+        state = self.runtime.state.to_dict()
+        budget = self.store.get_artifact(state["budgets_ref"])
+        budget["limits"]["generated_tokens"] = 1
+        state["budgets_ref"] = self.store.put_artifact(budget)
+        self.start = self.store.save_checkpoint(EnvironmentStateV1.from_dict(state))
+        self.policy["model_ref"] = self.store.put_artifact({"model_id": "pinned-model"})
+
+        def stopped_result(spec, runtime, ordinal, trace, exact_request=None):
+            writer = TransactionalWriterV1(
+                self.store,
+                self.writer.graph,
+                spec.members[ordinal].member_id,
+                runtime.checkpoint_id,
+            )
+            stopped = writer.submit_action(
+                runtime,
+                self.action(content="overrun"),
+                usage={"completion_tokens": 2},
+                trace=trace,
+                exact_request=exact_request,
+            )
+            self.assertEqual(stopped.runtime.state.position["phase"], "terminal")
+            rewarded = ScriptedTerminalV1(writer).reward(stopped.runtime)
+            return GroupMemberResultV1(
+                group_id=spec.group_id,
+                member_id=spec.members[ordinal].member_id,
+                start_checkpoint_id=runtime.checkpoint_id,
+                final_checkpoint_id=rewarded.runtime.checkpoint_id,
+                terminal_outcome_ref=stopped.runtime.state.outcome_ref,
+                availability_ref=rewarded.runtime.state.outcome_ref,
+                execution_status="valid",
+            )
+
+        for sequence, drift in (
+            (12, "seed"),
+            (13, "model"),
+            (14, "adapter_ref"),
+            (16, "request_context"),
+        ):
+            with self.subTest(drift=drift):
+                spec = self.group(sequence=sequence)
+                runtime = self.coordinator.start(spec, 0, policy=self.policy)
+                trace = {"seed": spec.members[0].writer_seed, "model": "pinned-model"}
+                request = None
+                if drift == "request_context":
+                    request = {"context_content_hash": "0" * 64}
+                else:
+                    trace[drift] = (
+                        spec.members[0].writer_seed + 1
+                        if drift == "seed"
+                        else "WRONG-MODEL"
+                        if drift == "model"
+                        else "0" * 64
+                    )
+                result = stopped_result(spec, runtime, 0, trace, request)
+                with self.assertRaises(GroupError):
+                    self.coordinator.collect(spec, result)
+                ref = self.store.put_artifact(result.to_dict())
+                (self.store.root / "groups" / spec.group_id / "result-0.json").write_bytes(
+                    canonical_bytes({"result_ref": ref})
+                )
+                offline = GroupCoordinatorV1(
+                    TaskGraphStore(self.store.root), self.root / f"reopened-stop-{drift}"
+                )
+                with self.assertRaises(GroupError):
+                    offline.finalize(offline.resume(spec.group_id))
+
+        spec = self.group(sequence=15)
+        first, second = self.starts(spec)
+        pinned = {
+            "seed": spec.members[0].writer_seed,
+            "model": "pinned-model",
+            "behavior_policy_ref": spec.policy["behavior_policy_ref"],
+            "adapter_ref": spec.policy["adapter_ref"],
+            "decoding_ref": spec.policy["decoding_ref"],
+        }
+        stop = stopped_result(spec, first, 0, pinned)
+        self.coordinator.collect(spec, stop)
+        self.assertEqual(self.coordinator.finalize(spec).status, "pending")
+
+        writer = TransactionalWriterV1(
+            self.store, self.writer.graph, spec.members[1].member_id, second.checkpoint_id
+        )
+        asked = writer.submit_action(
+            second,
+            self.action(
+                self.call(
+                    "ask_author",
+                    {
+                        "question": "Which door?",
+                        "decision_ids": ["door"],
+                        "proposals": [],
+                        "option_refs": [],
+                    },
+                )
+            ),
+            usage={"completion_tokens": 0},
+            trace={"seed": spec.members[1].writer_seed, "model": "pinned-model"},
+        )
+        request = writer.step_tool(asked.runtime)
+        reply = ScriptedAuthorRuntimeV1(writer).reply(request.runtime)
+        final = writer.submit_action(
+            reply.runtime,
+            self.action(content="Final revision."),
+            usage={"completion_tokens": 1},
+            trace={"seed": spec.members[1].writer_seed, "model": "pinned-model"},
+        )
+        checks = DeterministicChecksV1(writer)
+        batch = checks.request_checks(final.runtime)
+        checked = checks.check_next(batch.runtime)
+        terminal = ScriptedTerminalV1(writer)
+        transition = terminal.transition(checked.runtime)
+        outcome = terminal.terminal_outcome(transition.runtime)
+        rewarded = terminal.reward(outcome.runtime)
+        success = GroupMemberResultV1(
+            group_id=spec.group_id,
+            member_id=spec.members[1].member_id,
+            start_checkpoint_id=second.checkpoint_id,
+            final_checkpoint_id=rewarded.runtime.checkpoint_id,
+            terminal_outcome_ref=outcome.runtime.state.outcome_ref,
+            availability_ref=rewarded.runtime.state.outcome_ref,
+            execution_status="valid",
+        )
+        self.coordinator.collect(spec, success)
+        decision = self.coordinator.finalize(spec)
+        self.assertEqual(decision.status, "ready")
+        self.assertEqual(len(decision.advantage_refs), 2)
+        self.assertEqual(len(decision.segment_credit_refs), 4)
+        self.assertEqual(
+            decision.identity(),
+            GroupCoordinatorV1(TaskGraphStore(self.store.root), self.root / "reopened-mixed")
+            .finalize(spec)
+            .identity(),
+        )
+
     def test_phase5_terminal_binding_and_writer_only_segment_credit(self):
         spec = self.group()
         starts = self.starts(spec)
@@ -440,3 +685,18 @@ class GroupCoordinatorTests(unittest.TestCase):
         )
         with self.assertRaises(GroupError):
             self.coordinator.collect(spec, replace(results[0], availability_ref=bad_reward))
+        receipt_path = self.store.root / "groups" / spec.group_id / "result-0.json"
+        admitted_receipt = receipt_path.read_bytes()
+        for name, candidate in (
+            ("terminal", forged),
+            ("reward", replace(results[0], availability_ref=bad_reward)),
+        ):
+            with self.subTest(reopened_substitution=name):
+                ref = self.store.put_artifact(candidate.to_dict())
+                receipt_path.write_bytes(canonical_bytes({"result_ref": ref}))
+                offline = GroupCoordinatorV1(
+                    TaskGraphStore(self.store.root), self.root / f"reopened-real-{name}"
+                )
+                with self.assertRaises(GroupError):
+                    offline.finalize(offline.resume(spec.group_id))
+                receipt_path.write_bytes(admitted_receipt)

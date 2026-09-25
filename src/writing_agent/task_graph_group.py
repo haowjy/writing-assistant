@@ -272,7 +272,11 @@ class GroupCoordinatorV1:
             (self.groups_root / spec.group_id / f"start-{ordinal}.json").read_bytes()
         )
         if (
-            body["member_id"] != spec.members[ordinal].member_id
+            not isinstance(body, dict)
+            or set(body)
+            != {"member_id", "parent_checkpoint_id", "start_checkpoint_id", "commit_id"}
+            or not all(isinstance(body[key], str) for key in body)
+            or body["member_id"] != spec.members[ordinal].member_id
             or body["parent_checkpoint_id"] != spec.environment["entry_checkpoint_id"]
         ):
             raise GroupError("member start receipt is misbound")
@@ -306,18 +310,8 @@ class GroupCoordinatorV1:
         return body
 
     def collect(self, spec: GroupSpecV1, result: GroupMemberResultV1) -> str:
-        self.resume(spec.group_id)
-        if result.group_id != spec.group_id:
-            raise GroupError("result belongs to another group")
-        if bool(result.fixture_ref) != (spec.runner_mode == "fixture"):
-            raise GroupError("fixture and real terminal results cannot share a group")
-        ordinal = next((m.ordinal for m in spec.members if m.member_id == result.member_id), None)
-        if ordinal is None:
-            raise GroupError("result belongs to another member")
-        start = self._start_receipt(spec, ordinal)
-        if result.start_checkpoint_id != start["start_checkpoint_id"]:
-            raise GroupError("result start checkpoint is misbound")
-        self._validate_result(spec, result)
+        self._assert_sealed_spec(spec)
+        ordinal = self._admit_result(spec, result)
         ref = self.store.put_artifact(result.to_dict())
         with self._locked(spec.group_id) as directory:
             path = directory / f"result-{ordinal}.json"
@@ -326,6 +320,7 @@ class GroupCoordinatorV1:
                 if previous_ref == ref:
                     return ref
                 previous = GroupMemberResultV1.from_dict(self.store.get_artifact(previous_ref))
+                self._admit_result(spec, previous, ordinal)
                 resolution = (
                     previous.execution_status == "valid"
                     and result.execution_status == "valid"
@@ -455,7 +450,77 @@ class GroupCoordinatorV1:
             return self.store.get_artifact(result.availability_ref)["reward_status"]
         return "pending"
 
-    def _validate_result(self, spec: GroupSpecV1, result: GroupMemberResultV1) -> None:
+    def _assert_sealed_spec(self, spec: GroupSpecV1) -> None:
+        if canonical_bytes(self.resume(spec.group_id).to_dict()) != canonical_bytes(spec.to_dict()):
+            raise GroupError("group spec differs from its sealed receipt")
+
+    def _sampled_trace_ref(self, entry: dict) -> str | None:
+        """Only known sampled log records may carry a trace; unknown carriers fail closed."""
+        ref = entry["record_ref"]
+        private = self.store.artifact_visibilities(ref) == frozenset({"private"})
+        record = self.store.get_artifact(ref, private=private)
+        if not isinstance(record, dict):
+            raise GroupError("runtime log record is not an object")
+        expected = {
+            "writer_action": "WriterActionV1",
+            "budget_charged": "WriterSampledBudgetStopV1",
+        }.get(entry["kind"])
+        if expected is not None:
+            if record.get("record_type") != expected or not isinstance(
+                record.get("trace_ref"), str
+            ):
+                raise GroupError("sampled runtime log lacks its expected trace")
+            return record["trace_ref"]
+        if "trace_ref" in record:
+            raise GroupError("unknown trace-bearing runtime log kind")
+        return None
+
+    @staticmethod
+    def _check_sample_claims(
+        spec: GroupSpecV1, member: GroupMemberSpecV1, trace: dict, claims: Any
+    ):
+        """Check any policy/context declarations in an adapter or exact request payload."""
+        if not isinstance(claims, dict):
+            return
+        for field in (
+            "model_ref",
+            "behavior_policy_ref",
+            "tokenizer_ref",
+            "template_ref",
+            "adapter_ref",
+            "decoding_ref",
+            "context_policy_ref",
+        ):
+            if field in claims and claims[field] != spec.policy[field]:
+                raise GroupError(f"writer sample used a different {field}")
+        if "policy_ref" in claims and claims["policy_ref"] != spec.policy["behavior_policy_ref"]:
+            raise GroupError("writer sample used a different behavior policy")
+        for field, expected in (
+            ("seed", member.writer_seed),
+            ("model", trace["model"]),
+            ("context_content_hash", trace["context_content_hash"]),
+            ("context_revision_ref", trace["context_revision_ref"]),
+            ("rendering", trace["rendering"]),
+        ):
+            if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
+                raise GroupError(f"writer sample request/adapter changed {field}")
+
+    def _admit_result(
+        self, spec: GroupSpecV1, result: GroupMemberResultV1, expected_ordinal: int | None = None
+    ) -> int:
+        """One immutable admission boundary for live collection and offline recovery."""
+        ordinal = next((m.ordinal for m in spec.members if m.member_id == result.member_id), None)
+        if (
+            result.group_id != spec.group_id
+            or ordinal is None
+            or (expected_ordinal is not None and ordinal != expected_ordinal)
+        ):
+            raise GroupError("result belongs to another group or member slot")
+        if bool(result.fixture_ref) != (spec.runner_mode == "fixture"):
+            raise GroupError("fixture and real terminal results cannot share a group")
+        start = self._start_receipt(spec, ordinal)
+        if result.start_checkpoint_id != start["start_checkpoint_id"]:
+            raise GroupError("result start checkpoint is misbound")
         if result.fixture_ref:
             fixture = self.store.get_artifact(result.fixture_ref)
             if (
@@ -470,6 +535,8 @@ class GroupCoordinatorV1:
             ):
                 raise GroupError("scripted terminal artifact is misbound")
             if fixture["reward_status"] == "available":
+                if result.execution_status != "valid":
+                    raise GroupError("invalid scripted execution cannot carry available reward")
                 value = fixture.get("reward")
                 if (
                     not isinstance(value, dict)
@@ -482,9 +549,9 @@ class GroupCoordinatorV1:
                     raise GroupError("scripted reward is not a canonical exact fraction")
             elif fixture.get("reward") is not None:
                 raise GroupError("unavailable scripted reward includes a number")
-            return
+            return ordinal
         if result.execution_status == "pending":
-            return
+            return ordinal
         if result.execution_status == "infrastructure_invalid":
             failure = self.store.get_artifact(result.failure_ref)
             if (
@@ -495,9 +562,15 @@ class GroupCoordinatorV1:
                 or failure.get("start_checkpoint_id") != result.start_checkpoint_id
                 or not isinstance(failure.get("reason"), str)
                 or not failure["reason"]
+                or (
+                    failure.get("evidence_ref") is not None
+                    and not isinstance(failure["evidence_ref"], str)
+                )
             ):
                 raise GroupError("infrastructure failure record is misbound")
-            return
+            if failure["evidence_ref"] is not None:
+                self.store.get_artifact(failure["evidence_ref"])
+            return ordinal
         final = self.store.load_checkpoint(result.final_checkpoint_id)
         if final.state.position["lineage_id"] != result.member_id:
             raise GroupError("terminal checkpoint belongs to another member")
@@ -511,20 +584,28 @@ class GroupCoordinatorV1:
         # A worker cannot silently swap that recipe after group admission.
         log = self.store.get_artifact(final.state.external_inputs_ref)
         if isinstance(log, dict) and log.get("record_type") == "WriterRuntimeLogV1":
-            member = next(m for m in spec.members if m.member_id == result.member_id)
+            member = spec.members[ordinal]
             model = self.store.get_artifact(spec.policy["model_ref"])
             for entry in log["entries"]:
-                if entry["kind"] == "writer_action":
-                    action = self.store.get_artifact(entry["record_ref"])
-                    trace = self.store.get_artifact(action["trace_ref"])
+                trace_ref = self._sampled_trace_ref(entry)
+                if trace_ref is not None:
+                    trace = self.store.get_artifact(trace_ref)
                     if trace.get("seed") is not None and (
                         type(trace["seed"]) is not int or trace["seed"] != member.writer_seed
                     ):
-                        raise GroupError("writer action used a different sampling stream")
+                        raise GroupError("writer sample used a different sampling stream")
                     if trace.get("model") is not None and (
                         not isinstance(model, dict) or trace["model"] != model.get("model_id")
                     ):
-                        raise GroupError("writer action used a different model")
+                        raise GroupError("writer sample used a different model")
+                    self._check_sample_claims(spec, member, trace, trace.get("adapter_trace"))
+                    if trace.get("exact_request_ref") is not None:
+                        self._check_sample_claims(
+                            spec,
+                            member,
+                            trace,
+                            self.store.get_artifact(trace["exact_request_ref"]),
+                        )
                 if entry["kind"] != "context_changed":
                     continue
                 operation = self.store.get_artifact(entry["record_ref"])
@@ -540,6 +621,7 @@ class GroupCoordinatorV1:
         if (
             outcome.get("record_type") != "TerminalOutcomeV1"
             or outcome.get("execution_status") != "valid"
+            or final.state.position["phase"] != "terminal"
         ):
             raise GroupError("result lacks valid immutable terminal outcome")
         if result.availability_ref:
@@ -558,6 +640,8 @@ class GroupCoordinatorV1:
                     or reward.get("terminal_outcome_ref") != result.terminal_outcome_ref
                     or reward.get("eligibility_ref") != availability["eligibility_ref"]
                     or reward.get("reward_contract_ref") != spec.environment["reward_contract_hash"]
+                    or reward.get("candidate_checkpoint") != outcome.get("candidate_checkpoint")
+                    or reward.get("check_result_refs") != outcome.get("check_result_refs")
                     or eligibility.get("record_type") != "TrainingEligibilityV1"
                     or eligibility.get("terminal_outcome_ref") != result.terminal_outcome_ref
                     or eligibility.get("status") != "ineligible"
@@ -567,9 +651,10 @@ class GroupCoordinatorV1:
                     or reward["normalization"] <= 0
                 ):
                     raise GroupError("reward/eligibility contract or arithmetic is misbound")
+        return ordinal
 
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
-        self.resume(spec.group_id)
+        self._assert_sealed_spec(spec)
         result_refs: list[str | None] = []
         results: list[GroupMemberResultV1 | None] = []
         directory = self.groups_root / spec.group_id
@@ -580,11 +665,11 @@ class GroupCoordinatorV1:
                 results.append(None)
                 continue
             receipt = load_canonical_json(path.read_bytes())
+            if not isinstance(receipt, dict) or set(receipt) != {"result_ref"}:
+                raise GroupError("result receipt has invalid schema")
             ref = receipt["result_ref"]
             result = GroupMemberResultV1.from_dict(self.store.get_artifact(ref))
-            if result.member_id != member.member_id or result.group_id != spec.group_id:
-                raise GroupError("result receipt misbinds member")
-            self._validate_result(spec, result)
+            self._admit_result(spec, result, member.ordinal)
             result_refs.append(ref)
             results.append(result)
         if any(r is not None and r.execution_status == "infrastructure_invalid" for r in results):

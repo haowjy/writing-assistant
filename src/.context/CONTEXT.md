@@ -52,8 +52,9 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
   defines the sealed entry/policy and exact credit records;
   [task_graph_group.py](../writing_agent/task_graph_group.py) creates isolated
-  seeded branches, verifies terminal/reward evidence, and computes group
-  advantages plus writer-only segment credit. It never samples
+  seeded branches, applies the same complete member-result admission to collection
+  and reopened finalization (including sealed start receipts and sampled stops),
+  and computes group advantages plus writer-only segment credit. It never samples
   models or emits native token masks; see [group coordination](../../docs/task-graph-groups.md).
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
