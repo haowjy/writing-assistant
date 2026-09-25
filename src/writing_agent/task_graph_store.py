@@ -248,6 +248,16 @@ class TaskGraphStore:
             )
         return value
 
+    def artifact_visibilities(self, identity: str) -> frozenset[str]:
+        """Return storage visibility locations without decoding artifact contents."""
+        validate_hash(identity)
+        result = set()
+        if self._artifact_path(identity, False).exists():
+            result.add("public")
+        if self._artifact_path(identity, True).exists():
+            result.add("private")
+        return frozenset(result)
+
     def persist(self, record: Any) -> str:
         """Persist one typed immutable record, plus context content when needed."""
         if isinstance(record, ContextRevisionV1):

@@ -82,25 +82,23 @@ class StoreArtifactResolver:
         self.store = store
 
     def resolve(self, identity: str, *, private: bool) -> Any:
-        from writing_agent.task_graph_store import MissingReferenceError
+        from writing_agent.task_graph_store import MissingReferenceError, StoreError
 
+        required = "private" if private else "public"
+        opposite = "public" if private else "private"
+        locations = self.store.artifact_visibilities(identity)
+        if required in locations and opposite in locations:
+            raise AdmissionError(
+                "artifact_routing", f"{identity} exists in both visibility domains"
+            )
+        if opposite in locations:
+            raise AdmissionError("artifact_routing", f"{identity} is not in {required} storage")
         try:
             return self.store.get_artifact(identity, expected_domain="payload", private=private)
-        except MissingReferenceError as expected_error:
-            try:
-                self.store.get_artifact(
-                    identity,
-                    expected_domain="payload",
-                    private=not private,
-                )
-            except MissingReferenceError:
-                raise AdmissionError(
-                    "missing_reference", f"missing artifact {identity}"
-                ) from expected_error
-            visibility = "private" if private else "public"
-            raise AdmissionError(
-                "artifact_routing", f"{identity} is not in {visibility} storage"
-            ) from expected_error
+        except MissingReferenceError as exc:
+            raise AdmissionError("missing_reference", f"missing artifact {identity}") from exc
+        except StoreError as exc:
+            raise AdmissionError("invalid_contract", f"invalid artifact {identity}") from exc
 
 
 @dataclass(frozen=True)

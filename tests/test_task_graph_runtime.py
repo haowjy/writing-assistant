@@ -473,6 +473,15 @@ class LegacyGraphAdapterTest(unittest.TestCase):
             admitted = admit_graph(bundle.instance, StoreArtifactResolver(store))
             self.assertEqual(admitted.instance.identity(), identity)
 
+            node = admitted.nodes["legacy-writer"].contract
+            evaluation_ref = node.completion_contract.evaluation_packet_ref
+            store.put_artifact(
+                bundle.private_artifacts[evaluation_ref],
+                private=False,
+            )
+            with self.assertRaises(AdmissionError):
+                admit_graph(bundle.instance, StoreArtifactResolver(store))
+
     def test_compilation_does_not_retain_mutable_scenario_values(self):
         task = scenario()
         bundle = compile_legacy_scenario(task)
