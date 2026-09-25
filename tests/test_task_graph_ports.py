@@ -22,6 +22,7 @@ from writing_agent.task_graph_local import (
 from writing_agent.task_graph_ports import (
     EnvironmentResult,
     EnvironmentSnapshot,
+    ExecutionInfrastructureError,
     PortDescriptorV1,
     RuntimeDependenciesV1,
     SampleResult,
@@ -51,12 +52,15 @@ class IndependentEnvironment:
     def __init__(self, schemas):
         self.schemas = schemas
         self.calls = 0
+        self.infrastructure = "ok"
 
     def tool_manifest(self, allowlist, interaction_policy=None):
         return ToolManifest(canonical_json(self.schemas))
 
     def execute(self, spec, handle, snapshot, action):
         self.calls += 1
+        if self.infrastructure != "ok":
+            return EnvironmentResult({}, snapshot, self.infrastructure)
         files = snapshot.files()
         files["draft.txt"] = "independent environment state\n"
         return EnvironmentResult(
@@ -242,6 +246,28 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
             fixture2.store.get_artifact(observation2.record_ref)["observation"]["result"],
             "independent provider observation",
         )
+
+    def test_infrastructure_failure_interrupts_without_tool_effect(self):
+        fixture = self.fixture(writer_tests.WriterFixture)
+        environment = IndependentEnvironment(fixture.runtime.context.tools)
+        environment.infrastructure = "transient_failure"
+        session = self.session(fixture, IndependentBackend("unused"), environment=environment)
+        writer = TransactionalWriterV1(
+            fixture.store,
+            fixture.bundle.admission(),
+            "rollout-1",
+            fixture.start,
+            session=session,
+        )
+        action = writer.submit_action(
+            fixture.runtime, fixture.action(fixture.call("read_file", {"path": "draft.txt"}))
+        )
+        head = fixture.store.read_head("rollout-1")
+        with self.assertRaises(ExecutionInfrastructureError) as raised:
+            writer.step_tool(action.runtime)
+        self.assertEqual(raised.exception.classification, "transient_failure")
+        self.assertEqual(fixture.store.read_head("rollout-1"), head)
+        self.assertEqual(action.runtime.state.files, fixture.runtime.state.files)
 
     def test_sealed_manifest_mismatch_rejects_before_effect(self):
         fixture = self.fixture(scripted_tests.ScriptedFixture)

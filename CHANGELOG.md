@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Preserve remote execution infrastructure classification in an explicit error
+  and interrupt before a tool observation or budget charge is published.
+
 - Route action and terminal training-eligibility claims through one typed public
   sampling decoder, including exact outcome binding and native-ineligible policy.
 

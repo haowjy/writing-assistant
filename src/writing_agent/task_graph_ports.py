@@ -174,6 +174,14 @@ class EnvironmentResult:
             raise ValueError("unknown infrastructure classification")
 
 
+class ExecutionInfrastructureError(RuntimeError):
+    """Remote execution failed before a tool observation could be committed."""
+
+    def __init__(self, classification: str):
+        self.classification = classification
+        super().__init__(f"execution environment infrastructure {classification}")
+
+
 class ExecutionEnvironment(Protocol):
     descriptor: PortDescriptorV1
 

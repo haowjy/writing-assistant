@@ -45,6 +45,7 @@ from writing_agent.task_graph_ports import (
     EnvironmentHandle,
     EnvironmentSnapshot,
     EnvironmentSpec,
+    ExecutionInfrastructureError,
     RuntimeDependenciesV1,
 )
 from writing_agent.task_graph_projection import (
@@ -967,7 +968,7 @@ class TransactionalWriterV1:
                 EnvironmentAction.from_arguments(call["name"], call["arguments"]),
             )
             if execution.infrastructure != "ok":
-                raise WriterRuntimeError("execution environment infrastructure failure")
+                raise ExecutionInfrastructureError(execution.infrastructure)
             observation = execution.observation
             if observation["ok"] and call["name"] in READ_TOOLS:
                 charge = (

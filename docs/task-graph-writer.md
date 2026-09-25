@@ -61,7 +61,9 @@ policy remain noninjectable. `ExecutionEnvironment` receives typed specs, handle
 snapshots, and actions and returns typed observations, snapshots, and infrastructure
 classification; it has no store, CAS, or staging-path contract. The local
 workspace environment composes a text provider and keeps staging private. No
-shell or network capability is available. Check evidence is admitted only through
+shell or network capability is available. A remote infrastructure classification
+raises `ExecutionInfrastructureError` before any tool result or charge is committed.
+Check evidence is admitted only through
 a versioned verifier family: the deterministic family recomputes exactly, while a
 small offline fixture family demonstrates substitution without trusting the
 producer at replay. The manifest binds declared composition, not proof of remote
