@@ -53,7 +53,7 @@ retains its smoke-evaluation and training-format workflows.
   updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
   checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
   applies terminal guards and publishes immutable outcome/reward evidence. All three
-  use the writer projection's same prepublication and recovery semantic walk;
+  use the same semantic replay walk before publication and during recovery;
   [task_graph_author_validation.py](../writing_agent/task_graph_author_validation.py)
   holds the author-side replay rules. See
   [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
