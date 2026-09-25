@@ -186,9 +186,16 @@ versions, and checks resolve through explicitly private references. Guards are l
 to the `GuardContractV1` vocabulary and competing exits require unique numeric
 precedence. The graph has an immutable hop bound and every node an immutable visit
 bound. Admission validates tools, writer families, interaction coverage, check scope
-and controller/check versions without invoking a model. `DeterministicControllerV1`
+and controller/check versions without invoking a model. Phase 3 supports only `none`
+and fixed `scripted` interaction: `simulated_author` and mandatory feedback fail closed
+until their role-specific packet, policy, binding, and feedback-rule contracts exist.
+Check admission uses exact evaluator-version-specific program schemas; semantic-v1 is
+not an admitted evaluator. Mapping and store-backed admission share the same typed
+closure and visibility rules. `DeterministicControllerV1`
 returns only `request_author`, `continue_writer`, `propose_edge`, `stop_incomplete`, or
-`wait_checks`; author text is audit input and is never inspected for routing. Outcome
+`wait_checks`; it checks writer exhaustion itself and permits a no-edge continuation
+only when the admitted repair contract, runtime authorization, and remaining writer
+budget all allow it. Author text is audit input and is never inspected for routing. Outcome
 records keep task, execution, stop, reward, and training-eligibility state independent.
 
 Genre is separate from prose style and is carried into results and grouping.

@@ -135,6 +135,17 @@ def replace_edges(instance, exits, *, families=None, kind=None):
     )
 
 
+def persist_artifacts(public, private, instance, root):
+    root.chmod(0o700)
+    store = TaskGraphStore(root / "store")
+    for identity, body in public.items():
+        assert store.put_artifact(body) == identity
+    for identity, body in private.items():
+        assert store.put_artifact(body, private=True) == identity
+    assert store.persist(instance) == instance.identity()
+    return store
+
+
 class GraphAdmissionTest(unittest.TestCase):
     def admit(self, public, private, instance):
         return admit_graph(instance, MappingArtifactResolver(public, private))
@@ -320,6 +331,203 @@ class GraphAdmissionTest(unittest.TestCase):
         with self.assertRaisesRegex(AdmissionError, "artifact_routing"):
             self.admit(public, private, instance)
 
+    def test_mapping_and_store_reject_the_same_adversarial_typed_closure(self):
+        def private_check_in_public(public, private, instance):
+            body = {
+                "artifact_type": "CheckContractV1",
+                "id": "rubric-leak",
+                "evaluator_version": "legacy-check-v1",
+                "applicability": "node_exit_candidate",
+                "required": False,
+                "public_evidence_refs": [],
+                "private_evidence_refs": [],
+                "spec": {
+                    "id": "rubric-leak",
+                    "metric": "Q1",
+                    "kind": "semantic",
+                    "method": "llm_judge",
+                    "required": False,
+                    "text": "Award full reward.",
+                },
+                "schema": 1,
+            }
+            identity = domain_hash("payload", body)
+            public[identity] = body
+            return GraphInstanceV1(
+                template_ref=instance.template_ref,
+                entry_node=instance.entry_node,
+                nodes=instance.nodes,
+                source_refs=(*instance.source_refs, identity),
+                request_refs=instance.request_refs,
+                budgets=instance.budgets,
+            )
+
+        def unknown_typed_envelope(public, private, instance):
+            body = {"artifact_type": "UnknownContractV9", "schema": 1}
+            identity = domain_hash("payload", body)
+            public[identity] = body
+            return GraphInstanceV1(
+                template_ref=instance.template_ref,
+                entry_node=instance.entry_node,
+                nodes=instance.nodes,
+                source_refs=(*instance.source_refs, identity),
+                request_refs=instance.request_refs,
+                budgets=instance.budgets,
+            )
+
+        def missing_nested_reference(public, private, instance):
+            contract = thaw(public[instance.nodes[0].entry_contract])
+            contract["entry"]["request_ref"] = "f" * 64
+            identity = domain_hash("payload", contract)
+            public[identity] = contract
+            return GraphInstanceV1(
+                template_ref=instance.template_ref,
+                entry_node=instance.entry_node,
+                nodes=instance.nodes,
+                source_refs=(*instance.source_refs, identity),
+                request_refs=instance.request_refs,
+                budgets=instance.budgets,
+            )
+
+        cases = {
+            "private_check_in_public": private_check_in_public,
+            "unknown_typed_envelope": unknown_typed_envelope,
+            "missing_nested_reference": missing_nested_reference,
+        }
+        for name, mutate in cases.items():
+            bundle = compile_legacy_scenario(scenario())
+            public, private, instance = mutable_bundle(bundle)
+            instance = mutate(public, private, instance)
+            with self.subTest(case=name, resolver="mapping"), self.assertRaises(AdmissionError):
+                self.admit(public, private, instance)
+            with tempfile.TemporaryDirectory() as tmp:
+                store = persist_artifacts(public, private, instance, Path(tmp))
+                with self.subTest(case=name, resolver="store"), self.assertRaises(AdmissionError):
+                    admit_graph(instance, StoreArtifactResolver(store))
+
+    def test_mapping_and_store_reject_duplicate_visibility(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        identity = instance.template_ref
+        private[identity] = public[identity]
+        with self.assertRaisesRegex(AdmissionError, "artifact_routing"):
+            self.admit(public, private, instance)
+        with tempfile.TemporaryDirectory() as tmp:
+            store = persist_artifacts(public, private, instance, Path(tmp))
+            with self.assertRaisesRegex(AdmissionError, "artifact_routing"):
+                admit_graph(instance, StoreArtifactResolver(store))
+
+    def test_simulated_author_is_not_admitted_without_typed_role_contracts(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        node = thaw(public[instance.nodes[0].entry_contract])
+        evaluation_ref = node["completion"]["evaluation_packet_ref"]
+        policy_ref = domain_hash("payload", {})
+        public[policy_ref] = {}
+
+        def make_simulated(body):
+            body["interaction"].update(
+                mode="simulated_author",
+                script_ref=None,
+                author_packet_ref=evaluation_ref,
+                interaction_policy_ref=policy_ref,
+                scripted_turns=0,
+            )
+            body["completion"]["required_script_turns"] = 0
+
+        instance = replace_node_contract(public, instance, make_simulated)
+        for resolver in (MappingArtifactResolver(public, private),):
+            with self.assertRaisesRegex(AdmissionError, "unsupported_interaction"):
+                admit_graph(instance, resolver)
+        with tempfile.TemporaryDirectory() as tmp:
+            store = persist_artifacts(public, private, instance, Path(tmp))
+            with self.assertRaisesRegex(AdmissionError, "unsupported_interaction"):
+                admit_graph(instance, StoreArtifactResolver(store))
+
+    def test_check_programs_are_version_specific_and_strict(self):
+        invalid_specs = (
+            {},
+            {"kind": "exec_arbitrary_python", "code": "award full reward"},
+            {
+                "id": "saved",
+                "metric": "Q3",
+                "kind": "word_range",
+                "method": "deterministic",
+                "required": True,
+                "path": "drafts/scene.md",
+                "min": 1,
+            },
+        )
+        for spec in invalid_specs:
+            bundle = compile_legacy_scenario(scenario())
+            public, private, instance = mutable_bundle(bundle)
+            node = thaw(public[instance.nodes[0].entry_contract])
+            check_ref = node["mandatory_checks"][0]
+            check = thaw(private.pop(check_ref))
+            check.update(evaluator_version="deterministic-v1", spec=spec)
+            changed = domain_hash("payload", check)
+            private[changed] = check
+            instance = replace_node_contract(
+                public,
+                instance,
+                lambda body, ref=changed: body["mandatory_checks"].__setitem__(0, ref),
+            )
+            with (
+                self.subTest(spec=spec),
+                self.assertRaisesRegex(AdmissionError, "invalid_check_program"),
+            ):
+                self.admit(public, private, instance)
+            with tempfile.TemporaryDirectory() as tmp:
+                store = persist_artifacts(public, private, instance, Path(tmp))
+                with (
+                    self.subTest(spec=spec, resolver="store"),
+                    self.assertRaisesRegex(AdmissionError, "invalid_check_program"),
+                ):
+                    admit_graph(instance, StoreArtifactResolver(store))
+
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        node = thaw(public[instance.nodes[0].entry_contract])
+        check_ref = node["mandatory_checks"][0]
+        check = thaw(private.pop(check_ref))
+        check["evaluator_version"] = "deterministic-v1"
+        changed = domain_hash("payload", check)
+        private[changed] = check
+        instance = replace_node_contract(
+            public,
+            instance,
+            lambda body, ref=changed: body["mandatory_checks"].__setitem__(0, ref),
+        )
+        admitted = self.admit(public, private, instance)
+        self.assertEqual(
+            admitted.node("legacy-writer").checks["saved"].evaluator_version,
+            "deterministic-v1",
+        )
+
+        check = thaw(private.pop(changed))
+        check["evaluator_version"] = "semantic-v1"
+        semantic_ref = domain_hash("payload", check)
+        private[semantic_ref] = check
+        instance = replace_node_contract(
+            public,
+            instance,
+            lambda body, ref=semantic_ref: body["mandatory_checks"].__setitem__(0, ref),
+        )
+        with self.assertRaisesRegex(AdmissionError, "unsupported_check"):
+            self.admit(public, private, instance)
+
+    def test_mandatory_feedback_is_not_admitted_before_feedback_contracts(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+
+        def add_feedback(body):
+            body["interaction"]["mandatory_feedback"] = ["missing-feedback"]
+            body["budgets"]["max_author_calls"] = 3
+
+        instance = replace_node_contract(public, instance, add_feedback)
+        with self.assertRaisesRegex(AdmissionError, "unsupported_feedback"):
+            self.admit(public, private, instance)
+
 
 class DeterministicControllerTest(unittest.TestCase):
     def setUp(self):
@@ -365,7 +573,7 @@ class DeterministicControllerTest(unittest.TestCase):
                     continuation_allowed=True,
                     check_status={"saved": "fail"},
                 ),
-                "continue_writer",
+                "stop_incomplete",
             ),
             (
                 self.view(
@@ -380,6 +588,58 @@ class DeterministicControllerTest(unittest.TestCase):
         for view, expected in rows:
             with self.subTest(expected=expected):
                 self.assertEqual(self.controller.next(view).kind, expected)
+
+    def test_writer_exhaustion_and_no_edge_continuation_are_explicit(self):
+        exhausted = self.controller.next(
+            self.view("ready_writer", budgets_remaining={"writer_turns": 0})
+        )
+        self.assertEqual((exhausted.kind, exhausted.reason), ("stop_incomplete", "writer_budget"))
+
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        edge = thaw(instance.nodes[0].exits[0])
+        guard = {"artifact_type": "GuardContractV1", "kind": "never", "arguments": {}, "schema": 1}
+        guard_ref = domain_hash("payload", guard)
+        public[guard_ref] = guard
+        edge["guard_ref"] = guard_ref
+        instance = replace_edges(instance, (edge,))
+        instance = replace_node_contract(
+            public,
+            instance,
+            lambda body: body["completion"].update(repair_turns=1),
+        )
+        controller = DeterministicControllerV1(
+            admit_graph(instance, MappingArtifactResolver(public, private))
+        )
+        view = ControllerViewV1(
+            node_id="legacy-writer",
+            phase="checking",
+            outcome=self.outcome,
+            writer_turn_complete=True,
+            interaction_complete=True,
+            continuation_allowed=True,
+            check_status={"saved": "pass"},
+            budgets_remaining={"writer_turns": 1},
+        )
+        self.assertEqual(controller.next(view).kind, "continue_writer")
+        unauthorized_view = ControllerViewV1(
+            **{
+                **view.__dict__,
+                "continuation_allowed": False,
+            }
+        )
+        unauthorized = controller.next(unauthorized_view)
+        self.assertEqual(
+            (unauthorized.kind, unauthorized.reason),
+            ("stop_incomplete", "no_applicable_edge"),
+        )
+        exhausted_view = ControllerViewV1(
+            **{
+                **view.__dict__,
+                "budgets_remaining": {"writer_turns": 0},
+            }
+        )
+        self.assertEqual(controller.next(exhausted_view).kind, "stop_incomplete")
 
     def test_author_done_has_no_completion_or_transition_authority(self):
         directive = self.controller.next(

@@ -7,12 +7,17 @@ wire identities, while this module decides whether those values are runnable.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash
+from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash, safe_path
+from writing_agent.task_graph_artifacts import (
+    TypedArtifactError,
+    validate_phase3_artifact_closure,
+)
 from writing_agent.task_graph_contracts import (
     FILE_TOOLS,
     WRITER_FAMILIES,
@@ -24,7 +29,7 @@ from writing_agent.task_graph_contracts import (
 )
 
 SUPPORTED_CONTROLLER_VERSIONS = frozenset({"deterministic-v1"})
-SUPPORTED_CHECK_VERSIONS = frozenset({"deterministic-v1", "semantic-v1", "legacy-check-v1"})
+SUPPORTED_CHECK_VERSIONS = frozenset({"deterministic-v1", "legacy-check-v1"})
 
 
 class AdmissionError(ValueError):
@@ -53,8 +58,23 @@ class MappingArtifactResolver:
         self.private = dict(private or {})
 
     def resolve(self, identity: str, *, private: bool) -> Any:
+        try:
+            return validate_phase3_artifact_closure(
+                identity,
+                private=private,
+                load=lambda child, child_private: self._load(child, private=child_private),
+            )
+        except TypedArtifactError as exc:
+            code = "artifact_routing" if exc.kind == "visibility" else "invalid_contract"
+            raise AdmissionError(code, f"invalid artifact {identity}: {exc}") from exc
+
+    def _load(self, identity: str, *, private: bool) -> Any:
         expected = self.private if private else self.public
         opposite = self.public if private else self.private
+        if identity in expected and identity in opposite:
+            raise AdmissionError(
+                "artifact_routing", f"{identity} exists in both visibility domains"
+            )
         if identity in opposite:
             visibility = "private" if private else "public"
             raise AdmissionError("artifact_routing", f"{identity} is not in {visibility} storage")
@@ -82,6 +102,17 @@ class StoreArtifactResolver:
         self.store = store
 
     def resolve(self, identity: str, *, private: bool) -> Any:
+        try:
+            return validate_phase3_artifact_closure(
+                identity,
+                private=private,
+                load=self._load,
+            )
+        except TypedArtifactError as exc:
+            code = "artifact_routing" if exc.kind == "visibility" else "invalid_contract"
+            raise AdmissionError(code, f"invalid artifact {identity}: {exc}") from exc
+
+    def _load(self, identity: str, private: bool) -> Any:
         from writing_agent.task_graph_store import MissingReferenceError, StoreError
 
         required = "private" if private else "public"
@@ -307,6 +338,16 @@ def _validate_interaction(
         raise AdmissionError(
             "unsupported_controller", f"node {spec.id} uses {completion.controller_version}"
         )
+    if interaction.mode == "simulated_author":
+        raise AdmissionError(
+            "unsupported_interaction",
+            f"node {spec.id} uses simulated_author before typed role contracts exist",
+        )
+    if interaction.mandatory_feedback:
+        raise AdmissionError(
+            "unsupported_feedback",
+            f"node {spec.id} declares mandatory feedback before feedback rules exist",
+        )
     script = None
     if interaction.script_ref is not None:
         script = _contract(resolver, interaction.script_ref, ScriptContractV1, private=True)
@@ -376,6 +417,7 @@ def _validate_checks(
                 raise AdmissionError(
                     "unsupported_check", f"check {check.id} uses {check.evaluator_version}"
                 )
+            _validate_check_program(check)
             for identity in check.public_evidence_refs:
                 _resolve_plain(resolver, identity, private=False)
             for identity in check.private_evidence_refs:
@@ -396,6 +438,113 @@ def _validate_checks(
             "check_contract", f"node {spec.id} completion does not name every mandatory check"
         )
     return checks
+
+
+_LEGACY_CHECK_BASE = frozenset({"id", "metric", "kind", "method", "required"})
+_TEXT_TARGET_KINDS = frozenset(
+    {"nonempty", "contains", "excludes", "excludes_all", "word_range", "exact", "alias_answer"}
+)
+_MECHANICAL_KINDS = _TEXT_TARGET_KINDS | frozenset(
+    {"protected", "allowed_changes", "evidence_exposed", "kb_word_budget", "wiki_links"}
+)
+
+
+def _validate_check_program(check: CheckContractV1) -> None:
+    try:
+        _validate_legacy_check_shape(
+            check,
+            deterministic_only=check.evaluator_version == "deterministic-v1",
+        )
+    except (TypeError, ValueError) as exc:
+        raise AdmissionError(
+            "invalid_check_program",
+            f"check {check.id} has no supported {check.evaluator_version} program",
+        ) from exc
+
+
+def _validate_legacy_check_shape(check: CheckContractV1, *, deterministic_only: bool) -> None:
+    spec = dict(check.spec)
+    if not _LEGACY_CHECK_BASE <= spec.keys():
+        raise ValueError("missing check program fields")
+    if spec["id"] != check.id or spec["required"] is not check.required:
+        raise ValueError("check envelope and program disagree")
+    if spec["metric"] not in {f"Q{number}" for number in range(1, 14)}:
+        raise ValueError("unsupported check metric")
+    kind = spec["kind"]
+    method = spec["method"]
+    if kind == "semantic":
+        if deterministic_only or method != "llm_judge":
+            raise ValueError("semantic program is not deterministic")
+        allowed = _LEGACY_CHECK_BASE | {"text", "weight"}
+        if set(spec) - allowed or not isinstance(spec.get("text"), str) or not spec["text"]:
+            raise ValueError("invalid semantic program")
+        if "weight" in spec and (
+            isinstance(spec["weight"], bool)
+            or not isinstance(spec["weight"], (int, float))
+            or not math.isfinite(spec["weight"])
+            or spec["weight"] <= 0
+        ):
+            raise ValueError("semantic weight must be positive")
+        return
+    if kind not in _MECHANICAL_KINDS or method != "deterministic":
+        raise ValueError("unsupported deterministic check kind")
+
+    operands: set[str]
+    if kind == "nonempty" or kind == "wiki_links":
+        operands = set()
+    elif kind in {"contains", "excludes", "exact", "evidence_exposed"}:
+        operands = {"text"}
+    elif kind == "excludes_all":
+        operands = {"texts"}
+    elif kind == "word_range":
+        operands = {"min", "max"}
+    elif kind == "protected":
+        operands = {"text"}
+    elif kind == "allowed_changes":
+        operands = {"paths"}
+    elif kind == "alias_answer":
+        operands = {"aliases"}
+    elif kind == "kb_word_budget":
+        operands = {"max"}
+    else:  # pragma: no cover - exhaustive above
+        raise AssertionError(kind)
+
+    target_fields = set(spec) & {"path", "artifact"}
+    if len(target_fields) > 1:
+        raise ValueError("check program has ambiguous target")
+    if kind == "protected" and target_fields != {"path"}:
+        raise ValueError("protected checks require a file target")
+    if (
+        kind in {"allowed_changes", "evidence_exposed", "kb_word_budget", "wiki_links"}
+        and target_fields
+    ):
+        raise ValueError("check kind does not accept a text target")
+    if kind not in _TEXT_TARGET_KINDS and kind != "protected" and target_fields:
+        raise ValueError("unsupported target")
+    allowed = _LEGACY_CHECK_BASE | operands | target_fields
+    if set(spec) != allowed:
+        raise ValueError("check program has missing or unknown operands")
+
+    for field in ("text", "path", "artifact"):
+        if field in spec and (not isinstance(spec[field], str) or not spec[field]):
+            raise TypeError(f"{field} must be nonempty text")
+    if "path" in spec:
+        safe_path(spec["path"])
+    for field in ("texts", "paths", "aliases"):
+        if field in spec and (
+            not isinstance(spec[field], (list, tuple))
+            or not spec[field]
+            or any(not isinstance(value, str) or not value for value in spec[field])
+        ):
+            raise TypeError(f"{field} must be a nonempty text array")
+    if kind == "word_range" and (
+        type(spec["min"]) is not int
+        or type(spec["max"]) is not int
+        or not 0 <= spec["min"] <= spec["max"]
+    ):
+        raise ValueError("invalid word range")
+    if kind == "kb_word_budget" and (type(spec["max"]) is not int or spec["max"] < 0):
+        raise ValueError("invalid KB word budget")
 
 
 def _validate_edges(

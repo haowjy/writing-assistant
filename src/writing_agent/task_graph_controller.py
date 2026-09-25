@@ -202,10 +202,10 @@ class DeterministicControllerV1:
                 return ControllerDirectiveV1("stop_incomplete", reason="author_budget")
             return ControllerDirectiveV1("request_author", request_ref=view.pending_author_request)
         if view.phase == "ready_writer":
-            return ControllerDirectiveV1("continue_writer")
+            return self._writer_directive(view)
         if view.phase == "checking":
             if not view.writer_turn_complete:
-                return ControllerDirectiveV1("continue_writer")
+                return self._writer_directive(view)
             required = node.contract.completion_contract.required_check_ids
             required_statuses = [view.check_status.get(check_id) for check_id in required]
             if any(status is None or status == "unavailable" for status in required_statuses):
@@ -218,7 +218,7 @@ class DeterministicControllerV1:
                     else "complete"
                 )
                 return self._transition(node, view, task_status=status)
-            if self._can_continue(view):
+            if self._can_continue(node, view):
                 return ControllerDirectiveV1("continue_writer")
             return ControllerDirectiveV1(
                 "stop_incomplete",
@@ -233,8 +233,18 @@ class DeterministicControllerV1:
         raise AssertionError(f"unhandled admitted phase {view.phase}")
 
     @staticmethod
-    def _can_continue(view: ControllerViewV1) -> bool:
-        return view.continuation_allowed and view.budgets_remaining.get("writer_turns", 0) > 0
+    def _writer_directive(view: ControllerViewV1) -> ControllerDirectiveV1:
+        if view.budgets_remaining.get("writer_turns", 0) < 1:
+            return ControllerDirectiveV1("stop_incomplete", reason="writer_budget")
+        return ControllerDirectiveV1("continue_writer")
+
+    @staticmethod
+    def _can_continue(node: AdmittedNodeV1, view: ControllerViewV1) -> bool:
+        return (
+            node.contract.completion_contract.repair_turns > 0
+            and view.continuation_allowed
+            and view.budgets_remaining.get("writer_turns", 0) > 0
+        )
 
     @staticmethod
     def _transition(
@@ -249,6 +259,8 @@ class DeterministicControllerV1:
             if evaluate_guard(node.guards[edge.edge_id], view, task_status=task_status)
         ]
         if not matching:
+            if DeterministicControllerV1._can_continue(node, view):
+                return ControllerDirectiveV1("continue_writer")
             return ControllerDirectiveV1("stop_incomplete", reason="no_applicable_edge")
         # Admission proved unique precedence whenever multiple guards can match.
         matching.sort(key=lambda edge: edge.precedence or 0)
