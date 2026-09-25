@@ -29,6 +29,10 @@ _DOMAINS = {
     "instance": b"task-graph:instance:v1\0",
     "lineage": b"task-graph:lineage:v1\0",
     "message": b"task-graph:message:v1\0",
+    # Payloads are immutable event inputs (action traces and tool results).
+    # They are intentionally separate from event identities: an event binds a
+    # payload by reference, while the payload can be hashed before that event.
+    "payload": b"task-graph:payload:v1\0",
 }
 _DOMAINS.update({f"{name}:bytes": tag + b"bytes\0" for name, tag in tuple(_DOMAINS.items())})
 DOMAIN_TAGS = MappingProxyType(_DOMAINS)
@@ -206,6 +210,12 @@ def load_canonical_json(data: str | bytes) -> Any:
 
 
 def domain_hash(domain: str, value: Any) -> str:
+    if domain == "file":
+        if isinstance(value, str):
+            # Keep the legacy spelling only for the one unambiguous file
+            # codec. Structured values must not be silently treated as bytes.
+            return file_hash(value)
+        raise TypeError("the file domain requires text; use file_hash(text)")
     if domain.endswith(":bytes"):
         raise ValueError("binary domains require domain_hash_bytes")
     try:
@@ -216,11 +226,12 @@ def domain_hash(domain: str, value: Any) -> str:
 
 
 def domain_hash_bytes(domain: str, value: bytes) -> str:
-    """Hash exact bytes under an explicitly binary-only domain.
+    """Hash an opaque binary artifact under an explicit ``:bytes`` domain.
 
-    Structured JSON and raw bytes intentionally use separate tags.  Callers must
-    opt into a ``:bytes`` domain; accidentally hashing the same bytes as JSON is
-    therefore impossible.
+    This is not the file codec: text files must use :func:`file_hash`, which
+    hashes their exact UTF-8 bytes under the file domain. Structured JSON and
+    opaque bytes intentionally use separate tags, so callers must opt into a
+    ``:bytes`` domain rather than accidentally hashing bytes as JSON.
     """
     try:
         tag = _DOMAINS[f"{domain}:bytes"]
@@ -441,8 +452,11 @@ class GraphInstanceV1(_Record):
     def validate(self) -> None:
         _logical_id(self.entry_node, "entry node")
         validate_hash(self.template_ref)
-        for ref in (*self.source_refs, *self.request_refs):
-            validate_hash(ref)
+        # Validate the container before iterating: strings/mappings are
+        # iterable Python values but are not JSON arrays and must never be
+        # interpreted as a sequence of hash references.
+        _hash_tuple(self.source_refs)
+        _hash_tuple(self.request_refs)
         validate_hash(self.requirements_ref, optional=True)
         if not isinstance(self.budgets, Mapping):
             raise TypeError("budgets must be an object")

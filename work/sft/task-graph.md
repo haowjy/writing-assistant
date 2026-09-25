@@ -508,9 +508,11 @@ obligation, not a claim that its legacy implementation already enforces the inva
 
 The file codec is the UTF-8 byte string itself: `file_hash(text)` hashes
 `task-graph:file:v1\0 || text.encode("utf-8")`. It is not canonical JSON and does
-not apply newline or Unicode normalization. Binary artifacts use the separate
-`domain_hash_bytes(name, bytes)` `:bytes` domain; those codecs must not be
-substituted for one another.
+not apply newline or Unicode normalization. `domain_hash("file", text)` is a
+compatibility spelling for the same exact-byte codec, while structured values
+are rejected so a JSON hash cannot be mistaken for a file hash. Binary artifacts
+use the separate `domain_hash_bytes(name, bytes)` `:bytes` domain; those codecs
+must not be substituted for one another.
 
 Checkpoint ID hashes schema, parents, full state envelope and immutable artifact
 references, excluding its own ID, storage path and operational timestamps. Two equal
@@ -518,6 +520,10 @@ file trees may have different checkpoints due to history, node, requirements or
 budgets. Two separately identified lineages may have identical semantic content but
 different checkpoint IDs; v1 deliberately favors auditable identity over aggressive
 deduplication. Checkpoint publication is idempotent by ID.
+
+Action traces and tool-result payloads are canonical JSON artifacts in the separate
+`payload` domain. Their bodies are hashed before the event that references them;
+the event hash is not substituted for a payload identity.
 
 ### Storage operations and crash behavior
 
