@@ -90,8 +90,11 @@ corruption failures into writer mistakes. Raw call-array elements normalize to s
 queue syntax and escaped evidence; each declared malformed call remains paired and
 charged without dispatch. Current lineage authority is checked before staging and
 again by publication CAS. Restore, projection, and replay apply Phase 4 semantic
-validation to writer-log histories (including origin, execution fingerprints, file
-delta, queue cursor, and budget charges); the generic Phase 2 reducer stays unchanged.
+validation to writer-log histories (including exact per-event state/history ownership,
+legal phases and stop statuses, action-trace attribution, origin, execution fingerprints,
+file delta, queue cursor, and budget charges). The producer checks those contracts
+before publication; the generic Phase 2 reducer stays unchanged. Argument JSON and
+raw call evidence have size/nesting bounds before decoding or serialization.
 Known zero token capacity rejects request preparation and can be sealed as a classified
 terminal stop. Already-sampled token overrun commits usage/output evidence and a
 terminal budget stop without tool execution. Exact pre-sampling context-token capacity

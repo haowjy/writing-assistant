@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Complete Phase 4 writer event ownership and trace attribution checks before
+  publication and on restore/replay; classify parent-file conflicts as observations,
+  preserve staging corruption as infrastructure interruption, and bound malformed
+  call decoding and evidence.
+
 - Close Phase 4 transactional writer review findings: preserve infrastructure
   failures, normalize malformed calls without dispatch, reject stale handles before
   tools, validate result provenance/execution/charges on restore and replay, and

@@ -27,11 +27,20 @@ from writing_agent.task_graph import (
     validate_hash,
 )
 from writing_agent.task_graph_admission import AdmittedGraphV1
-from writing_agent.task_graph_projection import execution_value, project_writer_context
+from writing_agent.task_graph_projection import (
+    NATIVE_TRACE_REASON,
+    execution_value,
+    project_writer_context,
+    validate_action_trace,
+    validate_result_production,
+    validate_writer_effect,
+)
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
 
 _READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
+_MAX_ARGUMENT_BYTES = 65_536
+_MAX_CALL_EVIDENCE = 131_072
 
 
 def _count_whitespace(value: str) -> int:
@@ -58,12 +67,51 @@ def _valid_utf8(value: str) -> bool:
 def _safe_evidence(value: Any) -> str:
     """Keep backend syntax inspectable without making it a canonical message value."""
     try:
-        return json.dumps(value, ensure_ascii=True, default=repr)
+        result = json.dumps(value, ensure_ascii=True, default=repr)
     except Exception:
         try:
-            return repr(value).encode("utf-8", "backslashreplace").decode("utf-8")
+            result = repr(value).encode("utf-8", "backslashreplace").decode("utf-8")
         except Exception:
-            return f"<unserializable {type(value).__name__}>"
+            result = f"<unserializable {type(value).__name__}>"
+    return result[:_MAX_CALL_EVIDENCE] + ("<truncated>" if len(result) > _MAX_CALL_EVIDENCE else "")
+
+
+def _bounded_call_evidence(value: Any) -> tuple[bool, str]:
+    """Reject oversized/deep Python envelopes before serializing backend evidence."""
+    stack = [(value, 0)]
+    remaining_bytes = _MAX_CALL_EVIDENCE
+    remaining_nodes = 4096
+    seen: set[int] = set()
+    while stack:
+        item, depth = stack.pop()
+        remaining_nodes -= 1
+        if remaining_nodes < 0 or depth > 64:
+            return False, "<oversized or deeply nested tool call envelope>"
+        if isinstance(item, (dict, list, tuple)):
+            if len(item) > remaining_nodes:
+                return False, "<oversized or deeply nested tool call envelope>"
+            identity = id(item)
+            if identity in seen:
+                return False, "<cyclic tool call envelope>"
+            seen.add(identity)
+            children = item.items() if isinstance(item, dict) else item
+            if isinstance(item, dict):
+                for key, child in children:
+                    stack.append((key, depth + 1))
+                    stack.append((child, depth + 1))
+            else:
+                stack.extend((child, depth + 1) for child in children)
+        elif isinstance(item, str):
+            remaining_bytes -= len(item.encode("utf-8", "backslashreplace"))
+        elif isinstance(item, bytes):
+            remaining_bytes -= len(item)
+        elif item is None or type(item) in {bool, int, float}:
+            remaining_bytes -= 64
+        else:
+            return False, f"<unsupported tool call envelope {type(item).__name__}>"
+        if remaining_bytes < 0:
+            return False, "<oversized or deeply nested tool call envelope>"
+    return True, _safe_evidence(value)
 
 
 def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) -> dict:
@@ -76,8 +124,21 @@ def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) 
         return {"ok": False, "valid": False, "error": "Tool arguments do not match schema"}
     try:
         return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
+    except UnicodeError:
+        raise
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError) as exc:
         return {"ok": False, "valid": True, "error": str(exc)}
+    except FileExistsError as exc:
+        # mkdir on a writer-selected child of an existing file is a path conflict.
+        if name in {"write_file", "patch_file"} and "path" in arguments:
+            parent = (workspace.root / arguments["path"]).parent
+            if any(
+                ancestor.is_file()
+                for ancestor in (parent, *parent.parents)
+                if ancestor != workspace.root
+            ):
+                return {"ok": False, "valid": True, "error": str(exc)}
+        raise
 
 
 class WriterRuntimeError(ValueError):
@@ -327,7 +388,36 @@ class TransactionalWriterV1:
         effect_ref = self.store.put_artifact(effect)
         primary = self._event(state, kind, effect_ref, audience=audience, actor=actor)
         intermediate = self._reduced(state, primary, effect)
+        validate_writer_effect(state, intermediate, primary, effect, store=self.store)
+        if kind == "writer_action":
+            validate_action_trace(
+                self.store,
+                record,
+                self.store.get_artifact(record["trace_ref"]),
+                record["action_id"],
+                runtime.context.content_hash,
+                runtime.context.identity(),
+                runtime.context.rendering,
+                message,
+            )
         context = self._context(runtime.context, message, primary)
+        if kind == "tool_result":
+            action = next(
+                self.store.get_artifact(entry["record_ref"])
+                for entry in reversed(self._ledger(state))
+                if entry["kind"] == "writer_action"
+            )
+            validate_result_production(
+                self.store,
+                state,
+                intermediate,
+                runtime.context,
+                context,
+                record,
+                message,
+                effect,
+                action,
+            )
         self.store.persist(context)
         context_effect = self._effect(intermediate, changes={"context_ref": context.identity()})
         context_effect_ref = self.store.put_artifact(context_effect)
@@ -390,19 +480,42 @@ class TransactionalWriterV1:
             for call in raw_calls
         )
         for index, raw in enumerate(raw_calls):
+            bounded, evidence = _bounded_call_evidence(raw)
             call_id = f"{rollout_id}:call:{ordinal}:{index}"
             raw_id = raw.get("id") if isinstance(raw, dict) else None
             function = raw.get("function") if isinstance(raw, dict) else None
             name = function.get("name") if isinstance(function, dict) else None
             arguments = function.get("arguments") if isinstance(function, dict) else None
             reason = None
+            if not bounded:
+                reason = "Tool call envelope exceeds size or nesting limit"
+                raw_id = name = arguments = None
             if (
+                isinstance(raw_id, str)
+                and len(raw_id) > 256
+                or isinstance(name, str)
+                and len(name) > 256
+                or isinstance(arguments, dict)
+                and (
+                    len(arguments) > 64
+                    or sum(
+                        len(value.encode("utf-8", "surrogatepass"))
+                        for value in arguments.values()
+                        if isinstance(value, str)
+                    )
+                    > _MAX_ARGUMENT_BYTES
+                )
+            ):
+                reason = "Tool call envelope exceeds size limit"
+            if bounded and (
                 not isinstance(raw, dict)
                 or set(raw) != {"id", "type", "function"}
                 or raw.get("type") != "function"
             ):
                 reason = "Invalid tool call envelope"
-            if not isinstance(function, dict) or set(function) != {"name", "arguments"}:
+            if bounded and (
+                not isinstance(function, dict) or set(function) != {"name", "arguments"}
+            ):
                 reason = reason or "Invalid tool function envelope"
             if (
                 not isinstance(raw_id, str)
@@ -423,8 +536,10 @@ class TransactionalWriterV1:
                 or any(ch.isspace() or ord(ch) < 0x20 for ch in name)
             ):
                 reason = reason or "Invalid tool function"
-            if isinstance(arguments, str):
+            if isinstance(arguments, str) and bounded:
                 try:
+                    if len(arguments.encode("utf-8", "surrogatepass")) > _MAX_ARGUMENT_BYTES:
+                        raise ValueError("tool arguments JSON exceeds size limit")
                     arguments = json.loads(
                         arguments,
                         object_pairs_hook=_pairs,
@@ -432,7 +547,7 @@ class TransactionalWriterV1:
                             ValueError("invalid JSON constant")
                         ),
                     )
-                except (ValueError, TypeError, UnicodeError):
+                except (ValueError, TypeError, UnicodeError, RecursionError):
                     reason = reason or "Invalid tool arguments JSON"
             if not isinstance(arguments, dict):
                 reason = reason or "Tool arguments must be an object"
@@ -472,7 +587,7 @@ class TransactionalWriterV1:
                     if isinstance(raw_id, str) and raw_id.isprintable() and _valid_utf8(raw_id)
                     else None,
                     "validation_error": reason,
-                    "parsed_call_json": _safe_evidence(raw),
+                    "parsed_call_json": evidence,
                 }
             )
         return queue, metadata
@@ -663,6 +778,9 @@ class TransactionalWriterV1:
             "exact_request_ref": request_ref,
             "prepared_request_ref": prepared_request_ref,
             "raw_output_ref": raw_output_ref,
+            "usage": dict(usage),
+            "model": trace.get("model") if trace is not None else None,
+            "seed": trace.get("seed") if trace is not None else None,
             "raw_output_evidence": "supplied" if raw_output is not None else "missing",
             "logprob_ref": trace.get("per_token_logprobs_ref") if trace is not None else None,
             "adapter_trace": dict(trace) if trace is not None else None,
@@ -673,7 +791,7 @@ class TransactionalWriterV1:
             if trace is not None and "per_token_logprobs_ref" in trace
             else "missing",
             "native_on_policy_eligible": False,
-            "reason": "native token alignment and loss masks are not implemented in Phase 4",
+            "reason": NATIVE_TRACE_REASON,
         }
         trace_ref = self.store.put_artifact(trace_body)
         if exceeded is not None:
@@ -728,6 +846,8 @@ class TransactionalWriterV1:
             "logprob_ref": trace_body["logprob_ref"],
             "calls": call_metadata,
             "usage": dict(usage),
+            "model": trace_body["model"],
+            "seed": trace_body["seed"],
             "loss_eligibility": {
                 "assistant_text": bool(content),
                 "tool_syntax": bool(queue),
@@ -789,13 +909,17 @@ class TransactionalWriterV1:
         record_ref = self.store.put_artifact(
             {
                 "record_type": "WriterSampledBudgetStopV1",
+                "action_id": self.store.get_artifact(trace_ref)["action_id"],
                 "reason": f"{exceeded}_budget",
                 "usage": dict(usage),
+                "model": self.store.get_artifact(trace_ref)["model"],
+                "seed": self.store.get_artifact(trace_ref)["seed"],
                 "parsed_message_json": _safe_evidence(message),
                 "trace_ref": trace_ref,
                 "request_ref": request_ref,
                 "prepared_request_ref": prepared_request_ref,
                 "raw_output_ref": raw_output_ref,
+                "logprob_ref": self.store.get_artifact(trace_ref)["logprob_ref"],
             }
         )
         entries = self._ledger(state)
@@ -829,6 +953,16 @@ class TransactionalWriterV1:
             actor="environment",
         )
         final = self._reduced(state, event, effect)
+        validate_writer_effect(state, final, event, effect, store=self.store)
+        validate_action_trace(
+            self.store,
+            self.store.get_artifact(record_ref),
+            self.store.get_artifact(trace_ref),
+            self.store.get_artifact(record_ref)["action_id"],
+            runtime.context.content_hash,
+            runtime.context.identity(),
+            runtime.context.rendering,
+        )
         commit = self.store.publish(
             state.position["lineage_id"],
             head,
@@ -847,6 +981,7 @@ class TransactionalWriterV1:
                     request_ref,
                     prepared_request_ref,
                     raw_output_ref,
+                    self.store.get_artifact(trace_ref)["logprob_ref"],
                 )
                 if ref is not None
             ),
@@ -897,6 +1032,7 @@ class TransactionalWriterV1:
                     stage,
                     self.store.max_file_bytes,
                     min(self.store.max_workspace_bytes, budget["limits"]["storage_bytes"]),
+                    strict_decode=True,
                 )
                 observation = _graph_dispatch(workspace, call["name"], dict(call["arguments"]))
                 if not observation["ok"] and "error" in observation:
@@ -1078,6 +1214,7 @@ class TransactionalWriterV1:
             actor="environment",
         )
         final = self._reduced(state, event, effect)
+        validate_writer_effect(state, final, event, effect, store=self.store)
         commit = self.store.publish(
             state.position["lineage_id"],
             head,

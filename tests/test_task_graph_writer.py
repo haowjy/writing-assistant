@@ -14,7 +14,12 @@ from writing_agent.task_graph import (
     MessageV1,
     tree_hash,
 )
-from writing_agent.task_graph_projection import ProjectionError, project_writer_context
+from writing_agent.task_graph_projection import (
+    ProjectionError,
+    project_writer_context,
+    validate_action_trace,
+    validate_writer_effect,
+)
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_writer import TransactionalWriterV1, WriterRuntimeError
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
@@ -187,6 +192,413 @@ class WriterFixture(unittest.TestCase):
 
 
 class TransactionalWriterTest(WriterFixture):
+    def test_action_authority_and_trace_forgery_fail_before_publication(self):
+        original = self.writer._publish
+        for forged in ("outcome_ref", "trace_action_id"):
+            with self.subTest(forged=forged):
+
+                def publish(*args, forged=forged, **kwargs):
+                    if forged == "outcome_ref":
+                        kwargs["changes"]["outcome_ref"] = self.store.put_artifact(
+                            {
+                                "task_status": "complete",
+                                "execution_status": "valid",
+                                "reward_status": "accepted",
+                            }
+                        )
+                    else:
+                        record = kwargs["record"]
+                        trace = self.store.get_artifact(record["trace_ref"])
+                        trace["action_id"] = "forged:action:99"
+                        record["trace_ref"] = self.store.put_artifact(trace)
+                    return original(*args, **kwargs)
+
+                with patch.object(self.writer, "_publish", publish):
+                    with self.assertRaises(ProjectionError):
+                        self.writer.submit_action(self.runtime, self.action(content="done"))
+                self.assertIsNone(self.store.read_head("rollout-1"))
+
+    def test_action_authority_and_trace_forgery_fail_restore_projection_replay(self):
+        for forged in ("outcome_ref", "trace_action_id"):
+            with self.subTest(forged=forged):
+                fixture = WriterFixture()
+                fixture.setUp()
+                try:
+                    original = fixture.writer._publish
+
+                    def publish(*args, forged=forged, fixture=fixture, original=original, **kwargs):
+                        if forged == "outcome_ref":
+                            kwargs["changes"]["outcome_ref"] = fixture.store.put_artifact(
+                                {
+                                    "task_status": "complete",
+                                    "execution_status": "valid",
+                                    "reward_status": "accepted",
+                                }
+                            )
+                        else:
+                            record = kwargs["record"]
+                            trace = fixture.store.get_artifact(record["trace_ref"])
+                            trace["action_id"] = "forged:action:99"
+                            record["trace_ref"] = fixture.store.put_artifact(trace)
+                        return original(*args, **kwargs)
+
+                    validator = (
+                        "validate_writer_effect"
+                        if forged == "outcome_ref"
+                        else "validate_action_trace"
+                    )
+                    with (
+                        patch.object(fixture.writer, "_publish", publish),
+                        patch.object(task_graph_writer, validator),
+                    ):
+                        with self.assertRaises(ProjectionError):
+                            fixture.writer.submit_action(
+                                fixture.runtime, fixture.action(content="done")
+                            )
+                    head = fixture.store.read_head("rollout-1")
+                    checkpoint = fixture.store.load_commit(head).checkpoint
+                    with self.assertRaises(ProjectionError):
+                        fixture.store.restore(checkpoint, fixture.root / "forged-restore")
+                    with self.assertRaises(ProjectionError):
+                        project_writer_context(fixture.store, fixture.start, checkpoint)
+                    with self.assertRaises(ProjectionError):
+                        fixture.store.replay("rollout-1", fixture.start, [head])
+                finally:
+                    fixture.doCleanups()
+
+    def test_complete_writer_event_field_ownership_and_phases(self):
+        action = self.writer.submit_action(
+            self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
+        )
+        event = self.store.load_event(action.event_id)
+        effect = self.store.get_artifact(event.payload_ref)
+        action_state = self.store._apply_recorded_effect_body(self.runtime.state, event, effect)
+        for field in set(self.runtime.state.to_dict()) - {
+            "continuation",
+            "position",
+            "budgets_ref",
+            "external_inputs_ref",
+        }:
+            with self.subTest(field=field):
+                forged = {
+                    **effect,
+                    "set": {**effect["set"], field: self.runtime.state.to_dict()[field]},
+                }
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(self.runtime.state, action_state, event, forged)
+        for field in set(self.runtime.state.history) - {"head", "seq", "action_ids"}:
+            with self.subTest(history=field):
+                forged = {
+                    **effect,
+                    "history_set": {
+                        **effect["history_set"],
+                        field: self.runtime.state.history[field],
+                    },
+                }
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(self.runtime.state, action_state, event, forged)
+        wrong = self.runtime.state.to_dict()
+        wrong["position"]["phase"] = "checking"
+        with self.assertRaisesRegex(ProjectionError, "pre-phase"):
+            validate_writer_effect(EnvironmentStateV1.from_dict(wrong), action_state, event, effect)
+        wrong_post = action_state.to_dict()
+        wrong_post["position"]["phase"] = "checking"
+        with self.assertRaises(ProjectionError):
+            validate_writer_effect(
+                self.runtime.state, EnvironmentStateV1.from_dict(wrong_post), event, effect
+            )
+        bad_status = self.runtime.state.to_dict()
+        bad_status["outcome_ref"] = self.store.put_artifact(
+            {"task_status": "complete", "execution_status": "valid", "reward_status": "accepted"}
+        )
+        bad_before = EnvironmentStateV1.from_dict(bad_status)
+        bad_effect = {**effect, "before_state_ref": bad_before.identity()}
+        bad_after = self.store._apply_recorded_effect_body(bad_before, event, bad_effect)
+        with self.assertRaisesRegex(ProjectionError, "pre-status"):
+            validate_writer_effect(bad_before, bad_after, event, bad_effect, store=self.store)
+        position_forgeries = {
+            "node_id": "other-node",
+            "visit_id": "other-visit",
+            "entry_contract": "0" * 64,
+            "start_checkpoint": "0" * 64,
+            "loop_counts": {"other-loop": 1},
+            "lineage_id": "other-lineage",
+        }
+        for field, value in position_forgeries.items():
+            with self.subTest(position=field):
+                forged = action_state.to_dict()
+                forged["position"][field] = value
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(
+                        self.runtime.state, EnvironmentStateV1.from_dict(forged), event, effect
+                    )
+        continuation_forgeries = {
+            "author_request": "0" * 64,
+            "check_requests": ["0" * 64],
+            "external_requests": ["other-request"],
+            "applied_responses": ["other-response"],
+            "feedback_cursor": 1,
+        }
+        for field, value in continuation_forgeries.items():
+            with self.subTest(continuation=field):
+                forged = action_state.to_dict()
+                forged["continuation"][field] = value
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(
+                        self.runtime.state, EnvironmentStateV1.from_dict(forged), event, effect
+                    )
+        result = self.writer.step_tool(action.runtime)
+        result_event = self.store.load_event(result.event_id)
+        result_effect = self.store.get_artifact(result_event.payload_ref)
+        result_state = self.store._apply_recorded_effect_body(
+            action.runtime.state, result_event, result_effect
+        )
+        wrong_result = result_state.to_dict()
+        wrong_result["position"]["phase"] = "checking"
+        with self.assertRaises(ProjectionError):
+            validate_writer_effect(
+                action.runtime.state,
+                EnvironmentStateV1.from_dict(wrong_result),
+                result_event,
+                result_effect,
+            )
+        for field in set(action.runtime.state.to_dict()) - {
+            "continuation",
+            "position",
+            "budgets_ref",
+            "external_inputs_ref",
+        }:
+            with self.subTest(result_field=field):
+                forged = {
+                    **result_effect,
+                    "set": {**result_effect["set"], field: action.runtime.state.to_dict()[field]},
+                }
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(action.runtime.state, result_state, result_event, forged)
+        for field in set(action.runtime.state.history) - {"head", "seq", "tool_result_ids"}:
+            with self.subTest(result_history=field):
+                forged = {
+                    **result_effect,
+                    "history_set": {
+                        **result_effect["history_set"],
+                        field: action.runtime.state.history[field],
+                    },
+                }
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(action.runtime.state, result_state, result_event, forged)
+        fixture = WriterFixture()
+        fixture.setUp()
+        try:
+            writer, runtime, _ = fixture.entry_with_budget(consumed={"writer_turns": 5})
+            stop = writer.stop_exhausted(runtime)
+            stop_event = fixture.store.load_event(stop.event_id)
+            stop_effect = fixture.store.get_artifact(stop_event.payload_ref)
+            stop_state = fixture.store._apply_recorded_effect_body(
+                runtime.state, stop_event, stop_effect
+            )
+            wrong_stop = stop_state.to_dict()
+            wrong_stop["position"]["phase"] = "ready_writer"
+            with self.assertRaises(ProjectionError):
+                validate_writer_effect(
+                    runtime.state,
+                    EnvironmentStateV1.from_dict(wrong_stop),
+                    stop_event,
+                    stop_effect,
+                    store=fixture.store,
+                )
+            for field in set(runtime.state.to_dict()) - {
+                "position",
+                "outcome_ref",
+                "external_inputs_ref",
+            }:
+                with self.subTest(stop_field=field):
+                    forged = {
+                        **stop_effect,
+                        "set": {**stop_effect["set"], field: runtime.state.to_dict()[field]},
+                    }
+                    with self.assertRaises(ProjectionError):
+                        validate_writer_effect(runtime.state, stop_state, stop_event, forged)
+            for field in set(runtime.state.history) - {"head", "seq"}:
+                with self.subTest(stop_history=field):
+                    forged = {**stop_effect, "history_set": {field: runtime.state.history[field]}}
+                    with self.assertRaises(ProjectionError):
+                        validate_writer_effect(runtime.state, stop_state, stop_event, forged)
+        finally:
+            fixture.doCleanups()
+
+    def test_sampled_stop_ownership_and_all_post_phases(self):
+        writer, runtime, _ = self.entry_with_budget(limits={"generated_tokens": 1})
+        stop = writer.submit_action(
+            runtime,
+            self.action(content="overrun"),
+            usage={"completion_tokens": 2, "total_tokens": 2},
+        )
+        event = self.store.load_event(stop.event_id)
+        effect = self.store.get_artifact(event.payload_ref)
+        after = self.store._apply_recorded_effect_body(runtime.state, event, effect)
+        for field in set(runtime.state.to_dict()) - {
+            "position",
+            "budgets_ref",
+            "outcome_ref",
+            "external_inputs_ref",
+        }:
+            with self.subTest(field=field):
+                forged = {**effect, "set": {**effect["set"], field: runtime.state.to_dict()[field]}}
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(runtime.state, after, event, forged, store=self.store)
+        for field in set(runtime.state.history) - {"head", "seq"}:
+            with self.subTest(history=field):
+                forged = {**effect, "history_set": {field: runtime.state.history[field]}}
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(runtime.state, after, event, forged, store=self.store)
+        for phase in ("checking", "awaiting_author", "ready_transition"):
+            with self.subTest(post_phase=phase):
+                changed = after.to_dict()
+                changed["position"]["phase"] = phase
+                with self.assertRaises(ProjectionError):
+                    validate_writer_effect(
+                        runtime.state,
+                        EnvironmentStateV1.from_dict(changed),
+                        event,
+                        effect,
+                        store=self.store,
+                    )
+
+    def test_trace_claims_are_bound_to_one_action(self):
+        prepared_ref = self.writer.prepare_request(self.runtime, {"prompt": "pinned"})
+        action = self.writer.submit_action(
+            self.runtime,
+            self.action(content="done"),
+            prepared_request_ref=prepared_ref,
+            raw_output=b"done",
+            trace={"model": "test-model", "seed": 7, "generated_token_ids": [1]},
+            usage={"prompt_tokens": 2, "completion_tokens": 1, "total_tokens": 3},
+        )
+        record = self.record(action)
+        trace = self.store.get_artifact(record["trace_ref"])
+        claims = {
+            "record_type": "OtherTraceV1",
+            "action_id": "forged:action:99",
+            "exact_request_ref": None,
+            "prepared_request_ref": None,
+            "raw_output_ref": None,
+            "logprob_ref": "0" * 64,
+            "usage": {"total_tokens": 999},
+            "model": "other-model",
+            "seed": 8,
+            "rendering": {"projection_version": "forged"},
+            "context_revision_ref": "0" * 64,
+            "context_content_hash": "0" * 64,
+            "raw_output_evidence": "missing",
+            "token_evidence": "missing",
+        }
+        for field, value in claims.items():
+            with self.subTest(trace_field=field):
+                forged = {**trace, field: value}
+                with self.assertRaises(ProjectionError):
+                    validate_action_trace(
+                        self.store,
+                        record,
+                        forged,
+                        record["action_id"],
+                        self.runtime.context.content_hash,
+                        self.runtime.context.identity(),
+                        self.runtime.context.rendering,
+                        action.runtime.context.messages[-1],
+                    )
+
+    def test_parent_file_conflict_commits_but_decode_corruption_interrupts(self):
+        action = self.writer.submit_action(
+            self.runtime,
+            self.action(self.call("write_file", {"path": "draft.txt/child", "content": "x"})),
+        )
+        result = self.writer.step_tool(action.runtime)
+        self.assertFalse(self.record(result)["observation"]["ok"])
+        self.assertTrue(self.record(result)["observation"]["valid"])
+        self.assertEqual(result.runtime.state.files, self.runtime.state.files)
+        self.assertEqual(result.runtime.state.continuation["next_call"], 1)
+        self.assertEqual(
+            self.store.get_artifact(result.runtime.state.budgets_ref)["consumed"][
+                "attempted_tool_calls"
+            ],
+            1,
+        )
+        second = self.writer.submit_action(
+            result.runtime, self.action(self.call("read_file", {"path": "draft.txt"}, "backend-2"))
+        )
+        head = self.store.read_head("rollout-1")
+        with patch.object(
+            Workspace, "read_file", side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad")
+        ):
+            with self.assertRaises(UnicodeDecodeError):
+                self.writer.step_tool(second.runtime)
+        self.assertEqual(self.store.read_head("rollout-1"), head)
+        self.assertEqual(second.runtime.state.continuation["next_call"], 0)
+        self.assertEqual(
+            self.store.get_artifact(second.runtime.state.budgets_ref)["consumed"][
+                "attempted_tool_calls"
+            ],
+            1,
+        )
+        fixture = WriterFixture()
+        fixture.setUp()
+        try:
+            search = fixture.writer.submit_action(
+                fixture.runtime,
+                fixture.action(fixture.call("search", {"query": "alpha"})),
+            )
+            head = fixture.store.read_head("rollout-1")
+            with patch.object(
+                Workspace,
+                "read_file",
+                side_effect=UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad"),
+            ):
+                with self.assertRaises(UnicodeDecodeError):
+                    fixture.writer.step_tool(search.runtime)
+            self.assertEqual(fixture.store.read_head("rollout-1"), head)
+            self.assertEqual(search.runtime.state.continuation["next_call"], 0)
+        finally:
+            fixture.doCleanups()
+        legacy = Workspace(self.root / "legacy-search")
+        (legacy.root / "corrupt.txt").write_bytes(b"\xff")
+        self.assertEqual(legacy.search("alpha"), [])
+
+    def test_decoder_depth_is_one_charged_nonmutating_result(self):
+        for arguments in ("[" * 20_000 + "0" + "]" * 20_000, "[" * 70_000):
+            with self.subTest(length=len(arguments)):
+                fixture = WriterFixture()
+                fixture.setUp()
+                try:
+                    action = fixture.writer.submit_action(
+                        fixture.runtime,
+                        fixture.action(fixture.call("write_file", arguments)),
+                    )
+                    result = fixture.writer.step_tool(action.runtime)
+                    self.assertFalse(
+                        fixture.store.get_artifact(result.record_ref)["observation"]["valid"]
+                    )
+                    self.assertEqual(result.runtime.state.files, fixture.runtime.state.files)
+                    self.assertEqual(result.runtime.state.continuation["next_call"], 1)
+                    self.assertEqual(
+                        fixture.store.get_artifact(result.runtime.state.budgets_ref)["consumed"][
+                            "attempted_tool_calls"
+                        ],
+                        1,
+                    )
+                finally:
+                    fixture.doCleanups()
+        nested: object = "leaf"
+        for _ in range(100):
+            nested = [nested]
+        action = self.writer.submit_action(
+            self.runtime,
+            self.action(self.call("write_file", nested)),
+        )
+        result = self.writer.step_tool(action.runtime)
+        self.assertFalse(self.record(result)["observation"]["valid"])
+        self.assertEqual(result.runtime.state.files, self.runtime.state.files)
+        self.assertEqual(result.runtime.state.continuation["next_call"], 1)
+
     def test_non_array_call_batch_rejected_without_publication(self):
         with self.assertRaisesRegex(WriterRuntimeError, "tool_calls must be an array"):
             self.writer.submit_action(
@@ -299,7 +711,10 @@ class TransactionalWriterTest(WriterFixture):
             kwargs["message"] = MessageV1.from_dict(message)
             return publish(*args, **kwargs)
 
-        with patch.object(self.writer, "_publish", forged):
+        with (
+            patch.object(self.writer, "_publish", forged),
+            patch.object(task_graph_writer, "validate_result_production"),
+        ):
             with self.assertRaises(ProjectionError):
                 self.writer.step_tool(action.runtime)
         head = self.store.read_head("rollout-1")
@@ -318,6 +733,8 @@ class TransactionalWriterTest(WriterFixture):
             "after_execution_hash",
             "budget_charge",
             "file_delta",
+            "cursor",
+            "message_origin",
         ):
             with self.subTest(field=field):
                 fixture = WriterFixture()
@@ -340,11 +757,20 @@ class TransactionalWriterTest(WriterFixture):
                             record[field] = "0" * 64
                         elif field == "budget_charge":
                             record[field]["read_tokens"] = 999
+                        elif field == "cursor":
+                            kwargs["changes"]["continuation"]["next_call"] = 0
+                        elif field == "message_origin":
+                            message = kwargs["message"].to_dict()
+                            message["origin"] = "unrelated:action:99"
+                            kwargs["message"] = MessageV1.from_dict(message)
                         else:
                             record[field] = {"draft.txt": {"before": "alpha\n", "after": "forged"}}
                         return original(*args, **kwargs)
 
-                    with patch.object(fixture.writer, "_publish", forged):
+                    with (
+                        patch.object(fixture.writer, "_publish", forged),
+                        patch.object(task_graph_writer, "validate_result_production"),
+                    ):
                         with self.assertRaises(ProjectionError):
                             fixture.writer.step_tool(action.runtime)
                     head = fixture.store.read_head("rollout-1")
@@ -353,6 +779,52 @@ class TransactionalWriterTest(WriterFixture):
                         project_writer_context(fixture.store, fixture.start, checkpoint)
                     with self.assertRaises(ProjectionError):
                         fixture.store.replay("rollout-1", fixture.start, [action.commit_id, head])
+                finally:
+                    fixture.doCleanups()
+
+    def test_all_seven_result_forgeries_reject_before_head_publication(self):
+        for field in (
+            "action_id",
+            "before_execution_hash",
+            "after_execution_hash",
+            "file_delta",
+            "cursor",
+            "budget_charge",
+            "message_origin",
+        ):
+            with self.subTest(field=field):
+                fixture = WriterFixture()
+                fixture.setUp()
+                try:
+                    action = fixture.writer.submit_action(
+                        fixture.runtime,
+                        fixture.action(fixture.call("read_file", {"path": "draft.txt"})),
+                    )
+                    original = fixture.writer._publish
+
+                    def forged(*args, field=field, original=original, **kwargs):
+                        record = kwargs["record"]
+                        if field == "action_id":
+                            record["action_id"] = "forged:action:99"
+                        elif field in {"before_execution_hash", "after_execution_hash"}:
+                            record[field] = "0" * 64
+                        elif field == "file_delta":
+                            record[field] = {"fake": {"before": None, "after": "x"}}
+                        elif field == "cursor":
+                            kwargs["changes"]["continuation"]["next_call"] = 0
+                        elif field == "budget_charge":
+                            record[field]["tool_calls"] = 0
+                        else:
+                            message = kwargs["message"].to_dict()
+                            message["origin"] = "forged:action:99"
+                            kwargs["message"] = MessageV1.from_dict(message)
+                        return original(*args, **kwargs)
+
+                    with patch.object(fixture.writer, "_publish", forged):
+                        with self.assertRaises(ProjectionError):
+                            fixture.writer.step_tool(action.runtime)
+                    self.assertEqual(fixture.store.read_head("rollout-1"), action.commit_id)
+                    self.assertEqual(action.runtime.state.continuation["next_call"], 0)
                 finally:
                     fixture.doCleanups()
 
