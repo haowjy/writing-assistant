@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from writing_agent.task_graph import ContextRevisionV1, MessageV1, canonical_json
+from writing_agent.task_graph_compaction import charge_context_append
 from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_writer import WriterRuntimeError, WriterStepV1
 
@@ -414,7 +415,14 @@ class ScriptedAuthorRuntimeV1:
             rendering=runtime.context.rendering,
         )
         self.store.persist(context)
-        context_effect = self.writer._effect(current, changes={"context_ref": context.identity()})
+        context_changes = {"context_ref": context.identity()}
+        charged_context = charge_context_append(
+            self.store.get_artifact(current.budgets_ref, expected_domain="payload"),
+            context,
+        )
+        if charged_context is not None:
+            context_changes["budgets_ref"] = self.store.put_artifact(charged_context)
+        context_effect = self.writer._effect(current, changes=context_changes)
         context_effect_ref = self.store.put_artifact(context_effect)
         context_event = self.writer._event(
             current,
@@ -714,7 +722,14 @@ class ScriptedAuthorRuntimeV1:
             rendering=runtime.context.rendering,
         )
         self.store.persist(context)
-        context_effect = self.writer._effect(current, changes={"context_ref": context.identity()})
+        context_changes = {"context_ref": context.identity()}
+        charged_context = charge_context_append(
+            self.store.get_artifact(current.budgets_ref, expected_domain="payload"),
+            context,
+        )
+        if charged_context is not None:
+            context_changes["budgets_ref"] = self.store.put_artifact(charged_context)
+        context_effect = self.writer._effect(current, changes=context_changes)
         context_effect_ref = self.store.put_artifact(context_effect)
         context_event = self.writer._event(
             current,

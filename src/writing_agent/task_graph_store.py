@@ -415,12 +415,25 @@ class TaskGraphStore:
             # written.
             validator.validate(("commit", commit.identity()))
             phase5_base = self._phase5_base_checkpoint(base_checkpoint)
-            if phase5_base is not None:
+            semantic_base = phase5_base
+            if semantic_base is None and len(batch) == 1 and batch[0].kind == "context_changed":
+                body = self.get_artifact(next_state.external_inputs_ref, expected_domain="payload")
+                entries = body.get("entries") if isinstance(body, dict) else None
+                if (
+                    isinstance(body, dict)
+                    and body.get("record_type") == "WriterRuntimeLogV1"
+                    and isinstance(entries, list)
+                    and entries
+                    and isinstance(entries[-1], dict)
+                    and entries[-1].get("kind") == "context_changed"
+                ):
+                    semantic_base = self._writer_projection_base(base_checkpoint)
+            if semantic_base is not None:
                 from writing_agent.task_graph_projection import project_writer_context
 
                 project_writer_context(
                     self,
-                    phase5_base,
+                    semantic_base,
                     base_checkpoint,
                     candidate_events=batch,
                     candidate_state=next_state,
@@ -695,7 +708,13 @@ class TaskGraphStore:
                     raise ProjectionError("writer history lacks its semantic runtime log")
                 cursor = event.previous
             return
-        ancestor = checkpoint
+        base_id = self._writer_projection_base(checkpoint_id)
+        from writing_agent.task_graph_projection import project_writer_context
+
+        project_writer_context(self, base_id, checkpoint_id)
+
+    def _writer_projection_base(self, checkpoint_id: str) -> str:
+        ancestor = self.load_checkpoint(checkpoint_id)
         while ancestor.parents:
             parent = self.load_checkpoint(ancestor.parents[0])
             parent_body = self.get_artifact(
@@ -707,10 +726,7 @@ class TaskGraphStore:
             ):
                 break
             ancestor = parent
-        base_id = ancestor.parents[0] if ancestor.parents else ancestor.identity()
-        from writing_agent.task_graph_projection import project_writer_context
-
-        project_writer_context(self, base_id, checkpoint_id)
+        return ancestor.parents[0] if ancestor.parents else ancestor.identity()
 
     # -- validation --------------------------------------------------------------
 

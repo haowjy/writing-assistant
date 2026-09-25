@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add opt-in deterministic context carry, named ancestor seed, drop, and
+  fixed visible-message compaction at drained writer boundaries. Immutable
+  operation records bind exact source messages/events, summary bytes,
+  old/new context revisions, and context charges; prepublication and offline
+  recovery validate the same authority while preserving earlier action traces.
+
 - Require a guaranteed Phase 5 completion edge at admission; optional or
   progress-only check guards cannot strand a passing terminal check batch.
 

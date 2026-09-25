@@ -38,6 +38,11 @@ retains its smoke-evaluation and training-format workflows.
   holds the author-side replay rules. See
   [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
   restore API, and the Phase 4 boundary.
+  [task_graph_compaction.py](../writing_agent/task_graph_compaction.py) owns the
+  fixed visible-message summary, complete-exchange selection, immutable context
+  operation evidence, and context byte accounting. The writer publishes a
+  `context_changed` operation only at a drained `ready_writer` boundary; the
+  projector validates its selection and budget before publication and on recovery.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
@@ -107,8 +112,8 @@ reward availability and training eligibility. `task_graph_projection.py` validat
 every new producer's exact field/actor authority and causal binding both against
 staged events before publication and on restore/replay. The evaluator cannot edit
 files or the terminal task/execution status; reward arithmetic is exact integer
-normalization. Model-backed author, semantic judge, compaction and native on-policy
-eligibility are not implemented.
+normalization. Model-backed author, semantic judge, learned/model compaction,
+and native on-policy eligibility are not implemented.
 
 The immutable admitted entry contract, not a child state field or runtime log,
 anchors Phase 5 semantic recovery. Its event dispatch is closed; other generic

@@ -472,6 +472,7 @@ def project_writer_context(
     *,
     candidate_events: tuple[EventV1, ...] = (),
     candidate_state: EnvironmentStateV1 | None = None,
+    source_event_ids: list[str | None] | None = None,
 ) -> ContextRevisionV1:
     """Rebuild the exact active writer messages from one admitted entry and suffix.
 
@@ -507,6 +508,7 @@ def project_writer_context(
     if phase5 and base.state.author_packet_ref != contract.interaction_contract.author_packet_ref:
         raise ProjectionError("entry lacks its admitted author capability")
     messages = list(baseline.messages)
+    message_sources: list[str | None] = [None] * len(messages)
     if (
         len(messages) < 2
         or messages[0].role != "system"
@@ -628,6 +630,7 @@ def project_writer_context(
             if not pending or pending.pop(0) != message.call_id:
                 raise ProjectionError("author tool acknowledgement is unpaired")
             messages.append(message)
+            message_sources.append(event.id)
             result_ids.append(f"{event.rollout_id}:tool_result:{len(result_ids)}")
             seen_entries.append(entry)
             last_source = event.id
@@ -679,6 +682,7 @@ def project_writer_context(
             )
             validate_author_turn_effect(store, before, state, event, effect, entry, message)
             messages.append(message)
+            message_sources.append(event.id)
             seen_entries.append(entry)
             last_source = event.id
             reply_stage = "turn"
@@ -688,13 +692,27 @@ def project_writer_context(
                 raise ProjectionError("context change has invalid actor or audience")
             if effect.get("artifact_type") != "Phase2RecordedEffectV1":
                 raise ProjectionError("context event has no replayable effect")
+            context_operation = state.external_inputs_ref != before.external_inputs_ref
+            if (phase5 or context_operation) and event.audience != ("controller", "trainer"):
+                raise ProjectionError("context event has false audience ownership")
+            old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
+            tracked_context = (
+                not context_operation
+                and isinstance(old_budget, dict)
+                and isinstance(old_budget.get("limits"), dict)
+                and "context_bytes" in old_budget["limits"]
+            )
+            expected_set = {"context_ref"}
+            if context_operation:
+                expected_set.update({"budgets_ref", "external_inputs_ref"})
+            elif tracked_context:
+                expected_set.add("budgets_ref")
             if (
-                set(effect["set"]) != {"context_ref"}
+                set(effect["set"]) != expected_set
                 or effect["history_set"]
                 or effect["file_delta"]
                 or state.context_ref == before.context_ref
                 or state.files != before.files
-                or state.budgets_ref != before.budgets_ref
                 or state.continuation != before.continuation
             ):
                 raise ProjectionError("context event has an unrelated execution effect")
@@ -702,12 +720,99 @@ def project_writer_context(
             if not isinstance(latest_context_ref, str):
                 raise ProjectionError("context event lacks a revision")
             revision = store.load_context(latest_context_ref)
-            if (
+            if context_operation:
+                from writing_agent.task_graph_compaction import (
+                    ContextOperationV1,
+                    ContextPolicyV1,
+                    make_record,
+                    require_quiescent,
+                )
+
+                if reply_stage is not None:
+                    raise ProjectionError("context operation interrupted an author transaction")
+                require_quiescent(before, pending=tuple(pending))
+                entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
+                record = store.get_artifact(entry["record_ref"], expected_domain="payload")
+                if (
+                    not isinstance(record, dict)
+                    or record.get("record_type") != "ContextOperationV1"
+                ):
+                    raise ProjectionError("context operation lacks its typed record")
+                ContextOperationV1.from_dict(record)
+                policy_ref = record.get("policy_ref")
+                if not isinstance(policy_ref, str):
+                    raise ProjectionError("context operation lacks a policy")
+                policy = ContextPolicyV1.from_dict(store.get_artifact(policy_ref))
+                seed = None
+                seed_sources: list[str | None] = []
+                if policy.operation == "seed":
+                    seed_id = policy.seed_checkpoint_ref
+                    if seed_id not in checkpoint_ancestry:
+                        raise ProjectionError("named seed is not an ancestor checkpoint")
+                    seed_checkpoint = store.load_checkpoint(seed_id)
+                    if seed_checkpoint.state.history["seq"] > before.history["seq"]:
+                        raise ProjectionError("named seed is newer than the operation")
+                    seed = store.load_context(seed_checkpoint.state.context_ref)
+                    project_writer_context(
+                        store, base_checkpoint_id, seed_id, source_event_ids=seed_sources
+                    )
+                expected_record, expected_budget, selected_sources = make_record(
+                    store,
+                    before,
+                    ContextRevisionV1(
+                        messages=tuple(messages),
+                        tools=baseline.tools,
+                        rendering=baseline.rendering,
+                    ),
+                    tuple(message_sources),
+                    policy,
+                    policy_ref,
+                    revision,
+                    record.get("summary_ref"),
+                    store.get_artifact(before.budgets_ref, expected_domain="payload"),
+                    seed=seed,
+                    seed_sources=tuple(seed_sources),
+                    recorded_summary=record.get("summary_text"),
+                )
+                if (
+                    record != expected_record
+                    or store.get_artifact(state.budgets_ref, expected_domain="payload")
+                    != expected_budget
+                    or state.files != before.files
+                    or state.requirements_ref != before.requirements_ref
+                    or state.decisions_ref != before.decisions_ref
+                    or state.disclosures_ref != before.disclosures_ref
+                    or state.position != before.position
+                    or state.outcome_ref != before.outcome_ref
+                ):
+                    raise ProjectionError(
+                        "context operation has false selection, charge or authority"
+                    )
+                messages = list(revision.messages)
+                message_sources = [
+                    event.id if policy.operation == "compact" and index == 2 else source
+                    for index, source in enumerate(selected_sources)
+                ]
+                last_source = before.history["head"]
+                seen_entries.append(entry)
+            elif (
                 revision.event_head != last_source
                 or revision.provenance_refs != (last_source,)
                 or revision.messages != tuple(messages)
             ):
                 raise ProjectionError("context revision has false source-event provenance")
+            if not context_operation:
+                from writing_agent.task_graph_compaction import charge_context_append
+
+                expected_budget = charge_context_append(old_budget, revision)
+                if expected_budget is None:
+                    if state.budgets_ref != before.budgets_ref:
+                        raise ProjectionError("unmetered context change altered budget")
+                elif (
+                    store.get_artifact(state.budgets_ref, expected_domain="payload")
+                    != expected_budget
+                ):
+                    raise ProjectionError("context append has false budget charge")
             if reply_stage == "turn":
                 reply_stage = None
             continue
@@ -805,13 +910,23 @@ def project_writer_context(
             outcome = store.get_artifact(state.outcome_ref, expected_domain="payload")
             exhausted = [
                 name
-                for name in ("writer_turns", "generated_tokens", "total_tokens")
+                for name in (
+                    "writer_turns",
+                    "generated_tokens",
+                    "total_tokens",
+                    "context_bytes",
+                    "context_storage_bytes",
+                )
                 if name in old_budget["limits"]
                 and old_budget["consumed"].get(name, 0) >= old_budget["limits"][name]
             ]
             reason = (
                 "writer_budget"
                 if exhausted and exhausted[0] == "writer_turns"
+                else "context_budget"
+                if exhausted and exhausted[0] == "context_bytes"
+                else "context_storage_budget"
+                if exhausted and exhausted[0] == "context_storage_bytes"
                 else (f"{exhausted[0]}_budget" if exhausted else None)
             )
             if (
@@ -1015,6 +1130,7 @@ def project_writer_context(
                 {"action_id": source[0], "validation_error": source[2]["validation_error"]},
             )
         messages.append(message)
+        message_sources.append(event.id)
         last_source = event.id
     expected_state = candidate_state if candidate_state is not None else target.state
     if reply_stage in {"ack", "disclosure", "update", "turn"}:
@@ -1043,4 +1159,6 @@ def project_writer_context(
         expected_state.history["tool_result_ids"]
     ):
         raise ProjectionError("logical action/result history differs from visible events")
+    if source_event_ids is not None:
+        source_event_ids.extend(message_sources)
     return actual

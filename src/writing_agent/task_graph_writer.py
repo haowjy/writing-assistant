@@ -27,6 +27,13 @@ from writing_agent.task_graph import (
     validate_hash,
 )
 from writing_agent.task_graph_admission import AdmittedGraphV1
+from writing_agent.task_graph_compaction import (
+    ContextPolicyV1,
+    charge_context_append,
+    make_record,
+    require_quiescent,
+    select_context,
+)
 from writing_agent.task_graph_projection import (
     NATIVE_TRACE_REASON,
     execution_value,
@@ -338,10 +345,11 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("budget counters must be nonnegative integers")
         for name in budget["limits"]:
-            if budget["consumed"].get(name, 0) > budget["limits"][name] and not (
+            permitted_overrun = name in {"context_bytes", "context_storage_bytes"} or (
                 runtime.state.position["phase"] == "terminal"
                 and name in {"generated_tokens", "total_tokens"}
-            ):
+            )
+            if budget["consumed"].get(name, 0) > budget["limits"][name] and not permitted_overrun:
                 raise WriterRuntimeError(f"{name} budget is already over limit")
         if budget["consumed"].get("storage_bytes", 0) != sum(
             len(text.encode("utf-8")) for text in runtime.state.files.values()
@@ -462,7 +470,14 @@ class TransactionalWriterV1:
         self.store.persist(primary)
         context = self._context(runtime.context, message, primary)
         self.store.persist(context)
-        context_effect = self._effect(intermediate, changes={"context_ref": context.identity()})
+        context_changes = {"context_ref": context.identity()}
+        charged_context = charge_context_append(
+            self.store.get_artifact(intermediate.budgets_ref, expected_domain="payload"),
+            context,
+        )
+        if charged_context is not None:
+            context_changes["budgets_ref"] = self.store.put_artifact(charged_context)
+        context_effect = self._effect(intermediate, changes=context_changes)
         context_effect_ref = self.store.put_artifact(context_effect)
         context_event = self._event(
             intermediate,
@@ -510,6 +525,136 @@ class TransactionalWriterV1:
         fresh = runtime.workspace.parent / f"writer-{uuid.uuid4().hex}"
         restored = self.store.restore(checkpoint_id, fresh)
         return WriterStepV1(restored, commit, primary.id, record_ref)
+
+    def change_context(self, runtime: RuntimeHandle, policy: ContextPolicyV1) -> WriterStepV1:
+        """Publish one fixed, zero-mask context operation at a completed exchange."""
+        if not isinstance(policy, ContextPolicyV1):
+            raise TypeError("context policy must be ContextPolicyV1")
+        _, budget = self._check(runtime)
+        require_quiescent(runtime.state)
+        head, parent = self._head(runtime)
+        sources: list[str | None] = []
+        project_writer_context(
+            self.store,
+            self.entry_checkpoint_id,
+            runtime.checkpoint_id,
+            source_event_ids=sources,
+        )
+        seed = None
+        seed_sources: list[str | None] = []
+        if policy.operation == "seed":
+            ancestor = runtime.checkpoint_id
+            while ancestor != policy.seed_checkpoint_ref:
+                checkpoint = self.store.load_checkpoint(ancestor)
+                if not checkpoint.parents:
+                    raise WriterRuntimeError("named seed is not an ancestor checkpoint")
+                ancestor = checkpoint.parents[0]
+            seed = self.store.load_context(self.store.load_checkpoint(ancestor).state.context_ref)
+            project_writer_context(
+                self.store,
+                self.entry_checkpoint_id,
+                ancestor,
+                source_event_ids=seed_sources,
+            )
+        policy_ref = self.store.put_artifact(policy.to_dict())
+        origin = (
+            f"{runtime.state.position['lineage_id']}:context:{runtime.state.history['seq'] + 1}"
+        )
+        messages, _, summary, _ = select_context(
+            runtime.context,
+            tuple(sources),
+            policy,
+            seed=seed,
+            seed_sources=tuple(seed_sources),
+            summary_origin=origin,
+        )
+        provenance = (
+            (runtime.state.history["head"],) if runtime.state.history["head"] is not None else ()
+        )
+        context = ContextRevisionV1(
+            messages=messages,
+            tools=runtime.context.tools,
+            rendering=runtime.context.rendering,
+            event_head=runtime.state.history["head"],
+            provenance_refs=provenance,
+        )
+        if context.identity() == runtime.state.context_ref:
+            raise WriterRuntimeError("context operation would not create a new revision")
+        summary_ref = (
+            self.store.put_bytes_artifact(summary.encode("utf-8")) if summary is not None else None
+        )
+        self.store.persist(context)
+        record, new_budget, _ = make_record(
+            self.store,
+            runtime.state,
+            runtime.context,
+            tuple(sources),
+            policy,
+            policy_ref,
+            context,
+            summary_ref,
+            budget,
+            seed=seed,
+            seed_sources=tuple(seed_sources),
+        )
+        record_ref = self.store.put_artifact(record)
+        entries = self._ledger(runtime.state)
+        entries.append(
+            {
+                "seq": runtime.state.history["seq"] + 1,
+                "kind": "context_changed",
+                "record_ref": record_ref,
+            }
+        )
+        log_ref = self.store.put_artifact(
+            {
+                "record_type": "WriterRuntimeLogV1",
+                "rollout_id": self.rollout_id,
+                "entries": entries,
+            }
+        )
+        budget_ref = self.store.put_artifact(new_budget)
+        effect = self._effect(
+            runtime.state,
+            changes={
+                "context_ref": context.identity(),
+                "budgets_ref": budget_ref,
+                "external_inputs_ref": log_ref,
+            },
+        )
+        effect_ref = self.store.put_artifact(effect)
+        event = self._event(
+            runtime.state,
+            "context_changed",
+            effect_ref,
+            audience=("controller", "trainer"),
+            actor="environment",
+        )
+        final = self._reduced(runtime.state, event, effect)
+        self.store.persist(event)
+        project_writer_context(
+            self.store,
+            self.entry_checkpoint_id,
+            runtime.checkpoint_id,
+            candidate_events=(event,),
+            candidate_state=final,
+        )
+        refs = [policy_ref, record_ref, log_ref, budget_ref, effect_ref]
+        if summary_ref is not None:
+            refs.append(summary_ref)
+        if policy.seed_checkpoint_ref is not None:
+            refs.append(policy.seed_checkpoint_ref)
+        commit = self.store.publish(
+            runtime.state.position["lineage_id"],
+            head,
+            (event,),
+            final,
+            parent_checkpoint=parent,
+            artifact_refs=tuple(refs),
+        )
+        checkpoint_id = self.store.load_commit(commit).checkpoint
+        fresh = runtime.workspace.parent / f"context-{uuid.uuid4().hex}"
+        return WriterStepV1(self.store.restore(checkpoint_id, fresh), commit, event.id, record_ref)
 
     @staticmethod
     def _parsed_calls(
@@ -672,6 +817,12 @@ class TransactionalWriterV1:
                 and budget["consumed"].get(name, 0) >= budget["limits"][name]
             ):
                 raise WriterRuntimeError(f"{name} budget exhausted before sampling")
+        for name in ("context_bytes", "context_storage_bytes"):
+            if (
+                name in budget["limits"]
+                and budget["consumed"].get(name, 0) >= budget["limits"][name]
+            ):
+                raise WriterRuntimeError(f"{name} budget exhausted before sampling")
         self._head(runtime)
         payload_ref = (
             self.store.put_bytes_artifact(exact_request)
@@ -707,6 +858,12 @@ class TransactionalWriterV1:
             raise WriterRuntimeError("writer action requires a ready, drained tool queue")
         if budget["consumed"].get("writer_turns", 0) >= budget["limits"]["writer_turns"]:
             raise WriterRuntimeError("writer-turn budget exhausted")
+        for name in ("context_bytes", "context_storage_bytes"):
+            if (
+                name in budget["limits"]
+                and budget["consumed"].get(name, 0) >= budget["limits"][name]
+            ):
+                raise WriterRuntimeError(f"{name} budget exhausted before sampling")
         self._head(runtime)
         if not isinstance(message, Mapping) or message.get("role") != "assistant":
             raise WriterRuntimeError("backend adapter must supply an assistant message")
@@ -1248,7 +1405,13 @@ class TransactionalWriterV1:
         exhausted = next(
             (
                 name
-                for name in ("writer_turns", "generated_tokens", "total_tokens")
+                for name in (
+                    "writer_turns",
+                    "generated_tokens",
+                    "total_tokens",
+                    "context_bytes",
+                    "context_storage_bytes",
+                )
                 if name in budget["limits"]
                 and budget["consumed"].get(name, 0) >= budget["limits"][name]
             ),
@@ -1265,9 +1428,15 @@ class TransactionalWriterV1:
             "schema": 1,
             "task_status": "incomplete",
             "execution_status": "valid",
-            "stop_reason": "writer_budget"
-            if exhausted == "writer_turns"
-            else f"{exhausted}_budget",
+            "stop_reason": (
+                "writer_budget"
+                if exhausted == "writer_turns"
+                else "context_budget"
+                if exhausted == "context_bytes"
+                else "context_storage_budget"
+                if exhausted == "context_storage_bytes"
+                else f"{exhausted}_budget"
+            ),
             "reward_status": "pending",
             "training_eligibility": "pending",
         }

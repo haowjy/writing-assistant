@@ -4,8 +4,10 @@ This is a deterministic research runtime beside the unchanged legacy runner. It
 accepts only `scripted_author` interaction nodes with role-typed private author
 and evaluator packets, public decision IDs/labels, an exact private answer and
 feedback script, strict deterministic file checks, and integer reward weights.
-`simulated_author`, semantic judges, compaction, native optimizer traces, and
+`simulated_author`, semantic judges, native optimizer traces, and
 model-backed author replies are not supported here.
+Safe environment-owned context operations are described in
+[task-graph compaction](task-graph-compaction.md).
 
 ## Entry and authority
 
