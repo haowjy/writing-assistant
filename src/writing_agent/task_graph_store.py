@@ -1320,6 +1320,11 @@ class _ClosureValidator:
             contract = contract_type.from_dict(body)
         except (TypeError, ValueError) as exc:
             raise CorruptRecordError(f"invalid {artifact_type} envelope") from exc
+        if isinstance(contract, CheckContractV1):
+            return [
+                *(("artifact", identity) for identity in contract.public_evidence_refs),
+                *(("private", identity) for identity in contract.private_evidence_refs),
+            ]
         if not isinstance(contract, NodeContractV1):
             return []
         entry = contract.entry_contract

@@ -14,7 +14,17 @@ retains its smoke-evaluation and training-format workflows.
   and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
   owns private content-addressed persistence, reference closure, checkpoint
   materialization/restore/branch/diff, recorded Phase 2 effect replay, and the atomic
-  mutable lineage head. It does not replace or adapt the legacy runner.
+  mutable lineage head. [task_graph_contracts.py](../writing_agent/task_graph_contracts.py)
+  adds detailed execution contracts as immutable artifacts referenced by the frozen
+  Phase 1 node shape; [task_graph_admission.py](../writing_agent/task_graph_admission.py)
+  resolves their public/private closure and rejects an unsound graph before sampling.
+  [task_graph_controller.py](../writing_agent/task_graph_controller.py) is the pure,
+  deterministic directive boundary. It does not step a writer, execute checks, accept
+  author transition/completion claims, or mutate runtime state.
+- [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
+  existing visible brief/files/follow-ups/tools/budgets and private checks into one
+  scripted writer node. Its projections match the unchanged `run_selected` call;
+  compiling a graph never opts a scenario into a new runner.
 - [backends.py](../writing_agent/backends.py) defines the model interface and HTTP transport.
   [inference.py](../writing_agent/inference.py) loads local Transformers/PEFT weights,
   renders native Gemma tools, parses responses with the pinned tokenizer, and adapts
@@ -169,6 +179,17 @@ template. Tool results are associated with calls and rendered as native response
 The backend receives the trace emitter and records actual model inputs before
 generation and outputs before parsing. Base transcript conditions cannot use tools.
 Earlier custom-protocol results retain their identities and remain historical.
+
+Graph admission is a separate pre-execution gate. Every writer node names a public
+`NodeContractV1` artifact; author packets, scripts, decision bindings, requirement
+versions, and checks resolve through explicitly private references. Guards are limited
+to the `GuardContractV1` vocabulary and competing exits require unique numeric
+precedence. The graph has an immutable hop bound and every node an immutable visit
+bound. Admission validates tools, writer families, interaction coverage, check scope
+and controller/check versions without invoking a model. `DeterministicControllerV1`
+returns only `request_author`, `continue_writer`, `propose_edge`, `stop_incomplete`, or
+`wait_checks`; author text is audit input and is never inspected for routing. Outcome
+records keep task, execution, stop, reward, and training-eligibility state independent.
 
 Genre is separate from prose style and is carried into results and grouping.
 Authored genre contexts create derivative sources linked to the original world;

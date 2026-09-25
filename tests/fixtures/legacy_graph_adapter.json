@@ -37,7 +37,7 @@
     "entry_node": "legacy-writer",
     "nodes": [
       {
-        "entry_contract": "e9ffb5dc758e3a34c4e8e971fc78fedbb7e658666e92a9dc4f86f83d5d946b54",
+        "entry_contract": "a3c72e032a8cf7716ef2ae21d36c589caf4a0a864cd8b661304c6d4070a36943",
         "exits": [
           {
             "edge_id": "legacy-terminate",
@@ -64,11 +64,11 @@
     "source_refs": [],
     "template_ref": "d1e323705c0768bf4a035468cca65da7a732d79419610791288b4287a4046eac"
   },
-  "instance_id": "c964402c1c7b822c134bd1bfd96d519b1eaf84084ed2f81ed7678c7cdcf92d30",
+  "instance_id": "f926f9761d108ae8bb6f59a61a37b9fedb561aa74fba0682bfd9e4f98d7eeb06",
   "private_refs": [
+    "190e1d45f65c87eb67da4d2e308a3f6392669a6193c99fa5b3296244129a6caf",
     "2f4b4c8dfa6a7796456d796140137ab68aba0308c84d42cd42169282c0e920fa",
-    "56c023f0be8484fd386e2ab480ca1a7175c62fb37e79b19b1056a9e394a226f1",
-    "bf0d6679bbf11e9e464fb7c469ecf7b74bb15cbea1ab979273d92e3aa4aa4f4d"
+    "e29f690e0ecea25416763a6528aa8454b1458fd289c7ee10b12678f5305689d6"
   ],
   "prose": [
     {
@@ -81,8 +81,8 @@
   "public_refs": [
     "09d3feca9748a2492ce309a0e490128cfb99080fa420f1efd3f9958fdbaaec4b",
     "1a022ca51b04a5acd80c0bca52ba3aedd23ee8d3708989411130d0ef9cfbad15",
-    "d1e323705c0768bf4a035468cca65da7a732d79419610791288b4287a4046eac",
-    "e9ffb5dc758e3a34c4e8e971fc78fedbb7e658666e92a9dc4f86f83d5d946b54"
+    "a3c72e032a8cf7716ef2ae21d36c589caf4a0a864cd8b661304c6d4070a36943",
+    "d1e323705c0768bf4a035468cca65da7a732d79419610791288b4287a4046eac"
   ],
   "run_agent_inputs": {
     "followups": [

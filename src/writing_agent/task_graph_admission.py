@@ -23,6 +23,9 @@ from writing_agent.task_graph_contracts import (
     ScriptContractV1,
 )
 
+SUPPORTED_CONTROLLER_VERSIONS = frozenset({"deterministic-v1"})
+SUPPORTED_CHECK_VERSIONS = frozenset({"deterministic-v1", "semantic-v1", "legacy-check-v1"})
+
 
 class AdmissionError(ValueError):
     """An instance cannot be sampled safely."""
@@ -104,16 +107,18 @@ class StoreArtifactResolver:
 class AdmissionPolicyV1:
     writer_family: str | None = None
     allowed_tools: frozenset[str] = FILE_TOOLS
-    controller_versions: frozenset[str] = frozenset({"deterministic-v1"})
-    check_versions: frozenset[str] = frozenset(
-        {"deterministic-v1", "semantic-v1", "legacy-check-v1"}
-    )
+    controller_versions: frozenset[str] = SUPPORTED_CONTROLLER_VERSIONS
+    check_versions: frozenset[str] = SUPPORTED_CHECK_VERSIONS
 
     def __post_init__(self) -> None:
         if self.writer_family is not None and self.writer_family not in WRITER_FAMILIES:
             raise ValueError("unsupported requested writer family")
         if not self.allowed_tools <= FILE_TOOLS:
             raise ValueError("admission policy cannot authorize unknown tools")
+        if not self.controller_versions <= SUPPORTED_CONTROLLER_VERSIONS:
+            raise ValueError("admission policy cannot authorize unknown controllers")
+        if not self.check_versions <= SUPPORTED_CHECK_VERSIONS:
+            raise ValueError("admission policy cannot authorize unknown check versions")
 
 
 @dataclass(frozen=True)
@@ -212,6 +217,12 @@ def admit_graph(
         script = _validate_interaction(resolver, spec, contract, policy)
         checks = _validate_checks(resolver, spec, contract, policy)
         edges, guards = _validate_edges(resolver, spec, specs, edge_ids)
+        for guard in guards.values():
+            if guard.kind == "check_status" and guard.arguments["check_id"] not in checks:
+                raise AdmissionError(
+                    "guard_contract",
+                    f"node {spec.id} guard names undeclared check {guard.arguments['check_id']}",
+                )
         admitted[spec.id] = AdmittedNodeV1(
             spec=spec,
             contract=contract,
@@ -343,6 +354,10 @@ def _validate_checks(
                 raise AdmissionError(
                     "unsupported_check", f"check {check.id} uses {check.evaluator_version}"
                 )
+            for identity in check.public_evidence_refs:
+                _resolve_plain(resolver, identity, private=False)
+            for identity in check.private_evidence_refs:
+                _resolve_plain(resolver, identity, private=True)
             if check.applicability.startswith("before_feedback:"):
                 feedback_id = check.applicability.split(":", 1)[1]
                 if feedback_id not in feedback:

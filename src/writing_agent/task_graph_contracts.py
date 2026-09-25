@@ -247,6 +247,8 @@ class CheckContractV1(_Contract):
     evaluator_version: str = "deterministic-v1"
     applicability: str = "node_exit_candidate"
     required: bool = True
+    public_evidence_refs: tuple[str, ...] = ()
+    private_evidence_refs: tuple[str, ...] = ()
     spec: Mapping[str, Any] = MappingProxyType({})
     ARTIFACT_TYPE: ClassVar[str] = "CheckContractV1"
 
@@ -266,6 +268,18 @@ class CheckContractV1(_Contract):
             raise ValueError("before_feedback scope requires an id")
         if not isinstance(self.required, bool):
             raise TypeError("check required must be bool")
+        for refs, label in (
+            (self.public_evidence_refs, "public_evidence_refs"),
+            (self.private_evidence_refs, "private_evidence_refs"),
+        ):
+            if not isinstance(refs, tuple):
+                raise TypeError(f"{label} must be an array")
+            for ref in refs:
+                validate_hash(ref)
+            if len(refs) != len(set(refs)):
+                raise ValueError(f"{label} must be unique")
+        if set(self.public_evidence_refs) & set(self.private_evidence_refs):
+            raise ValueError("check evidence cannot be both public and private")
         if not isinstance(self.spec, Mapping):
             raise TypeError("check spec must be an object")
 

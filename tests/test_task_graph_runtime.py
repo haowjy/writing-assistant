@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_agent.legacy_graph import compile_legacy_scenario
-from writing_agent.suite import run_selected
+from writing_agent.suite import compile_legacy_graph, run_selected
 from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash
 from writing_agent.task_graph_admission import (
     AdmissionError,
@@ -149,6 +149,26 @@ class GraphAdmissionTest(unittest.TestCase):
         cycle = replace_edges(instance, (edge,))
         self.assertEqual(self.admit(public, private, cycle).instance, cycle)
 
+    def test_all_graph_references_resolve_before_execution(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        public.pop(instance.template_ref)
+        with self.assertRaisesRegex(AdmissionError, "missing_reference"):
+            self.admit(public, private, instance)
+
+        public, private, instance = mutable_bundle(bundle)
+        missing = "f" * 64
+        graph = GraphInstanceV1(
+            template_ref=instance.template_ref,
+            entry_node=instance.entry_node,
+            nodes=instance.nodes,
+            source_refs=(missing,),
+            request_refs=instance.request_refs,
+            budgets=instance.budgets,
+        )
+        with self.assertRaisesRegex(AdmissionError, "missing_reference"):
+            self.admit(public, private, graph)
+
     def test_targets_edges_precedence_and_cycle_bounds_fail_closed(self):
         bundle = compile_legacy_scenario(scenario())
         public, private, instance = mutable_bundle(bundle)
@@ -275,6 +295,30 @@ class GraphAdmissionTest(unittest.TestCase):
         with self.assertRaisesRegex(AdmissionError, "artifact_routing"):
             self.admit(public, private, instance)
 
+    def test_author_packet_cannot_be_routed_through_public_artifacts(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        packet = {"kind": "author-packet", "schema": 1}
+        packet_ref = domain_hash("payload", packet)
+        public[packet_ref] = packet
+        policy = {"kind": "interaction-policy", "schema": 1}
+        policy_ref = domain_hash("payload", policy)
+        public[policy_ref] = policy
+
+        def make_simulated(body):
+            body["interaction"].update(
+                mode="simulated_author",
+                script_ref=None,
+                author_packet_ref=packet_ref,
+                interaction_policy_ref=policy_ref,
+                scripted_turns=0,
+            )
+            body["completion"]["required_script_turns"] = 0
+
+        instance = replace_node_contract(public, instance, make_simulated)
+        with self.assertRaisesRegex(AdmissionError, "artifact_routing"):
+            self.admit(public, private, instance)
+
 
 class DeterministicControllerTest(unittest.TestCase):
     def setUp(self):
@@ -364,7 +408,7 @@ class DeterministicControllerTest(unittest.TestCase):
 
 class LegacyGraphAdapterTest(unittest.TestCase):
     def test_golden_graph_and_exact_legacy_projections(self):
-        bundle = compile_legacy_scenario(scenario())
+        bundle = compile_legacy_graph(scenario())
         actual = {
             "instance_id": bundle.instance.identity(),
             "instance": bundle.instance.to_dict(),

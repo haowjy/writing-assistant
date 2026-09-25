@@ -192,6 +192,10 @@ class DeterministicControllerV1:
         if view.phase == "awaiting_checks" or view.outstanding_checks:
             return ControllerDirectiveV1("wait_checks")
         if view.phase == "awaiting_author" or view.pending_author_request is not None:
+            if node.contract.interaction_contract.mode == "none":
+                return ControllerDirectiveV1(
+                    "stop_incomplete", reason="author_interaction_not_permitted"
+                )
             if view.pending_author_request is None:
                 return ControllerDirectiveV1("stop_incomplete", reason="missing_author_request")
             if view.budgets_remaining.get("author_calls", 0) < 1:
