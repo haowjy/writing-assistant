@@ -764,6 +764,7 @@ class TransactionalWriterV1:
                 usage,
                 message,
                 trace_ref,
+                trace_body,
                 request_ref,
                 prepared_request_ref,
                 raw_output_ref,
@@ -849,6 +850,7 @@ class TransactionalWriterV1:
         usage,
         message,
         trace_ref,
+        trace_body,
         request_ref,
         prepared_request_ref,
         raw_output_ref,
@@ -879,19 +881,19 @@ class TransactionalWriterV1:
         outcome_ref = self.store.put_artifact(outcome)
         record = {
             "record_type": "WriterSampledBudgetStopV1",
-            "action_id": self.store.get_artifact(trace_ref)["action_id"],
+            "action_id": trace_body["action_id"],
             "reason": f"{exceeded}_budget",
             "usage": dict(usage),
-            "model": self.store.get_artifact(trace_ref)["model"],
-            "seed": self.store.get_artifact(trace_ref)["seed"],
+            "model": trace_body["model"],
+            "seed": trace_body["seed"],
             "parsed_message_json": _safe_evidence(message),
             "trace_ref": trace_ref,
             "request_ref": request_ref,
             "prepared_request_ref": prepared_request_ref,
             "raw_output_ref": raw_output_ref,
-            "logprob_ref": self.store.get_artifact(trace_ref)["logprob_ref"],
+            "logprob_ref": trace_body["logprob_ref"],
         }
-        self._bind_sample(record, self.store.get_artifact(trace_ref), runtime)
+        self._bind_sample(record, trace_body, runtime)
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
         batch = self.publication.batch(runtime, restore_prefix="writer")

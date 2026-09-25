@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Preserve prepublication and forced-recovery forgery coverage for sampled-budget
+  stops by binding the locally constructed trace while replay checks the persisted ref.
+
 - Reject unbound direct-submit writers on members of a manifest-sealed group,
   closing the legacy-constructor bypass while retaining unbound legacy group runs.
 
