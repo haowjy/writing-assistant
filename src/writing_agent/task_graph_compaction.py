@@ -86,6 +86,41 @@ class ContextOperationV1(_Record):
             raise CompactionError("noncompact operation includes summary bytes")
         if self.operation == "compact" and self.summary_text is None:
             raise CompactionError("compact lacks exact summary bytes")
+        for name in ("old_messages", "new_messages", "dropped_messages", "retained_tail"):
+            for item in getattr(self, name):
+                if not isinstance(item, Mapping) or set(item) != {
+                    "index",
+                    "message_ref",
+                    "origin",
+                    "source_event_id",
+                }:
+                    raise CompactionError(f"invalid {name} evidence")
+                if type(item["index"]) is not int or item["index"] < 0:
+                    raise CompactionError(f"invalid {name} index")
+                validate_hash(item["message_ref"])
+                validate_hash(item["source_event_id"], optional=True)
+                if not isinstance(item["origin"], str):
+                    raise CompactionError(f"invalid {name} origin")
+        if self.summarizer_config is not None and (
+            not isinstance(self.summarizer_config, Mapping)
+            or set(self.summarizer_config) != {"max_chars"}
+            or type(self.summarizer_config["max_chars"]) is not int
+            or self.summarizer_config["max_chars"] < 0
+        ):
+            raise CompactionError("invalid summarizer configuration")
+        charge_fields = {
+            "context_operations",
+            "context_bytes_before",
+            "context_bytes_after",
+            "context_storage_bytes",
+            "summary_bytes",
+        }
+        if (
+            not isinstance(self.charges, Mapping)
+            or set(self.charges) != charge_fields
+            or any(type(value) is not int or value < 0 for value in self.charges.values())
+        ):
+            raise CompactionError("invalid context operation charges")
 
 
 @dataclass(frozen=True)

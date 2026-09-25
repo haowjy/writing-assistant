@@ -14,6 +14,7 @@ from writing_agent.task_graph import (
     EnvironmentStateV1,
     EventV1,
     MessageV1,
+    canonical_bytes,
     canonical_json,
     context_content_hash,
     domain_hash,
@@ -290,15 +291,34 @@ def validate_action_trace(
         raise ProjectionError("generated token IDs are invalid")
     prepared_ref = record["prepared_request_ref"]
     if prepared_ref is not None:
-        prepared = store.get_artifact(prepared_ref, expected_domain="payload")
-        if not isinstance(prepared, dict) or prepared != {
-            "record_type": "PreparedWriterRequestV1",
-            "context_content_hash": context_hash,
-            "context_revision_ref": context_ref,
-            "rendering": rendering,
-            "payload_ref": record["request_ref"],
-        }:
-            raise ProjectionError("prepared request contradicts action trace")
+        _validate_prepared_request(
+            store, prepared_ref, context_hash, context_ref, rendering, record["request_ref"]
+        )
+
+
+def _validate_prepared_request(store, ref, context_hash, context_ref, rendering, payload_ref):
+    prepared = store.get_artifact(ref, expected_domain="payload")
+    kind = prepared.get("record_type") if isinstance(prepared, dict) else None
+    if kind not in {"PreparedWriterRequestV1", "VerifiedWriterMessagesV1"} or (
+        canonical_bytes(prepared)
+        != canonical_bytes(
+            {
+                "record_type": kind,
+                "context_content_hash": context_hash,
+                "context_revision_ref": context_ref,
+                "rendering": rendering,
+                "payload_ref": payload_ref,
+            }
+        )
+    ):
+        raise ProjectionError("prepared request contradicts action trace")
+    if kind == "VerifiedWriterMessagesV1":
+        payload = store.get_artifact(payload_ref, expected_domain="payload")
+        messages = [message.to_dict() for message in store.load_context(context_ref).messages]
+        if not isinstance(payload, dict) or canonical_bytes(
+            payload.get("messages")
+        ) != canonical_bytes(messages):
+            raise ProjectionError("verified request messages differ from current context")
 
 
 def validate_result_production(
@@ -721,6 +741,12 @@ def project_writer_context(
                 raise ProjectionError("context event lacks a revision")
             revision = store.load_context(latest_context_ref)
             if context_operation:
+                if (
+                    event.node_visit_id != before.position["visit_id"]
+                    or event.versions_ref != before.versions_ref
+                    or event.provenance_ref != before.provenance_ref
+                ):
+                    raise ProjectionError("context operation event has false causal ownership")
                 from writing_agent.task_graph_compaction import (
                     ContextOperationV1,
                     ContextPolicyV1,
@@ -775,9 +801,11 @@ def project_writer_context(
                     recorded_summary=record.get("summary_text"),
                 )
                 if (
-                    record != expected_record
-                    or store.get_artifact(state.budgets_ref, expected_domain="payload")
-                    != expected_budget
+                    canonical_bytes(record) != canonical_bytes(expected_record)
+                    or canonical_bytes(
+                        store.get_artifact(state.budgets_ref, expected_domain="payload")
+                    )
+                    != canonical_bytes(expected_budget)
                     or state.files != before.files
                     or state.requirements_ref != before.requirements_ref
                     or state.decisions_ref != before.decisions_ref
@@ -839,16 +867,14 @@ def project_writer_context(
             )
             prepared_ref = record["prepared_request_ref"]
             if prepared_ref is not None:
-                prepared = store.get_artifact(prepared_ref, expected_domain="payload")
-                if (
-                    prepared.get("record_type") != "PreparedWriterRequestV1"
-                    or prepared.get("context_content_hash") != trace.get("context_content_hash")
-                    or prepared.get("context_revision_ref") != latest_context_ref
-                    or prepared.get("payload_ref") != record["request_ref"]
-                    or canonical_json(prepared.get("rendering"))
-                    != canonical_json(baseline.rendering)
-                ):
-                    raise ProjectionError("sampled stop prepared request is false")
+                _validate_prepared_request(
+                    store,
+                    prepared_ref,
+                    trace.get("context_content_hash"),
+                    latest_context_ref,
+                    baseline.rendering,
+                    record["request_ref"],
+                )
             usage = record["usage"]
             old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
             new_budget = store.get_artifact(state.budgets_ref, expected_domain="payload")
@@ -957,20 +983,7 @@ def project_writer_context(
             seen_entries.append(entry)
             continue
         if event.kind not in {"writer_action", "tool_result"}:
-            if phase5:
-                raise ProjectionError("unsupported event in admitted Phase 5 lineage")
-            if state.context_ref != before.context_ref:
-                raise ProjectionError("context revision was changed outside a context event")
-            if state.files != before.files:
-                raise ProjectionError("operational event altered writer files")
-            if seen_entries and (
-                state.budgets_ref != before.budgets_ref
-                or state.continuation != before.continuation
-                or state.history["action_ids"] != before.history["action_ids"]
-                or state.history["tool_result_ids"] != before.history["tool_result_ids"]
-            ):
-                raise ProjectionError("operational event altered writer accounting")
-            continue
+            raise ProjectionError("unsupported event in admitted writer lineage")
         expected_actor = "writer" if event.kind == "writer_action" else "environment"
         if event.actor != expected_actor or "writer" not in event.audience:
             raise ProjectionError("writer-visible event has invalid actor or audience")
@@ -1020,17 +1033,14 @@ def project_writer_context(
                 raise ProjectionError("writer trace rendering pins differ from context")
             prepared_ref = trace.get("prepared_request_ref")
             if prepared_ref is not None:
-                prepared = store.get_artifact(prepared_ref, expected_domain="payload")
-                if (
-                    not isinstance(prepared, dict)
-                    or prepared.get("record_type") != "PreparedWriterRequestV1"
-                    or prepared.get("context_content_hash") != expected_context
-                    or prepared.get("context_revision_ref") != latest_context_ref
-                    or prepared.get("payload_ref") != trace.get("exact_request_ref")
-                    or canonical_json(prepared.get("rendering"))
-                    != canonical_json(baseline.rendering)
-                ):
-                    raise ProjectionError("prepared request differs from writer trace")
+                _validate_prepared_request(
+                    store,
+                    prepared_ref,
+                    expected_context,
+                    latest_context_ref,
+                    baseline.rendering,
+                    trace.get("exact_request_ref"),
+                )
             calls = [part for part in message.content if part["type"] == "tool_call"]
             if [part["id"] for part in calls] != [call["call_id"] for call in record["calls"]]:
                 raise ProjectionError("action syntax and call metadata differ")

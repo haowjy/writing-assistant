@@ -221,6 +221,32 @@ class TaskGraphStoreTest(unittest.TestCase):
         )
         return commit, self.store.load_commit(commit).checkpoint, after, event, effect
 
+    def test_generic_phase2_log_shape_does_not_grant_writer_capability(self):
+        root, before = self.fixture.root()
+        lookalike = self.store.put_artifact(
+            {"record_type": "WriterRuntimeLogV1", "rollout_id": "main", "entries": []}
+        )
+        event, after, effect = self.fixture.effect_event_state(
+            before,
+            lineage="main",
+            kind="context_changed",
+            set_values={
+                "position": {**before.position, "lineage_id": "main"},
+                "external_inputs_ref": lookalike,
+            },
+        )
+        commit = self.store.publish(
+            "main",
+            None,
+            (event,),
+            after,
+            parent_checkpoint=root,
+            artifact_refs=(effect,),
+        )
+        checkpoint = self.store.load_commit(commit).checkpoint
+        self.assertEqual(self.store.restore(checkpoint, self.root / "generic-log").state, after)
+        self.assertEqual(self.store.replay("main", root, (commit,)), checkpoint)
+
     def test_round_trip_restore_preserves_complete_state_context_and_files(self):
         files = {"empty.txt": "", "unicode/雪.txt": "café\n", "draft.txt": "alpha"}
         root, state = self.fixture.root(files=files)

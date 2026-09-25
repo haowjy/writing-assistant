@@ -2,16 +2,63 @@
 
 import unittest
 from copy import deepcopy
+from dataclasses import replace as replace_record
 from unittest.mock import patch
 
 from tests import test_task_graph_scripted as scripted_tests
 from tests.test_task_graph_writer import WriterFixture
-from writing_agent.task_graph import MessageV1
+from writing_agent.task_graph import ContextRevisionV1, MessageV1
 from writing_agent.task_graph_compaction import ContextPolicyV1, completed_exchanges
 from writing_agent.task_graph_projection import project_writer_context
 
 
+def assert_envelope_bound(test, fixture):
+    captured = {}
+
+    def capture(*args, **kwargs):
+        captured["args"] = args
+        raise RuntimeError("capture")
+
+    with patch.object(fixture.store, "publish", side_effect=capture):
+        with test.assertRaisesRegex(RuntimeError, "capture"):
+            fixture.writer.change_context(
+                fixture.runtime,
+                ContextPolicyV1(
+                    "compact", summarizer_version="visible-text-v1", max_summary_chars=0
+                ),
+            )
+    lineage, head, events, _ = captured["args"][:4]
+    original = events[0]
+    effect = fixture.store.get_artifact(original.payload_ref)
+    cases = {
+        "node_visit_id": "false-visit",
+        "versions_ref": fixture.store.put_artifact({"false": "versions"}),
+        "provenance_ref": fixture.store.put_artifact({"false": "provenance"}),
+    }
+    for name, value in cases.items():
+        with test.subTest(lineage=type(fixture).__name__, field=name):
+            event = replace_record(original, **{name: value}, id=None)
+            state = fixture.writer._reduced(fixture.runtime.state, event, effect)
+            with test.assertRaises(ValueError):
+                fixture.store.publish(
+                    lineage, head, (event,), state, parent_checkpoint=fixture.start
+                )
+            with patch("writing_agent.task_graph_projection.project_writer_context"):
+                commit = fixture.store.publish(
+                    lineage, head, (event,), state, parent_checkpoint=fixture.start
+                )
+            with test.assertRaises(ValueError):
+                fixture.store.restore(
+                    fixture.store.load_commit(commit).checkpoint,
+                    fixture.root / f"false-envelope-{name}",
+                )
+            fixture.store._replace_head(lineage, head)
+
+
 class ContextOperationsTest(WriterFixture):
+    def test_text_tool_context_event_envelope_is_causal(self):
+        assert_envelope_bound(self, self)
+
     def _exchange(self, runtime, call_id="read-1", *, content=""):
         action = self.writer.submit_action(
             runtime,
@@ -401,6 +448,236 @@ class ContextOperationsTest(WriterFixture):
             project_writer_context(self.store, self.start, checkpoint), restored.context
         )
 
+    def test_first_operation_untyped_log_cannot_publish_or_recover(self):
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["args"] = args
+            raise RuntimeError("capture")
+
+        with patch.object(self.store, "publish", side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, "capture"):
+                self.writer.change_context(
+                    self.runtime,
+                    ContextPolicyV1(
+                        "compact", summarizer_version="visible-text-v1", max_summary_chars=0
+                    ),
+                )
+        lineage, head, _, final = captured["args"][:4]
+        old = self.store.load_context(final.context_ref)
+        forged = ContextRevisionV1(
+            messages=(
+                *old.messages,
+                MessageV1(role="user", content=("PRIVATE_CANARY",), origin="forged"),
+            ),
+            tools=old.tools,
+            rendering=old.rendering,
+            event_head=old.event_head,
+            provenance_refs=old.provenance_refs,
+        )
+        self.store.persist(forged)
+        untyped = self.store.put_artifact({"untyped_log": True})
+        effect = self.writer._effect(
+            self.runtime.state,
+            changes={
+                "context_ref": forged.identity(),
+                "budgets_ref": final.budgets_ref,
+                "external_inputs_ref": untyped,
+            },
+        )
+        event = self.writer._event(
+            self.runtime.state,
+            "context_changed",
+            self.store.put_artifact(effect),
+            actor="environment",
+            audience=("controller", "trainer"),
+        )
+        state = self.writer._reduced(self.runtime.state, event, effect)
+        with self.assertRaises(ValueError):
+            self.store.publish(lineage, head, (event,), state, parent_checkpoint=self.start)
+        with patch("writing_agent.task_graph_projection.project_writer_context"):
+            commit = self.store.publish(
+                lineage, head, (event,), state, parent_checkpoint=self.start
+            )
+        with self.assertRaises(ValueError):
+            self.store.restore(
+                self.store.load_commit(commit).checkpoint, self.root / "first-forged"
+            )
+
+    def test_verified_future_messages_reject_stale_payload(self):
+        stale = {"messages": [message.to_dict() for message in self.runtime.context.messages]}
+        compact = self.writer.change_context(
+            self.runtime,
+            ContextPolicyV1("compact", summarizer_version="visible-text-v1", max_summary_chars=0),
+        )
+        with self.assertRaisesRegex(ValueError, "messages differ"):
+            self.writer.prepare_verified_messages(compact.runtime, stale)
+        forged_pin = self.store.put_artifact(
+            {
+                "record_type": "VerifiedWriterMessagesV1",
+                "context_content_hash": compact.runtime.context.content_hash,
+                "context_revision_ref": compact.runtime.context.identity(),
+                "rendering": dict(compact.runtime.context.rendering),
+                "payload_ref": self.store.put_artifact(stale),
+            }
+        )
+        with self.assertRaisesRegex(ValueError, "verified request messages are stale"):
+            self.writer.submit_action(
+                compact.runtime,
+                self.action(content="not sampled"),
+                prepared_request_ref=forged_pin,
+            )
+        exact = {"messages": [message.to_dict() for message in compact.runtime.context.messages]}
+        prepared = self.writer.prepare_verified_messages(compact.runtime, exact)
+        action = self.writer.submit_action(
+            compact.runtime, self.action(content="done"), prepared_request_ref=prepared
+        )
+        self.assertEqual(
+            self.store.get_artifact(prepared)["record_type"], "VerifiedWriterMessagesV1"
+        )
+        record = self.store.get_artifact(action.record_ref)
+        self.assertIs(
+            self.store.get_artifact(record["trace_ref"])["native_on_policy_eligible"], False
+        )
+        self.store.restore(action.runtime.checkpoint_id, self.root / "verified-recovery")
+
+    def test_retyped_log_and_multi_event_batch_do_not_skip_semantics(self):
+        _, observed = self._exchange(self.runtime)
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["args"] = args
+            raise RuntimeError("capture")
+
+        with patch.object(self.store, "publish", side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, "capture"):
+                self.writer.change_context(
+                    observed.runtime,
+                    ContextPolicyV1(
+                        "compact", summarizer_version="visible-text-v1", max_summary_chars=8
+                    ),
+                )
+        lineage, head, _, final = captured["args"][:4]
+        log = self.store.get_artifact(final.external_inputs_ref)
+        record = self.store.get_artifact(log["entries"][-1]["record_ref"])
+        false_record = self.store.put_artifact({**record, "summary_text": "forged"})
+        for variant in ("retyped-log", "multi-event", "valid-first-invalid-second"):
+            with self.subTest(variant=variant):
+                changed_log = deepcopy(log)
+                if variant != "valid-first-invalid-second":
+                    changed_log["entries"][-1]["record_ref"] = false_record
+                if variant == "retyped-log":
+                    changed_log["entries"][-1]["kind"] = "writer_action"
+                effect = self.writer._effect(
+                    observed.runtime.state,
+                    changes={
+                        "context_ref": final.context_ref,
+                        "budgets_ref": final.budgets_ref,
+                        "external_inputs_ref": self.store.put_artifact(changed_log),
+                    },
+                )
+                event = self.writer._event(
+                    observed.runtime.state,
+                    "context_changed",
+                    self.store.put_artifact(effect),
+                    actor="environment",
+                    audience=("controller", "trainer"),
+                )
+                state = self.writer._reduced(observed.runtime.state, event, effect)
+                events = [event]
+                if variant in {"multi-event", "valid-first-invalid-second"}:
+                    next_effect = self.writer._effect(state, changes={})
+                    extra = self.writer._event(
+                        state,
+                        "budget_charged",
+                        self.store.put_artifact(next_effect),
+                        actor="environment",
+                        audience=("controller",),
+                    )
+                    state = self.writer._reduced(state, extra, next_effect)
+                    events.append(extra)
+                with self.assertRaises(ValueError):
+                    self.store.publish(lineage, head, events, state)
+                with patch("writing_agent.task_graph_projection.project_writer_context"):
+                    commit = self.store.publish(lineage, head, events, state)
+                with self.assertRaises(ValueError):
+                    self.store.restore(
+                        self.store.load_commit(commit).checkpoint,
+                        self.root / f"dispatch-{variant}",
+                    )
+                self.store._replace_head(lineage, head)
+
+    def test_nested_numeric_and_envelope_mutations_reject_both_gates(self):
+        _, first = self._exchange(self.runtime)
+        _, observed = self._exchange(first.runtime, "read-2")
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["args"] = args
+            raise RuntimeError("capture")
+
+        with patch.object(self.store, "publish", side_effect=capture):
+            with self.assertRaisesRegex(RuntimeError, "capture"):
+                self.writer.change_context(
+                    observed.runtime,
+                    ContextPolicyV1(
+                        "compact",
+                        retained_exchanges=1,
+                        summarizer_version="visible-text-v1",
+                        max_summary_chars=0,
+                    ),
+                )
+        lineage, head, _, final = captured["args"][:4]
+        log = self.store.get_artifact(final.external_inputs_ref)
+        record = self.store.get_artifact(log["entries"][-1]["record_ref"])
+        mutations = []
+        for field, value in record["charges"].items():
+            mutations.append(
+                (f"charge-{field}", {"charges": {**record["charges"], field: bool(value)}})
+            )
+        for field, value in record["source_range"].items():
+            mutations.append(
+                (f"range-{field}", {"source_range": {**record["source_range"], field: bool(value)}})
+            )
+        mutations.append(("config", {"summarizer_config": {"max_chars": False}}))
+        for field in ("old_messages", "new_messages", "dropped_messages", "retained_tail"):
+            for position, item in enumerate(record[field]):
+                values = deepcopy(record[field])
+                values[position]["index"] = bool(item["index"])
+                mutations.append((f"{field}-{position}", {field: values}))
+        for name, claims in mutations:
+            with self.subTest(name=name):
+                changed = {**record, **claims}
+                changed_log = deepcopy(log)
+                changed_log["entries"][-1]["record_ref"] = self.store.put_artifact(changed)
+                effect = self.writer._effect(
+                    observed.runtime.state,
+                    changes={
+                        "context_ref": final.context_ref,
+                        "budgets_ref": final.budgets_ref,
+                        "external_inputs_ref": self.store.put_artifact(changed_log),
+                    },
+                )
+                event = self.writer._event(
+                    observed.runtime.state,
+                    "context_changed",
+                    self.store.put_artifact(effect),
+                    actor="environment",
+                    audience=("controller", "trainer"),
+                )
+                state = self.writer._reduced(observed.runtime.state, event, effect)
+                with self.assertRaises(ValueError):
+                    self.store.publish(lineage, head, (event,), state)
+                with patch("writing_agent.task_graph_projection.project_writer_context"):
+                    commit = self.store.publish(lineage, head, (event,), state)
+                with self.assertRaises(ValueError):
+                    self.store.restore(
+                        self.store.load_commit(commit).checkpoint, self.root / f"numeric-{name}"
+                    )
+                self.store._replace_head(lineage, head)
+        original = self.store.get_artifact(log["entries"][-1]["record_ref"])
+        self.assertEqual(original, record)
+
 
 class ScriptedContextBoundaryTest(unittest.TestCase):
     def setUp(self):
@@ -413,6 +690,164 @@ class ScriptedContextBoundaryTest(unittest.TestCase):
         if fixture is None:
             raise AttributeError(name)
         return getattr(fixture, name)
+
+    def test_scripted_context_event_envelope_is_causal(self):
+        assert_envelope_bound(self, self.fixture)
+
+    def test_private_canaries_never_enter_honest_context_operations(self):
+        node = self.writer.graph.node("legacy-writer")
+        canaries = {
+            "requirement": "PRIVATE_REQUIREMENT_CANARY",
+            "preference": "PRIVATE_PREFERENCE_CANARY",
+            "binding": "PRIVATE_BINDING_CANARY",
+            "script": "PRIVATE_SCRIPT_CANARY",
+            "evaluator": "PRIVATE_EVALUATOR_CANARY",
+            "check": "PRIVATE_CHECK_CANARY",
+            "reward": "PRIVATE_REWARD_CANARY",
+            "import": "PRIVATE_IMPORT_CANARY",
+            "sibling": "PRIVATE_SIBLING_CANARY",
+            "artifact": "PRIVATE_ARTIFACT_CANARY",
+        }
+        packet = replace_record(
+            node.author_packet,
+            requirements={"r1": canaries["requirement"]},
+            preferences={canaries["binding"]: canaries["preference"]},
+        )
+        bindings = replace_record(node.decision_bindings, bindings={"door": canaries["binding"]})
+        answer = dict(node.script.answers["door"])
+        answer["value"] = canaries["preference"]
+        answer["utterance"] = f"{canaries['script']} {canaries['preference']}"
+        script = replace_record(node.script, answers={"door": answer})
+        check = replace_record(
+            node.checks["nonempty"],
+            id=canaries["reward"],
+            spec={
+                **node.checks["nonempty"].spec,
+                "id": canaries["reward"],
+                "path": canaries["check"],
+            },
+        )
+        optional = replace_record(
+            node.checks["nonempty"],
+            id=canaries["evaluator"],
+            required=False,
+            spec={
+                **node.checks["nonempty"].spec,
+                "id": canaries["evaluator"],
+                "required": False,
+            },
+        )
+        reward = scripted_tests.RewardContractV1(components={canaries["reward"]: 10000})
+        evaluation = scripted_tests.EvaluatorPacketV1(
+            reward_contract_ref=reward.identity(),
+            check_ids=(canaries["reward"], canaries["evaluator"]),
+        )
+        for item in (packet, bindings, script, check, optional, reward, evaluation):
+            self.store.put_artifact(item.to_dict(), private=True)
+        contract = replace_record(
+            node.contract,
+            interaction=replace_record(
+                node.contract.interaction_contract,
+                author_packet_ref=packet.identity(),
+                script_ref=script.identity(),
+                decision_bindings_ref=bindings.identity(),
+            ),
+            mandatory_checks=(check.identity(),),
+            optional_checks=(optional.identity(),),
+            completion=replace_record(
+                node.contract.completion_contract,
+                required_check_ids=(canaries["reward"],),
+                evaluation_packet_ref=evaluation.identity(),
+            ),
+        )
+        self.store.put_artifact(contract.to_dict())
+        instance = replace_record(
+            self.writer.graph.instance,
+            nodes=(replace_record(node.spec, entry_contract=contract.identity()),),
+        )
+        self.store.persist(instance)
+        graph = scripted_tests.admit_graph(
+            instance, scripted_tests.StoreArtifactResolver(self.store)
+        )
+        sibling = self.runtime.context
+        sibling = ContextRevisionV1(
+            messages=(
+                *sibling.messages,
+                MessageV1(role="user", content=(canaries["sibling"],), origin="sibling"),
+            ),
+            tools=sibling.tools,
+            rendering=sibling.rendering,
+        )
+        self.store.persist(sibling)
+        sibling_state = self.runtime.state.to_dict()
+        sibling_state["position"]["lineage_id"] = "sibling"
+        sibling_state["context_ref"] = sibling.identity()
+        sibling_checkpoint = self.store.save_checkpoint(
+            scripted_tests.EnvironmentStateV1.from_dict(sibling_state)
+        )
+        imported = self.store.put_artifact({"private_marker": canaries["import"]})
+        unrelated = self.store.put_artifact(
+            {"private_marker": canaries["artifact"], "scope": "private"}, private=True
+        )
+        state = self.runtime.state.to_dict()
+        state["instance_ref"] = instance.identity()
+        state["position"]["entry_contract"] = contract.identity()
+        state["author_packet_ref"] = packet.identity()
+        state["requirements_ref"] = self.store.put_artifact(
+            {
+                "record_type": "RequirementLedgerV1",
+                "schema": 1,
+                "active": {"r1": canaries["requirement"]},
+                "superseded": {},
+            }
+        )
+        state["history"]["imported_refs"] = [sibling_checkpoint, imported]
+        state["provenance_ref"] = self.store.put_artifact({"private_marker": canaries["artifact"]})
+        self.start = self.store.save_checkpoint(scripted_tests.EnvironmentStateV1.from_dict(state))
+        self.runtime = self.store.restore(self.start, self.root / "canary-entry")
+        self.writer = scripted_tests.TransactionalWriterV1(
+            self.store, graph, "rollout-1", self.start
+        )
+        self.assertEqual(
+            self.store.get_artifact(unrelated, private=True)["private_marker"],
+            canaries["artifact"],
+        )
+        action = self.writer.submit_action(
+            self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
+        )
+        observed = self.writer.step_tool(action.runtime)
+        compact = self.writer.change_context(
+            observed.runtime,
+            ContextPolicyV1("compact", summarizer_version="visible-text-v1", max_summary_chars=500),
+        )
+        stale = {"messages": [message.to_dict() for message in self.runtime.context.messages]}
+        with self.assertRaisesRegex(ValueError, "messages differ"):
+            self.writer.prepare_verified_messages(compact.runtime, stale)
+        carry = self.writer.change_context(compact.runtime, ContextPolicyV1("carry"))
+        dropped = self.writer.change_context(carry.runtime, ContextPolicyV1("drop"))
+        seeded = self.writer.change_context(
+            dropped.runtime,
+            ContextPolicyV1(
+                "seed",
+                seed_name="visible-ancestor",
+                seed_checkpoint_ref=observed.runtime.checkpoint_id,
+            ),
+        )
+        request = {"messages": [message.to_dict() for message in seeded.runtime.context.messages]}
+        prepared = self.writer.prepare_verified_messages(seeded.runtime, request)
+        evidence = str(
+            (
+                compact.runtime.context.to_dict(),
+                carry.runtime.context.to_dict(),
+                dropped.runtime.context.to_dict(),
+                seeded.runtime.context.to_dict(),
+                self.store.get_artifact(compact.record_ref)["summary_text"],
+                self.store.get_artifact(self.store.get_artifact(prepared)["payload_ref"]),
+            )
+        )
+        for name, canary in canaries.items():
+            with self.subTest(surface=name):
+                self.assertNotIn(canary, evidence)
 
     def test_author_and_check_phases_reject_compaction(self):
         ask = self.call(

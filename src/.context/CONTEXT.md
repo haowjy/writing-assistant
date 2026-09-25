@@ -26,8 +26,11 @@ retains its smoke-evaluation and training-format workflows.
   handle. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
   reconstructs writer context from the entry checkpoint and authorized causal
   events; it never renders the private event log wholesale. A capable adapter calls
-  `prepare_request` before sampling to pin exact request/context evidence; the caller
-  then supplies parsed writer output and any raw-output/trace evidence. Neither module
+  `prepare_request` before sampling to pin caller-owned request/context evidence;
+  that path does not verify payload messages. `prepare_verified_messages` checks a
+  typed payload's message sequence against the current projection at preparation,
+  publication, and recovery. The caller then supplies parsed writer output and any
+  raw-output/trace evidence. Neither module
   invokes a model. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
   owns exact scripted author requests/replies, disclosure and authorized requirement
   updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
@@ -43,6 +46,9 @@ retains its smoke-evaluation and training-format workflows.
   operation evidence, and context byte accounting. The writer publishes a
   `context_changed` operation only at a drained `ready_writer` boundary; the
   projector validates its selection and budget before publication and on recovery.
+  The immutable admitted writer entry activates that semantic walk even for the
+  first context operation, a retyped child runtime log, or a multi-event batch;
+  generic Phase 2 lineages without a typed entry retain their generic reducer.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Anchor context-operation validation in immutable writer entry ancestry across
+  publication and recovery, bind event-envelope ownership, strictly type nested
+  witness numbers, and add a verified-message request path while keeping arbitrary
+  adapter payloads explicitly unverified.
+
 - Add opt-in deterministic context carry, named ancestor seed, drop, and
   fixed visible-message compaction at drained writer boundaries. Immutable
   operation records bind exact source messages/events, summary bytes,

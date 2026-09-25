@@ -414,20 +414,7 @@ class TaskGraphStore:
             # and requires exact full-state equality before any new immutable is
             # written.
             validator.validate(("commit", commit.identity()))
-            phase5_base = self._phase5_base_checkpoint(base_checkpoint)
-            semantic_base = phase5_base
-            if semantic_base is None and len(batch) == 1 and batch[0].kind == "context_changed":
-                body = self.get_artifact(next_state.external_inputs_ref, expected_domain="payload")
-                entries = body.get("entries") if isinstance(body, dict) else None
-                if (
-                    isinstance(body, dict)
-                    and body.get("record_type") == "WriterRuntimeLogV1"
-                    and isinstance(entries, list)
-                    and entries
-                    and isinstance(entries[-1], dict)
-                    and entries[-1].get("kind") == "context_changed"
-                ):
-                    semantic_base = self._writer_projection_base(base_checkpoint)
+            semantic_base = self._writer_semantic_base_checkpoint(base_checkpoint)
             if semantic_base is not None:
                 from writing_agent.task_graph_projection import project_writer_context
 
@@ -655,14 +642,15 @@ class TaskGraphStore:
         self._validate_writer_history(current_id)
         return current_id
 
-    def _phase5_base_checkpoint(self, checkpoint_id: str) -> str | None:
-        """Find the immutable Phase 5 entry capability in checkpoint ancestry."""
-        # A Phase 5 entry is an immutable ancestor capability. Do not decide
-        # whether to run semantic recovery from the child's mutable log or
-        # author_packet_ref: an adversarial effect may replace either one.
+    def _writer_semantic_base_checkpoint(self, checkpoint_id: str) -> str | None:
+        """Find an admitted writer entry capability in immutable ancestry.
+
+        Generic Phase 2 fixtures have no typed node-entry contract. A candidate
+        event, runtime log, or child reference cannot grant or remove capability.
+        """
         from writing_agent.task_graph_contracts import NodeContractV1
 
-        phase5_base = None
+        semantic_base = None
         ancestor = self.load_checkpoint(checkpoint_id)
         while True:
             instance = self.load_instance(ancestor.state.instance_ref)
@@ -670,63 +658,32 @@ class TaskGraphStore:
                 (node for node in instance.nodes if node.id == ancestor.state.position["node_id"]),
                 None,
             )
-            if spec is not None:
+            if (
+                spec is not None
+                and spec.entry_contract == ancestor.state.position["entry_contract"]
+            ):
                 body = self.get_artifact(spec.entry_contract)
                 if isinstance(body, dict) and body.get("artifact_type") == "NodeContractV1":
                     contract = NodeContractV1.from_dict(body)
-                    if contract.interaction_contract.mode == "scripted_author":
-                        phase5_base = ancestor.identity()
+                    if (
+                        contract.node_kind == "writer"
+                        and ancestor.state.position["phase"] == "ready_writer"
+                        and not ancestor.state.history["action_ids"]
+                        and not ancestor.state.history["tool_result_ids"]
+                    ):
+                        semantic_base = ancestor.identity()
             if not ancestor.parents:
                 break
             ancestor = self.load_checkpoint(ancestor.parents[0])
-        return phase5_base
+        return semantic_base
 
     def _validate_writer_history(self, checkpoint_id: str) -> None:
-        """Apply strict Phase 5 or indexed Phase 4 semantics on recovery."""
-        checkpoint = self.load_checkpoint(checkpoint_id)
-        phase5_base = self._phase5_base_checkpoint(checkpoint_id)
-        if phase5_base is not None:
+        """Apply admitted writer semantics on recovery."""
+        semantic_base = self._writer_semantic_base_checkpoint(checkpoint_id)
+        if semantic_base is not None:
             from writing_agent.task_graph_projection import project_writer_context
 
-            project_writer_context(self, phase5_base, checkpoint_id)
-            return
-        body = self.get_artifact(checkpoint.state.external_inputs_ref, expected_domain="payload")
-        if not isinstance(body, dict) or body.get("record_type") != "WriterRuntimeLogV1":
-            # Generic Phase 2 fixtures may use logical result IDs. A writer-
-            # visible source event cannot become valid by dropping its index.
-            cursor = checkpoint.event_head
-            while cursor is not None:
-                event = self.load_event(cursor)
-                if (
-                    event.kind in {"writer_action", "tool_result"} and "writer" in event.audience
-                ) or (
-                    event.kind in {"budget_charged", "termination_recorded"}
-                    and event.actor == "writer_runtime"
-                ):
-                    from writing_agent.task_graph_projection import ProjectionError
-
-                    raise ProjectionError("writer history lacks its semantic runtime log")
-                cursor = event.previous
-            return
-        base_id = self._writer_projection_base(checkpoint_id)
-        from writing_agent.task_graph_projection import project_writer_context
-
-        project_writer_context(self, base_id, checkpoint_id)
-
-    def _writer_projection_base(self, checkpoint_id: str) -> str:
-        ancestor = self.load_checkpoint(checkpoint_id)
-        while ancestor.parents:
-            parent = self.load_checkpoint(ancestor.parents[0])
-            parent_body = self.get_artifact(
-                parent.state.external_inputs_ref, expected_domain="payload"
-            )
-            if (
-                not isinstance(parent_body, dict)
-                or parent_body.get("record_type") != "WriterRuntimeLogV1"
-            ):
-                break
-            ancestor = parent
-        return ancestor.parents[0] if ancestor.parents else ancestor.identity()
+            project_writer_context(self, semantic_base, checkpoint_id)
 
     # -- validation --------------------------------------------------------------
 

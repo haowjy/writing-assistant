@@ -796,7 +796,7 @@ class TransactionalWriterV1:
         return queue, metadata
 
     def prepare_request(self, runtime: RuntimeHandle, exact_request: Any) -> str:
-        """Durably pin exact backend input before an adapter samples a writer.
+        """Durably pin caller-owned backend input, without verifying its messages.
 
         Preparation does not dispatch or reserve a paid call. The returned ref
         binds the request to this exact context; an unused artifact is an orphan.
@@ -838,6 +838,22 @@ class TransactionalWriterV1:
                 "payload_ref": payload_ref,
             }
         )
+
+    def prepare_verified_messages(
+        self, runtime: RuntimeHandle, exact_request: Mapping[str, Any]
+    ) -> str:
+        """Pin a request whose typed message sequence is the current projection.
+
+        Other adapter-specific fields are persisted but not interpreted or
+        verified. This does not imply exact backend bytes or native eligibility.
+        """
+        if not isinstance(exact_request, Mapping) or canonical_json(
+            exact_request.get("messages")
+        ) != canonical_json([message.to_dict() for message in runtime.context.messages]):
+            raise WriterRuntimeError("request messages differ from the current writer context")
+        prepared_ref = self.prepare_request(runtime, dict(exact_request))
+        prepared = self.store.get_artifact(prepared_ref, expected_domain="payload")
+        return self.store.put_artifact({**prepared, "record_type": "VerifiedWriterMessagesV1"})
 
     def submit_action(
         self,
@@ -969,7 +985,8 @@ class TransactionalWriterV1:
             prepared = self.store.get_artifact(prepared_request_ref, expected_domain="payload")
             if (
                 not isinstance(prepared, dict)
-                or prepared.get("record_type") != "PreparedWriterRequestV1"
+                or prepared.get("record_type")
+                not in {"PreparedWriterRequestV1", "VerifiedWriterMessagesV1"}
                 or prepared.get("context_content_hash") != runtime.context.content_hash
                 or prepared.get("context_revision_ref") != runtime.context.identity()
                 or canonical_json(prepared.get("rendering"))
@@ -977,7 +994,13 @@ class TransactionalWriterV1:
             ):
                 raise WriterRuntimeError("prepared request does not match the sampling context")
             request_ref = prepared["payload_ref"]
-            self.store.get_artifact(request_ref)
+            request_payload = self.store.get_artifact(request_ref)
+            if prepared["record_type"] == "VerifiedWriterMessagesV1" and (
+                not isinstance(request_payload, dict)
+                or canonical_json(request_payload.get("messages"))
+                != canonical_json([item.to_dict() for item in runtime.context.messages])
+            ):
+                raise WriterRuntimeError("verified request messages are stale")
         else:
             # The direct path still persists supplied evidence before publication.
             request_ref = (

@@ -1,7 +1,7 @@
 import errno
 import tempfile
 import unittest
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
@@ -25,6 +25,14 @@ from writing_agent.task_graph_projection import (
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_writer import TransactionalWriterV1, WriterRuntimeError
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
+
+
+def bypass_semantic_projection():
+    """Persist a forged history despite both producer and store semantic gates."""
+    stack = ExitStack()
+    stack.enter_context(patch.object(task_graph_writer, "project_writer_context"))
+    stack.enter_context(patch("writing_agent.task_graph_projection.project_writer_context"))
+    return stack
 
 
 def scenario():
@@ -194,7 +202,7 @@ class WriterFixture(unittest.TestCase):
 
 
 class TransactionalWriterTest(WriterFixture):
-    def test_generic_phase2_budget_event_is_not_a_writer_stop(self):
+    def test_generic_phase2_budget_event_is_rejected_on_admitted_writer(self):
         effect = self.writer._effect(self.runtime.state, changes={})
         effect_ref = self.store.put_artifact(effect)
         event = self.writer._event(
@@ -205,20 +213,18 @@ class TransactionalWriterTest(WriterFixture):
             actor="environment",
         )
         next_state = self.store._apply_recorded_effect_body(self.runtime.state, event, effect)
-        commit = self.store.publish(
-            "rollout-1",
-            None,
-            (event,),
-            next_state,
-            parent_checkpoint=self.start,
-            artifact_refs=(effect_ref,),
-        )
-        checkpoint = self.store.load_commit(commit).checkpoint
-        self.store.restore(checkpoint, self.root / "generic-restored")
-        project_writer_context(self.store, self.start, checkpoint)
-        self.assertEqual(self.store.replay("rollout-1", self.start, [commit]), checkpoint)
+        with self.assertRaisesRegex(ProjectionError, "unsupported event"):
+            self.store.publish(
+                "rollout-1",
+                None,
+                (event,),
+                next_state,
+                parent_checkpoint=self.start,
+                artifact_refs=(effect_ref,),
+            )
+        self.assertIsNone(self.store.read_head("rollout-1"))
 
-    def test_generic_budget_event_can_follow_a_writer_log_without_claiming_it(self):
+    def test_generic_budget_event_cannot_follow_admitted_writer_log(self):
         action = self.writer.submit_action(
             self.runtime, self.action(self.call("read_file", {"path": "draft.txt"}))
         )
@@ -232,15 +238,15 @@ class TransactionalWriterTest(WriterFixture):
             actor="environment",
         )
         next_state = self.store._apply_recorded_effect_body(action.runtime.state, event, effect)
-        commit = self.store.publish(
-            "rollout-1", action.commit_id, (event,), next_state, artifact_refs=(effect_ref,)
-        )
-        checkpoint = self.store.load_commit(commit).checkpoint
-        self.store.restore(checkpoint, self.root / "generic-after-writer")
-        project_writer_context(self.store, self.start, checkpoint)
-        self.assertEqual(
-            self.store.replay("rollout-1", self.start, [action.commit_id, commit]), checkpoint
-        )
+        with self.assertRaisesRegex(ProjectionError, "unsupported event"):
+            self.store.publish(
+                "rollout-1",
+                action.commit_id,
+                (event,),
+                next_state,
+                artifact_refs=(effect_ref,),
+            )
+        self.assertEqual(self.store.read_head("rollout-1"), action.commit_id)
 
     def _assert_mutation_rejected(self, prepare, mutate, submit):
         """The same one-field forgery must fail before CAS and after forced persistence."""
@@ -249,14 +255,13 @@ class TransactionalWriterTest(WriterFixture):
             fixture.setUp()
             try:
                 writer, runtime, start = prepare(fixture)
-                bypass = (
-                    patch.object(task_graph_writer, "project_writer_context")
-                    if force_persistence
-                    else nullcontext()
-                )
+                bypass = bypass_semantic_projection() if force_persistence else nullcontext()
                 with mutate(fixture, writer), bypass:
-                    with self.assertRaises(ProjectionError):
+                    if force_persistence:
                         submit(fixture, writer, runtime)
+                    else:
+                        with self.assertRaises(ProjectionError):
+                            submit(fixture, writer, runtime)
                 head = fixture.store.read_head("rollout-1")
                 if force_persistence:
                     self.assertIsNotNone(head)
@@ -327,16 +332,22 @@ class TransactionalWriterTest(WriterFixture):
                             return original(state, changes=changes, history=history, delta=delta)
 
                         bypass = (
-                            patch.object(task_graph_writer, "project_writer_context")
-                            if force_persistence
-                            else nullcontext()
+                            bypass_semantic_projection() if force_persistence else nullcontext()
                         )
                         with patch.object(writer, "_effect", forged), bypass:
-                            with self.assertRaises(ProjectionError):
+                            if force_persistence:
                                 if kind == "tool_result":
                                     writer.step_tool(runtime)
                                 else:
                                     writer.submit_action(runtime, fixture.action(content="done"))
+                            else:
+                                with self.assertRaises(ProjectionError):
+                                    if kind == "tool_result":
+                                        writer.step_tool(runtime)
+                                    else:
+                                        writer.submit_action(
+                                            runtime, fixture.action(content="done")
+                                        )
                         head = fixture.store.read_head("rollout-1")
                         if force_persistence:
                             self.assertNotEqual(head, previous)
@@ -618,12 +629,11 @@ class TransactionalWriterTest(WriterFixture):
 
                     with (
                         patch.object(fixture.writer, "_publish", publish),
-                        patch.object(task_graph_writer, "project_writer_context"),
+                        bypass_semantic_projection(),
                     ):
-                        with self.assertRaises(ProjectionError):
-                            fixture.writer.submit_action(
-                                fixture.runtime, fixture.action(content="done")
-                            )
+                        fixture.writer.submit_action(
+                            fixture.runtime, fixture.action(content="done")
+                        )
                     head = fixture.store.read_head("rollout-1")
                     checkpoint = fixture.store.load_commit(head).checkpoint
                     with self.assertRaises(ProjectionError):
@@ -1102,10 +1112,9 @@ class TransactionalWriterTest(WriterFixture):
 
         with (
             patch.object(self.writer, "_publish", forged),
-            patch.object(task_graph_writer, "project_writer_context"),
+            bypass_semantic_projection(),
         ):
-            with self.assertRaises(ProjectionError):
-                self.writer.step_tool(action.runtime)
+            self.writer.step_tool(action.runtime)
         head = self.store.read_head("rollout-1")
         checkpoint = self.store.load_commit(head).checkpoint
         with self.assertRaises(ProjectionError):
@@ -1158,10 +1167,9 @@ class TransactionalWriterTest(WriterFixture):
 
                     with (
                         patch.object(fixture.writer, "_publish", forged),
-                        patch.object(task_graph_writer, "project_writer_context"),
+                        bypass_semantic_projection(),
                     ):
-                        with self.assertRaises(ProjectionError):
-                            fixture.writer.step_tool(action.runtime)
+                        fixture.writer.step_tool(action.runtime)
                     head = fixture.store.read_head("rollout-1")
                     checkpoint = fixture.store.load_commit(head).checkpoint
                     with self.assertRaises(ProjectionError):
@@ -1241,12 +1249,9 @@ class TransactionalWriterTest(WriterFixture):
             provenance_ref=state.provenance_ref,
         )
         next_state = self.store._apply_recorded_effect_body(state, event, effect)
-        commit = self.store.publish("rollout-1", action.commit_id, (event,), next_state)
-        checkpoint = self.store.load_commit(commit).checkpoint
         with self.assertRaisesRegex(ProjectionError, "unrelated execution effect"):
-            project_writer_context(self.store, self.start, checkpoint)
-        with self.assertRaises(ProjectionError):
-            self.store.replay("rollout-1", self.start, [action.commit_id, commit])
+            self.store.publish("rollout-1", action.commit_id, (event,), next_state)
+        self.assertEqual(self.store.read_head("rollout-1"), action.commit_id)
 
     def test_interruption_restore_replay_projection_and_final_reply(self):
         prepared_ref = self.writer.prepare_request(
@@ -1413,7 +1418,7 @@ class TransactionalWriterTest(WriterFixture):
         result = writer.step_tool(action.runtime)
         self.assertNotIn("alpha", str(self.record(result)["observation"]))
 
-    def test_projection_does_not_render_private_event(self):
+    def test_private_event_cannot_publish_on_admitted_writer_lineage(self):
         private = self.store.put_artifact({"secret": "hidden reward"}, private=True)
         effect = {
             "artifact_type": "Phase2RecordedEffectV1",
@@ -1434,18 +1439,16 @@ class TransactionalWriterTest(WriterFixture):
             provenance_ref=self.runtime.state.provenance_ref,
         )
         next_state = self.store._apply_recorded_effect_body(self.runtime.state, event, effect)
-        commit = self.store.publish(
-            "rollout-1",
-            None,
-            (event,),
-            next_state,
-            parent_checkpoint=self.start,
-            artifact_refs=(private,),
-        )
-        checkpoint = self.store.load_commit(commit).checkpoint
-        projection = project_writer_context(self.store, self.start, checkpoint)
-        self.assertEqual(projection.messages, self.runtime.context.messages)
-        self.assertNotIn("hidden reward", str(projection.to_dict()))
+        with self.assertRaisesRegex(ProjectionError, "unsupported event"):
+            self.store.publish(
+                "rollout-1",
+                None,
+                (event,),
+                next_state,
+                parent_checkpoint=self.start,
+                artifact_refs=(private,),
+            )
+        self.assertIsNone(self.store.read_head("rollout-1"))
 
     def test_projection_rejects_context_injection_from_operational_event(self):
         injected = ContextRevisionV1(
@@ -1476,15 +1479,11 @@ class TransactionalWriterTest(WriterFixture):
             provenance_ref=self.runtime.state.provenance_ref,
         )
         next_state = self.store._apply_recorded_effect_body(self.runtime.state, event, effect)
-        commit = self.store.publish(
-            "rollout-1", None, (event,), next_state, parent_checkpoint=self.start
-        )
-        checkpoint = self.store.load_commit(commit).checkpoint
-        with self.assertRaisesRegex(ProjectionError, "context revision was changed"):
-            project_writer_context(self.store, self.start, checkpoint)
-        poisoned = self.store.restore(checkpoint, self.root / "poisoned")
-        with self.assertRaises(ProjectionError):
-            self.writer.submit_action(poisoned, self.action(content="I saw it"))
+        with self.assertRaisesRegex(ProjectionError, "unsupported event"):
+            self.store.publish(
+                "rollout-1", None, (event,), next_state, parent_checkpoint=self.start
+            )
+        self.assertIsNone(self.store.read_head("rollout-1"))
 
     def test_entry_rejects_unadmitted_tool_schema_and_tokenizer_switch(self):
         context = ContextRevisionV1(
@@ -1553,10 +1552,9 @@ class TransactionalWriterTest(WriterFixture):
             provenance_ref=action.runtime.state.provenance_ref,
         )
         next_state = self.store._apply_recorded_effect_body(action.runtime.state, event, effect)
-        commit = self.store.publish("rollout-1", action.commit_id, (event,), next_state)
-        checkpoint = self.store.load_commit(commit).checkpoint
         with self.assertRaisesRegex(ProjectionError, "false source-event provenance"):
-            project_writer_context(self.store, self.start, checkpoint)
+            self.store.publish("rollout-1", action.commit_id, (event,), next_state)
+        self.assertEqual(self.store.read_head("rollout-1"), action.commit_id)
 
     def test_valid_list_patch_and_unicode_byte_accounting(self):
         action = self.writer.submit_action(

@@ -46,7 +46,7 @@ An author request cannot be split between acknowledgement and reply. The
 retained tail counts completed exchanges, not individual messages or prior
 environment summaries.
 
-Each published `context_changed` event has a typed immutable
+Each published context-operation `context_changed` event has a typed immutable
 `ContextOperationV1` record. It binds the old/new revision and content hashes;
 indexed message and source-event identities; exact source-event sequence range;
 removed messages and retained tail; seed name/checkpoint; fixed algorithm and
@@ -57,6 +57,12 @@ the record, field/actor/audience ownership, selection, source identities,
 summary proof, and charges both before the lineage head moves and on restore or
 offline replay. Replay uses the recorded summary and selection; it never invokes
 the summary generator or a model.
+
+The immutable admitted writer entry selects that semantic walk, including for a
+first operation, a missing or retyped runtime log, and every event in a batch.
+Generic Phase 2 lineages without a typed writer entry retain their generic
+reducer. A context-operation event must name the causal pre-state's visit,
+version, and provenance references exactly.
 
 The first operation freezes `context_operations`, `context_bytes`, and
 `context_storage_bytes` limits in the rollout budget artifact. Later policies
@@ -78,3 +84,16 @@ rollouts, and raw workspace files never enter it. Files can appear only after a
 permitted tool observation. Original action traces and prepared requests retain
 their original context revision, raw evidence, and loss eligibility for later
 credit assignment; no historical action is relabeled against a later summary.
+
+`prepare_verified_messages(handle, payload)` verifies that the payload's typed
+`messages` sequence is exactly the current context and preserves that assertion
+for publication and recovery. A stale pre-compaction sequence is rejected. The
+adapter can prepare it with
+`{"messages": [message.to_dict() for message in handle.context.messages]}`
+plus its other request fields, then sample from the persisted payload. Only
+that typed message sequence is verified. The older `prepare_request` path only
+pins arbitrary adapter-owned payload bytes or JSON to a context identity; it
+does **not** verify their messages. It does not claim that a backend rendered
+or used the compacted context. Neither path
+verifies arbitrary backend request bytes or makes native training eligible;
+native token alignment and loss masks remain unimplemented.
