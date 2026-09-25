@@ -46,6 +46,12 @@ from writing_agent.task_graph import (
     validate_file_tree,
     validate_hash,
 )
+from writing_agent.task_graph_contracts import (
+    CheckContractV1,
+    GuardContractV1,
+    NodeContractV1,
+    ScriptContractV1,
+)
 
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -1156,7 +1162,9 @@ class _ClosureValidator:
                 and isinstance(value.value, Mapping)
                 and "artifact_type" in value.value
             ):
-                return self._recorded_effect_edges(value.value)
+                if value.value["artifact_type"] == _REPLAY_EFFECT:
+                    return self._recorded_effect_edges(value.value)
+                return self._phase3_contract_edges(value.value)
             return []
         if kind == "checkpoint":
             edges = [("checkpoint", identity) for identity in value.parents]
@@ -1292,6 +1300,45 @@ class _ClosureValidator:
             raise CorruptRecordError("invalid recorded-effect reference field") from exc
         return edges
 
+    @staticmethod
+    def _phase3_contract_edges(body: Mapping[str, Any]) -> list[tuple[str, str]]:
+        """Validate supported Phase 3 envelopes and expose their typed closure."""
+        artifact_type = body["artifact_type"]
+        contract_types = {
+            NodeContractV1.ARTIFACT_TYPE: NodeContractV1,
+            GuardContractV1.ARTIFACT_TYPE: GuardContractV1,
+            CheckContractV1.ARTIFACT_TYPE: CheckContractV1,
+            ScriptContractV1.ARTIFACT_TYPE: ScriptContractV1,
+        }
+        try:
+            contract_type = contract_types[artifact_type]
+        except KeyError as exc:
+            raise WrongRecordDomainError(
+                f"unsupported typed payload artifact: {artifact_type!r}"
+            ) from exc
+        try:
+            contract = contract_type.from_dict(body)
+        except (TypeError, ValueError) as exc:
+            raise CorruptRecordError(f"invalid {artifact_type} envelope") from exc
+        if not isinstance(contract, NodeContractV1):
+            return []
+        entry = contract.entry_contract
+        interaction = contract.interaction_contract
+        edges: list[tuple[str, str]] = [("artifact", entry.request_ref)]
+        if entry.requirement_version is not None:
+            edges.append(("private", entry.requirement_version))
+        edges.extend(("private", identity) for identity in contract.mandatory_checks)
+        edges.extend(("private", identity) for identity in contract.optional_checks)
+        if interaction.script_ref is not None:
+            edges.append(("private", interaction.script_ref))
+        if interaction.author_packet_ref is not None:
+            edges.append(("private", interaction.author_packet_ref))
+        if interaction.interaction_policy_ref is not None:
+            edges.append(("artifact", interaction.interaction_policy_ref))
+        if interaction.decision_bindings_ref is not None:
+            edges.append(("private", interaction.decision_bindings_ref))
+        return edges
+
     def _validate_after(self, key: tuple[str, str], value: Any) -> None:
         kind, identity = key
         if kind == "artifact" or kind == "private":
@@ -1326,11 +1373,25 @@ class _ClosureValidator:
                 and isinstance(body, Mapping)
                 and "artifact_type" in body
             ):
-                if body["artifact_type"] != _REPLAY_EFFECT:
-                    raise WrongRecordDomainError(
-                        f"unsupported typed payload artifact: {body['artifact_type']!r}"
-                    )
-                self._recorded_effect_edges(body)
+                if body["artifact_type"] == _REPLAY_EFFECT:
+                    self._recorded_effect_edges(body)
+                else:
+                    self._phase3_contract_edges(body)
+                    public_types = {
+                        NodeContractV1.ARTIFACT_TYPE,
+                        GuardContractV1.ARTIFACT_TYPE,
+                    }
+                    private_types = {
+                        CheckContractV1.ARTIFACT_TYPE,
+                        ScriptContractV1.ARTIFACT_TYPE,
+                    }
+                    artifact_type = body["artifact_type"]
+                    if (artifact_type in public_types and artifact.private) or (
+                        artifact_type in private_types and not artifact.private
+                    ):
+                        raise WrongRecordDomainError(
+                            f"{artifact_type} is stored in the wrong visibility domain"
+                        )
             return
         if artifact.domain == "message" and not artifact.private:
             try:

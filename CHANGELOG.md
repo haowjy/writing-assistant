@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add fail-closed task-graph admission, immutable versioned node/check/guard contracts,
+  deterministic environment-owned controller directives, and an opt-in adapter that
+  preserves legacy scenario inputs while compiling them into a scripted writer node.
+
 - Add private content-addressed task-graph persistence with full immutable checkpoints,
   atomic lineage-head compare-and-swap, safe fresh-workspace restore, isolated branches,
   state/file diffs, and offline reduction of recorded committed effects.
