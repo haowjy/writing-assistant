@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Preserve the historical fail-closed error for Phase 5-only events attempted
+  on a Phase 4 writer lineage after moving dispatch into semantic replay.
+
 - Make sampling port methods return immutable typed V1 contracts; the writer
   serializes them only at the persistence boundary.
 

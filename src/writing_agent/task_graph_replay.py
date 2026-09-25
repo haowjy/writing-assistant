@@ -418,7 +418,7 @@ class SemanticReplayEngine(ReplayCursor):
             }
             and before.author_packet_ref is None
         ):
-            raise ProjectionError("unsupported Phase 5 event in admitted writer lineage")
+            raise ProjectionError("unsupported event in admitted writer lineage")
         if (
             event.kind == "termination_recorded"
             and not writer_stop
