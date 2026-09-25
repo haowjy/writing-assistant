@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Preserve the distinct stale verified-message error at the typed sampling
+  boundary while retaining the generic malformed-preparation error for other
+  request mismatches.
+
 - Add injected sampling, environment, text-tool, and evaluator ports with current
   offline adapters and immutable content-addressed runtime manifests. Exercise
   alternate fake adapters through the same writer/check flow and seal a manifest

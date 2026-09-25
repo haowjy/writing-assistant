@@ -19,6 +19,10 @@ class ProjectionError(ValueError):
     """A causal event chain cannot be safely rendered as writer context."""
 
 
+class VerifiedMessagesStaleError(ProjectionError):
+    """A verified request no longer describes the active visible messages."""
+
+
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 _ACTION_RECORD_FIELDS = {
     "record_type",
@@ -134,7 +138,9 @@ class PreparedRequestV1:
             if not isinstance(payload, dict) or canonical_bytes(
                 payload.get("messages")
             ) != canonical_bytes(messages):
-                raise ProjectionError("verified request messages differ from current context")
+                raise VerifiedMessagesStaleError(
+                    "verified request messages differ from current context"
+                )
 
 
 @dataclass(frozen=True)

@@ -44,7 +44,11 @@ from writing_agent.task_graph_projection import (
     execution_value,
     project_writer_context,
 )
-from writing_agent.task_graph_sampling import PreparedRequestV1, _validate_prepared_request
+from writing_agent.task_graph_sampling import (
+    PreparedRequestV1,
+    VerifiedMessagesStaleError,
+    _validate_prepared_request,
+)
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 
 _MAX_ARGUMENT_BYTES = 65_536
@@ -701,6 +705,8 @@ class TransactionalWriterV1:
                     runtime.context.rendering,
                     decoded.payload_ref,
                 )
+            except VerifiedMessagesStaleError as exc:
+                raise WriterRuntimeError("verified request messages are stale") from exc
             except ValueError as exc:
                 raise WriterRuntimeError(
                     "prepared request does not match the sampling context"
