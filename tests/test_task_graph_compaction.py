@@ -55,7 +55,106 @@ def assert_envelope_bound(test, fixture):
             fixture.store._replace_head(lineage, head)
 
 
+def assert_runtime_log_sequences_are_exact(test, fixture):
+    """A context producer must not publish or recover a retyped log ordinal."""
+    policy = ContextPolicyV1("compact", summarizer_version="visible-text-v1", max_summary_chars=0)
+
+    def captured_compaction(runtime):
+        captured = {}
+
+        def capture(*args, **kwargs):
+            captured["args"] = args
+            raise RuntimeError("capture")
+
+        with patch.object(fixture.store, "publish", side_effect=capture):
+            with test.assertRaisesRegex(RuntimeError, "capture"):
+                fixture.writer.change_context(runtime, policy)
+        return captured["args"][:4]
+
+    def check_mutations(runtime, candidate, prefix_commits, cases):
+        lineage, head, _, final = candidate
+        for name, mutate in cases.items():
+            with test.subTest(lineage=type(fixture).__name__, mutation=name):
+                log = deepcopy(fixture.store.get_artifact(final.external_inputs_ref))
+                mutate(log["entries"])
+                if name.startswith("float-"):
+                    # Float has no canonical task-graph representation to force-persist.
+                    with test.assertRaisesRegex(TypeError, "float"):
+                        fixture.store.put_artifact(log)
+                    test.assertEqual(fixture.store.read_head(lineage), head)
+                    continue
+                log_ref = fixture.store.put_artifact(log)
+                effect = fixture.writer._effect(
+                    runtime.state,
+                    changes={
+                        "context_ref": final.context_ref,
+                        "budgets_ref": final.budgets_ref,
+                        "external_inputs_ref": log_ref,
+                    },
+                )
+                event = fixture.writer._event(
+                    runtime.state,
+                    "context_changed",
+                    fixture.store.put_artifact(effect),
+                    actor="environment",
+                    audience=("controller", "trainer"),
+                )
+                state = fixture.writer._reduced(runtime.state, event, effect)
+                kwargs = {"parent_checkpoint": fixture.start} if head is None else {}
+                try:
+                    with test.assertRaises(ValueError):
+                        fixture.store.publish(lineage, head, (event,), state, **kwargs)
+                    test.assertEqual(fixture.store.read_head(lineage), head)
+                    with patch("writing_agent.task_graph_projection.project_writer_context"):
+                        commit = fixture.store.publish(lineage, head, (event,), state, **kwargs)
+                    checkpoint = fixture.store.load_commit(commit).checkpoint
+                    with test.assertRaises(ValueError):
+                        fixture.store.restore(checkpoint, fixture.root / f"log-seq-{name}")
+                    with test.assertRaises(ValueError):
+                        fixture.store.replay(lineage, fixture.start, (*prefix_commits, commit))
+                finally:
+                    fixture.store._replace_head(lineage, head)
+
+    first_candidate = captured_compaction(fixture.runtime)
+    check_mutations(
+        fixture.runtime,
+        first_candidate,
+        (),
+        {
+            "bool-current": lambda entries: entries[0].update(seq=True),
+            "float-current": lambda entries: entries[0].update(seq=1.0),
+            "string-current": lambda entries: entries[0].update(seq="1"),
+            "negative-current": lambda entries: entries[0].update(seq=-1),
+            "gap-current": lambda entries: entries[0].update(seq=2),
+            "zero-current": lambda entries: entries[0].update(seq=0),
+        },
+    )
+    first = fixture.writer.change_context(fixture.runtime, policy)
+    second = fixture.writer.change_context(first.runtime, policy)
+    third_candidate = captured_compaction(second.runtime)
+    check_mutations(
+        second.runtime,
+        third_candidate,
+        (first.commit_id, second.commit_id),
+        {
+            "duplicate-current": lambda entries: entries[-1].update(seq=2),
+            "bool-historical": lambda entries: entries[0].update(seq=True),
+            "float-historical": lambda entries: entries[0].update(seq=1.0),
+            "string-historical": lambda entries: entries[0].update(seq="1"),
+            "negative-historical": lambda entries: entries[0].update(seq=-1),
+            "gap-historical": lambda entries: entries[0].update(seq=4),
+            "duplicate-historical": lambda entries: entries[0].update(seq=2),
+            "reordered-historical": lambda entries: entries.__setitem__(
+                slice(0, 2), entries[1::-1]
+            ),
+        },
+    )
+
+
 class ContextOperationsTest(WriterFixture):
+    def test_runtime_log_sequences_are_exact(self):
+        assert_runtime_log_sequences_are_exact(self, self)
+
     def test_text_tool_context_event_envelope_is_causal(self):
         assert_envelope_bound(self, self)
 
@@ -690,6 +789,9 @@ class ScriptedContextBoundaryTest(unittest.TestCase):
         if fixture is None:
             raise AttributeError(name)
         return getattr(fixture, name)
+
+    def test_runtime_log_sequences_are_exact(self):
+        assert_runtime_log_sequences_are_exact(self, self.fixture)
 
     def test_scripted_context_event_envelope_is_causal(self):
         assert_envelope_bound(self, self.fixture)

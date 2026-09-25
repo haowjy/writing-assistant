@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Reject non-integer or noncontiguous writer runtime-log sequence witnesses and
+  compare historical prefixes by canonical bytes on publication and recovery.
+
 - Anchor context-operation validation in immutable writer entry ancestry across
   publication and recovery, bind event-envelope ownership, strictly type nested
   witness numbers, and add a verified-message request path while keeping arbitrary

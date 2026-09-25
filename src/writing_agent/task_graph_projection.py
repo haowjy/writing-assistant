@@ -456,6 +456,7 @@ def _is_writer_stop(store: TaskGraphStore, event: EventV1, state: EnvironmentSta
         and isinstance(log.get("entries"), list)
         and bool(log["entries"])
         and isinstance(log["entries"][-1], dict)
+        and type(log["entries"][-1].get("seq")) is int
         and log["entries"][-1].get("seq") == event.seq
         and log["entries"][-1].get("kind") == event.kind
     )
@@ -475,9 +476,12 @@ def _writer_log_entry(store, state, event, seen_entries, *, has_message):
         or log["rollout_id"] != event.rollout_id
         or not isinstance(log["entries"], list)
         or len(log["entries"]) != len(seen_entries) + 1
-        or log["entries"][:-1] != seen_entries
+        # Python equality treats True as 1; the retained witness must be byte-identical.
+        or canonical_bytes(log["entries"][:-1]) != canonical_bytes(seen_entries)
         or not isinstance(log["entries"][-1], dict)
         or set(log["entries"][-1]) != keys
+        or type(log["entries"][-1]["seq"]) is not int
+        or log["entries"][-1]["seq"] < 0
         or log["entries"][-1]["seq"] != event.seq
         or log["entries"][-1]["kind"] != event.kind
     ):
