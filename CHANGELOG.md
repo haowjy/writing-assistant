@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Install the declared judging extra in CI so the existing paid-call
+  environment-validation test can import its dotenv dependency.
+
 - Use per-instance mapping default factories for frozen task-graph records so
   supported Python 3.11 can import them; post-initialization still freezes the
   same values and preserves canonical identities.
