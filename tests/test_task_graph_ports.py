@@ -308,6 +308,15 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
             fixture.store, fixture.root / "group-a", session=session_a
         ).start(spec, 0, policy=policy)
         member_head = fixture.store.read_head(spec.members[0].member_id)
+        unbound_writer = TransactionalWriterV1(
+            fixture.store,
+            fixture.writer.graph,
+            spec.members[0].member_id,
+            runtime.checkpoint_id,
+        )
+        with self.assertRaisesRegex(ValueError, "manifest differs"):
+            unbound_writer.submit_action(runtime, fixture.action(content="bypass"))
+        self.assertEqual(fixture.store.read_head(spec.members[0].member_id), member_head)
         mismatched_member_session = RuntimeSession.create(
             fixture.store,
             spec.members[0].member_id,

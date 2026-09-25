@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Reject unbound direct-submit writers on members of a manifest-sealed group,
+  closing the legacy-constructor bypass while retaining unbound legacy group runs.
+
 - Include the offline scripted backend's exact sample sequence in its immutable
   descriptor configuration, so distinct scripts cannot share a sealed manifest.
 

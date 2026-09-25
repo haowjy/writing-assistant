@@ -90,7 +90,13 @@ class RuntimeSession:
             member.member_id for member in spec.members
         }:
             raise ValueError("group member differs from sealed group receipt")
-        self.require_seal(spec.policy["adapter_ref"])
+        adapter_ref = spec.policy["adapter_ref"]
+        declared = store.get_artifact(adapter_ref)
+        if isinstance(declared, dict) and declared.get("record_type") == "RuntimeManifestV1":
+            self.require_seal(adapter_ref)
+        elif self.sealed_adapter_ref is not None:
+            # A bound runtime cannot execute against an untyped legacy adapter pin.
+            self.require_seal(adapter_ref)
 
 
 def local_unbound_session(store, rollout_id, entry_checkpoint_id) -> RuntimeSession:
