@@ -373,6 +373,12 @@ references, including transitive ones**. In particular, hash active message cont
 and stable logical origin IDs, not a context-revision ID whose provenance references
 this new event. Decision values likewise cannot point back to their disclosure event.
 
+Action IDs and tool-result IDs are logical index keys (for example,
+`r1:action:0` and `r1:tool_result:0`), never SHA-256 event hashes. The two ID
+classes are validated independently in `history.action_ids` and
+`history.tool_result_ids`; event hashes remain separate references, while
+tool-call IDs remain the logical call IDs bound by the queue.
+
 Context content and context revision are separate identities: content (exact messages,
 tools and rendering inputs) can be hashed before its observation event; the revision
 adds source-event provenance after that event is hashed. The checkpoint references
@@ -500,6 +506,12 @@ prune empty staging/deletion directories before exposing a workspace. Existing
 `Workspace.list_dir` exposes physical directories, so this is an opt-in adapter
 obligation, not a claim that its legacy implementation already enforces the invariant.
 
+The file codec is the UTF-8 byte string itself: `file_hash(text)` hashes
+`task-graph:file:v1\0 || text.encode("utf-8")`. It is not canonical JSON and does
+not apply newline or Unicode normalization. Binary artifacts use the separate
+`domain_hash_bytes(name, bytes)` `:bytes` domain; those codecs must not be
+substituted for one another.
+
 Checkpoint ID hashes schema, parents, full state envelope and immutable artifact
 references, excluding its own ID, storage path and operational timestamps. Two equal
 file trees may have different checkpoints due to history, node, requirements or
@@ -545,6 +557,10 @@ from a published commit is *uncommitted*, even if its file exists. The worker ma
 expose the new directory only after publication; on any failure rebuild it from the
 published checkpoint, never infer committed state from leftover files. Competing
 head changes reject publication and leave collectible orphan artifacts.
+
+`LineageRefV1.expected_head` is a compare-and-swap request only. Phase 2 persistence
+must write the authority projection `{head_commit: ...}` to `refs/<lineage>.json`;
+it must not persist `expected_head` or treat that request field as lineage state.
 
 A writer-action commit records all tool calls in `continuation.tool_queue`, with
 `next_call=0`. Each sequential tool-result commit includes its exact observation,

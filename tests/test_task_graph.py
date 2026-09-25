@@ -3,8 +3,10 @@ import unittest
 from pathlib import Path
 
 from writing_agent.task_graph import (
+    EVENT_KINDS,
     CheckpointV1,
     CommitV1,
+    ContextContentV1,
     ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
@@ -23,6 +25,7 @@ from writing_agent.task_graph import (
 
 H = "0" * 64
 FIXTURE = json.loads((Path(__file__).parent / "fixtures/task_graph_hashes.json").read_text())
+CHAIN_FIXTURE = json.loads((Path(__file__).parent / "fixtures/task_graph_chain.json").read_text())
 
 
 class TaskGraphRecordsTest(unittest.TestCase):
@@ -75,6 +78,7 @@ class TaskGraphRecordsTest(unittest.TestCase):
         self.assertEqual(canonical_json({"b": "é", "a": [1, True, None]}), FIXTURE["canonical"])
         message = MessageV1(content=("hello",), origin="a")
         context = ContextRevisionV1(messages=(message,))
+        context_content = ContextContentV1.from_revision(context)
         state = self.state()
         checkpoint = CheckpointV1(state=state)
         event = EventV1(
@@ -88,6 +92,7 @@ class TaskGraphRecordsTest(unittest.TestCase):
         records = (
             (message, "message"),
             (context, "context"),
+            (context_content, "context_content"),
             (state, "state"),
             (checkpoint, "checkpoint"),
             (event, "event"),
@@ -187,6 +192,32 @@ class TaskGraphRecordsTest(unittest.TestCase):
             EventV1(kind="writer_action", previous=H, seq=1, **kwargs)
         with self.assertRaises(ValueError):
             EventV1(kind="writer_action", seq=2, **kwargs)
+        expected = frozenset(
+            {
+                "rollout_started",
+                "writer_action",
+                "tool_result",
+                "author_turn",
+                "external_requested",
+                "request_entered",
+                "seed_attached",
+                "requirements_changed",
+                "decision_disclosed",
+                "check_recorded",
+                "transition_committed",
+                "termination_recorded",
+                "context_changed",
+                "fetch_recorded",
+                "external_response",
+                "budget_charged",
+            }
+        )
+        self.assertEqual(EVENT_KINDS, expected)
+        for kind in EVENT_KINDS:
+            EventV1(kind=kind, **kwargs)
+        for alias in ("writer_observation", "tool_call", "author_reply", "context_revision"):
+            with self.assertRaises(ValueError):
+                EventV1(kind=alias, **kwargs)
 
     def test_context_content_separates_provenance(self):
         message = MessageV1(content=("x",), origin="author")
@@ -225,12 +256,77 @@ class TaskGraphRecordsTest(unittest.TestCase):
         b = LineageRefV1(lineage_id="line", expected_head="1" * 64)
         self.assertEqual(a.identity(), b.identity())
 
+    def test_wire_decoder_rejects_constructor_shorthands_and_preserves_bytes(self):
+        message = MessageV1(content=("x",), origin="author")
+        body = message.to_dict()
+        with self.assertRaises(ValueError):
+            MessageV1.from_dict({**body, "content": ["x"]})
+        with self.assertRaises(TypeError):
+            MessageV1.from_dict({**body, "content": tuple(body["content"])})
+        self.assertEqual(MessageV1.from_json(message.to_json().encode()), message)
+
+        instance = GraphInstanceV1(
+            template_ref=H,
+            entry_node="n",
+            nodes=(NodeSpecV1(id="n", entry_contract=H),),
+        )
+        with self.assertRaises(ValueError):
+            GraphInstanceV1.from_dict({**instance.to_dict(), "nodes": [{"id": "n"}]})
+        with self.assertRaises(TypeError):
+            GraphInstanceV1.from_dict(
+                {**instance.to_dict(), "nodes": tuple(instance.to_dict()["nodes"])}
+            )
+
+        event = EventV1(
+            lineage_id="line",
+            kind="writer_action",
+            audience=("writer",),
+            payload_ref=H,
+            versions_ref=H,
+            provenance_ref=H,
+        )
+        with self.assertRaises(ValueError):
+            EventV1.from_dict({**event.to_dict(), "id": None})
+        context = ContextRevisionV1(messages=(message,))
+        with self.assertRaises(ValueError):
+            ContextRevisionV1.from_dict({**context.to_dict(), "content_hash": None})
+
+    def test_history_uses_logical_ids_and_queue_call_ids_are_unique(self):
+        state = self.state()
+        history = {
+            **state.history,
+            "action_ids": ("r1:action:0",),
+            "tool_result_ids": ("r1:tool_result:0",),
+        }
+        call = {"call_id": "call-1", "name": "write_file", "arguments": {}}
+        valid = EnvironmentStateV1(
+            **{
+                **state.to_dict(),
+                "history": history,
+                "continuation": {**state.continuation, "tool_queue": (call,)},
+            }
+        )
+        self.assertEqual(valid.history["action_ids"], ("r1:action:0",))
+        with self.assertRaises(ValueError):
+            EnvironmentStateV1(**{**state.to_dict(), "history": {**history, "action_ids": (H,)}})
+        with self.assertRaises(ValueError):
+            EnvironmentStateV1(
+                **{**state.to_dict(), "history": {**history, "tool_result_ids": (H,)}}
+            )
+        with self.assertRaises(ValueError):
+            EnvironmentStateV1(
+                **{
+                    **state.to_dict(),
+                    "continuation": {**state.continuation, "tool_queue": (call, call)},
+                }
+            )
+
     def test_complete_acyclic_artifact_event_checkpoint_commit_chain(self):
         message = MessageV1(content=("hello",), origin="author")
         context = ContextRevisionV1(messages=(message,))
         event = EventV1(
             lineage_id="line",
-            kind="context_revision",
+            kind="context_changed",
             audience=("writer",),
             payload_ref=context.identity(),
             versions_ref=H,
@@ -248,6 +344,29 @@ class TaskGraphRecordsTest(unittest.TestCase):
         commit = CommitV1(events=(event.identity(),), checkpoint=checkpoint.identity())
         for record in (context, event, checkpoint, commit):
             self.assertEqual(type(record).from_json(record.to_json()), record)
+
+    def test_independent_content_event_revision_checkpoint_commit_fixture(self):
+        records = (
+            ContextContentV1.from_json(CHAIN_FIXTURE["content"]["body"]),
+            EventV1.from_json(CHAIN_FIXTURE["event"]["body"]),
+            ContextRevisionV1.from_json(CHAIN_FIXTURE["revision"]["body"]),
+            EnvironmentStateV1.from_json(CHAIN_FIXTURE["state"]["body"]),
+            CheckpointV1.from_json(CHAIN_FIXTURE["checkpoint"]["body"]),
+            CommitV1.from_json(CHAIN_FIXTURE["commit"]["body"]),
+        )
+        keys = ("content", "event", "revision", "state", "checkpoint", "commit")
+        for record, key in zip(records, keys, strict=True):
+            expected = CHAIN_FIXTURE[key]
+            self.assertEqual(record.to_json(), expected["body"])
+            self.assertEqual(record.identity(), expected["hash"])
+        content, event, revision, state, checkpoint, commit = records
+        self.assertEqual(event.payload_ref, content.identity())
+        self.assertIn(event.identity(), revision.provenance_refs)
+        self.assertEqual(state.context_ref, revision.identity())
+        self.assertEqual(checkpoint.event_head, event.identity())
+        self.assertEqual(commit.checkpoint, checkpoint.identity())
+        self.assertTrue(state.history["action_ids"])
+        self.assertTrue(state.continuation["tool_queue"])
 
 
 if __name__ == "__main__":

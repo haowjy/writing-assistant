@@ -37,21 +37,20 @@ EVENT_KINDS = frozenset(
     {
         "rollout_started",
         "writer_action",
-        "writer_observation",
-        "tool_call",
         "tool_result",
-        "author_request",
-        "author_response",
-        "author_reply",
-        "decision_update",
-        "requirement_update",
-        "context_revision",
-        "context_compaction",
-        "check_result",
-        "transition",
-        "checkpoint_created",
-        "rollout_finished",
-        "environment_error",
+        "author_turn",
+        "external_requested",
+        "request_entered",
+        "seed_attached",
+        "requirements_changed",
+        "decision_disclosed",
+        "check_recorded",
+        "transition_committed",
+        "termination_recorded",
+        "context_changed",
+        "fetch_recorded",
+        "external_response",
+        "budget_charged",
     }
 )
 
@@ -70,6 +69,27 @@ def _logical_id(value: str, label: str = "logical id") -> str:
     value = _utf8(value, label)
     if not value or any(ch.isspace() or ord(ch) < 0x20 for ch in value):
         raise ValueError(f"invalid {label}")
+    return value
+
+
+def _action_id(value: str) -> str:
+    """Validate a stable logical action identifier, not an event hash."""
+    value = _logical_id(value, "action id")
+    if _HASH_RE.fullmatch(value):
+        raise ValueError("action id must be logical, not a SHA-256 hash")
+    return value
+
+
+def _tool_result_id(value: str) -> str:
+    """Validate a stable logical tool-result identifier, not an event hash.
+
+    Tool results are indexed by their logical result ID (the call/ordinal
+    identity assigned by the rollout).  The result event's SHA-256 is a
+    separate reference and must not be substituted here.
+    """
+    value = _logical_id(value, "tool result id")
+    if _HASH_RE.fullmatch(value):
+        raise ValueError("tool result id must be logical, not a SHA-256 hash")
     return value
 
 
@@ -114,6 +134,30 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, (str, int, bool)) or value is None:
         return value
     raise TypeError(f"unsupported canonical value: {type(value).__name__}")
+
+
+def _wire_value(value: Any) -> None:
+    """Reject Python-only constructor values at the wire boundary.
+
+    JSON arrays are lists and objects are mappings with string keys.  Tuples,
+    record instances, and other conveniences belong to direct Python
+    construction; accepting them here would make ``from_dict`` normalize a
+    non-wire value into a different byte representation.
+    """
+    if isinstance(value, Mapping):
+        if type(value) is not dict:
+            raise TypeError("wire objects must be plain dictionaries")
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("wire object keys must be strings")
+            _wire_value(item)
+    elif isinstance(value, list):
+        for item in value:
+            _wire_value(item)
+    elif type(value) in (str, int, bool) or value is None:
+        return
+    else:
+        raise TypeError("wire values must be JSON objects, arrays, or scalars")
 
 
 def canonical_json(value: Any) -> str:
@@ -303,6 +347,7 @@ class _Record:
     def from_dict(cls, value: Mapping[str, Any]):
         if not isinstance(value, Mapping):
             raise TypeError("record must be an object")
+        _wire_value(value)
         allowed = {field.name for field in fields(cls)}
         required = {field.name for field in fields(cls)}
         missing = required - set(value)
@@ -312,11 +357,26 @@ class _Record:
         if unknown:
             raise ValueError(f"unknown fields: {sorted(unknown)}")
         kwargs = dict(value)
-        return cls(**kwargs)
+        record = cls(**kwargs)
+        # Constructors intentionally remain ergonomic for Python callers, but
+        # the wire decoder must be byte-preserving and may not normalize
+        # shorthands (for example, a text string into a typed message part).
+        if record.to_dict() != dict(value):
+            raise ValueError("wire record is not already in canonical typed form")
+        return record
 
     @classmethod
     def from_json(cls, data: str | bytes):
-        return cls.from_dict(load_canonical_json(data))
+        if isinstance(data, str):
+            raw = data.encode("utf-8", "strict")
+        elif isinstance(data, bytes):
+            raw = data
+        else:
+            raise TypeError("JSON input must be str or bytes")
+        record = cls.from_dict(load_canonical_json(raw))
+        if canonical_bytes(record.to_dict()) != raw:
+            raise ValueError("decoded record did not preserve canonical bytes")
+        return record
 
 
 def _hash_tuple(values: Any, *, optional: bool = False) -> None:
@@ -324,6 +384,13 @@ def _hash_tuple(values: Any, *, optional: bool = False) -> None:
         raise TypeError("expected an array")
     for value in values:
         validate_hash(value, optional=optional)
+
+
+def _logical_tuple(values: Any, validator, label: str) -> None:
+    if not isinstance(values, (tuple, list)):
+        raise TypeError(f"{label} must be an array")
+    for value in values:
+        validator(value)
 
 
 @dataclass(frozen=True)
@@ -370,22 +437,6 @@ class GraphInstanceV1(_Record):
         )
         object.__setattr__(self, "nodes", nodes)
         super().__post_init__()
-
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]):
-        if not isinstance(value, Mapping):
-            raise TypeError("record must be an object")
-        allowed = {field.name for field in fields(cls)}
-        missing = allowed - set(value)
-        unknown = set(value) - allowed
-        if missing or unknown:
-            raise ValueError(
-                f"missing required fields: {sorted(missing)}"
-                if missing
-                else f"unknown fields: {sorted(unknown)}"
-            )
-        nodes = tuple(NodeSpecV1.from_dict(node) for node in value["nodes"])
-        return cls(**{**dict(value), "nodes": nodes})
 
     def validate(self) -> None:
         _logical_id(self.entry_node, "entry node")
@@ -598,13 +649,6 @@ class ContextContentV1(_Record):
             if not isinstance(tool, Mapping):
                 raise TypeError("tool definitions must be objects")
 
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]):
-        obj = super().from_dict(value)
-        for message in value["messages"]:
-            MessageV1.from_dict(message)
-        return obj
-
 
 def context_content_hash(
     messages: tuple[MessageV1 | Mapping[str, Any], ...],
@@ -651,15 +695,6 @@ class ContextRevisionV1(_Record):
         )
         object.__setattr__(self, "messages", messages)
         super().__post_init__()
-
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]):
-        obj = super().from_dict(value)
-        # super() already validates the outer envelope; nested messages must be
-        # full wire records rather than constructor shorthand.
-        for message in value["messages"]:
-            MessageV1.from_dict(message)
-        return obj
 
     def validate(self) -> None:
         expected = context_content_hash(self.messages, tools=self.tools, rendering=self.rendering)
@@ -803,8 +838,9 @@ class EnvironmentStateV1(_Record):
         if history_head is not None and self.history["seq"] < 1:
             raise ValueError("nonempty history must have a positive sequence")
         validate_hash(self.history["branch_base"], optional=True)
-        for key in ("imported_refs", "action_ids", "tool_result_ids"):
-            _hash_tuple(self.history[key])
+        _hash_tuple(self.history["imported_refs"])
+        _logical_tuple(self.history["action_ids"], _action_id, "action_ids")
+        _logical_tuple(self.history["tool_result_ids"], _tool_result_id, "tool_result_ids")
         next_call = self.continuation["next_call"]
         if type(next_call) is not int or next_call < 0:
             raise ValueError("invalid continuation cursor")
@@ -813,12 +849,16 @@ class EnvironmentStateV1(_Record):
             raise TypeError("tool_queue must be an array")
         if next_call > len(queue):
             raise ValueError("continuation cursor exceeds tool queue")
+        call_ids: set[str] = set()
         for call in queue:
             if not isinstance(call, Mapping):
                 raise TypeError("tool_queue entries must be objects")
             if set(call) != {"call_id", "name", "arguments"}:
                 raise ValueError("invalid tool call shape")
-            _logical_id(call["call_id"], "tool call id")
+            call_id = _logical_id(call["call_id"], "tool call id")
+            if call_id in call_ids:
+                raise ValueError("continuation tool_queue call IDs must be unique")
+            call_ids.add(call_id)
             _logical_id(call["name"], "tool name")
             if not isinstance(call["arguments"], Mapping):
                 raise TypeError("tool arguments must be an object")
