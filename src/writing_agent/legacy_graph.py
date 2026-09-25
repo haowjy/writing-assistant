@@ -185,6 +185,24 @@ def compile_legacy_scenario(scenario: Mapping[str, Any]) -> LegacyGraphBundleV1:
         {"kind": "legacy-visible-brief", "schema": 1, "text": visible["brief"]}
     )
     public[request_ref] = request
+    files_ref, files = _artifact(
+        {
+            "kind": "legacy-visible-files",
+            "schema": 1,
+            "scenario_id": scenario_id,
+            "files": visible["initial_files"],
+        }
+    )
+    public[files_ref] = files
+    evaluation_ref, evaluation = _artifact(
+        {
+            "kind": "legacy-evaluation-package",
+            "schema": 1,
+            "prose": visible["prose"],
+            "labels": labels,
+        }
+    )
+    private[evaluation_ref] = evaluation
     guard = GuardContractV1(kind="always")
     public[guard.identity()] = guard.to_dict()
 
@@ -227,6 +245,7 @@ def compile_legacy_scenario(scenario: Mapping[str, Any]) -> LegacyGraphBundleV1:
     completion = CompletionContractV1(
         required_check_ids=tuple(mandatory_ids),
         required_script_turns=len(followups),
+        evaluation_packet_ref=evaluation_ref,
     )
     node_id = "legacy-writer"
     node_contract = NodeContractV1(
@@ -234,6 +253,7 @@ def compile_legacy_scenario(scenario: Mapping[str, Any]) -> LegacyGraphBundleV1:
         node_kind="writer",
         entry=NodeEntryV1(
             request_ref=request_ref,
+            files_ref=files_ref,
             context_policy="carry",
             tool_allowlist=tuple(visible["tools"]),
             family=family,
@@ -264,6 +284,7 @@ def compile_legacy_scenario(scenario: Mapping[str, Any]) -> LegacyGraphBundleV1:
                 exits=(edge.to_dict(),),
             ),
         ),
+        source_refs=(files_ref,),
         request_refs=(request_ref,),
         budgets={"max_graph_hops": 1},
     )

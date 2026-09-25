@@ -1329,7 +1329,10 @@ class _ClosureValidator:
             return []
         entry = contract.entry_contract
         interaction = contract.interaction_contract
-        edges: list[tuple[str, str]] = [("artifact", entry.request_ref)]
+        edges: list[tuple[str, str]] = [
+            ("artifact", entry.request_ref),
+            ("artifact", entry.files_ref),
+        ]
         if entry.requirement_version is not None:
             edges.append(("private", entry.requirement_version))
         edges.extend(("private", identity) for identity in contract.mandatory_checks)
@@ -1342,6 +1345,9 @@ class _ClosureValidator:
             edges.append(("artifact", interaction.interaction_policy_ref))
         if interaction.decision_bindings_ref is not None:
             edges.append(("private", interaction.decision_bindings_ref))
+        completion = contract.completion_contract
+        if completion.evaluation_packet_ref is not None:
+            edges.append(("private", completion.evaluation_packet_ref))
         return edges
 
     def _validate_after(self, key: tuple[str, str], value: Any) -> None:

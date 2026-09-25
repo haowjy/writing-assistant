@@ -208,6 +208,12 @@ def admit_graph(
                 f"node {spec.id} request_ref is not declared by the graph instance",
             )
         _resolve_plain(resolver, entry.request_ref, private=False)
+        if entry.files_ref not in instance.source_refs:
+            raise AdmissionError(
+                "source_routing",
+                f"node {spec.id} files_ref is not declared by the graph instance",
+            )
+        _resolve_plain(resolver, entry.files_ref, private=False)
         if entry.requirement_version is not None:
             _resolve_plain(resolver, entry.requirement_version, private=True)
         if set(entry.tool_allowlist) - policy.allowed_tools:
@@ -235,6 +241,10 @@ def admit_graph(
             raise AdmissionError(
                 "interaction_budget", f"node {spec.id} has author budget but no interaction"
             )
+        if contract.budget_contract.max_graph_hops != instance.budgets["max_graph_hops"]:
+            raise AdmissionError(
+                "budget_contract", f"node {spec.id} disagrees with the graph hop bound"
+            )
 
     if not writer_nodes:
         raise AdmissionError("missing_writer", "a runnable graph needs a writer node")
@@ -243,8 +253,8 @@ def admit_graph(
 
 
 def _validate_global_budget(instance: GraphInstanceV1) -> None:
-    if set(instance.budgets) != {"max_graph_hops"}:
-        raise AdmissionError("missing_budget", "graph budgets must contain exactly max_graph_hops")
+    if "max_graph_hops" not in instance.budgets:
+        raise AdmissionError("missing_budget", "graph budgets require max_graph_hops")
     value = instance.budgets["max_graph_hops"]
     if type(value) is not int or value < 1:
         raise AdmissionError("unbounded_graph", "max_graph_hops must be positive")
@@ -274,6 +284,8 @@ def _validate_node_identity(
         return
     if not spec.families or set(spec.families) - WRITER_FAMILIES:
         raise AdmissionError("node_family", f"writer node {spec.id} needs valid families")
+    if len(spec.families) != len(set(spec.families)):
+        raise AdmissionError("node_family", f"writer node {spec.id} repeats a family")
     if entry.family is None or entry.family not in spec.families:
         raise AdmissionError("node_family", f"node {spec.id} entry family is inconsistent")
     if policy.writer_family is not None and policy.writer_family not in spec.families:
@@ -321,6 +333,11 @@ def _validate_interaction(
     elif script is not None:
         raise AdmissionError("script_coverage", f"node {spec.id} has an inapplicable script")
     required_author_calls = interaction.scripted_turns + len(interaction.mandatory_feedback)
+    required_author_calls += int(bool(interaction.required_script_keys))
+    if interaction.mode == "simulated_author" and budget.max_author_calls < 1:
+        raise AdmissionError(
+            "interaction_budget", f"node {spec.id} cannot afford simulated interaction"
+        )
     if required_author_calls > budget.max_author_calls:
         raise AdmissionError(
             "script_coverage", f"node {spec.id} cannot afford its required interactions"
@@ -329,6 +346,13 @@ def _validate_interaction(
         raise AdmissionError(
             "script_coverage", f"node {spec.id} completion disagrees with script coverage"
         )
+    required_writer_turns = 1 + interaction.scripted_turns + len(interaction.mandatory_feedback)
+    if required_writer_turns > budget.max_steps:
+        raise AdmissionError(
+            "script_coverage", f"node {spec.id} cannot afford its required writer turns"
+        )
+    if completion.evaluation_packet_ref is not None:
+        _resolve_plain(resolver, completion.evaluation_packet_ref, private=True)
     return script
 
 

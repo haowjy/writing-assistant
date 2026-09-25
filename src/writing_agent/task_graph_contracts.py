@@ -125,6 +125,7 @@ class _Contract:
 @dataclass(frozen=True)
 class NodeEntryV1(_Contract):
     request_ref: str = ""
+    files_ref: str = ""
     context_policy: str = "carry"
     requirement_version: str | None = None
     tool_allowlist: tuple[str, ...] = ()
@@ -133,6 +134,7 @@ class NodeEntryV1(_Contract):
 
     def validate(self) -> None:
         validate_hash(self.request_ref)
+        validate_hash(self.files_ref)
         validate_hash(self.requirement_version, optional=True)
         if self.context_policy not in {"carry", "seed", "drop"}:
             raise ValueError("unsupported entry context policy")
@@ -171,24 +173,39 @@ class InteractionContractV1(_Contract):
         _strings(self.required_script_keys, "required_script_keys")
         _strings(self.mandatory_feedback, "mandatory_feedback")
         _nonnegative(self.scripted_turns, "scripted_turns")
-        if self.mode == "none" and any(
-            (
-                self.script_ref,
-                self.author_packet_ref,
-                self.interaction_policy_ref,
-                self.decision_bindings_ref,
-                self.required_script_keys,
-                self.scripted_turns,
-                self.mandatory_feedback,
-            )
-        ):
+        author_contracts = (
+            self.script_ref,
+            self.author_packet_ref,
+            self.interaction_policy_ref,
+            self.decision_bindings_ref,
+            self.required_script_keys,
+            self.scripted_turns,
+            self.mandatory_feedback,
+        )
+        if self.mode == "none" and (self.fallback_policy != "none" or any(author_contracts)):
             raise ValueError("interaction mode none cannot carry author contracts")
-        if self.mode == "scripted" and self.script_ref is None:
-            raise ValueError("scripted interaction requires script_ref")
+        if self.mode == "scripted":
+            if self.script_ref is None:
+                raise ValueError("scripted interaction requires script_ref")
+            if (
+                any(
+                    (
+                        self.author_packet_ref,
+                        self.interaction_policy_ref,
+                        self.decision_bindings_ref,
+                    )
+                )
+                or self.fallback_policy != "none"
+            ):
+                raise ValueError("scripted interaction cannot carry simulator contracts")
         if self.mode == "simulated_author" and (
             self.author_packet_ref is None or self.interaction_policy_ref is None
         ):
             raise ValueError("simulated_author requires author packet and interaction policy")
+        if self.mode == "simulated_author" and (
+            self.script_ref is not None or self.scripted_turns or self.required_script_keys
+        ):
+            raise ValueError("simulated_author cannot carry scripted interaction")
 
 
 @dataclass(frozen=True)
@@ -227,6 +244,7 @@ class CompletionContractV1(_Contract):
     accepted_partial: bool = False
     repair_turns: int = 0
     required_script_turns: int = 0
+    evaluation_packet_ref: str | None = None
     ARTIFACT_TYPE: ClassVar[str] = "CompletionContractV1"
 
     def validate(self) -> None:
@@ -239,6 +257,7 @@ class CompletionContractV1(_Contract):
             raise TypeError("accepted_partial must be bool")
         _nonnegative(self.repair_turns, "repair_turns")
         _nonnegative(self.required_script_turns, "required_script_turns")
+        validate_hash(self.evaluation_packet_ref, optional=True)
 
 
 @dataclass(frozen=True)

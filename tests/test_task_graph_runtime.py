@@ -1,3 +1,4 @@
+import copy
 import json
 import tempfile
 import unittest
@@ -479,6 +480,26 @@ class LegacyGraphAdapterTest(unittest.TestCase):
         task["labels"]["checks"].clear()
         self.assertNotEqual(bundle.run_agent_inputs()["messages"][0]["content"], "Changed")
         self.assertEqual(len(bundle.private_check_inputs()["checks"]), 2)
+
+    def test_every_legacy_execution_input_is_bound_to_graph_identity(self):
+        task = scenario()
+        baseline = compile_legacy_scenario(task).instance.identity()
+        mutations = (
+            lambda value: value["visible"].update(brief="A different brief."),
+            lambda value: value["visible"]["initial_files"].update(
+                {"drafts/scene.md": "Different files.\n"}
+            ),
+            lambda value: value["visible"]["followups"].append("One more pass."),
+            lambda value: value["visible"].update(tools=["read_file"]),
+            lambda value: value["visible"]["budgets"].update(max_steps=8),
+            lambda value: value["visible"]["prose"][0].update(path="drafts/other.md"),
+            lambda value: value["labels"]["checks"][0].update(path="drafts/other.md"),
+        )
+        for mutate in mutations:
+            changed = copy.deepcopy(task)
+            mutate(changed)
+            with self.subTest(mutation=mutate):
+                self.assertNotEqual(compile_legacy_scenario(changed).instance.identity(), baseline)
 
 
 if __name__ == "__main__":
