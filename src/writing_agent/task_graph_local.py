@@ -94,8 +94,10 @@ class ScriptedSampleBackend:
 
     def __init__(self, results):
         self._results = iter(results)
+        self.calls = 0
 
     def sample(self, prepared):
+        self.calls += 1
         result = next(self._results)
         if not isinstance(result, SampleResult):
             raise TypeError("scripted backend requires SampleResult values")

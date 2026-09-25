@@ -267,6 +267,24 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         runtime = GroupCoordinatorV1(
             fixture.store, fixture.root / "group-a", session=session_a
         ).start(spec, 0, policy=policy)
+        member_head = fixture.store.read_head(spec.members[0].member_id)
+        mismatched_member_session = RuntimeSession.create(
+            fixture.store,
+            spec.members[0].member_id,
+            runtime.checkpoint_id,
+            session_b.dependencies,
+        ).bind(fixture.store, session_b.manifest_ref)
+        mismatched_writer = TransactionalWriterV1(
+            fixture.store,
+            fixture.writer.graph,
+            spec.members[0].member_id,
+            runtime.checkpoint_id,
+            session=mismatched_member_session,
+        )
+        with self.assertRaisesRegex(ValueError, "manifest differs"):
+            RuntimeRunner(mismatched_writer, mismatched_member_session).sample(runtime)
+        self.assertEqual(fixture.store.read_head(spec.members[0].member_id), member_head)
+        self.assertEqual(backend_b.calls, 0)
         member_session = RuntimeSession.create(
             fixture.store,
             spec.members[0].member_id,

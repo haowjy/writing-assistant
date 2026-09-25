@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import canonical_json
+from writing_agent.task_graph import canonical_json, load_canonical_json
 from writing_agent.task_graph_environment import EnvironmentTransactionService
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
@@ -64,6 +64,32 @@ class RuntimeSession:
             or self.dependencies.manifest().identity() != adapter_ref
         ):
             raise ValueError("sealed adapter manifest differs from executing runtime")
+
+    def require_member_seal(self, store, runtime) -> None:
+        """Bind a started group member to its immutable group policy before effects."""
+        lineage = runtime.state.position["lineage_id"]
+        if not lineage.startswith("grp-"):
+            return
+        seed = store.get_artifact(runtime.state.rng_ref)
+        if (
+            not isinstance(seed, dict)
+            or seed.get("record_type") != "GroupMemberSeedsV1"
+            or seed.get("member_id") != lineage
+            or not isinstance(seed.get("group_id"), str)
+        ):
+            raise ValueError("group member lacks its sealed seed witness")
+        from writing_agent.task_graph_group_contract import GroupSpecV1
+
+        path = store.root / "groups" / seed["group_id"] / "spec.json"
+        try:
+            spec = GroupSpecV1.from_dict(load_canonical_json(path.read_bytes()))
+        except (OSError, TypeError, ValueError) as exc:
+            raise ValueError("group member lacks a valid sealed group receipt") from exc
+        if spec.group_id != seed["group_id"] or lineage not in {
+            member.member_id for member in spec.members
+        }:
+            raise ValueError("group member differs from sealed group receipt")
+        self.require_seal(spec.policy["adapter_ref"])
 
 
 def local_unbound_session(store, rollout_id, entry_checkpoint_id) -> RuntimeSession:

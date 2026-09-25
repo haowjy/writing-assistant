@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Bind started group members back to the exact sealed adapter manifest before
+  any writer operation; a separately sealed A-vs-B session cannot act on A's branch.
+
 - Close the runtime dependency boundaries: canonical sampling bind and native-ineligible
   decoding, a real prepared-input sampling backend and runner, sealed runtime sessions,
   remote-capable text execution ports, replay-verifiable evaluator families, and

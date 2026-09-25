@@ -45,7 +45,8 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_local.py](../writing_agent/task_graph_local.py) supplies offline scripted
   sampling and a local workspace environment composed with the text provider. Its
   staging path never enters a public port. Direct `submit_action` is an explicitly
-  unbound legacy/offline path; a bound session checks descriptor identity before effects.
+  unbound legacy/offline path; a bound session checks descriptor identity and any
+  started group member receipt before effects.
   [task_graph_evaluation.py](../writing_agent/task_graph_evaluation.py) admits only
   versioned evidence families with replay-only verifiers. Deterministic checks
   recompute exactly; an offline fixture family exercises a second contract without
