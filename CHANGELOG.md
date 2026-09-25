@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add an opt-in transactional task-graph writer/text-tool runtime with committed
+  call queues, per-call observations and budget charges, exact event-derived writer
+  context projection, restore/replay, and explicit non-native loss eligibility.
+
 - Add fail-closed task-graph admission, immutable versioned node/check/guard contracts,
   deterministic environment-owned controller directives, and an opt-in adapter that
   preserves legacy scenario inputs while compiling them into a scripted writer node.

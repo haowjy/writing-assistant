@@ -21,6 +21,15 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_controller.py](../writing_agent/task_graph_controller.py) is the pure,
   deterministic directive boundary. It does not step a writer, execute checks, accept
   author transition/completion claims, or mutate runtime state.
+- [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
+  writer/text-tool stepper over an admitted ready-writer entry and trusted restored
+  handle. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
+  reconstructs writer context from the entry checkpoint and authorized causal
+  events; it never renders the private event log wholesale. The caller supplies
+  parsed writer output and any exact backend request/trace evidence. Neither module
+  invokes a model, author, check, or graph transition. See
+  [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
+  restore API, and the Phase 4 boundary.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
@@ -64,6 +73,15 @@ complete-state equality before writing or moving authority. The effect's
 `before_state_ref` is a state-identity assertion, not a persisted-object edge.
 Unsupported transition envelopes fail at the reducer seam. Branch initialization is
 the same recorded parent-to-child transition, not a pre-mutated state.
+
+Phase 4 publishes each `writer_action` or `tool_result` with a following
+`context_changed` event in **one** commit. The source event's recorded effect updates
+the queue/files/budgets and metadata index; the second effect updates `context_ref`
+after the revision can name the already-hashed source event. This preserves the
+approved content/provenance split without changing the Phase 2 reducer or any frozen
+identity. A tool-only exhausted turn may append `termination_recorded`; a final
+reply enters `checking`, not automatic task completion. Native token loss masks and
+author/check execution remain unimplemented.
 
 Reference closure uses one operation-scoped typed traversal with loaded, active, and
 completed sets. Checkpoint/commit/event depth is traversed iteratively; supplemental
