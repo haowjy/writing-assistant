@@ -17,6 +17,7 @@ from writing_agent.task_graph_contracts import (
     CheckContractV1,
     DecisionBindingsV1,
     EvaluatorPacketV1,
+    GuardContractV1,
     InteractionContractV1,
     InteractionPolicyV1,
     NodeContractV1,
@@ -154,6 +155,280 @@ class ScriptedFixture(WriterFixture):
         self.author = ScriptedAuthorRuntimeV1(self.writer)
         self.checks = DeterministicChecksV1(self.writer)
         self.terminal = ScriptedTerminalV1(self.writer)
+
+    def test_completion_route_admission_matrix(self):
+        node = self.writer.graph.node("legacy-writer")
+        base = node.checks["nonempty"]
+        cases = (
+            ("unconditional", (("always", None),), None, True),
+            ("required_terminal", (("check_status", "nonempty"),), None, True),
+            ("optional_terminal", (("check_status", "optional"),), "optional", False),
+            ("required_progress_only", (("check_status", "progress"),), "progress", False),
+            (
+                "mixed_progress_terminal",
+                (("check_status", "progress"), ("check_status", "nonempty")),
+                "progress",
+                True,
+            ),
+            (
+                "optional_with_fallback",
+                (("check_status", "optional"), ("always", None)),
+                "optional",
+                True,
+            ),
+        )
+        for label, routes, extra, accepted in cases:
+            with self.subTest(label=label):
+                contract = node.contract
+                if extra:
+                    required = extra == "progress"
+                    check = replace(
+                        base,
+                        id=extra,
+                        required=required,
+                        applicability=("before_feedback:f1" if required else "node_exit_candidate"),
+                        spec={**base.spec, "id": extra, "required": required},
+                    )
+                    self.store.put_artifact(check.to_dict(), private=True)
+                    evaluation = EvaluatorPacketV1(
+                        reward_contract_ref=node.reward_contract.identity(),
+                        check_ids=("nonempty", extra),
+                    )
+                    self.store.put_artifact(evaluation.to_dict(), private=True)
+                    contract = replace(
+                        contract,
+                        mandatory_checks=(base.identity(), check.identity())
+                        if required
+                        else contract.mandatory_checks,
+                        optional_checks=() if required else (check.identity(),),
+                        completion=replace(
+                            contract.completion_contract,
+                            required_check_ids=("nonempty", extra) if required else ("nonempty",),
+                            evaluation_packet_ref=evaluation.identity(),
+                        ),
+                    )
+                    if required:
+                        script = ScriptedAuthorV1(
+                            answers=node.script.answers,
+                            feedback=(
+                                {
+                                    "id": "f1",
+                                    "utterance": "Please revise.",
+                                    "prerequisite_check_ids": ["progress"],
+                                    "requirement_update_ref": None,
+                                },
+                            ),
+                        )
+                        policy = replace(node.interaction_policy, mandatory_feedback=("f1",))
+                        self.store.put_artifact(script.to_dict(), private=True)
+                        self.store.put_artifact(policy.to_dict())
+                        contract = replace(
+                            contract,
+                            interaction=replace(
+                                contract.interaction_contract,
+                                script_ref=script.identity(),
+                                interaction_policy_ref=policy.identity(),
+                                mandatory_feedback=("f1",),
+                            ),
+                        )
+                self.store.put_artifact(contract.to_dict())
+                exits = []
+                for index, (kind, check_id) in enumerate(routes):
+                    guard = GuardContractV1(
+                        kind=kind,
+                        arguments={"check_id": check_id, "status": "pass"} if check_id else {},
+                    )
+                    self.store.put_artifact(guard.to_dict())
+                    exits.append(
+                        {
+                            **dict(node.spec.exits[0]),
+                            "edge_id": f"{label}-{index}",
+                            "guard_ref": guard.identity(),
+                            "precedence": index if len(routes) > 1 else None,
+                        }
+                    )
+                instance = replace(
+                    self.writer.graph.instance,
+                    nodes=(
+                        replace(node.spec, entry_contract=contract.identity(), exits=tuple(exits)),
+                    ),
+                )
+                self.store.persist(instance)
+                if accepted:
+                    admit_graph(instance, StoreArtifactResolver(self.store))
+                else:
+                    with self.assertRaises(AdmissionError) as raised:
+                        admit_graph(instance, StoreArtifactResolver(self.store))
+                    self.assertEqual(raised.exception.code, "guard_coverage")
+
+    def test_admitted_completion_routes_terminalize_and_reward(self):
+        for route in ("unconditional", "required_terminal", "mixed_progress", "fallback"):
+            with self.subTest(route=route):
+                fixture = ScriptedFixture()
+                fixture.setUp()
+                try:
+                    node = fixture.writer.graph.node("legacy-writer")
+                    contract = node.contract
+                    policy = node.interaction_policy
+                    guard_ids = ["nonempty"] if route == "required_terminal" else []
+                    if route == "mixed_progress":
+                        progress = replace(
+                            node.checks["nonempty"],
+                            id="progress",
+                            applicability="before_feedback:f1",
+                            spec={**node.checks["nonempty"].spec, "id": "progress"},
+                        )
+                        fixture.store.put_artifact(progress.to_dict(), private=True)
+                        script = ScriptedAuthorV1(
+                            answers=node.script.answers,
+                            feedback=(
+                                {
+                                    "id": "f1",
+                                    "utterance": "Please revise.",
+                                    "prerequisite_check_ids": ["progress"],
+                                    "requirement_update_ref": None,
+                                },
+                            ),
+                        )
+                        policy = replace(policy, mandatory_feedback=("f1",))
+                        fixture.store.put_artifact(script.to_dict(), private=True)
+                        fixture.store.put_artifact(policy.to_dict())
+                        contract = replace(
+                            contract,
+                            interaction=replace(
+                                contract.interaction_contract,
+                                script_ref=script.identity(),
+                                interaction_policy_ref=policy.identity(),
+                                mandatory_feedback=("f1",),
+                            ),
+                            mandatory_checks=(*contract.mandatory_checks, progress.identity()),
+                            completion=replace(
+                                contract.completion_contract,
+                                required_check_ids=("nonempty", "progress"),
+                            ),
+                        )
+                        guard_ids = ["progress", "nonempty"]
+                    if route == "fallback":
+                        optional = replace(
+                            node.checks["nonempty"],
+                            id="optional",
+                            required=False,
+                            spec={
+                                **node.checks["nonempty"].spec,
+                                "id": "optional",
+                                "required": False,
+                                "kind": "contains",
+                                "text": "absent-needle",
+                            },
+                        )
+                        fixture.store.put_artifact(optional.to_dict(), private=True)
+                        contract = replace(contract, optional_checks=(optional.identity(),))
+                        guard_ids = ["optional"]
+                    if route in {"mixed_progress", "fallback"}:
+                        evaluation = EvaluatorPacketV1(
+                            reward_contract_ref=node.reward_contract.identity(),
+                            check_ids=("nonempty", guard_ids[0]),
+                        )
+                        fixture.store.put_artifact(evaluation.to_dict(), private=True)
+                        contract = replace(
+                            contract,
+                            completion=replace(
+                                contract.completion_contract,
+                                evaluation_packet_ref=evaluation.identity(),
+                            ),
+                        )
+                    exits = []
+                    for index, check_id in enumerate(
+                        [*guard_ids, None] if route in {"unconditional", "fallback"} else guard_ids
+                    ):
+                        guard = GuardContractV1(
+                            kind="check_status" if check_id else "always",
+                            arguments={"check_id": check_id, "status": "pass"} if check_id else {},
+                        )
+                        fixture.store.put_artifact(guard.to_dict())
+                        exits.append(
+                            {
+                                **dict(node.spec.exits[0]),
+                                "edge_id": f"{route}-{index}",
+                                "guard_ref": guard.identity(),
+                                "precedence": index
+                                if route in {"mixed_progress", "fallback"}
+                                else None,
+                            }
+                        )
+                    fixture.store.put_artifact(contract.to_dict())
+                    instance = replace(
+                        fixture.writer.graph.instance,
+                        nodes=(
+                            replace(
+                                node.spec, entry_contract=contract.identity(), exits=tuple(exits)
+                            ),
+                        ),
+                    )
+                    fixture.store.persist(instance)
+                    graph = admit_graph(instance, StoreArtifactResolver(fixture.store))
+                    state = fixture.runtime.state.to_dict()
+                    state["instance_ref"] = instance.identity()
+                    state["position"]["entry_contract"] = contract.identity()
+                    context = replace(
+                        fixture.runtime.context,
+                        tools=writer_tool_schemas(contract.entry_contract.tool_allowlist, policy),
+                        content_hash=None,
+                    )
+                    fixture.store.persist(context)
+                    state["context_ref"] = context.identity()
+                    start = fixture.store.save_checkpoint(EnvironmentStateV1.from_dict(state))
+                    runtime = fixture.store.restore(start, fixture.root / f"route-{route}")
+                    writer = TransactionalWriterV1(fixture.store, graph, "rollout-1", start)
+                    checks = DeterministicChecksV1(writer)
+                    author = ScriptedAuthorRuntimeV1(writer)
+                    terminal = ScriptedTerminalV1(writer)
+                    steps = []
+
+                    def apply(operation, steps=steps):
+                        nonlocal runtime
+                        step = operation(runtime)
+                        runtime = step.runtime
+                        steps.append(step.commit_id)
+
+                    if route == "mixed_progress":
+                        apply(
+                            lambda r, writer=writer, fixture=fixture: writer.submit_action(
+                                r, fixture.action(content="Draft.")
+                            )
+                        )
+                        apply(checks.request_checks)
+                        while runtime.state.continuation["check_requests"]:
+                            apply(checks.check_next)
+                        apply(author.request_feedback)
+                        apply(author.reply)
+                    apply(
+                        lambda r, writer=writer, fixture=fixture: writer.submit_action(
+                            r, fixture.action(content="Final.")
+                        )
+                    )
+                    apply(checks.request_checks)
+                    while runtime.state.continuation["check_requests"]:
+                        apply(checks.check_next)
+                    apply(terminal.transition)
+                    apply(terminal.terminal_outcome)
+                    apply(terminal.reward)
+                    availability = fixture.store.get_artifact(runtime.state.outcome_ref)
+                    outcome = fixture.store.get_artifact(availability["terminal_outcome_ref"])
+                    reward = fixture.store.get_artifact(availability["reward_ref"])
+                    self.assertEqual(runtime.state.position["phase"], "terminal")
+                    self.assertEqual(availability["reward_status"], "available")
+                    self.assertEqual(outcome["task_status"], "complete")
+                    self.assertEqual(reward["numerator"], 10000)
+                    self.assertEqual(
+                        outcome["transition_edge_id"],
+                        "fallback-1" if route == "fallback" else f"{route}-{len(exits) - 1}",
+                    )
+                    self.assertEqual(
+                        fixture.store.replay("rollout-1", start, steps), runtime.checkpoint_id
+                    )
+                finally:
+                    fixture.doCleanups()
 
     def test_phase5_fallback_events_and_replaced_anchors_reject_on_recovery(self):
         state = self.runtime.state

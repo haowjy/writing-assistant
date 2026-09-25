@@ -275,6 +275,14 @@ only when the admitted repair contract, runtime authorization, and remaining wri
 budget all allow it. Author text is audit input and is never inspected for routing. Outcome
 records keep task, execution, stop, reward, and training-eligibility state independent.
 
+The scripted-author slice admits only a terminal edge guaranteed when required
+completion checks pass: an unconditional guard, a fixed completion predicate, or
+`check_status(pass)` for a required `each_turn`/`node_exit_candidate` check. Optional
+and `before_feedback` checks cannot guarantee that edge because completion routing
+reads only the current terminal check batch. Distinct precedence still decides which
+of several matching edges wins; failed required checks take the typed incomplete
+outcome and declared reward path instead of a completion edge.
+
 Genre is separate from prose style and is carried into results and grouping.
 Authored genre contexts create derivative sources linked to the original world;
 all variants share its development role. Genre assertions must be visible in the

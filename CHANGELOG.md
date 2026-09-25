@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Require a guaranteed Phase 5 completion edge at admission; optional or
+  progress-only check guards cannot strand a passing terminal check batch.
+
 - Close Phase 5 authority and recovery gaps: anchor strict event dispatch to
   the admitted entry, require complete atomic author replies, unify writer
   exhaustion with typed incomplete outcome/reward records, enforce tool/author

@@ -318,29 +318,18 @@ def admit_graph(
             edge.effect != "terminate" for edge in edges
         ):
             raise AdmissionError("unsupported_edge", "scripted-author v1 is single-node terminal")
-        if interaction.mode == "scripted_author":
-            complete_status = (
-                "accepted_partial" if contract.completion_contract.accepted_partial else "complete"
-            )
-            if not any(
-                guard.kind == "always"
-                or guard.kind == "task_status"
-                and guard.arguments["status"] == complete_status
-                or guard.kind == "execution_status"
-                and guard.arguments["status"] == "valid"
-                or guard.kind == "interaction_complete"
-                and guard.arguments["value"] is True
-                or guard.kind == "check_status"
-                and guard.arguments["status"] == "pass"
-                for guard in guards.values()
-            ):
-                raise AdmissionError("guard_coverage", "no terminal guard can pass on completion")
         for guard in guards.values():
             if guard.kind == "check_status" and guard.arguments["check_id"] not in checks:
                 raise AdmissionError(
                     "guard_contract",
                     f"node {spec.id} guard names undeclared check {guard.arguments['check_id']}",
                 )
+        if interaction.mode == "scripted_author" and not any(
+            _guarantees_scripted_completion(guard, contract, checks) for guard in guards.values()
+        ):
+            raise AdmissionError(
+                "guard_coverage", "no terminal edge is guaranteed for passing completion checks"
+            )
         admitted[spec.id] = AdmittedNodeV1(
             spec=spec,
             contract=contract,
@@ -746,6 +735,27 @@ def _validate_legacy_check_shape(check: CheckContractV1, *, deterministic_only: 
         raise ValueError("invalid word range")
     if kind == "kb_word_budget" and (type(spec["max"]) is not int or spec["max"] < 0):
         raise ValueError("invalid KB word budget")
+
+
+def _guarantees_scripted_completion(
+    guard: GuardContractV1,
+    contract: NodeContractV1,
+    checks: Mapping[str, CheckContractV1],
+) -> bool:
+    """Match a predicate that is true after the required terminal batch passes."""
+    if guard.kind == "always":
+        return True
+    if guard.kind == "task_status":
+        status = "accepted_partial" if contract.completion_contract.accepted_partial else "complete"
+        return guard.arguments["status"] == status
+    if guard.kind == "execution_status":
+        return guard.arguments["status"] == "valid"
+    if guard.kind == "interaction_complete":
+        return guard.arguments["value"] is True
+    if guard.kind == "check_status" and guard.arguments["status"] == "pass":
+        check = checks[guard.arguments["check_id"]]
+        return check.required and check.applicability in {"each_turn", "node_exit_candidate"}
+    return False
 
 
 def _validate_edges(
