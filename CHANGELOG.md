@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Add an isolated deterministic Phase 7 GRPO group coordinator with full start-contract sealing, domain-separated member seeds, resumable member branches, immutable terminal/reward binding, exact symbolic group advantages, pending/tie/invalid handling, and writer-only segment credit without fabricated native traces or optimizer updates.
+
 - Reject non-integer or noncontiguous writer runtime-log sequence witnesses and
   compare historical prefixes by canonical bytes on publication and recovery.
 

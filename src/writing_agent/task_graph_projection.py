@@ -585,6 +585,38 @@ def project_writer_context(
         state = store._apply_recorded_effect_body(before, event, effect)
         if phase5 and state.author_packet_ref != base.state.author_packet_ref:
             raise ProjectionError("event replaced the admitted author capability")
+        if event.kind == "rollout_started":
+            position = state.position
+            seeds = store.get_artifact(state.rng_ref)
+            if (
+                event.actor != "environment"
+                or "writer" in event.audience
+                or before.identity() != base.state.identity()
+                or event.node_visit_id != before.position["visit_id"]
+                or event.versions_ref != before.versions_ref
+                or event.provenance_ref != before.provenance_ref
+                or before.position["phase"] != "ready_writer"
+                or before.history["action_ids"]
+                or before.history["tool_result_ids"]
+                or set(effect["set"]) != {"position", "rng_ref"}
+                or set(effect["history_set"]) != {"branch_base"}
+                or effect["file_delta"]
+                or position
+                != {
+                    **before.position,
+                    "lineage_id": event.rollout_id,
+                    "start_checkpoint": base_checkpoint_id,
+                }
+                or state.history["branch_base"] != before.history["head"]
+                or state.rng_ref == before.rng_ref
+                or seeds.get("record_type") != "GroupMemberSeedsV1"
+                or seeds.get("member_id") != event.rollout_id
+                or seeds.get("parent_rng_ref") != before.rng_ref
+                or type(seeds.get("writer_seed")) is not int
+                or type(seeds.get("environment_seed")) is not int
+            ):
+                raise ProjectionError("invalid isolated group rollout start")
+            continue
         if reply_stage in {"ack", "disclosure", "update", "turn"}:
             expected = {
                 "ack": {"decision_disclosed"},

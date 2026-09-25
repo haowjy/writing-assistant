@@ -49,6 +49,12 @@ retains its smoke-evaluation and training-format workflows.
   The immutable admitted writer entry activates that semantic walk even for the
   first context operation, a retyped child runtime log, or a multi-event batch;
   generic Phase 2 lineages without a typed entry retain their generic reducer.
+  [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
+  defines the sealed entry/policy and exact credit records;
+  [task_graph_group.py](../writing_agent/task_graph_group.py) creates isolated
+  seeded branches, verifies terminal/reward evidence, and computes group
+  advantages plus writer-only segment credit. It never samples
+  models or emits native token masks; see [group coordination](../../docs/task-graph-groups.md).
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
