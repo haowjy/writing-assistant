@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Route group segment-credit trace admission through the typed sampling codec
+  rather than locally interpreting native eligibility.
+
 - Preserve the distinct stale verified-message error at the typed sampling
   boundary while retaining the generic malformed-preparation error for other
   request mismatches.

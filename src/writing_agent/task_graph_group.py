@@ -756,11 +756,12 @@ class GroupCoordinatorV1:
                 raise GroupError("writer action missing immutable log entry")
             action = self.store.get_artifact(entry["record_ref"])
             trace = self.store.get_artifact(action["trace_ref"])
-            if (
-                action.get("record_type") != "WriterActionV1"
-                or trace.get("record_type") != "WriterActionTraceV1"
-                or trace.get("action_id") != action.get("action_id")
-                or trace.get("native_on_policy_eligible") is not False
+            try:
+                sampled = SamplingEvidenceV1.from_wire(trace)
+            except ProjectionError as exc:
+                raise GroupError("invalid writer action trace") from exc
+            if action.get("record_type") != "WriterActionV1" or sampled.action_id != action.get(
+                "action_id"
             ):
                 raise GroupError("invalid writer action trace")
             message = MessageV1.from_dict(
