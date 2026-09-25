@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Scope CI Ruff checks to product source, scripts, and tests so research work
+  artifacts and agent configuration are not treated as package Python code.
+
 - Preserve the historical fail-closed error for Phase 5-only events attempted
   on a Phase 4 writer lineage after moving dispatch into semantic replay.
 
