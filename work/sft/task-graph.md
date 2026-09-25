@@ -329,7 +329,7 @@ never appear in the child. Sequence order is local to the resolved causal chain.
 EventV1 = {
   id: Hash, previous: Hash | null, seq: int,
   lineage_id: str, rollout_id: str | null, node_visit_id: str | null,
-  kind: EventKind, actor: writer | author | environment | evaluator,
+  kind: EventKind, actor: writer | writer_runtime | author | environment | evaluator,
   audience: set[writer, author, controller, evaluator, trainer],
   payload_ref: Hash, caused_by: list[Hash],
   versions_ref: Hash, provenance_ref: Hash
@@ -344,6 +344,10 @@ MessageV1 = {
 
 `id` hashes the canonical body excluding `id`; hash chaining covers payload and
 provenance references. Timestamps belong in unhashed operational side records.
+`writer_runtime` is the trusted adapter actor for sampled writer-budget stops and
+exhaustion records, not a second learnable policy. Ordinary writer actions remain
+`writer`; generic environment events are never inferred to be writer stops from
+their kind alone.
 Unknown event kinds/versions fail closed. Audience is an enforced allowlist, not a
 hint for a serializer. Serialize sets (including audience) as sorted unique arrays.
 `MessageV1.origin` is a stable logical ID; the containing event hash is supplied by
@@ -372,6 +376,12 @@ queue and outcome values. Exclude history heads, checkpoint IDs and **all proven
 references, including transitive ones**. In particular, hash active message contents
 and stable logical origin IDs, not a context-revision ID whose provenance references
 this new event. Decision values likewise cannot point back to their disclosure event.
+
+Action IDs and tool-result IDs are logical index keys (for example,
+`r1:action:0` and `r1:tool_result:0`), never SHA-256 event hashes. The two ID
+classes are validated independently in `history.action_ids` and
+`history.tool_result_ids`; event hashes remain separate references, while
+tool-call IDs remain the logical call IDs bound by the queue.
 
 Context content and context revision are separate identities: content (exact messages,
 tools and rendering inputs) can be hashed before its observation event; the revision
@@ -500,12 +510,24 @@ prune empty staging/deletion directories before exposing a workspace. Existing
 `Workspace.list_dir` exposes physical directories, so this is an opt-in adapter
 obligation, not a claim that its legacy implementation already enforces the invariant.
 
+The file codec is the UTF-8 byte string itself: `file_hash(text)` hashes
+`task-graph:file:v1\0 || text.encode("utf-8")`. It is not canonical JSON and does
+not apply newline or Unicode normalization. `domain_hash("file", text)` is a
+compatibility spelling for the same exact-byte codec, while structured values
+are rejected so a JSON hash cannot be mistaken for a file hash. Binary artifacts
+use the separate `domain_hash_bytes(name, bytes)` `:bytes` domain; those codecs
+must not be substituted for one another.
+
 Checkpoint ID hashes schema, parents, full state envelope and immutable artifact
 references, excluding its own ID, storage path and operational timestamps. Two equal
 file trees may have different checkpoints due to history, node, requirements or
 budgets. Two separately identified lineages may have identical semantic content but
 different checkpoint IDs; v1 deliberately favors auditable identity over aggressive
 deduplication. Checkpoint publication is idempotent by ID.
+
+Action traces and tool-result payloads are canonical JSON artifacts in the separate
+`payload` domain. Their bodies are hashed before the event that references them;
+the event hash is not substituted for a payload identity.
 
 ### Storage operations and crash behavior
 
@@ -545,6 +567,10 @@ from a published commit is *uncommitted*, even if its file exists. The worker ma
 expose the new directory only after publication; on any failure rebuild it from the
 published checkpoint, never infer committed state from leftover files. Competing
 head changes reject publication and leave collectible orphan artifacts.
+
+`LineageRefV1.expected_head` is a compare-and-swap request only. Phase 2 persistence
+must write the authority projection `{head_commit: ...}` to `refs/<lineage>.json`;
+it must not persist `expected_head` or treat that request field as lineage state.
 
 A writer-action commit records all tool calls in `continuation.tool_queue`, with
 `next_call=0`. Each sequential tool-result commit includes its exact observation,

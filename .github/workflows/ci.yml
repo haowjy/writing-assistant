@@ -12,9 +12,9 @@ jobs:
         with:
           version: '0.9.18'
           python-version: ${{ matrix.python }}
-      - run: uv sync --locked
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      - run: uv sync --locked --extra judging
+      - run: uv run ruff check src scripts tests
+      - run: uv run ruff format --check src scripts tests
       - run: uv run python -m unittest discover -s tests -v
       - run: uv run cwa validate-data data/fixtures/trajectories.jsonl
       - run: uv run cwa eval --config configs/smoke.toml

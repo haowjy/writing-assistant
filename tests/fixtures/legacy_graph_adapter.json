@@ -1,0 +1,117 @@
+{
+  "check_package": {
+    "checks": [
+      {
+        "id": "saved",
+        "kind": "nonempty",
+        "method": "deterministic",
+        "metric": "Q3",
+        "path": "drafts/scene.md",
+        "required": true
+      },
+      {
+        "id": "tone",
+        "kind": "semantic",
+        "method": "llm_judge",
+        "metric": "Q1",
+        "required": false,
+        "text": "The revised ending is quieter."
+      }
+    ],
+    "knowledge": [],
+    "rubric_version": 1,
+    "rubrics": {
+      "Q2": {
+        "description": "Read as prose."
+      }
+    },
+    "source_cutoff": "supplied files only"
+  },
+  "initial_files": {
+    "drafts/scene.md": "A loud ending.\n"
+  },
+  "instance": {
+    "budgets": {
+      "max_graph_hops": 1
+    },
+    "entry_node": "legacy-writer",
+    "nodes": [
+      {
+        "entry_contract": "87338f0dabd11f32d0561769785e81e5a63fd849af7a2b288b35696534738942",
+        "exits": [
+          {
+            "edge_id": "legacy-terminate",
+            "effect": "terminate",
+            "guard_ref": "1a022ca51b04a5acd80c0bca52ba3aedd23ee8d3708989411130d0ef9cfbad15",
+            "precedence": 0,
+            "schema": 1,
+            "target_node": null
+          }
+        ],
+        "families": [
+          "F2"
+        ],
+        "id": "legacy-writer",
+        "kind": "writer",
+        "schema": 1
+      }
+    ],
+    "request_refs": [
+      "09d3feca9748a2492ce309a0e490128cfb99080fa420f1efd3f9958fdbaaec4b"
+    ],
+    "requirements_ref": null,
+    "schema": 1,
+    "source_refs": [
+      "8886237bd27a1e05166113f26a96628d53f67c5ab35455c0d13a112d89682e0f"
+    ],
+    "template_ref": "d1e323705c0768bf4a035468cca65da7a732d79419610791288b4287a4046eac"
+  },
+  "instance_id": "06997632568044765ae9169ef5e564bfd1be7af87c0593d13a7603b806b14b28",
+  "private_refs": [
+    "0fbf3c39c03c41c3607cc7049cdd40288471c39d2dab2ffbc66a01f44b1ae6de",
+    "190e1d45f65c87eb67da4d2e308a3f6392669a6193c99fa5b3296244129a6caf",
+    "2f4b4c8dfa6a7796456d796140137ab68aba0308c84d42cd42169282c0e920fa",
+    "e29f690e0ecea25416763a6528aa8454b1458fd289c7ee10b12678f5305689d6"
+  ],
+  "prose": [
+    {
+      "id": "scene",
+      "kind": "file",
+      "path": "drafts/scene.md",
+      "selection": "whole"
+    }
+  ],
+  "public_refs": [
+    "09d3feca9748a2492ce309a0e490128cfb99080fa420f1efd3f9958fdbaaec4b",
+    "1a022ca51b04a5acd80c0bca52ba3aedd23ee8d3708989411130d0ef9cfbad15",
+    "87338f0dabd11f32d0561769785e81e5a63fd849af7a2b288b35696534738942",
+    "8886237bd27a1e05166113f26a96628d53f67c5ab35455c0d13a112d89682e0f",
+    "d1e323705c0768bf4a035468cca65da7a732d79419610791288b4287a4046eac"
+  ],
+  "run_agent_inputs": {
+    "followups": [
+      "Please make the ending quieter.",
+      "Keep the first image."
+    ],
+    "max_read_tokens": 321,
+    "max_steps": 7,
+    "max_tool_calls": 9,
+    "messages": [
+      {
+        "content": "Revise drafts/scene.md and reply with a completion note.",
+        "role": "user"
+      }
+    ],
+    "tools": [
+      "read_file",
+      "write_file",
+      "patch_file"
+    ]
+  },
+  "visible_budgets": {
+    "max_read_tokens": 321,
+    "max_steps": 7,
+    "max_tool_calls": 9,
+    "max_total_bytes": 4096
+  }
+}

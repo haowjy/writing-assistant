@@ -2,6 +2,113 @@
 
 ## [Unreleased]
 
+- Install the declared judging extra in CI so the existing paid-call
+  environment-validation test can import its dotenv dependency.
+
+- Use per-instance mapping default factories for frozen task-graph records so
+  supported Python 3.11 can import them; post-initialization still freezes the
+  same values and preserves canonical identities.
+
+- Scope CI Ruff checks to product source, scripts, and tests so research work
+  artifacts and agent configuration are not treated as package Python code.
+
+- Preserve the historical fail-closed error for Phase 5-only events attempted
+  on a Phase 4 writer lineage after moving dispatch into semantic replay.
+
+- Make sampling port methods return immutable typed V1 contracts; the writer
+  serializes them only at the persistence boundary.
+
+- Route group segment-credit trace admission through the typed sampling codec
+  rather than locally interpreting native eligibility.
+
+- Preserve the distinct stale verified-message error at the typed sampling
+  boundary while retaining the generic malformed-preparation error for other
+  request mismatches.
+
+- Add injected sampling, environment, text-tool, and evaluator ports with current
+  offline adapters and immutable content-addressed runtime manifests. Exercise
+  alternate fake adapters through the same writer/check flow and seal a manifest
+  in an existing group policy reference without changing group wire identity.
+
+- Split semantic replay from visible-context projection: a typed cursor and closed
+  event-handler registry validate admitted writer histories and emit authorized
+  message/provenance contributions. Represent author reply progress with an
+  internal enum; projection now only materializes and verifies the result.
+
+- Move causal event/effect/log/context staging and atomic CAS publication into an
+  environment-owned batch service. Writer, scripted author, deterministic checks,
+  terminal routing, and compaction use the same publisher; remove their duplicate
+  publisher plumbing and writer-private transaction API.
+
+- Share pure sampled-usage, tool-attempt/result, context-append, and exhaustion
+  accounting across writer/author production and semantic replay. Replay still
+  compares independently loaded persisted claims to recomputed charges.
+
+- Introduce immutable typed V1 codecs for prepared writer requests, normalized
+  sampling and adapter evidence, and current native-ineligibility decisions.
+  Centralize trace/request binding and group sampling claims without changing
+  persisted wire identities or allowing arbitrary adapter payloads to qualify.
+
+- Make group collection and offline finalization share complete result admission,
+  and reject sampled budget-stop seed/model or declared policy drift before credit.
+
+- Add an isolated deterministic Phase 7 GRPO group coordinator with full start-contract sealing, domain-separated member seeds, resumable member branches, immutable terminal/reward binding, exact symbolic group advantages, pending/tie/invalid handling, and writer-only segment credit without fabricated native traces or optimizer updates.
+
+- Reject non-integer or noncontiguous writer runtime-log sequence witnesses and
+  compare historical prefixes by canonical bytes on publication and recovery.
+
+- Anchor context-operation validation in immutable writer entry ancestry across
+  publication and recovery, bind event-envelope ownership, strictly type nested
+  witness numbers, and add a verified-message request path while keeping arbitrary
+  adapter payloads explicitly unverified.
+
+- Add opt-in deterministic context carry, named ancestor seed, drop, and
+  fixed visible-message compaction at drained writer boundaries. Immutable
+  operation records bind exact source messages/events, summary bytes,
+  old/new context revisions, and context charges; prepublication and offline
+  recovery validate the same authority while preserving earlier action traces.
+
+- Require a guaranteed Phase 5 completion edge at admission; optional or
+  progress-only check guards cannot strand a passing terminal check batch.
+
+- Close Phase 5 authority and recovery gaps: anchor strict event dispatch to
+  the admitted entry, require complete atomic author replies, unify writer
+  exhaustion with typed incomplete outcome/reward records, enforce tool/author
+  budget precedence, and reject progress-only reward inputs and private bytes
+  in public vocabulary at admission.
+
+- Add an opt-in deterministic scripted-author graph slice: role-typed author and
+  evaluator packets, structured `ask_author`, durable request/reply and disclosure
+  updates, ordered mandatory feedback and preauthorized requirement supersession,
+  frozen deterministic checks, environment terminal routing, exact reward records,
+  and offline semantic restore/replay. The legacy runner remains the default.
+
+- Validate complete writer histories against staged candidates before publication,
+  require explicit writer-stop log attribution from the first event, and bind
+  action/stop ordinals and adapter logprob references on production and recovery.
+
+- Complete Phase 4 writer event ownership and trace attribution checks before
+  publication and on restore/replay; classify parent-file conflicts as observations,
+  preserve staging corruption as infrastructure interruption, and bound malformed
+  call decoding and evidence.
+
+- Close Phase 4 transactional writer review findings: preserve infrastructure
+  failures, normalize malformed calls without dispatch, reject stale handles before
+  tools, validate result provenance/execution/charges on restore and replay, and
+  durably stop on token exhaustion while rejecting unenforceable context limits.
+
+- Add an opt-in transactional task-graph writer/text-tool runtime with committed
+  call queues, per-call observations and budget charges, exact event-derived writer
+  context projection, restore/replay, and explicit non-native loss eligibility.
+
+- Add fail-closed task-graph admission, immutable versioned node/check/guard contracts,
+  deterministic environment-owned controller directives, and an opt-in adapter that
+  preserves legacy scenario inputs while compiling them into a scripted writer node.
+
+- Add private content-addressed task-graph persistence with full immutable checkpoints,
+  atomic lineage-head compare-and-swap, safe fresh-workspace restore, isolated branches,
+  state/file diffs, and offline reduction of recorded committed effects.
+
 - Add a root `TODO.md` linked from the README as the active work order. Put the
   cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
   download; point older work checklists to it.

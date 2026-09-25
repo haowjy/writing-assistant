@@ -8,11 +8,19 @@ from pathlib import Path
 
 
 class Workspace:
-    def __init__(self, root: Path, max_bytes: int = 128_000, max_total_bytes: int = 1_000_000):
+    def __init__(
+        self,
+        root: Path,
+        max_bytes: int = 128_000,
+        max_total_bytes: int = 1_000_000,
+        *,
+        strict_decode: bool = False,
+    ):
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_bytes = max_bytes
         self.max_total_bytes = max_total_bytes
+        self.strict_decode = strict_decode
 
     def resolve(self, path: str) -> Path:
         if not isinstance(path, str) or Path(path).is_absolute() or ".." in Path(path).parts:
@@ -70,7 +78,11 @@ class Workspace:
             relative = file.relative_to(self.root).as_posix()
             try:
                 content = self.read_file(relative)
-            except (UnicodeError, ValueError):
+            except UnicodeError:
+                if self.strict_decode:
+                    raise
+                continue
+            except ValueError:
                 continue
             for number, line in enumerate(content.splitlines(), 1):
                 if query.casefold() in line.casefold():
