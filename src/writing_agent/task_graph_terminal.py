@@ -11,6 +11,7 @@ from writing_agent.task_graph_controller import (
     evaluate_guard,
 )
 from writing_agent.task_graph_projection import project_writer_context
+from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY
 from writing_agent.task_graph_scripted import _log
 from writing_agent.task_graph_writer import WriterRuntimeError, WriterStepV1
 
@@ -325,13 +326,7 @@ class ScriptedTerminalV1:
             if outcome["task_status"] in {"complete", "accepted_partial"}
             else contract.incomplete_score
         )
-        eligibility = {
-            "record_type": "TrainingEligibilityV1",
-            "schema": 1,
-            "terminal_outcome_ref": state.outcome_ref,
-            "status": "ineligible",
-            "reason": "native_action_trace_unavailable",
-        }
+        eligibility = CURRENT_ELIGIBILITY.training_wire(state.outcome_ref)
         eligibility_ref = self.store.put_artifact(eligibility)
         reward = {
             "record_type": "RewardV1",
@@ -554,14 +549,7 @@ def validate_terminal_effect(store, before, after, event, effect, entry):
                 "reward_status": "available",
                 "training_eligibility": "ineligible",
             }
-            or eligibility
-            != {
-                "record_type": "TrainingEligibilityV1",
-                "schema": 1,
-                "terminal_outcome_ref": before.outcome_ref,
-                "status": "ineligible",
-                "reason": "native_action_trace_unavailable",
-            }
+            or eligibility != CURRENT_ELIGIBILITY.training_wire(before.outcome_ref)
             or reward
             != {
                 "record_type": "RewardV1",

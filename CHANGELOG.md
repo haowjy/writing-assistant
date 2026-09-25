@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Introduce immutable typed V1 codecs for prepared writer requests, normalized
+  sampling and adapter evidence, and current native-ineligibility decisions.
+  Centralize trace/request binding and group sampling claims without changing
+  persisted wire identities or allowing arbitrary adapter payloads to qualify.
+
 - Make group collection and offline finalization share complete result admission,
   and reject sampled budget-stop seed/model or declared policy drift before credit.
 

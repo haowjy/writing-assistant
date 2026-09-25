@@ -35,9 +35,14 @@ from writing_agent.task_graph_compaction import (
     select_context,
 )
 from writing_agent.task_graph_projection import (
-    NATIVE_TRACE_REASON,
     execution_value,
     project_writer_context,
+)
+from writing_agent.task_graph_sampling import (
+    AdapterEvidenceV1,
+    PreparedRequestV1,
+    SamplingEvidenceV1,
+    _validate_prepared_request,
 )
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
@@ -830,13 +835,13 @@ class TransactionalWriterV1:
             else self.store.put_artifact(exact_request)
         )
         return self.store.put_artifact(
-            {
-                "record_type": "PreparedWriterRequestV1",
-                "context_content_hash": runtime.context.content_hash,
-                "context_revision_ref": runtime.context.identity(),
-                "rendering": dict(runtime.context.rendering),
-                "payload_ref": payload_ref,
-            }
+            PreparedRequestV1(
+                "PreparedWriterRequestV1",
+                runtime.context.content_hash,
+                runtime.context.identity(),
+                canonical_json(runtime.context.rendering),
+                payload_ref,
+            ).to_wire()
         )
 
     def prepare_verified_messages(
@@ -853,7 +858,11 @@ class TransactionalWriterV1:
             raise WriterRuntimeError("request messages differ from the current writer context")
         prepared_ref = self.prepare_request(runtime, dict(exact_request))
         prepared = self.store.get_artifact(prepared_ref, expected_domain="payload")
-        return self.store.put_artifact({**prepared, "record_type": "VerifiedWriterMessagesV1"})
+        return self.store.put_artifact(
+            PreparedRequestV1.from_wire(
+                {**prepared, "record_type": "VerifiedWriterMessagesV1"}
+            ).to_wire()
+        )
 
     def submit_action(
         self,
@@ -983,24 +992,21 @@ class TransactionalWriterV1:
         if prepared_request_ref is not None:
             validate_hash(prepared_request_ref)
             prepared = self.store.get_artifact(prepared_request_ref, expected_domain="payload")
-            if (
-                not isinstance(prepared, dict)
-                or prepared.get("record_type")
-                not in {"PreparedWriterRequestV1", "VerifiedWriterMessagesV1"}
-                or prepared.get("context_content_hash") != runtime.context.content_hash
-                or prepared.get("context_revision_ref") != runtime.context.identity()
-                or canonical_json(prepared.get("rendering"))
-                != canonical_json(runtime.context.rendering)
-            ):
-                raise WriterRuntimeError("prepared request does not match the sampling context")
-            request_ref = prepared["payload_ref"]
-            request_payload = self.store.get_artifact(request_ref)
-            if prepared["record_type"] == "VerifiedWriterMessagesV1" and (
-                not isinstance(request_payload, dict)
-                or canonical_json(request_payload.get("messages"))
-                != canonical_json([item.to_dict() for item in runtime.context.messages])
-            ):
-                raise WriterRuntimeError("verified request messages are stale")
+            try:
+                decoded = PreparedRequestV1.from_wire(prepared)
+                _validate_prepared_request(
+                    self.store,
+                    prepared_request_ref,
+                    runtime.context.content_hash,
+                    runtime.context.identity(),
+                    runtime.context.rendering,
+                    decoded.payload_ref,
+                )
+            except ValueError as exc:
+                raise WriterRuntimeError(
+                    "prepared request does not match the sampling context"
+                ) from exc
+            request_ref = decoded.payload_ref
         else:
             # The direct path still persists supplied evidence before publication.
             request_ref = (
@@ -1019,30 +1025,20 @@ class TransactionalWriterV1:
             if raw_output is not None
             else None
         )
-        trace_body = {
-            "record_type": "WriterActionTraceV1",
-            "action_id": action_id,
-            "context_content_hash": runtime.context.content_hash,
-            "context_revision_ref": runtime.context.identity(),
-            "rendering": dict(runtime.context.rendering),
-            "exact_request_ref": request_ref,
-            "prepared_request_ref": prepared_request_ref,
-            "raw_output_ref": raw_output_ref,
-            "usage": dict(usage),
-            "model": trace.get("model") if trace is not None else None,
-            "seed": trace.get("seed") if trace is not None else None,
-            "raw_output_evidence": "supplied" if raw_output is not None else "missing",
-            "logprob_ref": trace.get("per_token_logprobs_ref") if trace is not None else None,
-            "adapter_trace": dict(trace) if trace is not None else None,
-            "token_evidence": "supplied"
-            if trace is not None and "generated_token_ids" in trace
-            else "missing",
-            "logprob_evidence": "supplied"
-            if trace is not None and "per_token_logprobs_ref" in trace
-            else "missing",
-            "native_on_policy_eligible": False,
-            "reason": NATIVE_TRACE_REASON,
-        }
+        trace_body = SamplingEvidenceV1(
+            action_id=action_id,
+            context_content_hash=runtime.context.content_hash,
+            context_revision_ref=runtime.context.identity(),
+            rendering_json=canonical_json(runtime.context.rendering),
+            exact_request_ref=request_ref,
+            prepared_request_ref=prepared_request_ref,
+            raw_output_ref=raw_output_ref,
+            logprob_ref=trace.get("per_token_logprobs_ref") if trace is not None else None,
+            usage_json=canonical_json(usage),
+            model=trace.get("model") if trace is not None else None,
+            seed=trace.get("seed") if trace is not None else None,
+            adapter=AdapterEvidenceV1.from_wire(trace),
+        ).to_wire()
         trace_ref = self.store.put_artifact(trace_body)
         if exceeded is not None:
             return self._sampled_budget_stop(

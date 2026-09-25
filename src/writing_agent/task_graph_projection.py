@@ -19,12 +19,14 @@ from writing_agent.task_graph import (
     context_content_hash,
     domain_hash,
 )
+from writing_agent.task_graph_sampling import (
+    _ACTION_RECORD_FIELDS,
+    _STOP_RECORD_FIELDS,
+    ProjectionError,
+    _validate_prepared_request,
+    validate_action_trace,
+)
 from writing_agent.task_graph_store import TaskGraphStore
-
-
-class ProjectionError(ValueError):
-    """A causal event chain cannot be safely rendered as writer context."""
-
 
 _WRITER_EFFECT_FIELDS = {
     "writer_action": (
@@ -38,35 +40,6 @@ _WRITER_EFFECT_FIELDS = {
     "budget_charged": ({"position", "budgets_ref", "outcome_ref", "external_inputs_ref"}, set()),
     "termination_recorded": ({"position", "outcome_ref", "external_inputs_ref"}, set()),
 }
-NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
-_ACTION_RECORD_FIELDS = {
-    "record_type",
-    "action_id",
-    "trace_ref",
-    "request_ref",
-    "prepared_request_ref",
-    "raw_output_ref",
-    "logprob_ref",
-    "calls",
-    "usage",
-    "model",
-    "seed",
-    "loss_eligibility",
-}
-_STOP_RECORD_FIELDS = {
-    "record_type",
-    "action_id",
-    "reason",
-    "usage",
-    "model",
-    "seed",
-    "parsed_message_json",
-    "trace_ref",
-    "request_ref",
-    "prepared_request_ref",
-    "raw_output_ref",
-    "logprob_ref",
-}
 _RESULT_RECORD_FIELDS = {
     "record_type",
     "result_id",
@@ -78,26 +51,6 @@ _RESULT_RECORD_FIELDS = {
     "after_execution_hash",
     "budget_charge",
     "loss_eligibility",
-}
-_TRACE_FIELDS = {
-    "record_type",
-    "action_id",
-    "context_content_hash",
-    "context_revision_ref",
-    "rendering",
-    "exact_request_ref",
-    "prepared_request_ref",
-    "raw_output_ref",
-    "raw_output_evidence",
-    "logprob_ref",
-    "adapter_trace",
-    "token_evidence",
-    "logprob_evidence",
-    "usage",
-    "model",
-    "seed",
-    "native_on_policy_eligible",
-    "reason",
 }
 
 
@@ -197,128 +150,6 @@ def _writer_stop_outcome(before, candidate_checkpoint, reason, *, phase5):
             requirement_version=before.requirements_ref,
         )
     return outcome
-
-
-def validate_action_trace(
-    store, record, trace, action_id, context_hash, context_ref, rendering, message=None
-) -> None:
-    """Bind every duplicated sampling claim to the owning action and request."""
-    if (
-        not isinstance(trace, dict)
-        or set(trace) != _TRACE_FIELDS
-        or trace.get("record_type") != "WriterActionTraceV1"
-        or trace["native_on_policy_eligible"] is not False
-        or trace["reason"] != NATIVE_TRACE_REASON
-    ):
-        raise ProjectionError("writer action trace has wrong type")
-    if record.get("record_type") == "WriterActionV1":
-        if set(record) != _ACTION_RECORD_FIELDS or message is None:
-            raise ProjectionError("writer action record has wrong schema")
-        if message.role != "assistant" or not message.loss_eligible or message.origin != action_id:
-            raise ProjectionError("writer action message has wrong role or origin")
-        expected_loss = {
-            "assistant_text": any(part["type"] == "text" for part in message.content),
-            "tool_syntax": any(part["type"] == "tool_call" for part in message.content),
-            "assistant_ending": True,
-            "system": False,
-            "user": False,
-            "author": False,
-            "tool_observation": False,
-            "seed": False,
-            "environment": False,
-        }
-        if record["loss_eligibility"] != expected_loss:
-            raise ProjectionError("writer action loss eligibility contradicts message")
-    elif record.get("record_type") == "WriterSampledBudgetStopV1":
-        if set(record) != _STOP_RECORD_FIELDS:
-            raise ProjectionError("sampled stop record has wrong schema")
-    else:
-        raise ProjectionError("trace has no owning action or sampled stop")
-    claims = {
-        "action_id": action_id,
-        "context_content_hash": context_hash,
-        "context_revision_ref": context_ref,
-        "exact_request_ref": record["request_ref"],
-        "prepared_request_ref": record["prepared_request_ref"],
-        "raw_output_ref": record["raw_output_ref"],
-        "logprob_ref": record["logprob_ref"],
-        "usage": record["usage"],
-        "model": record["model"],
-        "seed": record["seed"],
-    }
-    if record["action_id"] != action_id or any(
-        trace.get(key) != value for key, value in claims.items()
-    ):
-        raise ProjectionError("writer trace contradicts its action")
-    for key in ("request_ref", "raw_output_ref"):
-        if record[key] is not None:
-            store.get_artifact(record[key])
-    if record["logprob_ref"] is not None:
-        store.get_artifact(record["logprob_ref"], expected_domain="payload:bytes")
-    if canonical_json(trace.get("rendering")) != canonical_json(rendering):
-        raise ProjectionError("writer trace rendering differs from context")
-    adapter = trace.get("adapter_trace")
-    if adapter is None and trace["logprob_ref"] is not None:
-        raise ProjectionError("adapter trace lost its logprob reference")
-    if adapter is not None and (
-        not isinstance(adapter, dict)
-        or any(key in adapter and adapter[key] != trace[key] for key in ("model", "seed", "usage"))
-        or adapter.get("per_token_logprobs_ref") != trace["logprob_ref"]
-        or ("per_token_logprobs_ref" in adapter) != (trace["logprob_ref"] is not None)
-        or "native_on_policy_eligible" in adapter
-    ):
-        raise ProjectionError("adapter trace contradicts sampling claims")
-    if trace.get("raw_output_evidence") != (
-        "supplied" if record["raw_output_ref"] is not None else "missing"
-    ):
-        raise ProjectionError("raw output evidence contradicts reference")
-    if trace.get("logprob_evidence") != (
-        "supplied" if record["logprob_ref"] is not None else "missing"
-    ):
-        raise ProjectionError("logprob evidence contradicts reference")
-    if trace.get("token_evidence") != (
-        "supplied" if isinstance(adapter, dict) and "generated_token_ids" in adapter else "missing"
-    ):
-        raise ProjectionError("token evidence contradicts adapter trace")
-    if (
-        isinstance(adapter, dict)
-        and "generated_token_ids" in adapter
-        and (
-            not isinstance(adapter["generated_token_ids"], list)
-            or any(type(token) is not int or token < 0 for token in adapter["generated_token_ids"])
-        )
-    ):
-        raise ProjectionError("generated token IDs are invalid")
-    prepared_ref = record["prepared_request_ref"]
-    if prepared_ref is not None:
-        _validate_prepared_request(
-            store, prepared_ref, context_hash, context_ref, rendering, record["request_ref"]
-        )
-
-
-def _validate_prepared_request(store, ref, context_hash, context_ref, rendering, payload_ref):
-    prepared = store.get_artifact(ref, expected_domain="payload")
-    kind = prepared.get("record_type") if isinstance(prepared, dict) else None
-    if kind not in {"PreparedWriterRequestV1", "VerifiedWriterMessagesV1"} or (
-        canonical_bytes(prepared)
-        != canonical_bytes(
-            {
-                "record_type": kind,
-                "context_content_hash": context_hash,
-                "context_revision_ref": context_ref,
-                "rendering": rendering,
-                "payload_ref": payload_ref,
-            }
-        )
-    ):
-        raise ProjectionError("prepared request contradicts action trace")
-    if kind == "VerifiedWriterMessagesV1":
-        payload = store.get_artifact(payload_ref, expected_domain="payload")
-        messages = [message.to_dict() for message in store.load_context(context_ref).messages]
-        if not isinstance(payload, dict) or canonical_bytes(
-            payload.get("messages")
-        ) != canonical_bytes(messages):
-            raise ProjectionError("verified request messages differ from current context")
 
 
 def validate_result_production(

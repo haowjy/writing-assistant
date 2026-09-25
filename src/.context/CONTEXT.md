@@ -25,7 +25,11 @@ retains its smoke-evaluation and training-format workflows.
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
   handle. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
   reconstructs writer context from the entry checkpoint and authorized causal
-  events; it never renders the private event log wholesale. A capable adapter calls
+  events; it never renders the private event log wholesale.
+  [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
+  codecs and binding checks for prepared requests, sampling and adapter evidence,
+  plus the current evaluation-only eligibility decision; the persisted V1 wires
+  retain their approved identities. A capable adapter calls
   `prepare_request` before sampling to pin caller-owned request/context evidence;
   that path does not verify payload messages. `prepare_verified_messages` checks a
   typed payload's message sequence against the current projection at preparation,

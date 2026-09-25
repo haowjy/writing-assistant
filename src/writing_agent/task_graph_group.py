@@ -35,6 +35,12 @@ from writing_agent.task_graph_group_contract import (
     _seed,
 )
 from writing_agent.task_graph_projection import project_writer_context
+from writing_agent.task_graph_sampling import (
+    CURRENT_ELIGIBILITY,
+    ProjectionError,
+    SamplingEvidenceV1,
+    bind_group_sampling_claims,
+)
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 
 
@@ -475,36 +481,6 @@ class GroupCoordinatorV1:
             raise GroupError("unknown trace-bearing runtime log kind")
         return None
 
-    @staticmethod
-    def _check_sample_claims(
-        spec: GroupSpecV1, member: GroupMemberSpecV1, trace: dict, claims: Any
-    ):
-        """Check any policy/context declarations in an adapter or exact request payload."""
-        if not isinstance(claims, dict):
-            return
-        for field in (
-            "model_ref",
-            "behavior_policy_ref",
-            "tokenizer_ref",
-            "template_ref",
-            "adapter_ref",
-            "decoding_ref",
-            "context_policy_ref",
-        ):
-            if field in claims and claims[field] != spec.policy[field]:
-                raise GroupError(f"writer sample used a different {field}")
-        if "policy_ref" in claims and claims["policy_ref"] != spec.policy["behavior_policy_ref"]:
-            raise GroupError("writer sample used a different behavior policy")
-        for field, expected in (
-            ("seed", member.writer_seed),
-            ("model", trace["model"]),
-            ("context_content_hash", trace["context_content_hash"]),
-            ("context_revision_ref", trace["context_revision_ref"]),
-            ("rendering", trace["rendering"]),
-        ):
-            if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
-                raise GroupError(f"writer sample request/adapter changed {field}")
-
     def _admit_result(
         self, spec: GroupSpecV1, result: GroupMemberResultV1, expected_ordinal: int | None = None
     ) -> int:
@@ -590,6 +566,10 @@ class GroupCoordinatorV1:
                 trace_ref = self._sampled_trace_ref(entry)
                 if trace_ref is not None:
                     trace = self.store.get_artifact(trace_ref)
+                    try:
+                        SamplingEvidenceV1.from_wire(trace)
+                    except ProjectionError as exc:
+                        raise GroupError(str(exc)) from exc
                     if trace.get("seed") is not None and (
                         type(trace["seed"]) is not int or trace["seed"] != member.writer_seed
                     ):
@@ -598,14 +578,22 @@ class GroupCoordinatorV1:
                         not isinstance(model, dict) or trace["model"] != model.get("model_id")
                     ):
                         raise GroupError("writer sample used a different model")
-                    self._check_sample_claims(spec, member, trace, trace.get("adapter_trace"))
-                    if trace.get("exact_request_ref") is not None:
-                        self._check_sample_claims(
-                            spec,
-                            member,
-                            trace,
-                            self.store.get_artifact(trace["exact_request_ref"]),
+                    try:
+                        bind_group_sampling_claims(
+                            spec.policy, member.writer_seed, trace, trace.get("adapter_trace")
                         )
+                    except ProjectionError as exc:
+                        raise GroupError(str(exc)) from exc
+                    if trace.get("exact_request_ref") is not None:
+                        try:
+                            bind_group_sampling_claims(
+                                spec.policy,
+                                member.writer_seed,
+                                trace,
+                                self.store.get_artifact(trace["exact_request_ref"]),
+                            )
+                        except ProjectionError as exc:
+                            raise GroupError(str(exc)) from exc
                 if entry["kind"] != "context_changed":
                     continue
                 operation = self.store.get_artifact(entry["record_ref"])
@@ -645,7 +633,7 @@ class GroupCoordinatorV1:
                     or eligibility.get("record_type") != "TrainingEligibilityV1"
                     or eligibility.get("terminal_outcome_ref") != result.terminal_outcome_ref
                     or eligibility.get("status") != "ineligible"
-                    or eligibility.get("reason") != "native_action_trace_unavailable"
+                    or eligibility.get("reason") != CURRENT_ELIGIBILITY.training_reason
                     or type(reward.get("numerator")) is not int
                     or type(reward.get("normalization")) is not int
                     or reward["normalization"] <= 0
