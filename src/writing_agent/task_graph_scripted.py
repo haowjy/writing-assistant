@@ -156,8 +156,10 @@ def resolve_script_reply(script, request, decisions, disclosures):
 class ScriptedAuthorRuntimeV1:
     def __init__(self, writer, dependencies=None):
         self.writer = writer
-        self.dependencies = dependencies or writer.dependencies
-        self.environment = self.dependencies.environment
+        if dependencies is not None and dependencies is not writer.dependencies:
+            raise WriterRuntimeError("runtime roles must share the writer session")
+        self.dependencies = writer.dependencies
+        self.publication = writer.publication
         self.store = writer.store
 
     def _node(self, runtime):
@@ -211,7 +213,7 @@ class ScriptedAuthorRuntimeV1:
         position["phase"] = "awaiting_author"
         continuation = state.to_dict()["continuation"]
         continuation["author_request"] = request_ref
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "external_requested",
             "environment",
@@ -279,7 +281,7 @@ class ScriptedAuthorRuntimeV1:
             origin=request["request_id"],
             content=({"type": "text", "text": utterance},),
         )
-        batch = self.environment.batch(runtime, restore_prefix="scripted")
+        batch = self.publication.batch(runtime, restore_prefix="scripted")
         next_budget, _ = charge_tool_attempt(budget)
         budget_ref = self.store.put_artifact(next_budget)
         continuation = batch.current.to_dict()["continuation"]
@@ -361,7 +363,7 @@ class ScriptedAuthorRuntimeV1:
         position["phase"] = "terminal"
         continuation = state.to_dict()["continuation"]
         continuation["author_request"] = None
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "termination_recorded",
             "environment",
@@ -434,7 +436,7 @@ class ScriptedAuthorRuntimeV1:
         position["phase"] = "awaiting_author"
         continuation = state.to_dict()["continuation"]
         continuation["author_request"] = request_ref
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "external_requested",
             "environment",
@@ -468,7 +470,7 @@ class ScriptedAuthorRuntimeV1:
             origin=request["request_id"],
             content=({"type": "text", "text": rule["utterance"]},),
         )
-        batch = self.environment.batch(runtime, restore_prefix="scripted")
+        batch = self.publication.batch(runtime, restore_prefix="scripted")
 
         if rule["requirement_update_ref"] is not None:
             from writing_agent.task_graph_contracts import RequirementUpdateV1

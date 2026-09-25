@@ -35,19 +35,29 @@ from writing_agent.task_graph_compaction import (
     require_quiescent,
     select_context,
 )
+from writing_agent.task_graph_composition import RuntimeSession, local_unbound_session
 from writing_agent.task_graph_environment import (
     WriterRuntimeError,
     WriterStepV1,
 )
-from writing_agent.task_graph_ports import RuntimeDependenciesV1, local_runtime_dependencies
+from writing_agent.task_graph_ports import (
+    EnvironmentAction,
+    EnvironmentHandle,
+    EnvironmentSnapshot,
+    EnvironmentSpec,
+    RuntimeDependenciesV1,
+)
 from writing_agent.task_graph_projection import (
     execution_value,
     project_writer_context,
 )
 from writing_agent.task_graph_sampling import (
     PreparedRequestV1,
+    ProjectionError,
     VerifiedMessagesStaleError,
-    _validate_prepared_request,
+    decode_and_bind_sampling,
+    make_prepared_request,
+    make_sampling_evidence,
 )
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 
@@ -139,6 +149,7 @@ class TransactionalWriterV1:
         count_tokens: Callable[[str], int] = _count_whitespace,
         read_tokenizer: str = "whitespace-v1",
         dependencies: RuntimeDependenciesV1 | None = None,
+        session: RuntimeSession | None = None,
     ) -> None:
         if not isinstance(graph, AdmittedGraphV1):
             raise TypeError("writer runtime requires an admitted graph")
@@ -215,11 +226,17 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("entry request differs from admitted node request")
         self.entry_checkpoint_id = entry_checkpoint_id
-        self.dependencies = dependencies or local_runtime_dependencies(
-            store, rollout_id, entry_checkpoint_id
+        if session is not None and dependencies is not None:
+            raise WriterRuntimeError("supply a bound session or legacy dependencies, not both")
+        if session is not None and session.sealed_adapter_ref is None:
+            raise WriterRuntimeError("explicit runtime session must be sealed before execution")
+        self.session = session or (
+            RuntimeSession.create(store, rollout_id, entry_checkpoint_id, dependencies)
+            if dependencies is not None
+            else local_unbound_session(store, rollout_id, entry_checkpoint_id)
         )
-        self.dependencies.manifest()
-        self.environment = self.dependencies.environment
+        self.dependencies = self.session.dependencies
+        self.publication = self.session.publisher
         entry_budget = store.get_artifact(entry.state.budgets_ref, expected_domain="payload")
         if isinstance(entry_budget, dict) and "context_tokens" in entry_budget.get("limits", {}):
             raise WriterRuntimeError("context_tokens cannot be enforced before sampling")
@@ -231,6 +248,8 @@ class TransactionalWriterV1:
             raise WriterRuntimeError("unsupported read tokenizer for semantic validation")
 
     def validate_runtime(self, runtime: RuntimeHandle) -> tuple[Any, dict[str, Any]]:
+        if self.session.sealed_adapter_ref is not None:
+            self.session.require_seal(self.session.sealed_adapter_ref)
         checkpoint = self.store.load_checkpoint(runtime.checkpoint_id)
         if (
             checkpoint.state != runtime.state
@@ -246,9 +265,9 @@ class TransactionalWriterV1:
             or runtime.state.position["entry_contract"] != node.spec.entry_contract
         ):
             raise WriterRuntimeError("not an admitted writer-node entry")
-        expected_tools = self.dependencies.tools.schemas(
+        expected_tools = self.dependencies.environment.tool_manifest(
             node.contract.entry_contract.tool_allowlist, node.interaction_policy
-        )
+        ).schemas()
         if canonical_json(runtime.context.tools) != canonical_json(expected_tools):
             raise WriterRuntimeError(
                 "context advertises tools outside the admitted text-tool schema"
@@ -299,7 +318,7 @@ class TransactionalWriterV1:
             raise TypeError("context policy must be ContextPolicyV1")
         _, budget = self.validate_runtime(runtime)
         require_quiescent(runtime.state)
-        self.environment.head(runtime)
+        self.publication.head(runtime)
         sources: list[str | None] = []
         project_writer_context(
             self.store,
@@ -365,7 +384,7 @@ class TransactionalWriterV1:
             seed_sources=tuple(seed_sources),
         )
         budget_ref = self.store.put_artifact(new_budget)
-        batch = self.environment.batch(runtime, restore_prefix="context")
+        batch = self.publication.batch(runtime, restore_prefix="context")
         event, record_ref = batch.append_record(
             "context_changed",
             "environment",
@@ -547,16 +566,14 @@ class TransactionalWriterV1:
                 and budget["consumed"].get(name, 0) >= budget["limits"][name]
             ):
                 raise WriterRuntimeError(f"{name} budget exhausted before sampling")
-        self.environment.head(runtime)
+        self.publication.head(runtime)
         payload_ref = (
             self.store.put_bytes_artifact(exact_request)
             if isinstance(exact_request, bytes)
             else self.store.put_artifact(exact_request)
         )
         return self.store.put_artifact(
-            self.dependencies.sampling.prepared_request(
-                runtime.context, payload_ref, verified=False
-            ).to_wire()
+            make_prepared_request(runtime.context, payload_ref, verified=False).to_wire()
         )
 
     def prepare_verified_messages(
@@ -574,12 +591,33 @@ class TransactionalWriterV1:
         prepared_ref = self.prepare_request(runtime, dict(exact_request))
         prepared = self.store.get_artifact(prepared_ref, expected_domain="payload")
         return self.store.put_artifact(
-            self.dependencies.sampling.prepared_request(
+            make_prepared_request(
                 runtime.context,
                 PreparedRequestV1.from_wire(prepared).payload_ref,
                 verified=True,
             ).to_wire()
         )
+
+    def _bind_sample(self, record, trace, runtime, message=None):
+        try:
+            return decode_and_bind_sampling(
+                self.store,
+                record,
+                trace,
+                record["action_id"],
+                runtime.context.content_hash,
+                runtime.context.identity(),
+                runtime.context.rendering,
+                message,
+            )
+        except VerifiedMessagesStaleError as exc:
+            raise WriterRuntimeError("verified request messages are stale") from exc
+        except ProjectionError as exc:
+            if record["prepared_request_ref"] is not None:
+                raise WriterRuntimeError(
+                    "prepared request does not match the sampling context"
+                ) from exc
+            raise WriterRuntimeError(str(exc)) from exc
 
     def submit_action(
         self,
@@ -606,7 +644,7 @@ class TransactionalWriterV1:
                 and budget["consumed"].get(name, 0) >= budget["limits"][name]
             ):
                 raise WriterRuntimeError(f"{name} budget exhausted before sampling")
-        self.environment.head(runtime)
+        self.publication.head(runtime)
         if not isinstance(message, Mapping) or message.get("role") != "assistant":
             raise WriterRuntimeError("backend adapter must supply an assistant message")
         content = message.get("content")
@@ -618,7 +656,7 @@ class TransactionalWriterV1:
         action_id = f"{self.rollout_id}:action:{action_ordinal}"
         prior_raw_ids = {
             call["raw_id"]
-            for entry in self.environment.runtime_log(state)
+            for entry in self.publication.runtime_log(state)
             if entry["kind"] == "writer_action"
             for call in self.store.get_artifact(entry["record_ref"])["calls"]
             if call["raw_id"] is not None
@@ -664,26 +702,6 @@ class TransactionalWriterV1:
                 raise parse_error
             if not queue and not content.strip():
                 raise WriterRuntimeError("final response must contain text")
-        if trace is not None and not isinstance(trace, Mapping):
-            raise WriterRuntimeError("trace metadata must be an object")
-        if trace is not None and "per_token_logprobs" in trace:
-            raise WriterRuntimeError("native logprob arrays require a binary artifact reference")
-        if trace is not None and "per_token_logprobs_ref" in trace:
-            validate_hash(trace["per_token_logprobs_ref"])
-            self.store.get_artifact(
-                trace["per_token_logprobs_ref"], expected_domain="payload:bytes"
-            )
-        if (
-            trace is not None
-            and "generated_token_ids" in trace
-            and (
-                not isinstance(trace["generated_token_ids"], list)
-                or any(
-                    type(token) is not int or token < 0 for token in trace["generated_token_ids"]
-                )
-            )
-        ):
-            raise WriterRuntimeError("generated token IDs must be nonnegative integers")
         if ("generated_tokens" in budget["limits"] and "completion_tokens" not in usage) or (
             "total_tokens" in budget["limits"]
             and "total_tokens" not in usage
@@ -696,22 +714,11 @@ class TransactionalWriterV1:
             validate_hash(prepared_request_ref)
             prepared = self.store.get_artifact(prepared_request_ref, expected_domain="payload")
             try:
-                decoded = PreparedRequestV1.from_wire(prepared)
-                _validate_prepared_request(
-                    self.store,
-                    prepared_request_ref,
-                    runtime.context.content_hash,
-                    runtime.context.identity(),
-                    runtime.context.rendering,
-                    decoded.payload_ref,
-                )
-            except VerifiedMessagesStaleError as exc:
-                raise WriterRuntimeError("verified request messages are stale") from exc
-            except ValueError as exc:
+                request_ref = PreparedRequestV1.from_wire(prepared).payload_ref
+            except ProjectionError as exc:
                 raise WriterRuntimeError(
                     "prepared request does not match the sampling context"
                 ) from exc
-            request_ref = decoded.payload_ref
         else:
             # The direct path still persists supplied evidence before publication.
             request_ref = (
@@ -730,15 +737,19 @@ class TransactionalWriterV1:
             if raw_output is not None
             else None
         )
-        trace_body = self.dependencies.sampling.evidence(
-            action_id,
-            runtime.context,
-            request_ref,
-            prepared_request_ref,
-            raw_output_ref,
-            usage,
-            trace,
-        ).to_wire()
+        try:
+            trace_body = make_sampling_evidence(
+                self.store,
+                action_id,
+                runtime.context,
+                request_ref,
+                prepared_request_ref,
+                raw_output_ref,
+                usage,
+                trace,
+            ).to_wire()
+        except ProjectionError as exc:
+            raise WriterRuntimeError(str(exc)) from exc
         trace_ref = self.store.put_artifact(trace_body)
         if exceeded is not None:
             return self._sampled_budget_stop(
@@ -797,7 +808,8 @@ class TransactionalWriterV1:
                 "environment": False,
             },
         }
-        batch = self.environment.batch(runtime, restore_prefix="writer")
+        self._bind_sample(record, trace_body, runtime, assistant)
+        batch = self.publication.batch(runtime, restore_prefix="writer")
         event, record_ref = batch.append_record(
             "writer_action",
             "writer",
@@ -838,7 +850,7 @@ class TransactionalWriterV1:
     ) -> WriterStepV1:
         """Account a sampled overrun without accepting call syntax or executing tools."""
         state = runtime.state
-        self.environment.head(runtime)
+        self.publication.head(runtime)
         next_budget, actual_exceeded = sampled_usage_charge(budget, usage)
         if actual_exceeded != exceeded:
             raise WriterRuntimeError("sampled stop no longer matches its budget")
@@ -874,9 +886,10 @@ class TransactionalWriterV1:
             "raw_output_ref": raw_output_ref,
             "logprob_ref": self.store.get_artifact(trace_ref)["logprob_ref"],
         }
+        self._bind_sample(record, self.store.get_artifact(trace_ref), runtime)
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        batch = self.environment.batch(runtime, restore_prefix="writer")
+        batch = self.publication.batch(runtime, restore_prefix="writer")
         event, record_ref = batch.append_record(
             "budget_charged",
             "writer_runtime",
@@ -904,13 +917,13 @@ class TransactionalWriterV1:
 
     def step_tool(self, runtime: RuntimeHandle) -> WriterStepV1:
         _, budget = self.validate_runtime(runtime)
-        self.environment.head(runtime)
+        self.publication.head(runtime)
         state = runtime.state
         queue = state.continuation["tool_queue"]
         cursor = state.continuation["next_call"]
         if state.position["phase"] != "ready_writer" or cursor >= len(queue):
             raise WriterRuntimeError("no queued tool call to resume")
-        entries = self.environment.runtime_log(state)
+        entries = self.publication.runtime_log(state)
         action = next(
             (
                 self.store.get_artifact(entry["record_ref"])
@@ -940,16 +953,17 @@ class TransactionalWriterV1:
         if predispatch_error is not None:
             observation = predispatch_error
         else:
-            execution = self.dependencies.tools.execute(
-                files,
-                call["name"],
-                dict(call["arguments"]),
-                stage_parent=runtime.workspace.parent,
-                max_file_bytes=self.store.max_file_bytes,
-                max_workspace_bytes=min(
-                    self.store.max_workspace_bytes, budget["limits"]["storage_bytes"]
+            execution = self.dependencies.environment.execute(
+                EnvironmentSpec(
+                    self.store.max_file_bytes,
+                    min(self.store.max_workspace_bytes, budget["limits"]["storage_bytes"]),
                 ),
+                EnvironmentHandle(state.position["lineage_id"]),
+                EnvironmentSnapshot.from_files(files),
+                EnvironmentAction.from_arguments(call["name"], call["arguments"]),
             )
+            if execution.infrastructure != "ok":
+                raise WriterRuntimeError("execution environment infrastructure failure")
             observation = execution.observation
             if observation["ok"] and call["name"] in READ_TOOLS:
                 charge = (
@@ -970,9 +984,9 @@ class TransactionalWriterV1:
                     }
                 else:
                     read_charge = charge
-                    files = execution.files
+                    files = execution.snapshot.files()
             elif observation["ok"]:
-                files = execution.files
+                files = execution.snapshot.files()
         delta = {
             path: {"before": state.files.get(path), "after": files.get(path)}
             for path in sorted(set(state.files) | set(files))
@@ -1022,7 +1036,7 @@ class TransactionalWriterV1:
             "budget_charge": budget_charge,
             "loss_eligibility": {"tool_observation": False},
         }
-        batch = self.environment.batch(runtime, restore_prefix="writer")
+        batch = self.publication.batch(runtime, restore_prefix="writer")
         event, record_ref = batch.append_record(
             "tool_result",
             "environment",
@@ -1061,7 +1075,7 @@ class TransactionalWriterV1:
             or reason is None
         ):
             raise WriterRuntimeError("writer budget is not exhausted at a drained boundary")
-        self.environment.head(runtime)
+        self.publication.head(runtime)
         outcome = {
             "schema": 1,
             "task_status": "incomplete",
@@ -1082,7 +1096,7 @@ class TransactionalWriterV1:
         record = {"record_type": "WriterExhaustedStopV1", "reason": outcome["stop_reason"]}
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        batch = self.environment.batch(runtime, restore_prefix="writer")
+        batch = self.publication.batch(runtime, restore_prefix="writer")
         event, record_ref = batch.append_record(
             "termination_recorded",
             "writer_runtime",

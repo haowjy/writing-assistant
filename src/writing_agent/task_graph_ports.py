@@ -1,8 +1,7 @@
-"""Runtime ports and immutable composition manifest for task-graph experiments.
+"""Immutable runtime descriptors and remote-capable sampling/execution contracts.
 
-These contracts inject policy-preserving implementations; admission and semantic
-replay still validate persisted evidence independently. A port cannot grant native
-eligibility or make an unadmitted check program authoritative by itself.
+Ports describe capabilities and effects, not local persistence. Composition owns the
+transaction publisher and seals these descriptors before running a member.
 """
 
 from __future__ import annotations
@@ -10,13 +9,10 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol
 
-from writing_agent.task_graph import ContextRevisionV1, canonical_json, domain_hash
-from writing_agent.task_graph_environment import EnvironmentBatch, WriterStepV1
-from writing_agent.task_graph_sampling import PreparedRequestV1, SamplingEvidenceV1
-from writing_agent.task_graph_store import RuntimeHandle
+from writing_agent.task_graph import canonical_json, domain_hash
+from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
 
 
 @dataclass(frozen=True)
@@ -76,76 +72,154 @@ class RuntimeManifestV1:
         return domain_hash("payload", self.to_wire())
 
 
-class SamplingHarness(Protocol):
+@dataclass(frozen=True)
+class PreparedSamplingInput:
+    request_ref: str
+    prepared_request_ref: str
+    context_content_hash: str
+    context_revision_ref: str
+    messages_json: str
+    tools_json: str
+    rendering_json: str
+
+
+@dataclass(frozen=True)
+class SampleResult:
+    message: Mapping[str, Any]
+    raw_output: str | bytes | None = None
+    usage: Mapping[str, Any] | None = None
+    trace: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.message, Mapping):
+            raise TypeError("sample message must be a parsed object")
+        if self.raw_output is not None and not isinstance(self.raw_output, (str, bytes)):
+            raise TypeError("sample raw output must be exact text or bytes")
+        for field in ("message", "usage", "trace"):
+            value = getattr(self, field)
+            if value is not None:
+                if not isinstance(value, Mapping):
+                    raise TypeError(f"sample {field} must be a parsed object")
+                object.__setattr__(self, field, json.loads(canonical_json(value)))
+
+
+class SampleBackend(Protocol):
     descriptor: PortDescriptorV1
 
-    def prepared_request(
-        self, context: ContextRevisionV1, payload_ref: str, *, verified: bool
-    ) -> PreparedRequestV1: ...
+    def sample(self, prepared: PreparedSamplingInput) -> SampleResult: ...
 
-    def evidence(
-        self,
-        action_id: str,
-        context: ContextRevisionV1,
-        request_ref: str | None,
-        prepared_request_ref: str | None,
-        raw_output_ref: str | None,
-        usage: Mapping[str, Any],
-        adapter_trace: Mapping[str, Any] | None,
-    ) -> SamplingEvidenceV1: ...
+
+@dataclass(frozen=True)
+class ToolManifest:
+    schemas_json: str
+    capabilities: tuple[str, ...] = ("text_workspace",)
+
+    def __post_init__(self) -> None:
+        schemas = json.loads(self.schemas_json)
+        if (
+            not isinstance(schemas, list)
+            or canonical_json(schemas) != self.schemas_json
+            or not set(self.capabilities) <= {"text_workspace"}
+        ):
+            raise ValueError("tool manifest must declare only supported text workspace tools")
+
+    def schemas(self) -> tuple[dict[str, Any], ...]:
+        return tuple(json.loads(self.schemas_json))
+
+
+@dataclass(frozen=True)
+class EnvironmentSpec:
+    max_file_bytes: int
+    max_workspace_bytes: int
+
+
+@dataclass(frozen=True)
+class EnvironmentHandle:
+    identity: str
+
+
+@dataclass(frozen=True)
+class EnvironmentSnapshot:
+    files_json: str
+
+    @classmethod
+    def from_files(cls, files: Mapping[str, str]) -> EnvironmentSnapshot:
+        return cls(canonical_json(dict(files)))
+
+    def files(self) -> dict[str, str]:
+        return json.loads(self.files_json)
+
+
+@dataclass(frozen=True)
+class EnvironmentAction:
+    name: str
+    arguments_json: str
+
+    @classmethod
+    def from_arguments(cls, name: str, arguments: Mapping[str, Any]) -> EnvironmentAction:
+        return cls(name, canonical_json(dict(arguments)))
+
+    def arguments(self) -> dict[str, Any]:
+        return json.loads(self.arguments_json)
+
+
+@dataclass(frozen=True)
+class EnvironmentResult:
+    observation: Mapping[str, Any]
+    snapshot: EnvironmentSnapshot
+    infrastructure: str = "ok"
+
+    def __post_init__(self) -> None:
+        if self.infrastructure not in {"ok", "transient_failure", "permanent_failure"}:
+            raise ValueError("unknown infrastructure classification")
 
 
 class ExecutionEnvironment(Protocol):
     descriptor: PortDescriptorV1
 
-    def head(self, runtime: RuntimeHandle) -> tuple[str | None, str | None]: ...
+    def tool_manifest(
+        self, allowlist: tuple[str, ...], interaction_policy: Any = None
+    ) -> ToolManifest: ...
 
-    def runtime_log(self, state: Any) -> list[dict[str, Any]]: ...
-
-    def batch(self, runtime: RuntimeHandle, *, restore_prefix: str) -> EnvironmentBatch: ...
-
-    def publish_record(
-        self, runtime: RuntimeHandle, kind: str, actor: str, **kwargs: Any
-    ) -> WriterStepV1: ...
-
-
-@dataclass(frozen=True)
-class ToolExecution:
-    observation: dict[str, Any]
-    files: dict[str, str]
+    def execute(
+        self,
+        spec: EnvironmentSpec,
+        handle: EnvironmentHandle,
+        snapshot: EnvironmentSnapshot,
+        action: EnvironmentAction,
+    ) -> EnvironmentResult: ...
 
 
 class ToolProvider(Protocol):
     descriptor: PortDescriptorV1
 
-    def schemas(
+    def tool_manifest(
         self, allowlist: tuple[str, ...], interaction_policy: Any = None
-    ) -> tuple[dict[str, Any], ...]: ...
+    ) -> ToolManifest: ...
 
     def execute(
-        self,
-        files: Mapping[str, str],
-        name: str,
-        arguments: dict[str, str],
-        *,
-        stage_parent: Path,
-        max_file_bytes: int,
-        max_workspace_bytes: int,
-    ) -> ToolExecution: ...
+        self, spec: EnvironmentSpec, snapshot: EnvironmentSnapshot, action: EnvironmentAction
+    ) -> EnvironmentResult: ...
 
 
 class Evaluator(Protocol):
     descriptor: PortDescriptorV1
+    family: str
 
-    def evaluate(self, check: Any, files: Mapping[str, str]) -> tuple[str, dict]: ...
+    def evaluate(self, request: EvaluationRequestV1) -> EvaluationEvidenceV1: ...
 
 
 @dataclass(frozen=True)
 class RuntimeDependenciesV1:
-    sampling: SamplingHarness
+    sampling: SampleBackend
     environment: ExecutionEnvironment
     tools: ToolProvider
     evaluator: Evaluator
+
+    def __post_init__(self) -> None:
+        for role in ("sampling", "environment", "tools", "evaluator"):
+            if getattr(self, role).descriptor.role != role:
+                raise ValueError(f"runtime {role} has a descriptor for another port")
 
     def manifest(self) -> RuntimeManifestV1:
         return RuntimeManifestV1(
@@ -156,22 +230,3 @@ class RuntimeDependenciesV1:
                 self.evaluator.descriptor,
             )
         )
-
-
-def local_runtime_dependencies(
-    store, rollout_id: str, entry_checkpoint_id: str
-) -> RuntimeDependenciesV1:
-    """Current offline composition root; no model, network, or shell capability."""
-    from writing_agent.task_graph_environment import EnvironmentTransactionService
-    from writing_agent.task_graph_local import (
-        DeterministicEvaluator,
-        LocalSamplingHarness,
-        LocalTextToolProvider,
-    )
-
-    return RuntimeDependenciesV1(
-        sampling=LocalSamplingHarness(),
-        environment=EnvironmentTransactionService(store, rollout_id, entry_checkpoint_id),
-        tools=LocalTextToolProvider(),
-        evaluator=DeterministicEvaluator(),
-    )

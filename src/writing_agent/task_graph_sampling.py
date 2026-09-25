@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import canonical_bytes, canonical_json
+from writing_agent.task_graph import canonical_bytes, canonical_json, validate_hash
 
 
 class ProjectionError(ValueError):
@@ -191,6 +191,73 @@ class EligibilityDecisionV1:
 CURRENT_ELIGIBILITY = EligibilityDecisionV1()
 
 
+def decode_training_eligibility(value: Any, outcome_ref: str) -> EligibilityDecisionV1:
+    try:
+        matches = canonical_bytes(value) == canonical_bytes(
+            CURRENT_ELIGIBILITY.training_wire(outcome_ref)
+        )
+    except (TypeError, ValueError) as exc:
+        raise ProjectionError("training eligibility has invalid wire value") from exc
+    if not matches:
+        raise ProjectionError("training eligibility contradicts current native policy")
+    return CURRENT_ELIGIBILITY
+
+
+def make_prepared_request(context, payload_ref: str, *, verified: bool) -> PreparedRequestV1:
+    return PreparedRequestV1(
+        "VerifiedWriterMessagesV1" if verified else "PreparedWriterRequestV1",
+        context.content_hash,
+        context.identity(),
+        canonical_json(context.rendering),
+        payload_ref,
+    )
+
+
+def _validate_adapter_claims(store, trace: Mapping[str, Any] | None) -> None:
+    if trace is None:
+        return
+    if not isinstance(trace, Mapping):
+        raise ProjectionError("trace metadata must be an object")
+    if "per_token_logprobs" in trace:
+        raise ProjectionError("native logprob arrays require a binary artifact reference")
+    if "per_token_logprobs_ref" in trace:
+        validate_hash(trace["per_token_logprobs_ref"])
+        store.get_artifact(trace["per_token_logprobs_ref"], expected_domain="payload:bytes")
+    if "generated_token_ids" in trace and (
+        not isinstance(trace["generated_token_ids"], list)
+        or any(type(token) is not int or token < 0 for token in trace["generated_token_ids"])
+    ):
+        raise ProjectionError("generated token IDs must be nonnegative integers")
+
+
+def make_sampling_evidence(
+    store,
+    action_id: str,
+    context,
+    request_ref: str | None,
+    prepared_request_ref: str | None,
+    raw_output_ref: str | None,
+    usage: Mapping[str, Any],
+    adapter_trace: Mapping[str, Any] | None,
+) -> SamplingEvidenceV1:
+    _validate_adapter_claims(store, adapter_trace)
+    adapter = AdapterEvidenceV1.from_wire(adapter_trace)
+    return SamplingEvidenceV1(
+        action_id=action_id,
+        context_content_hash=context.content_hash,
+        context_revision_ref=context.identity(),
+        rendering_json=canonical_json(context.rendering),
+        exact_request_ref=request_ref,
+        prepared_request_ref=prepared_request_ref,
+        raw_output_ref=raw_output_ref,
+        logprob_ref=adapter.logprob_ref if adapter else None,
+        usage_json=canonical_json(usage),
+        model=adapter.model if adapter else None,
+        seed=adapter.seed if adapter else None,
+        adapter=adapter,
+    )
+
+
 @dataclass(frozen=True)
 class SamplingEvidenceV1:
     """Typed normalized fields around the frozen WriterActionTraceV1 wire shape."""
@@ -263,6 +330,41 @@ class SamplingEvidenceV1:
         }
 
 
+@dataclass(frozen=True)
+class SamplingRecordV1:
+    kind: str
+    action_id: str
+    request_ref: str | None
+    prepared_request_ref: str | None
+    raw_output_ref: str | None
+    logprob_ref: str | None
+    usage_json: str
+    model: str | None
+    seed: int | None
+
+    @classmethod
+    def from_wire(cls, record: Mapping[str, Any]) -> SamplingRecordV1:
+        return cls(
+            record["record_type"],
+            record["action_id"],
+            record["request_ref"],
+            record["prepared_request_ref"],
+            record["raw_output_ref"],
+            record["logprob_ref"],
+            canonical_json(record["usage"]),
+            record["model"],
+            record["seed"],
+        )
+
+
+@dataclass(frozen=True)
+class BoundSamplingV1:
+    record: SamplingRecordV1
+    evidence: SamplingEvidenceV1
+    prepared: PreparedRequestV1 | None
+    eligibility: EligibilityDecisionV1
+
+
 def bind_group_sampling_claims(
     policy: Mapping[str, str], writer_seed: int, trace: Mapping[str, Any], claims: Any
 ) -> None:
@@ -293,11 +395,11 @@ def bind_group_sampling_claims(
             raise ProjectionError(f"writer sample request/adapter changed {field}")
 
 
-def validate_action_trace(
+def decode_and_bind_sampling(
     store, record, trace, action_id, context_hash, context_ref, rendering, message=None
-) -> None:
+) -> BoundSamplingV1:
     """Bind every duplicated sampling claim to the owning action and request."""
-    SamplingEvidenceV1.from_wire(trace)
+    evidence = SamplingEvidenceV1.from_wire(trace)
     if record.get("record_type") == "WriterActionV1":
         if set(record) != _ACTION_RECORD_FIELDS or message is None:
             raise ProjectionError("writer action record has wrong schema")
@@ -345,6 +447,7 @@ def validate_action_trace(
     if canonical_json(trace.get("rendering")) != canonical_json(rendering):
         raise ProjectionError("writer trace rendering differs from context")
     adapter = trace.get("adapter_trace")
+    _validate_adapter_claims(store, adapter)
     if adapter is None and trace["logprob_ref"] is not None:
         raise ProjectionError("adapter trace lost its logprob reference")
     if adapter is not None and (
@@ -367,22 +470,20 @@ def validate_action_trace(
         "supplied" if isinstance(adapter, dict) and "generated_token_ids" in adapter else "missing"
     ):
         raise ProjectionError("token evidence contradicts adapter trace")
-    if (
-        isinstance(adapter, dict)
-        and "generated_token_ids" in adapter
-        and (
-            not isinstance(adapter["generated_token_ids"], list)
-            or any(type(token) is not int or token < 0 for token in adapter["generated_token_ids"])
-        )
-    ):
-        raise ProjectionError("generated token IDs are invalid")
     prepared_ref = record["prepared_request_ref"]
+    prepared = None
     if prepared_ref is not None:
-        _validate_prepared_request(
+        prepared = _decode_and_bind_prepared_request(
             store, prepared_ref, context_hash, context_ref, rendering, record["request_ref"]
         )
+    return BoundSamplingV1(
+        SamplingRecordV1.from_wire(record), evidence, prepared, evidence.eligibility
+    )
 
 
-def _validate_prepared_request(store, ref, context_hash, context_ref, rendering, payload_ref):
+def _decode_and_bind_prepared_request(
+    store, ref, context_hash, context_ref, rendering, payload_ref
+):
     prepared = PreparedRequestV1.from_wire(store.get_artifact(ref, expected_domain="payload"))
     prepared.bind(store, context_hash, context_ref, rendering, payload_ref)
+    return prepared

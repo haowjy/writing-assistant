@@ -37,18 +37,24 @@ retains its smoke-evaluation and training-format workflows.
   retain their approved identities. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
-  [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines the injected
-  sampling, environment, tool and evaluator ports with immutable content-addressed
-  descriptors/manifests; [task_graph_local.py](../writing_agent/task_graph_local.py)
-  composes the current offline implementations. Injection does not override
-  admitted program schemas or semantic replay validation.
-  A capable adapter calls
-  `prepare_request` before sampling to pin caller-owned request/context evidence;
-  that path does not verify payload messages. `prepare_verified_messages` checks a
-  typed payload's message sequence against the current projection at preparation,
-  publication, and recovery. The caller then supplies parsed writer output and any
-  raw-output/trace evidence. Neither module
-  invokes a model. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
+  [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable
+  descriptors and typed sampling, execution-environment, tool-provider, and evaluator
+  ports without importing concrete adapters. [task_graph_composition.py](../writing_agent/task_graph_composition.py)
+  owns the persisted runtime manifest, sealed session, local transaction publisher,
+  and runner that invokes a backend from verified current messages.
+  [task_graph_local.py](../writing_agent/task_graph_local.py) supplies offline scripted
+  sampling and a local workspace environment composed with the text provider. Its
+  staging path never enters a public port. Direct `submit_action` is an explicitly
+  unbound legacy/offline path; a bound session checks descriptor identity before effects.
+  [task_graph_evaluation.py](../writing_agent/task_graph_evaluation.py) admits only
+  versioned evidence families with replay-only verifiers. Deterministic checks
+  recompute exactly; an offline fixture family exercises a second contract without
+  a model judge. Injection does not override admitted schemas, semantic replay, or
+  the native-ineligible decision. `prepare_request` pins caller-owned evidence;
+  `prepare_verified_messages` checks typed messages against the active projection
+  at preparation, publication, and recovery. The sampling decoder alone binds
+  duplicated trace/action/request claims. Only the composition runner invokes
+  `SampleBackend`. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
   owns exact scripted author requests/replies, disclosure and authorized requirement
   updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
   checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)

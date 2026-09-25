@@ -1,0 +1,120 @@
+"""Composition root for sealed runtime adapters and the local publication service."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any
+
+from writing_agent.task_graph import canonical_json
+from writing_agent.task_graph_environment import EnvironmentTransactionService
+from writing_agent.task_graph_local import (
+    DeterministicEvaluator,
+    LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
+    ScriptedSampleBackend,
+)
+from writing_agent.task_graph_ports import (
+    PreparedSamplingInput,
+    RuntimeDependenciesV1,
+    SampleResult,
+)
+
+
+@dataclass(frozen=True)
+class RuntimeSession:
+    dependencies: RuntimeDependenciesV1
+    publisher: EnvironmentTransactionService
+    manifest_ref: str
+    sealed_adapter_ref: str | None = None
+
+    @classmethod
+    def create(cls, store, rollout_id, entry_checkpoint_id, dependencies):
+        if (
+            isinstance(dependencies.environment, LocalWorkspaceEnvironment)
+            and dependencies.environment.provider is not dependencies.tools
+        ):
+            raise ValueError("local environment and declared tool provider differ")
+        evaluator_family = json.loads(dependencies.evaluator.descriptor.configuration_json).get(
+            "family"
+        )
+        if evaluator_family != dependencies.evaluator.family:
+            raise ValueError("evaluator descriptor does not declare its evidence family")
+        manifest = dependencies.manifest()
+        ref = store.put_artifact(manifest.to_wire())
+        if ref != manifest.identity():
+            raise ValueError("runtime manifest persistence changed identity")
+        return cls(
+            dependencies,
+            EnvironmentTransactionService(store, rollout_id, entry_checkpoint_id),
+            ref,
+        )
+
+    def bind(self, store, adapter_ref: str) -> RuntimeSession:
+        if adapter_ref != self.manifest_ref or store.get_artifact(adapter_ref) != (
+            self.dependencies.manifest().to_wire()
+        ):
+            raise ValueError("sealed adapter manifest differs from executing runtime")
+        return RuntimeSession(self.dependencies, self.publisher, self.manifest_ref, adapter_ref)
+
+    def require_seal(self, adapter_ref: str) -> None:
+        if (
+            self.sealed_adapter_ref != adapter_ref
+            or self.manifest_ref != adapter_ref
+            or self.dependencies.manifest().identity() != adapter_ref
+        ):
+            raise ValueError("sealed adapter manifest differs from executing runtime")
+
+
+def local_unbound_session(store, rollout_id, entry_checkpoint_id) -> RuntimeSession:
+    """Explicit legacy/offline direct-submit composition; never claims group binding."""
+    tools = LocalTextToolProvider()
+    dependencies = RuntimeDependenciesV1(
+        ScriptedSampleBackend(()),
+        LocalWorkspaceEnvironment(tools),
+        tools,
+        DeterministicEvaluator(),
+    )
+    return RuntimeSession.create(store, rollout_id, entry_checkpoint_id, dependencies)
+
+
+class RuntimeRunner:
+    """Prepare the current projected context, invoke a backend, commit its sample."""
+
+    def __init__(self, writer, session: RuntimeSession):
+        if writer.session is not session:
+            raise ValueError("runner and writer must share the same runtime session")
+        if session.sealed_adapter_ref is None:
+            raise ValueError("sampling runner requires a bound runtime session")
+        self.writer = writer
+        self.session = session
+
+    def sample(self, runtime, *, request_extras: dict[str, Any] | None = None):
+        self.session.require_seal(self.session.sealed_adapter_ref)
+        self.writer.validate_runtime(runtime)
+        request = {
+            "messages": [message.to_dict() for message in runtime.context.messages],
+            **(request_extras or {}),
+        }
+        prepared_ref = self.writer.prepare_verified_messages(runtime, request)
+        prepared = self.writer.store.get_artifact(prepared_ref, expected_domain="payload")
+        input_value = PreparedSamplingInput(
+            request_ref=prepared["payload_ref"],
+            prepared_request_ref=prepared_ref,
+            context_content_hash=runtime.context.content_hash,
+            context_revision_ref=runtime.context.identity(),
+            messages_json=canonical_json(request["messages"]),
+            tools_json=canonical_json(runtime.context.tools),
+            rendering_json=canonical_json(runtime.context.rendering),
+        )
+        result = self.session.dependencies.sampling.sample(input_value)
+        if not isinstance(result, SampleResult):
+            raise TypeError("sample backend must return SampleResult")
+        return self.writer.submit_action(
+            runtime,
+            result.message,
+            prepared_request_ref=prepared_ref,
+            raw_output=result.raw_output,
+            usage=result.usage,
+            trace=result.trace,
+        )

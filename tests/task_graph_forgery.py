@@ -34,7 +34,7 @@ def forged_reduced(writer, state, event_record, effect_body):
 
 
 def forged_log(writer, state, kind, record_ref, message_ref=None):
-    entries = writer.environment.runtime_log(state)
+    entries = writer.publication.runtime_log(state)
     entry = {"seq": state.history["seq"] + 1, "kind": kind, "record_ref": record_ref}
     if message_ref is not None:
         entry["message_ref"] = message_ref

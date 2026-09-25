@@ -5,16 +5,19 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from writing_agent.task_graph import ContextRevisionV1, canonical_json
-from writing_agent.task_graph_ports import PortDescriptorV1, ToolExecution
-from writing_agent.task_graph_sampling import (
-    AdapterEvidenceV1,
-    PreparedRequestV1,
-    SamplingEvidenceV1,
+from writing_agent.task_graph import canonical_json
+from writing_agent.task_graph_ports import (
+    EnvironmentAction,
+    EnvironmentHandle,
+    EnvironmentResult,
+    EnvironmentSnapshot,
+    EnvironmentSpec,
+    PortDescriptorV1,
+    SampleResult,
+    ToolManifest,
 )
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
 
@@ -84,84 +87,80 @@ def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) 
         raise
 
 
-class LocalSamplingHarness:
-    descriptor = PortDescriptorV1("sampling", "caller-supplied-v1", "1")
+class ScriptedSampleBackend:
+    """Offline sample source; each invocation consumes one predetermined result."""
 
-    def prepared_request(
-        self, context: ContextRevisionV1, payload_ref: str, *, verified: bool
-    ) -> PreparedRequestV1:
-        return PreparedRequestV1(
-            "VerifiedWriterMessagesV1" if verified else "PreparedWriterRequestV1",
-            context.content_hash,
-            context.identity(),
-            canonical_json(context.rendering),
-            payload_ref,
-        )
+    descriptor = PortDescriptorV1("sampling", "scripted-offline-v1", "1")
 
-    def evidence(
-        self,
-        action_id,
-        context,
-        request_ref,
-        prepared_request_ref,
-        raw_output_ref,
-        usage,
-        adapter_trace,
-    ):
-        return SamplingEvidenceV1(
-            action_id=action_id,
-            context_content_hash=context.content_hash,
-            context_revision_ref=context.identity(),
-            rendering_json=canonical_json(context.rendering),
-            exact_request_ref=request_ref,
-            prepared_request_ref=prepared_request_ref,
-            raw_output_ref=raw_output_ref,
-            logprob_ref=adapter_trace.get("per_token_logprobs_ref")
-            if adapter_trace is not None
-            else None,
-            usage_json=canonical_json(usage),
-            model=adapter_trace.get("model") if adapter_trace is not None else None,
-            seed=adapter_trace.get("seed") if adapter_trace is not None else None,
-            adapter=AdapterEvidenceV1.from_wire(adapter_trace),
-        )
+    def __init__(self, results):
+        self._results = iter(results)
+
+    def sample(self, prepared):
+        result = next(self._results)
+        if not isinstance(result, SampleResult):
+            raise TypeError("scripted backend requires SampleResult values")
+        return result
 
 
 class LocalTextToolProvider:
     descriptor = PortDescriptorV1("tools", "local-text-workspace-v1", "1")
 
-    def schemas(self, allowlist: tuple[str, ...], interaction_policy=None):
-        return writer_tool_schemas(allowlist, interaction_policy)
+    def tool_manifest(self, allowlist: tuple[str, ...], interaction_policy=None):
+        return ToolManifest(canonical_json(writer_tool_schemas(allowlist, interaction_policy)))
 
     def execute(
         self,
-        files: Mapping[str, str],
-        name: str,
-        arguments: dict[str, str],
-        *,
-        stage_parent: Path,
-        max_file_bytes: int,
-        max_workspace_bytes: int,
-    ) -> ToolExecution:
-        stage = Path(tempfile.mkdtemp(prefix="writer-stage-", dir=stage_parent))
+        spec: EnvironmentSpec,
+        snapshot: EnvironmentSnapshot,
+        action: EnvironmentAction,
+    ) -> EnvironmentResult:
+        files = snapshot.files()
+        name = action.name
+        arguments = action.arguments()
+        stage = Path(tempfile.mkdtemp(prefix="writer-stage-"))
         try:
             for path, text in files.items():
                 target = stage / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(text.encode("utf-8"))
-            workspace = Workspace(stage, max_file_bytes, max_workspace_bytes, strict_decode=True)
+            workspace = Workspace(
+                stage, spec.max_file_bytes, spec.max_workspace_bytes, strict_decode=True
+            )
             observation = _graph_dispatch(workspace, name, arguments)
             if not observation["ok"] and "error" in observation:
                 observation["error"] = observation["error"].replace(str(stage), "<workspace>")
             result_files = workspace.snapshot() if observation["ok"] else dict(files)
-            return ToolExecution(observation=observation, files=result_files)
+            return EnvironmentResult(observation, EnvironmentSnapshot.from_files(result_files))
         finally:
             shutil.rmtree(stage)
 
 
 class DeterministicEvaluator:
-    descriptor = PortDescriptorV1("evaluator", "deterministic-file-checks-v1", "1")
+    descriptor = PortDescriptorV1(
+        "evaluator",
+        "deterministic-file-checks-v1",
+        "1",
+        '{"family":"deterministic-file-v1"}',
+    )
 
-    def evaluate(self, check, files: Mapping[str, str]) -> tuple[str, dict]:
-        from writing_agent.task_graph_checks import deterministic_check
+    family = "deterministic-file-v1"
 
-        return deterministic_check(check, files)
+    def evaluate(self, request):
+        from writing_agent.task_graph_evaluation import VERIFIERS
+
+        return VERIFIERS[self.family](request)
+
+
+class LocalWorkspaceEnvironment:
+    """Workspace execution composes a provider; persistence stays outside the port."""
+
+    descriptor = PortDescriptorV1("environment", "local-workspace-v1", "1")
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    def tool_manifest(self, allowlist, interaction_policy=None):
+        return self.provider.tool_manifest(allowlist, interaction_policy)
+
+    def execute(self, spec, handle: EnvironmentHandle, snapshot, action):
+        return self.provider.execute(spec, snapshot, action)

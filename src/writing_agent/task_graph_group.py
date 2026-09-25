@@ -36,10 +36,10 @@ from writing_agent.task_graph_group_contract import (
 )
 from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_sampling import (
-    CURRENT_ELIGIBILITY,
     ProjectionError,
     SamplingEvidenceV1,
     bind_group_sampling_claims,
+    decode_training_eligibility,
 )
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 
@@ -47,8 +47,9 @@ from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 class GroupCoordinatorV1:
     """A serializable fake runner's admission, start, collection and finalization API."""
 
-    def __init__(self, store: TaskGraphStore, workers_root: Path | str):
+    def __init__(self, store: TaskGraphStore, workers_root: Path | str, *, session=None):
         self.store = store
+        self.session = session
         self.workers_root = Path(workers_root).resolve()
         self.workers_root.mkdir(parents=True, exist_ok=True)
         self.groups_root = store.root / "groups"
@@ -82,6 +83,8 @@ class GroupCoordinatorV1:
             ).rendering
         )
         policy = _required_policy(policy, rendering)
+        if self.session is not None:
+            self.session.require_seal(policy["adapter_ref"])
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(policy["context_policy_ref"]))
@@ -160,6 +163,8 @@ class GroupCoordinatorV1:
     def assert_start_contract(
         self, spec: GroupSpecV1, checkpoint_id: str, policy: dict[str, str]
     ) -> None:
+        if self.session is not None:
+            self.session.require_seal(spec.policy["adapter_ref"])
         candidate = _environment(self.store, checkpoint_id)
         if canonical_bytes(candidate) != canonical_bytes(spec.environment):
             raise GroupError("member entry differs from full sealed environment contract")
@@ -316,6 +321,8 @@ class GroupCoordinatorV1:
         return body
 
     def collect(self, spec: GroupSpecV1, result: GroupMemberResultV1) -> str:
+        if self.session is not None:
+            self.session.require_seal(spec.policy["adapter_ref"])
         self._assert_sealed_spec(spec)
         ordinal = self._admit_result(spec, result)
         ref = self.store.put_artifact(result.to_dict())
@@ -623,6 +630,10 @@ class GroupCoordinatorV1:
             if availability.get("reward_status") == "available":
                 reward = self.store.get_artifact(availability["reward_ref"])
                 eligibility = self.store.get_artifact(availability["eligibility_ref"])
+                try:
+                    decode_training_eligibility(eligibility, result.terminal_outcome_ref)
+                except ProjectionError as exc:
+                    raise GroupError("reward/eligibility contract is misbound") from exc
                 if (
                     reward.get("record_type") != "RewardV1"
                     or reward.get("terminal_outcome_ref") != result.terminal_outcome_ref
@@ -630,10 +641,6 @@ class GroupCoordinatorV1:
                     or reward.get("reward_contract_ref") != spec.environment["reward_contract_hash"]
                     or reward.get("candidate_checkpoint") != outcome.get("candidate_checkpoint")
                     or reward.get("check_result_refs") != outcome.get("check_result_refs")
-                    or eligibility.get("record_type") != "TrainingEligibilityV1"
-                    or eligibility.get("terminal_outcome_ref") != result.terminal_outcome_ref
-                    or eligibility.get("status") != "ineligible"
-                    or eligibility.get("reason") != CURRENT_ELIGIBILITY.training_reason
                     or type(reward.get("numerator")) is not int
                     or type(reward.get("normalization")) is not int
                     or reward["normalization"] <= 0
@@ -642,6 +649,8 @@ class GroupCoordinatorV1:
         return ordinal
 
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
+        if self.session is not None:
+            self.session.require_seal(spec.policy["adapter_ref"])
         self._assert_sealed_spec(spec)
         result_refs: list[str | None] = []
         results: list[GroupMemberResultV1 | None] = []

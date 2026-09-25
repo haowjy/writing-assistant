@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Close the runtime dependency boundaries: canonical sampling bind and native-ineligible
+  decoding, a real prepared-input sampling backend and runner, sealed runtime sessions,
+  remote-capable text execution ports, replay-verifiable evaluator families, and
+  semantic replay finalization. Keep the legacy direct-submit path explicitly unbound.
+
 - Install the declared judging extra in CI so the existing paid-call
   environment-validation test can import its dotenv dependency.
 

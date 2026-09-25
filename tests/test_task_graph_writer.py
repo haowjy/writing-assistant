@@ -21,9 +21,9 @@ from writing_agent.task_graph_local import _graph_dispatch
 from writing_agent.task_graph_projection import (
     ProjectionError,
     project_writer_context,
-    validate_action_trace,
     validate_writer_effect,
 )
+from writing_agent.task_graph_sampling import decode_and_bind_sampling
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_writer import TransactionalWriterV1, WriterRuntimeError
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
@@ -881,7 +881,7 @@ class TransactionalWriterTest(WriterFixture):
             with self.subTest(trace_field=field):
                 forged = {**trace, field: value}
                 with self.assertRaises(ProjectionError):
-                    validate_action_trace(
+                    decode_and_bind_sampling(
                         self.store,
                         record,
                         forged,
@@ -901,7 +901,7 @@ class TransactionalWriterTest(WriterFixture):
             },
         }
         with self.assertRaises(ProjectionError):
-            validate_action_trace(
+            decode_and_bind_sampling(
                 self.store,
                 record,
                 forged,

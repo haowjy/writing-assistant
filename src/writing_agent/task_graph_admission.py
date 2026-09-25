@@ -37,7 +37,9 @@ from writing_agent.task_graph_contracts import (
 )
 
 SUPPORTED_CONTROLLER_VERSIONS = frozenset({"deterministic-v1"})
-SUPPORTED_CHECK_VERSIONS = frozenset({"deterministic-v1", "legacy-check-v1"})
+SUPPORTED_CHECK_VERSIONS = frozenset(
+    {"deterministic-v1", "legacy-check-v1", "fixture-file-count-v1"}
+)
 
 
 class AdmissionError(ValueError):
@@ -265,16 +267,32 @@ def admit_graph(
         script = _validate_interaction(resolver, spec, contract, policy)
         checks = _validate_checks(resolver, spec, contract, policy)
         if interaction.mode == "scripted_author" and any(
-            check.evaluator_version != "deterministic-v1"
-            or check.spec.get("kind")
-            not in {"nonempty", "contains", "excludes", "excludes_all", "word_range", "exact"}
-            or "path" not in check.spec
+            (
+                check.evaluator_version == "deterministic-v1"
+                and (
+                    check.spec.get("kind")
+                    not in {
+                        "nonempty",
+                        "contains",
+                        "excludes",
+                        "excludes_all",
+                        "word_range",
+                        "exact",
+                    }
+                    or "path" not in check.spec
+                )
+            )
+            or (
+                check.evaluator_version == "fixture-file-count-v1"
+                and check.spec.get("kind") != "fixture_file_count"
+            )
+            or check.evaluator_version not in {"deterministic-v1", "fixture-file-count-v1"}
             or check.public_evidence_refs
             or check.private_evidence_refs
             for check in checks.values()
         ):
             raise AdmissionError(
-                "unsupported_check", "scripted author permits only strict deterministic file checks"
+                "unsupported_check", "scripted author permits only strict admitted file checks"
             )
         if interaction.mode == "scripted_author" and not any(
             check.required and check.applicability in {"each_turn", "node_exit_candidate"}
@@ -641,6 +659,18 @@ _MECHANICAL_KINDS = _TEXT_TARGET_KINDS | frozenset(
 
 def _validate_check_program(check: CheckContractV1) -> None:
     try:
+        if check.evaluator_version == "fixture-file-count-v1":
+            spec = check.spec
+            if (
+                set(spec) != {"id", "metric", "kind", "method", "required"}
+                or spec["id"] != check.id
+                or spec["metric"] not in {f"Q{number}" for number in range(1, 14)}
+                or spec["kind"] != "fixture_file_count"
+                or spec["method"] != "fixture"
+                or spec["required"] is not check.required
+            ):
+                raise ValueError("fixture family requires its exact admitted program")
+            return
         _validate_legacy_check_shape(
             check,
             deterministic_only=check.evaluator_version == "deterministic-v1",

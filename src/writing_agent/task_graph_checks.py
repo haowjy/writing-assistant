@@ -2,44 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
-from writing_agent.task_graph import file_hash
 from writing_agent.task_graph_contracts import (
     CheckContractV1,
     InteractionPolicyV1,
     NodeContractV1,
 )
 from writing_agent.task_graph_environment import WriterRuntimeError
-
-
-def deterministic_check(check: CheckContractV1, files: Mapping[str, str]) -> tuple[str, dict]:
-    """Evaluate only the strict admitted file-target vocabulary."""
-    spec = check.spec
-    path = spec["path"]
-    text = files.get(path)
-    if text is None:
-        return "fail", {"path": path, "subject_hash": None, "reason": "missing_path"}
-    kind = spec["kind"]
-    if kind == "nonempty":
-        passed = bool(text.strip())
-    elif kind == "contains":
-        passed = spec["text"].casefold() in text.casefold()
-    elif kind == "excludes":
-        passed = spec["text"].casefold() not in text.casefold()
-    elif kind == "excludes_all":
-        passed = not any(item.casefold() in text.casefold() for item in spec["texts"])
-    elif kind == "word_range":
-        passed = spec["min"] <= len(text.split()) <= spec["max"]
-    elif kind == "exact":
-        passed = text == spec["text"]
-    else:
-        raise ValueError("check kind was not admitted for deterministic evaluator")
-    return ("pass" if passed else "fail"), {
-        "path": path,
-        "subject_hash": file_hash(text),
-        "reason": None,
-    }
+from writing_agent.task_graph_evaluation import (
+    EvaluationRequestV1,
+    verify_evaluation_evidence,
+)
 
 
 def applicable_checks(node, feedback_cursor: int) -> tuple[CheckContractV1, ...]:
@@ -59,8 +31,10 @@ def applicable_checks(node, feedback_cursor: int) -> tuple[CheckContractV1, ...]
 class DeterministicChecksV1:
     def __init__(self, writer, dependencies=None):
         self.writer = writer
-        self.dependencies = dependencies or writer.dependencies
-        self.environment = self.dependencies.environment
+        if dependencies is not None and dependencies is not writer.dependencies:
+            raise WriterRuntimeError("runtime roles must share the writer session")
+        self.dependencies = writer.dependencies
+        self.publication = writer.publication
         self.store = writer.store
 
     def request_checks(self, runtime):
@@ -102,7 +76,7 @@ class DeterministicChecksV1:
         continuation["check_requests"] = request_refs
         position = state.to_dict()["position"]
         position["phase"] = "awaiting_checks"
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "external_requested",
             "environment",
@@ -122,18 +96,20 @@ class DeterministicChecksV1:
         request = self.store.get_artifact(request_ref, private=True)
         target = self.store.load_checkpoint(request["target_checkpoint"])
         check = node.checks[request["check_id"]]
-        status, evidence = self.dependencies.evaluator.evaluate(check, target.state.files)
-        evidence_ref = self.store.put_artifact(
-            {
-                "record_type": "DeterministicCheckEvidenceV1",
-                "schema": 1,
-                "target_checkpoint": request["target_checkpoint"],
-                "check_contract_hash": check.identity(),
-                "evaluator_packet_ref": request["evaluator_packet_ref"],
-                "evidence": evidence,
-                "status": status,
-            }
+        evaluation_request = EvaluationRequestV1.create(
+            self.dependencies.evaluator.family,
+            request["target_checkpoint"],
+            check,
+            request["evaluator_packet_ref"],
+            target.state.files,
         )
+        evaluated = self.dependencies.evaluator.evaluate(evaluation_request)
+        if evaluated.family != evaluation_request.family:
+            raise WriterRuntimeError("evaluator returned a different admitted family")
+        evidence_wire = evaluated.to_wire(evaluation_request)
+        verify_evaluation_evidence(evaluation_request, evidence_wire)
+        status = evaluated.status
+        evidence_ref = self.store.put_artifact(evidence_wire)
         result = {
             "record_type": "CheckResultV1",
             "schema": 1,
@@ -152,7 +128,7 @@ class DeterministicChecksV1:
             *state.continuation["applied_responses"],
             request["request_id"],
         ]
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "check_recorded",
             "evaluator",
@@ -277,16 +253,16 @@ def validate_check_result_effect(store, before, after, event, effect, entry) -> 
     check = CheckContractV1.from_dict(
         store.get_artifact(request["check_contract_hash"], private=True)
     )
-    status, evidence = deterministic_check(check, target.state.files)
-    expected_evidence = {
-        "record_type": "DeterministicCheckEvidenceV1",
-        "schema": 1,
-        "target_checkpoint": request["target_checkpoint"],
-        "check_contract_hash": check.identity(),
-        "evaluator_packet_ref": request["evaluator_packet_ref"],
-        "evidence": evidence,
-        "status": status,
-    }
+    evidence_wire = store.get_artifact(record["evidence_ref"])
+    evaluation_request = EvaluationRequestV1.create(
+        None,
+        request["target_checkpoint"],
+        check,
+        request["evaluator_packet_ref"],
+        target.state.files,
+    )
+    evaluated = verify_evaluation_evidence(evaluation_request, evidence_wire)
+    status = evaluated.status
     expected_result = {
         "record_type": "CheckResultV1",
         "schema": 1,
@@ -307,7 +283,7 @@ def validate_check_result_effect(store, before, after, event, effect, entry) -> 
     ]
     if (
         record != expected_result
-        or store.get_artifact(record["evidence_ref"]) != expected_evidence
+        or record["status"] != status
         or request["requirement_version"] != before.requirements_ref
         or before.position["phase"] != "awaiting_checks"
         or event.actor != "evaluator"

@@ -45,17 +45,24 @@ Backend call IDs are preserved in action metadata, while unique rollout-scoped l
 
 ## Runtime adapters
 
-The default offline composition root (`local_runtime_dependencies`) supplies the
-caller-owned sampling evidence codec, atomic local checkpoint environment, staged
-text tools, and deterministic file evaluator. `TransactionalWriterV1(...,
-dependencies=bundle)` accepts an alternate `RuntimeDependenciesV1`; scripted
-author, check, and terminal runtimes inherit that bundle from the writer unless
-given one explicitly. A port implementation cannot bypass admitted check schemas,
-semantic replay, or the current native-ineligible decision. No default adapter
-invokes a model, shell, or network.
+The explicit legacy/offline `local_unbound_session` retains caller-supplied
+`submit_action` behavior without claiming a sealed composition. For bound runs,
+`RuntimeSession.create` persists a content-addressed manifest of the sampling,
+execution-environment, tool-provider, and evaluator descriptors; `bind` requires
+the exact sealed group `adapter_ref`. The writer, scripted author, checks, terminal,
+and context operations share that session and its internal local transaction
+publisher. A descriptor change after binding rejects before an effect.
 
-Each port has an immutable `PortDescriptorV1`. `bundle.manifest()` returns a
-content-addressed `RuntimeManifestV1`; its artifact hash can occupy a sealed
-group `adapter_ref` without changing the existing group wire format. This seals
-the declared composition, not a proof that a remote backend consumed arbitrary
-request bytes. See [group coordination](task-graph-groups.md) for policy sealing.
+`RuntimeRunner` prepares verified current messages, passes `PreparedSamplingInput`
+to a `SampleBackend`, and submits its `SampleResult` through the same writer. The
+offline scripted backend and an independent backend can use this path; no default
+adapter invokes a live model. Canonical sampling records and native-ineligible
+policy remain noninjectable. `ExecutionEnvironment` receives typed specs, handles,
+snapshots, and actions and returns typed observations, snapshots, and infrastructure
+classification; it has no store, CAS, or staging-path contract. The local
+workspace environment composes a text provider and keeps staging private. No
+shell or network capability is available. Check evidence is admitted only through
+a versioned verifier family: the deterministic family recomputes exactly, while a
+small offline fixture family demonstrates substitution without trusting the
+producer at replay. The manifest binds declared composition, not proof of remote
+backend behavior. See [group coordination](task-graph-groups.md) for policy sealing.

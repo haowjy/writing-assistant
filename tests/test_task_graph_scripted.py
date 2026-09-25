@@ -28,6 +28,7 @@ from writing_agent.task_graph_contracts import (
 )
 from writing_agent.task_graph_local import writer_tool_schemas
 from writing_agent.task_graph_projection import ProjectionError, project_writer_context
+from writing_agent.task_graph_replay import replay_writer_history
 from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
 from writing_agent.task_graph_terminal import ScriptedTerminalV1, validate_terminal_effect
 from writing_agent.task_graph_writer import (
@@ -626,6 +627,14 @@ class ScriptedFixture(WriterFixture):
                 )
             with self.subTest(split_at=length), self.assertRaises(ProjectionError):
                 project_writer_context(
+                    self.store,
+                    self.start,
+                    request.runtime.checkpoint_id,
+                    candidate_events=events[:length],
+                    candidate_state=current,
+                )
+            with self.subTest(direct_replay_split_at=length), self.assertRaises(ProjectionError):
+                replay_writer_history(
                     self.store,
                     self.start,
                     request.runtime.checkpoint_id,

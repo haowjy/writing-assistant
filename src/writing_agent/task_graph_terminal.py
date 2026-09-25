@@ -10,7 +10,7 @@ from writing_agent.task_graph_controller import (
     evaluate_guard,
 )
 from writing_agent.task_graph_environment import WriterRuntimeError
-from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY
+from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY, decode_training_eligibility
 
 
 def current_check_results(store, state):
@@ -123,8 +123,10 @@ def applicable_feedback_checks(node, state):
 class ScriptedTerminalV1:
     def __init__(self, writer, dependencies=None):
         self.writer = writer
-        self.dependencies = dependencies or writer.dependencies
-        self.environment = self.dependencies.environment
+        if dependencies is not None and dependencies is not writer.dependencies:
+            raise WriterRuntimeError("runtime roles must share the writer session")
+        self.dependencies = writer.dependencies
+        self.publication = writer.publication
         self.store = writer.store
 
     def transition(self, runtime):
@@ -172,7 +174,7 @@ class ScriptedTerminalV1:
         }
         position = state.to_dict()["position"]
         position["phase"] = "ready_transition"
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "transition_committed",
             "environment",
@@ -225,7 +227,7 @@ class ScriptedTerminalV1:
             "schema": 1,
             "outcome_ref": outcome_ref,
         }
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "termination_recorded",
             "environment",
@@ -258,7 +260,7 @@ class ScriptedTerminalV1:
         outcome_ref = self.store.put_artifact(outcome)
         position = state.to_dict()["position"]
         position["phase"] = "terminal"
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "termination_recorded",
             "environment",
@@ -326,7 +328,7 @@ class ScriptedTerminalV1:
             "reward_ref": reward_ref,
             "eligibility_ref": eligibility_ref,
             "reward_status": "available",
-            "training_eligibility": "ineligible",
+            "training_eligibility": CURRENT_ELIGIBILITY.training_status,
         }
         availability_ref = self.store.put_artifact(availability)
         record = {
@@ -334,7 +336,7 @@ class ScriptedTerminalV1:
             "schema": 1,
             "availability_ref": availability_ref,
         }
-        return self.environment.publish_record(
+        return self.publication.publish_record(
             runtime,
             "external_response",
             "evaluator",
@@ -525,9 +527,9 @@ def validate_terminal_effect(store, before, after, event, effect, entry):
                 "reward_ref": availability["reward_ref"],
                 "eligibility_ref": availability["eligibility_ref"],
                 "reward_status": "available",
-                "training_eligibility": "ineligible",
+                "training_eligibility": CURRENT_ELIGIBILITY.training_status,
             }
-            or eligibility != CURRENT_ELIGIBILITY.training_wire(before.outcome_ref)
+            or decode_training_eligibility(eligibility, before.outcome_ref) != CURRENT_ELIGIBILITY
             or reward
             != {
                 "record_type": "RewardV1",

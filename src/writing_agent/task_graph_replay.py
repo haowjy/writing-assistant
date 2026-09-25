@@ -7,6 +7,7 @@ event log is never rendered wholesale.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -32,11 +33,8 @@ from writing_agent.task_graph_accounting import (
     tool_result_charge,
 )
 from writing_agent.task_graph_sampling import (
-    _ACTION_RECORD_FIELDS,
-    _STOP_RECORD_FIELDS,
     ProjectionError,
-    _validate_prepared_request,
-    validate_action_trace,
+    decode_and_bind_sampling,
 )
 from writing_agent.task_graph_store import TaskGraphStore
 
@@ -724,14 +722,10 @@ class SemanticReplayEngine(ReplayCursor):
         store = self.store
         entry = _writer_log_entry(store, state, event, self.seen_entries, has_message=False)
         record = store.get_artifact(entry["record_ref"], expected_domain="payload")
-        if (
-            not isinstance(record, dict)
-            or set(record) != _STOP_RECORD_FIELDS
-            or record.get("record_type") != "WriterSampledBudgetStopV1"
-        ):
+        if not isinstance(record, dict) or record.get("record_type") != "WriterSampledBudgetStopV1":
             raise ProjectionError("sampled stop log names an invalid record")
         trace = store.get_artifact(record["trace_ref"], expected_domain="payload")
-        validate_action_trace(
+        sampled = decode_and_bind_sampling(
             store,
             record,
             trace,
@@ -742,17 +736,7 @@ class SemanticReplayEngine(ReplayCursor):
             self.latest_context_ref,
             self.baseline.rendering,
         )
-        prepared_ref = record["prepared_request_ref"]
-        if prepared_ref is not None:
-            _validate_prepared_request(
-                store,
-                prepared_ref,
-                trace.get("context_content_hash"),
-                self.latest_context_ref,
-                self.baseline.rendering,
-                record["request_ref"],
-            )
-        usage = record["usage"]
+        usage = json.loads(sampled.record.usage_json)
         old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
         new_budget = store.get_artifact(state.budgets_ref, expected_domain="payload")
         expected, exceeded = sampled_usage_charge(old_budget, usage)
@@ -854,18 +838,11 @@ class SemanticReplayEngine(ReplayCursor):
             if (
                 self.pending
                 or not isinstance(record, dict)
-                or set(record) != _ACTION_RECORD_FIELDS
                 or (record.get("record_type") != "WriterActionV1")
             ):
                 raise ProjectionError("writer action starts before prior calls finish")
-            if (
-                message.role != "assistant"
-                or not message.loss_eligible
-                or message.origin != record["action_id"]
-            ):
-                raise ProjectionError("writer action message identity is invalid")
             trace = store.get_artifact(record["trace_ref"], expected_domain="payload")
-            validate_action_trace(
+            sampled = decode_and_bind_sampling(
                 store,
                 record,
                 trace,
@@ -879,25 +856,6 @@ class SemanticReplayEngine(ReplayCursor):
                 self.baseline.rendering,
                 message,
             )
-            expected_context = context_content_hash(
-                tuple(self.messages), tools=self.baseline.tools, rendering=self.baseline.rendering
-            )
-            if trace.get("context_content_hash") != expected_context:
-                raise ProjectionError("writer trace names a different sampling context")
-            if trace.get("context_revision_ref") != self.latest_context_ref:
-                raise ProjectionError("writer trace names a different context revision")
-            if canonical_json(trace.get("rendering")) != canonical_json(self.baseline.rendering):
-                raise ProjectionError("writer trace rendering pins differ from context")
-            prepared_ref = trace.get("prepared_request_ref")
-            if prepared_ref is not None:
-                _validate_prepared_request(
-                    store,
-                    prepared_ref,
-                    expected_context,
-                    self.latest_context_ref,
-                    self.baseline.rendering,
-                    trace.get("exact_request_ref"),
-                )
             calls = [part for part in message.content if part["type"] == "tool_call"]
             if [part["id"] for part in calls] != [call["call_id"] for call in record["calls"]]:
                 raise ProjectionError("action syntax and call metadata differ")
@@ -909,13 +867,13 @@ class SemanticReplayEngine(ReplayCursor):
                 ]
             ) != canonical_json(queue):
                 raise ProjectionError("committed tool queue differs from assistant syntax")
-            if record["action_id"] in self.action_ids:
+            if sampled.evidence.action_id in self.action_ids:
                 raise ProjectionError("duplicate writer action logical ID")
-            if record["action_id"] != f"{event.rollout_id}:action:{len(self.action_ids)}":
+            if sampled.evidence.action_id != f"{event.rollout_id}:action:{len(self.action_ids)}":
                 raise ProjectionError("writer action ordinal is false")
             old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
             new_budget = store.get_artifact(state.budgets_ref, expected_domain="payload")
-            usage = record["usage"]
+            usage = json.loads(sampled.record.usage_json)
             expected_budget, _ = sampled_usage_charge(old_budget, usage)
             if (
                 new_budget != expected_budget
@@ -997,6 +955,12 @@ class SemanticReplayEngine(ReplayCursor):
         return VisibleContribution((message,), (event.id,), event.id)
 
 
+@dataclass(frozen=True)
+class ValidatedReplayResult:
+    cursor: SemanticReplayEngine
+    state: EnvironmentStateV1
+
+
 def replay_writer_history(
     store: TaskGraphStore,
     base_checkpoint_id: str,
@@ -1004,7 +968,7 @@ def replay_writer_history(
     *,
     candidate_events: tuple[EventV1, ...] = (),
     candidate_state: EnvironmentStateV1 | None = None,
-) -> tuple[SemanticReplayEngine, EnvironmentStateV1]:
+) -> ValidatedReplayResult:
     """Replay the stored suffix and optional staged batch with identical authority."""
     from writing_agent.task_graph_contracts import NodeContractV1
 
@@ -1090,4 +1054,27 @@ def replay_writer_history(
     )
     for event in events:
         cursor.step(event)
-    return cursor, candidate_state if candidate_state is not None else target.state
+    expected_state = candidate_state if candidate_state is not None else target.state
+    if cursor.reply_stage in {
+        AuthorStage.ACK,
+        AuthorStage.DISCLOSURE,
+        AuthorStage.UPDATE,
+        AuthorStage.TURN,
+    }:
+        raise ProjectionError("author reply transaction ended before its context publication")
+    if cursor.state != expected_state:
+        raise ProjectionError("semantic history does not reconstruct target state")
+    if expected_state.context_ref != cursor.latest_context_ref:
+        raise ProjectionError("context revision was changed outside a context event")
+    if cursor.pending != [
+        call["call_id"]
+        for call in expected_state.continuation["tool_queue"][
+            expected_state.continuation["next_call"] :
+        ]
+    ]:
+        raise ProjectionError("pending calls differ from continuation cursor")
+    if cursor.action_ids != list(expected_state.history["action_ids"]) or cursor.result_ids != list(
+        expected_state.history["tool_result_ids"]
+    ):
+        raise ProjectionError("logical action/result history differs from visible events")
+    return ValidatedReplayResult(cursor, expected_state)
