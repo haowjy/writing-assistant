@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from writing_agent.task_graph import ContextRevisionV1, MessageV1, canonical_json
-from writing_agent.task_graph_compaction import charge_context_append
+from writing_agent.task_graph_accounting import charge_context_append, charge_tool_attempt
 from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_writer import WriterRuntimeError, WriterStepV1
 
@@ -353,10 +353,7 @@ class ScriptedAuthorRuntimeV1:
             self.store.persist(event)
             return event
 
-        next_budget = json.loads(canonical_json(budget))
-        consumed = next_budget["consumed"]
-        consumed["attempted_tool_calls"] = consumed.get("attempted_tool_calls", 0) + 1
-        consumed["tool_calls"] = consumed.get("tool_calls", 0) + 1
+        next_budget, _ = charge_tool_attempt(budget)
         budget_ref = self.store.put_artifact(next_budget)
         continuation = current.to_dict()["continuation"]
         continuation["next_call"] += 1

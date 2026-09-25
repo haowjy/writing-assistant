@@ -207,12 +207,11 @@ def validate_author_ack_effect(store, before, after, event, effect, entry, messa
         ),
     )
     old_budget = store.get_artifact(before.budgets_ref)
-    expected_budget = json.loads(canonical_json(old_budget))
-    consumed = expected_budget["consumed"]
-    consumed["attempted_tool_calls"] = consumed.get("attempted_tool_calls", 0) + 1
-    if consumed.get("tool_calls", 0) >= expected_budget["limits"]["tool_calls"]:
+    from writing_agent.task_graph_accounting import charge_tool_attempt
+
+    expected_budget, call_charge = charge_tool_attempt(old_budget)
+    if call_charge == 0:
         raise ProjectionError("author acknowledgement exceeded tool-call budget")
-    consumed["tool_calls"] = consumed.get("tool_calls", 0) + 1
     continuation = before.to_dict()["continuation"]
     continuation["next_call"] += 1
     if (

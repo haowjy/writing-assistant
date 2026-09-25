@@ -435,30 +435,6 @@ def charge_budget(
     return budget, charges
 
 
-def charge_context_append(old_budget: dict, new_context: ContextRevisionV1) -> dict | None:
-    """Meter a paid visible observation once context accounting has been activated.
-
-    An observation may exceed the allowance after the action has already been paid.
-    Preserve that action and its exact charge; the next request is blocked and a
-    drained writer boundary can seal a valid context-budget stop.
-    """
-    import json
-
-    if (
-        not isinstance(old_budget, dict)
-        or not isinstance(old_budget.get("limits"), dict)
-        or "context_bytes" not in old_budget["limits"]
-    ):
-        return None
-    budget = json.loads(canonical_json(old_budget))
-    consumed = budget["consumed"]
-    consumed["context_bytes"] = context_bytes(new_context.messages, new_context)
-    consumed["context_storage_bytes"] = consumed.get("context_storage_bytes", 0) + len(
-        canonical_bytes(new_context.to_dict())
-    )
-    return budget
-
-
 def make_record(
     store,
     before: EnvironmentStateV1,

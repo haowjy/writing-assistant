@@ -29,7 +29,10 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
   codecs and binding checks for prepared requests, sampling and adapter evidence,
   plus the current evaluation-only eligibility decision; the persisted V1 wires
-  retain their approved identities. A capable adapter calls
+  retain their approved identities. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+  supplies pure sampled, tool, context-append and exhaustion policy to production
+  and replay; persisted budget/charge artifacts remain independently compared claims.
+  A capable adapter calls
   `prepare_request` before sampling to pin caller-owned request/context evidence;
   that path does not verify payload messages. `prepare_verified_messages` checks a
   typed payload's message sequence against the current projection at preparation,

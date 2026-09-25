@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Share pure sampled-usage, tool-attempt/result, context-append, and exhaustion
+  accounting across writer/author production and semantic replay. Replay still
+  compares independently loaded persisted claims to recomputed charges.
+
 - Introduce immutable typed V1 codecs for prepared writer requests, normalized
   sampling and adapter evidence, and current native-ineligibility decisions.
   Centralize trace/request binding and group sampling claims without changing

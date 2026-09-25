@@ -26,10 +26,18 @@ from writing_agent.task_graph import (
     tree_hash,
     validate_hash,
 )
+from writing_agent.task_graph_accounting import (
+    READ_TOOLS,
+    charge_context_append,
+    exhausted_stop_reason,
+    observation_read_tokens,
+    sampled_usage_charge,
+    tool_error,
+    tool_result_charge,
+)
 from writing_agent.task_graph_admission import AdmittedGraphV1
 from writing_agent.task_graph_compaction import (
     ContextPolicyV1,
-    charge_context_append,
     make_record,
     require_quiescent,
     select_context,
@@ -86,7 +94,6 @@ def writer_tool_schemas(
     return (*schemas, schema)
 
 
-_READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
 _MAX_ARGUMENT_BYTES = 65_536
 _MAX_CALL_EVIDENCE = 131_072
 
@@ -941,21 +948,7 @@ class TransactionalWriterV1:
             raise WriterRuntimeError("top-level token usage must contain nonnegative integers")
         # Provider detail fields are retained verbatim, never charged twice.
         canonical_json(usage)
-        total_usage = usage.get(
-            "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
-        )
-        exceeded = None
-        for name, increment in (
-            ("generated_tokens", usage.get("completion_tokens", 0)),
-            ("total_tokens", total_usage),
-        ):
-            limit = budget["limits"].get(name)
-            if (
-                limit is not None
-                and budget["consumed"].get(name, 0) + increment > limit
-                and exceeded is None
-            ):
-                exceeded = name
+        next_budget, exceeded = sampled_usage_charge(budget, usage)
         if exceeded is None:
             if parse_error is not None:
                 raise parse_error
@@ -1046,7 +1039,6 @@ class TransactionalWriterV1:
                 budget,
                 exceeded,
                 usage,
-                total_usage,
                 message,
                 trace_ref,
                 request_ref,
@@ -1068,14 +1060,6 @@ class TransactionalWriterV1:
         assistant = MessageV1(
             role="assistant", content=tuple(parts), origin=action_id, loss_eligible=True
         )
-        next_budget = json.loads(canonical_json(budget))
-        consumed = next_budget["consumed"]
-        consumed["writer_turns"] = consumed.get("writer_turns", 0) + 1
-        consumed["model_calls"] = consumed.get("model_calls", 0) + 1
-        consumed["generated_tokens"] = consumed.get("generated_tokens", 0) + usage.get(
-            "completion_tokens", 0
-        )
-        consumed["total_tokens"] = consumed.get("total_tokens", 0) + total_usage
         budget_ref = self.store.put_artifact(next_budget)
         continuation = state.to_dict()["continuation"]
         continuation.update(tool_queue=queue, next_call=0)
@@ -1123,7 +1107,6 @@ class TransactionalWriterV1:
         budget,
         exceeded,
         usage,
-        total_usage,
         message,
         trace_ref,
         request_ref,
@@ -1133,14 +1116,9 @@ class TransactionalWriterV1:
         """Account a sampled overrun without accepting call syntax or executing tools."""
         state = runtime.state
         head, parent = self._head(runtime)
-        next_budget = json.loads(canonical_json(budget))
-        consumed = next_budget["consumed"]
-        consumed["writer_turns"] = consumed.get("writer_turns", 0) + 1
-        consumed["model_calls"] = consumed.get("model_calls", 0) + 1
-        consumed["generated_tokens"] = consumed.get("generated_tokens", 0) + usage.get(
-            "completion_tokens", 0
-        )
-        consumed["total_tokens"] = consumed.get("total_tokens", 0) + total_usage
+        next_budget, actual_exceeded = sampled_usage_charge(budget, usage)
+        if actual_exceeded != exceeded:
+            raise WriterRuntimeError("sampled stop no longer matches its budget")
         budget_ref = self.store.put_artifact(next_budget)
         outcome = {
             "schema": 1,
@@ -1264,28 +1242,20 @@ class TransactionalWriterV1:
         metadata = action["calls"][cursor]
         if call["call_id"] != metadata["call_id"]:
             raise WriterRuntimeError("queued call does not match committed action")
-        author_exhausted = call["name"] == "ask_author" and budget["consumed"].get(
-            "author_calls", 0
-        ) >= budget["limits"].get("author_calls", 0)
+        predispatch_error = tool_error(budget, metadata["validation_error"], call["name"])
         if (
             call["name"] == "ask_author"
             and metadata["validation_error"] is None
-            and budget["consumed"].get("tool_calls", 0) < budget["limits"]["tool_calls"]
-            and not author_exhausted
+            and predispatch_error is None
         ):
             from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
 
             return ScriptedAuthorRuntimeV1(self).request(runtime, call, action)
-        before_bytes = sum(len(text.encode("utf-8")) for text in state.files.values())
         observation: dict[str, Any]
         files = dict(state.files)
         read_charge = 0
-        if budget["consumed"].get("tool_calls", 0) >= budget["limits"]["tool_calls"]:
-            observation = {"ok": False, "valid": True, "error": "Tool-call budget exceeded"}
-        elif metadata["validation_error"] is not None:
-            observation = {"ok": False, "valid": False, "error": metadata["validation_error"]}
-        elif author_exhausted:
-            observation = {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
+        if predispatch_error is not None:
+            observation = predispatch_error
         else:
             stage = Path(tempfile.mkdtemp(prefix="writer-stage-", dir=runtime.workspace.parent))
             try:
@@ -1302,9 +1272,13 @@ class TransactionalWriterV1:
                 observation = _graph_dispatch(workspace, call["name"], dict(call["arguments"]))
                 if not observation["ok"] and "error" in observation:
                     observation["error"] = observation["error"].replace(str(stage), "<workspace>")
-                if observation["ok"] and call["name"] in _READ_TOOLS:
-                    charge = self.count_tokens(
-                        json.dumps(observation["result"], ensure_ascii=False)
+                if observation["ok"] and call["name"] in READ_TOOLS:
+                    charge = (
+                        observation_read_tokens(observation, call["name"], self.read_tokenizer)
+                        if self.read_tokenizer == "whitespace-v1"
+                        else self.count_tokens(
+                            json.dumps(observation["result"], ensure_ascii=False)
+                        )
                     )
                     if type(charge) is not int or charge < 0:
                         raise WriterRuntimeError("read tokenizer returned an invalid charge")
@@ -1324,20 +1298,12 @@ class TransactionalWriterV1:
                     files = workspace.snapshot()
             finally:
                 shutil.rmtree(stage)
-        after_bytes = sum(len(text.encode("utf-8")) for text in files.values())
         delta = {
             path: {"before": state.files.get(path), "after": files.get(path)}
             for path in sorted(set(state.files) | set(files))
             if state.files.get(path) != files.get(path)
         }
-        next_budget = json.loads(canonical_json(budget))
-        consumed = next_budget["consumed"]
-        consumed["attempted_tool_calls"] = consumed.get("attempted_tool_calls", 0) + 1
-        consumed["tool_calls"] = consumed.get("tool_calls", 0) + int(
-            consumed.get("tool_calls", 0) < budget["limits"]["tool_calls"]
-        )
-        consumed["read_tokens"] = consumed.get("read_tokens", 0) + read_charge
-        consumed["storage_bytes"] = after_bytes
+        next_budget, budget_charge = tool_result_charge(budget, state.files, files, read_charge)
         budget_ref = self.store.put_artifact(next_budget)
         continuation = state.to_dict()["continuation"]
         continuation["next_call"] = cursor + 1
@@ -1378,17 +1344,7 @@ class TransactionalWriterV1:
             "after_execution_hash": execution_value(
                 self.store, prospective_state, prospective, next_budget
             ),
-            "budget_charge": {
-                "attempted_tool_calls": 1,
-                "tool_calls": int(
-                    budget["consumed"].get("tool_calls", 0) < budget["limits"]["tool_calls"]
-                ),
-                "read_tokens": read_charge,
-                "read_tokenizer": self.read_tokenizer,
-                "file_bytes_before": before_bytes,
-                "file_bytes_after": after_bytes,
-                "file_byte_delta": after_bytes - before_bytes,
-            },
+            "budget_charge": budget_charge,
             "loss_eligibility": {"tool_observation": False},
         }
         return self._publish(
@@ -1421,25 +1377,11 @@ class TransactionalWriterV1:
         """
         _, budget = self._check(runtime)
         state = runtime.state
-        exhausted = next(
-            (
-                name
-                for name in (
-                    "writer_turns",
-                    "generated_tokens",
-                    "total_tokens",
-                    "context_bytes",
-                    "context_storage_bytes",
-                )
-                if name in budget["limits"]
-                and budget["consumed"].get(name, 0) >= budget["limits"][name]
-            ),
-            None,
-        )
+        reason = exhausted_stop_reason(budget)
         if (
             state.position["phase"] != "ready_writer"
             or state.continuation["next_call"] != len(state.continuation["tool_queue"])
-            or exhausted is None
+            or reason is None
         ):
             raise WriterRuntimeError("writer budget is not exhausted at a drained boundary")
         head, parent = self._head(runtime)
@@ -1447,15 +1389,7 @@ class TransactionalWriterV1:
             "schema": 1,
             "task_status": "incomplete",
             "execution_status": "valid",
-            "stop_reason": (
-                "writer_budget"
-                if exhausted == "writer_turns"
-                else "context_budget"
-                if exhausted == "context_bytes"
-                else "context_storage_budget"
-                if exhausted == "context_storage_bytes"
-                else f"{exhausted}_budget"
-            ),
+            "stop_reason": reason,
             "reward_status": "pending",
             "training_eligibility": "pending",
         }

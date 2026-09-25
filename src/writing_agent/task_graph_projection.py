@@ -6,7 +6,6 @@ audience pairs may become writer messages; operational payloads are never render
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 
 from writing_agent.task_graph import (
@@ -18,6 +17,14 @@ from writing_agent.task_graph import (
     canonical_json,
     context_content_hash,
     domain_hash,
+)
+from writing_agent.task_graph_accounting import (
+    charge_context_append,
+    exhausted_stop_reason,
+    observation_read_tokens,
+    sampled_usage_charge,
+    tool_error,
+    tool_result_charge,
 )
 from writing_agent.task_graph_sampling import (
     _ACTION_RECORD_FIELDS,
@@ -179,43 +186,20 @@ def validate_result_production(
         raise ProjectionError("tool result has false file delta")
     old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
     new_budget = store.get_artifact(after.budgets_ref, expected_domain="payload")
-    if old_budget["consumed"].get("tool_calls", 0) >= old_budget["limits"]["tool_calls"]:
-        expected_error = {"ok": False, "valid": True, "error": "Tool-call budget exceeded"}
-    elif action["validation_error"] is not None:
-        expected_error = {"ok": False, "valid": False, "error": action["validation_error"]}
-    elif call["name"] == "ask_author":
-        if old_budget["consumed"].get("author_calls", 0) >= old_budget["limits"]["author_calls"]:
-            expected_error = {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
-        else:
-            raise ProjectionError("eligible ask_author was incorrectly drained as an error")
-    else:
-        expected_error = None
+    expected_error = tool_error(old_budget, action["validation_error"], call["name"])
+    if call["name"] == "ask_author" and expected_error is None:
+        raise ProjectionError("eligible ask_author was incorrectly drained as an error")
     if expected_error is not None and record["observation"] != expected_error:
         raise ProjectionError("tool error contradicts budget or syntax precedence")
-    consumed = old_budget["consumed"]
-    call_charge = int(consumed.get("tool_calls", 0) < old_budget["limits"]["tool_calls"])
-    read_charge = 0
-    if record["observation"].get("ok") and call["name"] in {"read_file", "search", "list_dir"}:
-        if old_budget["read_tokenizer"] != "whitespace-v1":
-            raise ProjectionError("unsupported read tokenizer")
-        read_charge = len(json.dumps(record["observation"]["result"], ensure_ascii=False).split())
-    before_bytes = sum(len(text.encode("utf-8")) for text in before.files.values())
-    after_bytes = sum(len(text.encode("utf-8")) for text in after.files.values())
-    expected_charge = {
-        "attempted_tool_calls": 1,
-        "tool_calls": call_charge,
-        "read_tokens": read_charge,
-        "read_tokenizer": old_budget["read_tokenizer"],
-        "file_bytes_before": before_bytes,
-        "file_bytes_after": after_bytes,
-        "file_byte_delta": after_bytes - before_bytes,
-    }
-    expected_budget = json.loads(canonical_json(old_budget))
-    charged = expected_budget["consumed"]
-    charged["attempted_tool_calls"] = charged.get("attempted_tool_calls", 0) + 1
-    charged["tool_calls"] = charged.get("tool_calls", 0) + call_charge
-    charged["read_tokens"] = charged.get("read_tokens", 0) + read_charge
-    charged["storage_bytes"] = after_bytes
+    try:
+        read_charge = observation_read_tokens(
+            record["observation"], call["name"], old_budget["read_tokenizer"]
+        )
+    except ValueError as exc:
+        raise ProjectionError(str(exc)) from exc
+    expected_budget, expected_charge = tool_result_charge(
+        old_budget, before.files, after.files, read_charge
+    )
     if record["budget_charge"] != expected_charge or new_budget != expected_budget:
         raise ProjectionError("tool result has false budget charge")
     if (
@@ -697,8 +681,6 @@ def project_writer_context(
             ):
                 raise ProjectionError("context revision has false source-event provenance")
             if not context_operation:
-                from writing_agent.task_graph_compaction import charge_context_append
-
                 expected_budget = charge_context_append(old_budget, revision)
                 if expected_budget is None:
                     if state.budgets_ref != before.budgets_ref:
@@ -745,21 +727,7 @@ def project_writer_context(
             usage = record["usage"]
             old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
             new_budget = store.get_artifact(state.budgets_ref, expected_domain="payload")
-            expected = json.loads(canonical_json(old_budget))
-            consumed = expected["consumed"]
-            consumed["writer_turns"] = consumed.get("writer_turns", 0) + 1
-            consumed["model_calls"] = consumed.get("model_calls", 0) + 1
-            consumed["generated_tokens"] = consumed.get("generated_tokens", 0) + usage.get(
-                "completion_tokens", 0
-            )
-            consumed["total_tokens"] = consumed.get("total_tokens", 0) + usage.get(
-                "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
-            )
-            exceeded = [
-                name
-                for name in ("generated_tokens", "total_tokens")
-                if name in expected["limits"] and consumed[name] > expected["limits"][name]
-            ]
+            expected, exceeded = sampled_usage_charge(old_budget, usage)
             outcome = store.get_artifact(state.outcome_ref, expected_domain="payload")
             if (
                 event.actor != "writer_runtime"
@@ -772,8 +740,8 @@ def project_writer_context(
                 or trace.get("context_revision_ref") != latest_context_ref
                 or trace.get("exact_request_ref") != record["request_ref"]
                 or trace.get("raw_output_ref") != record["raw_output_ref"]
-                or not exceeded
-                or record["reason"] != f"{exceeded[0]}_budget"
+                or exceeded is None
+                or record["reason"] != f"{exceeded}_budget"
                 or not isinstance(outcome, dict)
                 or outcome
                 != _writer_stop_outcome(
@@ -801,29 +769,9 @@ def project_writer_context(
             record = store.get_artifact(entry["record_ref"], expected_domain="payload")
             old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
             outcome = store.get_artifact(state.outcome_ref, expected_domain="payload")
-            exhausted = [
-                name
-                for name in (
-                    "writer_turns",
-                    "generated_tokens",
-                    "total_tokens",
-                    "context_bytes",
-                    "context_storage_bytes",
-                )
-                if name in old_budget["limits"]
-                and old_budget["consumed"].get(name, 0) >= old_budget["limits"][name]
-            ]
-            reason = (
-                "writer_budget"
-                if exhausted and exhausted[0] == "writer_turns"
-                else "context_budget"
-                if exhausted and exhausted[0] == "context_bytes"
-                else "context_storage_budget"
-                if exhausted and exhausted[0] == "context_storage_bytes"
-                else (f"{exhausted[0]}_budget" if exhausted else None)
-            )
+            reason = exhausted_stop_reason(old_budget)
             if (
-                not exhausted
+                reason is None
                 or not isinstance(outcome, dict)
                 or outcome
                 != _writer_stop_outcome(
@@ -926,16 +874,7 @@ def project_writer_context(
             old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
             new_budget = store.get_artifact(state.budgets_ref, expected_domain="payload")
             usage = record["usage"]
-            expected_budget = json.loads(canonical_json(old_budget))
-            charged = expected_budget["consumed"]
-            charged["writer_turns"] = charged.get("writer_turns", 0) + 1
-            charged["model_calls"] = charged.get("model_calls", 0) + 1
-            charged["generated_tokens"] = charged.get("generated_tokens", 0) + usage.get(
-                "completion_tokens", 0
-            )
-            charged["total_tokens"] = charged.get("total_tokens", 0) + usage.get(
-                "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
-            )
+            expected_budget, _ = sampled_usage_charge(old_budget, usage)
             if (
                 new_budget != expected_budget
                 or state.files != before.files
