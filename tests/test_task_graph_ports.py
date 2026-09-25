@@ -108,6 +108,11 @@ class IndependentEvaluator:
 
 
 class RuntimePortsIntegrationTest(unittest.TestCase):
+    def test_scripted_backend_descriptor_binds_its_samples(self):
+        left = ScriptedSampleBackend([SampleResult({"role": "assistant", "content": "A"})])
+        right = ScriptedSampleBackend([SampleResult({"role": "assistant", "content": "B"})])
+        self.assertNotEqual(left.descriptor.identity(), right.descriptor.identity())
+
     def fixture(self, cls):
         fixture = cls()
         fixture.setUp()

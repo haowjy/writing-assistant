@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Include the offline scripted backend's exact sample sequence in its immutable
+  descriptor configuration, so distinct scripts cannot share a sealed manifest.
+
 - Preserve remote execution infrastructure classification in an explicit error
   and interrupt before a tool observation or budget charge is published.
 

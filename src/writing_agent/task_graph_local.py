@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from writing_agent.task_graph import canonical_json
+from writing_agent.task_graph import canonical_json, domain_hash
 from writing_agent.task_graph_ports import (
     EnvironmentAction,
     EnvironmentHandle,
@@ -90,18 +91,40 @@ def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) 
 class ScriptedSampleBackend:
     """Offline sample source; each invocation consumes one predetermined result."""
 
-    descriptor = PortDescriptorV1("sampling", "scripted-offline-v1", "1")
-
     def __init__(self, results):
-        self._results = iter(results)
+        if not isinstance(results, (list, tuple)) or any(
+            not isinstance(result, SampleResult) for result in results
+        ):
+            raise TypeError("scripted backend requires a finite sequence of SampleResult values")
+        normalized = tuple(
+            SampleResult(result.message, result.raw_output, result.usage, result.trace)
+            for result in results
+        )
+        script = [
+            {
+                "message": result.message,
+                "raw_output": (
+                    {"bytes_base64": base64.b64encode(result.raw_output).decode("ascii")}
+                    if isinstance(result.raw_output, bytes)
+                    else {"text": result.raw_output}
+                ),
+                "usage": result.usage,
+                "trace": result.trace,
+            }
+            for result in normalized
+        ]
+        self.descriptor = PortDescriptorV1(
+            "sampling",
+            "scripted-offline-v1",
+            "1",
+            canonical_json({"script_ref": domain_hash("payload", script)}),
+        )
+        self._results = iter(normalized)
         self.calls = 0
 
     def sample(self, prepared):
         self.calls += 1
-        result = next(self._results)
-        if not isinstance(result, SampleResult):
-            raise TypeError("scripted backend requires SampleResult values")
-        return result
+        return next(self._results)
 
 
 class LocalTextToolProvider:

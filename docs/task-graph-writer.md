@@ -56,7 +56,9 @@ publisher. A descriptor change after binding rejects before an effect.
 `RuntimeRunner` prepares verified current messages, passes `PreparedSamplingInput`
 to a `SampleBackend`, and submits its `SampleResult` through the same writer. The
 offline scripted backend and an independent backend can use this path; no default
-adapter invokes a live model. Canonical sampling records and native-ineligible
+adapter invokes a live model. The scripted backend hashes its exact sample sequence
+into its descriptor, so different scripts cannot share a sealed manifest. Canonical
+sampling records and native-ineligible
 policy remain noninjectable. `ExecutionEnvironment` receives typed specs, handles,
 snapshots, and actions and returns typed observations, snapshots, and infrastructure
 classification; it has no store, CAS, or staging-path contract. The local
