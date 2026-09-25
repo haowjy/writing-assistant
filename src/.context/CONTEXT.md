@@ -26,9 +26,11 @@ retains its smoke-evaluation and training-format workflows.
   handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)
   stages typed record/log/effect/context batches and owns semantic prepublication,
   atomic CAS, and fresh restore for writer, author, checks, terminal, and context
-  operations. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
-  reconstructs writer context from the entry checkpoint and authorized causal
-  events; it never renders the private event log wholesale.
+  operations. [task_graph_replay.py](../writing_agent/task_graph_replay.py)
+  owns the typed cursor, closed event handlers, semantic authority, and authorized
+  visible contributions for publication and recovery. The thin
+  [task_graph_projection.py](../writing_agent/task_graph_projection.py) entry
+  materializes/verifies writer context; it never renders the private log wholesale.
   [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
   codecs and binding checks for prepared requests, sampling and adapter evidence,
   plus the current evaluation-only eligibility decision; the persisted V1 wires
@@ -55,7 +57,7 @@ retains its smoke-evaluation and training-format workflows.
   fixed visible-message summary, complete-exchange selection, immutable context
   operation evidence, and context byte accounting. The writer publishes a
   `context_changed` operation only at a drained `ready_writer` boundary; the
-  projector validates its selection and budget before publication and on recovery.
+  semantic replay validates its selection and budget before publication and on recovery.
   The immutable admitted writer entry activates that semantic walk even for the
   first context operation, a retyped child runtime log, or a multi-event batch;
   generic Phase 2 lineages without a typed entry retain their generic reducer.
@@ -131,7 +133,7 @@ acknowledgement and explicit author utterance enter writer context. Final writer
 immutable candidate before deterministic file checks. Check results name that
 candidate, admitted check and evaluator packet, requirement version and recomputed
 evidence. Environment transition and terminal outcome records remain separate from
-reward availability and training eligibility. `task_graph_projection.py` validates
+reward availability and training eligibility. `task_graph_replay.py` validates
 every new producer's exact field/actor authority and causal binding both against
 staged events before publication and on restore/replay. The evaluator cannot edit
 files or the terminal task/execution status; reward arithmetic is exact integer

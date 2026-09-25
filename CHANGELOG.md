@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Split semantic replay from visible-context projection: a typed cursor and closed
+  event-handler registry validate admitted writer histories and emit authorized
+  message/provenance contributions. Represent author reply progress with an
+  internal enum; projection now only materializes and verifies the result.
+
 - Move causal event/effect/log/context staging and atomic CAS publication into an
   environment-owned batch service. Writer, scripted author, deterministic checks,
   terminal routing, and compaction use the same publisher; remove their duplicate
