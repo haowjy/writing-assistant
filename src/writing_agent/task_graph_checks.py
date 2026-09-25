@@ -10,6 +10,7 @@ from writing_agent.task_graph_contracts import (
 from writing_agent.task_graph_environment import WriterRuntimeError
 from writing_agent.task_graph_evaluation import (
     EvaluationRequestV1,
+    StoreEvidenceResolver,
     verify_evaluation_evidence,
 )
 
@@ -102,12 +103,17 @@ class DeterministicChecksV1:
             check,
             request["evaluator_packet_ref"],
             target.state.files,
+            evaluator_packet=self.store.get_artifact(request["evaluator_packet_ref"], private=True),
         )
         evaluated = self.dependencies.evaluator.evaluate(evaluation_request)
         if evaluated.family != evaluation_request.family:
             raise WriterRuntimeError("evaluator returned a different admitted family")
         evidence_wire = evaluated.to_wire(evaluation_request)
-        verify_evaluation_evidence(evaluation_request, evidence_wire)
+        verify_evaluation_evidence(
+            evaluation_request,
+            evidence_wire,
+            StoreEvidenceResolver(self.store, request["evaluator_packet_ref"]),
+        )
         status = evaluated.status
         evidence_ref = self.store.put_artifact(evidence_wire)
         result = {
@@ -260,8 +266,13 @@ def validate_check_result_effect(store, before, after, event, effect, entry) -> 
         check,
         request["evaluator_packet_ref"],
         target.state.files,
+        evaluator_packet=store.get_artifact(request["evaluator_packet_ref"], private=True),
     )
-    evaluated = verify_evaluation_evidence(evaluation_request, evidence_wire)
+    evaluated = verify_evaluation_evidence(
+        evaluation_request,
+        evidence_wire,
+        StoreEvidenceResolver(store, request["evaluator_packet_ref"]),
+    )
     status = evaluated.status
     expected_result = {
         "record_type": "CheckResultV1",

@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from writing_agent.task_graph import canonical_json, domain_hash
+from writing_agent.task_graph import canonical_json, domain_hash, validate_hash
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
 
 
@@ -81,6 +81,40 @@ class PreparedSamplingInput:
     messages_json: str
     tools_json: str
     rendering_json: str
+    request_json: str
+
+    def __post_init__(self) -> None:
+        request = json.loads(self.request_json)
+        if (
+            not isinstance(request, dict)
+            or canonical_json(request) != self.request_json
+            or canonical_json(request.get("messages")) != self.messages_json
+            or domain_hash("payload", request) != self.request_ref
+        ):
+            raise ValueError("prepared sampling input differs from its persisted request")
+        validate_hash(self.prepared_request_ref)
+
+    def request(self) -> dict[str, Any]:
+        return json.loads(self.request_json)
+
+
+@dataclass(frozen=True)
+class BinaryLogprobEvidence:
+    data: bytes
+    codec: str
+    shape: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.data, bytes)
+            or self.codec != "f32-le"
+            or not isinstance(self.shape, tuple)
+            or len(self.shape) != 1
+            or type(self.shape[0]) is not int
+            or self.shape[0] < 0
+            or len(self.data) != 4 * self.shape[0]
+        ):
+            raise ValueError("logprob evidence requires one-dimensional f32-le bytes")
 
 
 @dataclass(frozen=True)
@@ -89,12 +123,15 @@ class SampleResult:
     raw_output: str | bytes | None = None
     usage: Mapping[str, Any] | None = None
     trace: Mapping[str, Any] | None = None
+    logprobs: BinaryLogprobEvidence | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.message, Mapping):
             raise TypeError("sample message must be a parsed object")
         if self.raw_output is not None and not isinstance(self.raw_output, (str, bytes)):
             raise TypeError("sample raw output must be exact text or bytes")
+        if self.logprobs is not None and not isinstance(self.logprobs, BinaryLogprobEvidence):
+            raise TypeError("sample logprobs must be typed binary evidence")
         for field in ("message", "usage", "trace"):
             value = getattr(self, field)
             if value is not None:

@@ -21,7 +21,14 @@ while (handle.state.position["phase"] == "ready_writer"
 projected = project_writer_context(store, entry_checkpoint_id, handle.checkpoint_id)
 ```
 
-The caller supplies the backend's parsed assistant message (`role`, text `content`, optional `tool_calls`) and any exact request/raw-output/trace evidence it has. `prepare_request` **before sampling** durably stores arbitrary adapter-owned request input and rendering/context pins; it does not inspect the payload's messages. `prepare_verified_messages` additionally checks a typed `messages` sequence against the current projected context, and rechecks it on publication and recovery. Neither path verifies arbitrary backend bytes or proves what a remote model consumed. `submit_action` rejects a stale prepared reference. Preparation is not a paid-call reservation or response journal. The direct `exact_request=` option persists supplied evidence before action commit for fake/evaluation adapters that did not prepare a request. Absent raw output is marked missing rather than reconstructed from the parsed message. Missing token IDs or logprobs are likewise explicit. Opaque logprobs, if supplied, must be a pre-persisted binary `payload` artifact named by `per_token_logprobs_ref`; numeric arrays are not silently converted through JSON. Even supplied tokens/logprobs do not confer native on-policy eligibility: Phase 4 has no token alignment or native loss mask. Only writer assistant text, call syntax, and endings carry loss-eligible metadata; seed, system, user, author, environment, and tool material do not. Provider usage detail fields are retained but not double-counted into top-level token charges.
+The caller supplies the backend's parsed assistant message (`role`, text `content`, optional `tool_calls`) and any exact request/raw-output/trace evidence it has. `prepare_request` **before sampling** durably stores arbitrary adapter-owned request input and rendering/context pins; it does not inspect the payload's messages. `prepare_verified_messages` additionally checks a typed `messages` sequence against the current projected context, and rechecks it on publication and recovery. Neither path verifies arbitrary backend bytes or proves what a remote model consumed. `submit_action` rejects a stale prepared reference. Preparation is not a paid-call reservation or response journal. The direct `exact_request=` option persists supplied evidence before action commit for fake/evaluation adapters that did not prepare a request. Absent raw output is marked missing rather than reconstructed from the parsed message. Missing token IDs or logprobs are likewise explicit.
+
+Direct `submit_action` accepts ref-only opaque logprobs as a pre-persisted binary
+`payload` artifact named by `per_token_logprobs_ref`; numeric arrays are not
+silently converted through JSON. A bound `SampleBackend` may instead return typed
+`BinaryLogprobEvidence` (`f32-le` bytes and one-dimensional token shape), which
+composition persists and binds without giving the backend store/CAS access. Even
+supplied tokens/logprobs do not confer native on-policy eligibility: Phase 4 has no token alignment or native loss mask. Only writer assistant text, call syntax, and endings carry loss-eligible metadata; seed, system, user, author, environment, and tool material do not. Provider usage detail fields are retained but not double-counted into top-level token charges.
 
 The entry state's public `budgets_ref` must contain a canonical JSON artifact:
 
@@ -55,6 +62,9 @@ publisher. A descriptor change after binding rejects before an effect.
 
 `RuntimeRunner` prepares verified current messages, passes `PreparedSamplingInput`
 to a `SampleBackend`, and submits its `SampleResult` through the same writer. The
+input carries the complete canonical immutable request JSON (including per-call
+options) whose hash is the persisted request reference; messages derive from that
+same value. Changing an option changes both delivered input and request identity. The
 offline scripted backend and an independent backend can use this path; no default
 adapter invokes a live model. The scripted backend hashes its exact sample sequence
 into its descriptor, so different scripts cannot share a sealed manifest. Canonical
@@ -65,8 +75,11 @@ classification; it has no store, CAS, or staging-path contract. The local
 workspace environment composes a text provider and keeps staging private. No
 shell or network capability is available. A remote infrastructure classification
 raises `ExecutionInfrastructureError` before any tool result or charge is committed.
-Check evidence is admitted only through
-a versioned verifier family: the deterministic family recomputes exactly, while a
-small offline fixture family demonstrates substitution without trusting the
-producer at replay. The manifest binds declared composition, not proof of remote
-backend behavior. See [group coordination](task-graph-groups.md) for policy sealing.
+Check evidence is admitted only through a versioned family registry of codec,
+admission metadata, and offline verifier. Deterministic and fixture families
+recompute exactly. The transcript-review family checks a persisted request/response
+transcript, declared status, candidate hash, check hash, and authorized private
+evaluator packet against frozen inputs using a read-only resolver; replay never
+calls its producer. This proves recorded provenance and internal consistency, **not**
+the authenticity or subjective correctness of a judgment. The manifest binds
+declared composition, not proof of remote backend behavior. See [group coordination](task-graph-groups.md) for policy sealing.

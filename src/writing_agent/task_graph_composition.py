@@ -129,6 +129,8 @@ class RuntimeRunner:
             "messages": [message.to_dict() for message in runtime.context.messages],
             **(request_extras or {}),
         }
+        request_json = canonical_json(request)
+        request = json.loads(request_json)
         prepared_ref = self.writer.prepare_verified_messages(runtime, request)
         prepared = self.writer.store.get_artifact(prepared_ref, expected_domain="payload")
         input_value = PreparedSamplingInput(
@@ -139,15 +141,32 @@ class RuntimeRunner:
             messages_json=canonical_json(request["messages"]),
             tools_json=canonical_json(runtime.context.tools),
             rendering_json=canonical_json(runtime.context.rendering),
+            request_json=request_json,
         )
         result = self.session.dependencies.sampling.sample(input_value)
         if not isinstance(result, SampleResult):
             raise TypeError("sample backend must return SampleResult")
+        trace = dict(result.trace or {})
+        if result.logprobs is not None:
+            if "per_token_logprobs_ref" in trace or "per_token_logprobs" in trace:
+                raise ValueError("sample supplied both binary and ref-only logprobs")
+            tokens = trace.get("generated_token_ids")
+            if (
+                not isinstance(tokens, list)
+                or any(type(token) is not int or token < 0 for token in tokens)
+                or len(tokens) != result.logprobs.shape[0]
+            ):
+                raise ValueError("binary logprobs must align with generated token IDs")
+            trace["per_token_logprobs_ref"] = self.writer.store.put_bytes_artifact(
+                result.logprobs.data
+            )
+            trace["per_token_logprobs_codec"] = result.logprobs.codec
+            trace["per_token_logprobs_shape"] = list(result.logprobs.shape)
         return self.writer.submit_action(
             runtime,
             result.message,
             prepared_request_ref=prepared_ref,
             raw_output=result.raw_output,
             usage=result.usage,
-            trace=result.trace,
+            trace=trace or None,
         )

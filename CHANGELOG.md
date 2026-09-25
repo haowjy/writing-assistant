@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Deliver the complete canonical persisted sampling request to backends, persist
+  typed binary logprobs without backend store access, and verify transcript-shaped
+  evaluator evidence offline against frozen inputs and an authorized packet.
+
 - Preserve prepublication and forced-recovery forgery coverage for sampled-budget
   stops by binding the locally constructed trace while replay checks the persisted ref.
 

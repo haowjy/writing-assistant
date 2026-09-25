@@ -48,14 +48,17 @@ retains its smoke-evaluation and training-format workflows.
   unbound legacy/offline path; a bound session checks descriptor identity and any
   started group member receipt before effects.
   [task_graph_evaluation.py](../writing_agent/task_graph_evaluation.py) admits only
-  versioned evidence families with replay-only verifiers. Deterministic checks
-  recompute exactly; an offline fixture family exercises a second contract without
-  a model judge. Injection does not override admitted schemas, semantic replay, or
-  the native-ineligible decision. `prepare_request` pins caller-owned evidence;
+  versioned evidence families with replay-only verifiers. Deterministic and fixture
+  families recompute exactly; transcript-review checks persisted transcript
+  provenance and declared status against frozen inputs and an authorized private
+  evaluator packet, without claiming subjective correctness. Injection does not
+  override admitted schemas, semantic replay, or the native-ineligible decision. `prepare_request` pins caller-owned evidence;
   `prepare_verified_messages` checks typed messages against the active projection
   at preparation, publication, and recovery. The sampling decoder alone binds
-  duplicated trace/action/request claims. Only the composition runner invokes
-  `SampleBackend`. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
+  duplicated trace/action/request claims. The bound sampling input carries the
+  complete canonical persisted request/options value; composition stores typed
+  binary logprob output and constructs its ref without backend CAS access. Only the
+  composition runner invokes `SampleBackend`. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
   owns exact scripted author requests/replies, disclosure and authorized requirement
   updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
   checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
@@ -143,8 +146,10 @@ replayed/restored outstanding request produces the same author reply without a
 provider call. Request and reply boundaries are durable; only the paired tool
 acknowledgement and explicit author utterance enter writer context. Final writer turns freeze an
 immutable candidate before deterministic file checks. Check results name that
-candidate, admitted check and evaluator packet, requirement version and recomputed
-evidence. Environment transition and terminal outcome records remain separate from
+candidate, admitted check and evaluator packet, requirement version and verified
+evidence. Deterministic evidence is recomputed exactly; transcript-shaped evidence
+is checked for frozen-input provenance and internal consistency, not subjective truth.
+Environment transition and terminal outcome records remain separate from
 reward availability and training eligibility. `task_graph_replay.py` validates
 every new producer's exact field/actor authority and causal binding both against
 staged events before publication and on restore/replay. The evaluator cannot edit

@@ -228,6 +228,26 @@ def _validate_adapter_claims(store, trace: Mapping[str, Any] | None) -> None:
         or any(type(token) is not int or token < 0 for token in trace["generated_token_ids"])
     ):
         raise ProjectionError("generated token IDs must be nonnegative integers")
+    typed_logprobs = {"per_token_logprobs_codec", "per_token_logprobs_shape"}
+    if typed_logprobs & trace.keys():
+        tokens = trace.get("generated_token_ids")
+        shape = trace.get("per_token_logprobs_shape")
+        if (
+            not typed_logprobs <= trace.keys()
+            or "per_token_logprobs_ref" not in trace
+            or trace["per_token_logprobs_codec"] != "f32-le"
+            or not isinstance(shape, list)
+            or len(shape) != 1
+            or type(shape[0]) is not int
+            or shape[0] < 0
+            or not isinstance(tokens, list)
+            or len(tokens) != shape[0]
+            or len(
+                store.get_artifact(trace["per_token_logprobs_ref"], expected_domain="payload:bytes")
+            )
+            != 4 * shape[0]
+        ):
+            raise ProjectionError("binary logprob metadata contradicts token evidence")
 
 
 def make_sampling_evidence(

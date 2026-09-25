@@ -35,10 +35,11 @@ from writing_agent.task_graph_contracts import (
     ScriptContractV1,
     ScriptedAuthorV1,
 )
+from writing_agent.task_graph_evaluation import FAMILIES
 
 SUPPORTED_CONTROLLER_VERSIONS = frozenset({"deterministic-v1"})
 SUPPORTED_CHECK_VERSIONS = frozenset(
-    {"deterministic-v1", "legacy-check-v1", "fixture-file-count-v1"}
+    {"legacy-check-v1", *(family.check_version for family in FAMILIES.values())}
 )
 
 
@@ -282,11 +283,13 @@ def admit_graph(
                     or "path" not in check.spec
                 )
             )
-            or (
-                check.evaluator_version == "fixture-file-count-v1"
-                and check.spec.get("kind") != "fixture_file_count"
+            or check.evaluator_version not in {family.check_version for family in FAMILIES.values()}
+            or any(
+                check.evaluator_version == family.check_version
+                and family.program_kind is not None
+                and check.spec.get("kind") != family.program_kind
+                for family in FAMILIES.values()
             )
-            or check.evaluator_version not in {"deterministic-v1", "fixture-file-count-v1"}
             or check.public_evidence_refs
             or check.private_evidence_refs
             for check in checks.values()
@@ -659,14 +662,22 @@ _MECHANICAL_KINDS = _TEXT_TARGET_KINDS | frozenset(
 
 def _validate_check_program(check: CheckContractV1) -> None:
     try:
-        if check.evaluator_version == "fixture-file-count-v1":
+        family = next(
+            (
+                family
+                for family in FAMILIES.values()
+                if family.check_version == check.evaluator_version
+            ),
+            None,
+        )
+        if family is not None and family.program_kind is not None:
             spec = check.spec
             if (
                 set(spec) != {"id", "metric", "kind", "method", "required"}
                 or spec["id"] != check.id
                 or spec["metric"] not in {f"Q{number}" for number in range(1, 14)}
-                or spec["kind"] != "fixture_file_count"
-                or spec["method"] != "fixture"
+                or spec["kind"] != family.program_kind
+                or spec["method"] != family.program_method
                 or spec["required"] is not check.required
             ):
                 raise ValueError("fixture family requires its exact admitted program")

@@ -107,7 +107,143 @@ class IndependentEvaluator:
         )
 
 
+class TranscriptEvaluator:
+    descriptor = PortDescriptorV1(
+        "evaluator", "offline-transcript-v1", "1", '{"family":"transcript-review-v1"}'
+    )
+    family = "transcript-review-v1"
+
+    def evaluate(self, request):
+        return EvaluationEvidenceV1(
+            self.family,
+            "pass",
+            {
+                "transcript": [
+                    {
+                        "role": "request",
+                        "payload": {
+                            "target_checkpoint": request.target_checkpoint,
+                            "check_contract_hash": request.check.identity(),
+                            "evaluator_packet_ref": request.evaluator_packet_ref,
+                            "candidate_tree_hash": tree_hash(request.files()),
+                        },
+                    },
+                    {"role": "response", "status": "pass", "text": "Recorded opinion."},
+                ],
+                "declared_status": "pass",
+            },
+        )
+
+
 class RuntimePortsIntegrationTest(unittest.TestCase):
+    def test_backend_receives_exact_persisted_options(self):
+        class Capture(IndependentBackend):
+            def sample(self, prepared):
+                self.input = prepared
+                return super().sample(prepared)
+
+        refs = []
+        for seed in (13, 14):
+            fixture = self.fixture(writer_tests.WriterFixture)
+            backend = Capture("answer")
+            session = self.session(fixture, backend)
+            writer = TransactionalWriterV1(
+                fixture.store,
+                fixture.bundle.admission(),
+                "rollout-1",
+                fixture.start,
+                session=session,
+            )
+            result = RuntimeRunner(writer, session).sample(
+                fixture.runtime, request_extras={"seed": seed, "temperature": "0.37"}
+            )
+            record = fixture.store.get_artifact(result.record_ref)
+            self.assertEqual(backend.input.request()["seed"], seed)
+            self.assertEqual(
+                backend.input.request(), fixture.store.get_artifact(record["request_ref"])
+            )
+            refs.append(record["request_ref"])
+        self.assertNotEqual(*refs)
+
+    def test_binary_logprobs_from_store_free_backend_replay(self):
+        from writing_agent.task_graph_ports import BinaryLogprobEvidence
+
+        class NativeShaped(IndependentBackend):
+            def sample(self, prepared):
+                return SampleResult(
+                    {"role": "assistant", "content": "answer"},
+                    trace={"generated_token_ids": [7, 8]},
+                    logprobs=BinaryLogprobEvidence(b"\x00\x00\x80?" * 2, "f32-le", (2,)),
+                )
+
+        fixture = self.fixture(writer_tests.WriterFixture)
+        session = self.session(fixture, NativeShaped("unused"))
+        writer = TransactionalWriterV1(
+            fixture.store,
+            fixture.bundle.admission(),
+            "rollout-1",
+            fixture.start,
+            session=session,
+        )
+        result = RuntimeRunner(writer, session).sample(fixture.runtime)
+        record = fixture.store.get_artifact(result.record_ref)
+        trace = fixture.store.get_artifact(record["trace_ref"])
+        self.assertEqual(
+            fixture.store.get_artifact(trace["logprob_ref"], expected_domain="payload:bytes"),
+            b"\x00\x00\x80?" * 2,
+        )
+        self.assertFalse(trace["native_on_policy_eligible"])
+        project_writer_context(fixture.store, fixture.start, result.runtime.checkpoint_id)
+        fixture.store.restore(result.runtime.checkpoint_id, fixture.root / "offline-binary")
+
+    def test_binary_logprobs_reject_token_mismatch_before_publication(self):
+        from writing_agent.task_graph_ports import BinaryLogprobEvidence
+
+        class Misaligned(IndependentBackend):
+            def sample(self, prepared):
+                return SampleResult(
+                    {"role": "assistant", "content": "answer"},
+                    trace={"generated_token_ids": [7, 8]},
+                    logprobs=BinaryLogprobEvidence(b"\x00\x00\x80?", "f32-le", (1,)),
+                )
+
+        fixture = self.fixture(writer_tests.WriterFixture)
+        session = self.session(fixture, Misaligned("unused"))
+        writer = TransactionalWriterV1(
+            fixture.store,
+            fixture.bundle.admission(),
+            "rollout-1",
+            fixture.start,
+            session=session,
+        )
+        head = fixture.store.read_head("rollout-1")
+        with self.assertRaisesRegex(ValueError, "align"):
+            RuntimeRunner(writer, session).sample(fixture.runtime)
+        self.assertEqual(fixture.store.read_head("rollout-1"), head)
+
+    def test_transcript_evaluator_replays_after_provider_disabled(self):
+        fixture = self.fixture(scripted_tests.ScriptedFixture)
+        graph = self.admit_fixture_family(fixture, transcript=True)
+        evaluator = TranscriptEvaluator()
+        session = self.session(fixture, IndependentBackend("unused"), evaluator=evaluator)
+        writer = TransactionalWriterV1(
+            fixture.store,
+            graph,
+            "rollout-1",
+            fixture.start,
+            session=session,
+        )
+        final = writer.submit_action(fixture.runtime, fixture.action(content="Done."))
+        checks = DeterministicChecksV1(writer)
+        checked = checks.check_next(checks.request_checks(final.runtime).runtime)
+
+        def disabled(_request):
+            raise AssertionError("live evaluator called during replay")
+
+        evaluator.evaluate = disabled
+        project_writer_context(fixture.store, fixture.start, checked.runtime.checkpoint_id)
+        fixture.store.restore(checked.runtime.checkpoint_id, fixture.root / "offline-judge")
+
     def test_scripted_backend_descriptor_binds_its_samples(self):
         left = ScriptedSampleBackend([SampleResult({"role": "assistant", "content": "A"})])
         right = ScriptedSampleBackend([SampleResult({"role": "assistant", "content": "B"})])
@@ -130,17 +266,17 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         session = RuntimeSession.create(fixture.store, "rollout-1", fixture.start, dependencies)
         return session.bind(fixture.store, session.manifest_ref)
 
-    def admit_fixture_family(self, fixture):
+    def admit_fixture_family(self, fixture, *, transcript=False):
         original = fixture.writer.graph.node("legacy-writer")
         check = original.checks["nonempty"]
         fixture_check = replace(
             check,
-            evaluator_version="fixture-file-count-v1",
+            evaluator_version="transcript-review-v1" if transcript else "fixture-file-count-v1",
             spec={
                 "id": check.id,
                 "metric": "Q1",
-                "kind": "fixture_file_count",
-                "method": "fixture",
+                "kind": "transcript_review" if transcript else "fixture_file_count",
+                "method": "offline_transcript" if transcript else "fixture",
                 "required": True,
             },
         )

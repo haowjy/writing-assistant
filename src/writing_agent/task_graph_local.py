@@ -97,7 +97,9 @@ class ScriptedSampleBackend:
         ):
             raise TypeError("scripted backend requires a finite sequence of SampleResult values")
         normalized = tuple(
-            SampleResult(result.message, result.raw_output, result.usage, result.trace)
+            SampleResult(
+                result.message, result.raw_output, result.usage, result.trace, result.logprobs
+            )
             for result in results
         )
         script = [
@@ -110,6 +112,17 @@ class ScriptedSampleBackend:
                 ),
                 "usage": result.usage,
                 "trace": result.trace,
+                **(
+                    {
+                        "logprobs": {
+                            "bytes_base64": base64.b64encode(result.logprobs.data).decode("ascii"),
+                            "codec": result.logprobs.codec,
+                            "shape": list(result.logprobs.shape),
+                        }
+                    }
+                    if result.logprobs is not None
+                    else {}
+                ),
             }
             for result in normalized
         ]
@@ -171,9 +184,9 @@ class DeterministicEvaluator:
     family = "deterministic-file-v1"
 
     def evaluate(self, request):
-        from writing_agent.task_graph_evaluation import VERIFIERS
+        from writing_agent.task_graph_evaluation import produce_evaluation_evidence
 
-        return VERIFIERS[self.family](request)
+        return produce_evaluation_evidence(request)
 
 
 class LocalWorkspaceEnvironment:
