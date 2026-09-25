@@ -10,6 +10,11 @@ retains its smoke-evaluation and training-format workflows.
   isolated workspaces, resume identities, saved results, and fresh-reader conditions.
 - [agent.py](../writing_agent/agent.py) owns the bounded conversation/tool loop;
   [workspace.py](../writing_agent/workspace.py) owns file operations and storage limits.
+- [task_graph.py](../writing_agent/task_graph.py) owns immutable task-graph value records
+  and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
+  owns private content-addressed persistence, reference closure, checkpoint
+  materialization/restore/branch/diff, recorded Phase 2 effect replay, and the atomic
+  mutable lineage head. It does not replace or adapt the legacy runner.
 - [backends.py](../writing_agent/backends.py) defines the model interface and HTTP transport.
   [inference.py](../writing_agent/inference.py) loads local Transformers/PEFT weights,
   renders native Gemma tools, parses responses with the pinned tokenizer, and adapts
@@ -34,6 +39,15 @@ perform no downloads, model loading, process exit, or working-directory changes.
 Optional data, lexical-metric, and model dependencies live in separate extras.
 
 ## Records and replay
+
+Task-graph immutable objects can exist before publication, but only canonical
+`refs/<lineage>.json` head files are lineage authority. Their persisted body contains
+only `head_commit`; expected-head is a compare-and-swap request. A transaction writes
+and flushes immutable events, a full checkpoint, and its commit before atomically
+replacing the head under the lineage lock. Unreachable files are harmless orphans.
+Restore always creates a new private directory and returns a trusted runtime handle;
+it never rewinds an event log. The Phase 2 replay reducer accepts only persisted
+`Phase2RecordedEffectV1` payloads and makes no model, network, or tool calls.
 
 Catalog records carry normalized content in `text`; local imports also preserve raw
 bytes and a text file, with hashes for both representations. Content from the imported

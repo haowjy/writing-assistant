@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add private content-addressed task-graph persistence with full immutable checkpoints,
+  atomic lineage-head compare-and-swap, safe fresh-workspace restore, isolated branches,
+  state/file diffs, and offline reduction of recorded committed effects.
+
 - Add a root `TODO.md` linked from the README as the active work order. Put the
   cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
   download; point older work checklists to it.
