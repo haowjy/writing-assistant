@@ -5,6 +5,9 @@
 - Route action and terminal training-eligibility claims through one typed public
   sampling decoder, including exact outcome binding and native-ineligible policy.
 
+- Exercise the separately admitted fixture evaluator through check replay, terminal
+  outcome, and reward publication with no terminal branch for the new family.
+
 - Bind started group members back to the exact sealed adapter manifest before
   any writer operation; a separately sealed A-vs-B session cannot act on A's branch.
 

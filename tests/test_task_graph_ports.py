@@ -28,6 +28,7 @@ from writing_agent.task_graph_ports import (
     ToolManifest,
 )
 from writing_agent.task_graph_projection import project_writer_context
+from writing_agent.task_graph_terminal import ScriptedTerminalV1
 from writing_agent.task_graph_writer import TransactionalWriterV1
 
 
@@ -213,6 +214,14 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         checked = checks.check_next(requested.runtime)
         self.assertEqual(evaluator.calls, 1)
         project_writer_context(fixture.store, fixture.start, checked.runtime.checkpoint_id)
+        terminal = ScriptedTerminalV1(writer)
+        outcome = terminal.terminal_outcome(checked.runtime)
+        reward = terminal.reward(outcome.runtime)
+        self.assertEqual(
+            fixture.store.get_artifact(outcome.runtime.state.outcome_ref)["task_status"],
+            "incomplete",
+        )
+        project_writer_context(fixture.store, fixture.start, reward.runtime.checkpoint_id)
         # A provider can replace the local tool implementation independently.
         fixture2 = self.fixture(writer_tests.WriterFixture)
         provider2 = IndependentProvider(fixture2.runtime.context.tools)
