@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Make sampling port methods return immutable typed V1 contracts; the writer
+  serializes them only at the persistence boundary.
+
 - Route group segment-credit trace admission through the typed sampling codec
   rather than locally interpreting native eligibility.
 

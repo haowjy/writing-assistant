@@ -87,14 +87,16 @@ def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) 
 class LocalSamplingHarness:
     descriptor = PortDescriptorV1("sampling", "caller-supplied-v1", "1")
 
-    def prepared_request(self, context: ContextRevisionV1, payload_ref: str, *, verified: bool):
+    def prepared_request(
+        self, context: ContextRevisionV1, payload_ref: str, *, verified: bool
+    ) -> PreparedRequestV1:
         return PreparedRequestV1(
             "VerifiedWriterMessagesV1" if verified else "PreparedWriterRequestV1",
             context.content_hash,
             context.identity(),
             canonical_json(context.rendering),
             payload_ref,
-        ).to_wire()
+        )
 
     def evidence(
         self,
@@ -121,7 +123,7 @@ class LocalSamplingHarness:
             model=adapter_trace.get("model") if adapter_trace is not None else None,
             seed=adapter_trace.get("seed") if adapter_trace is not None else None,
             adapter=AdapterEvidenceV1.from_wire(adapter_trace),
-        ).to_wire()
+        )
 
 
 class LocalTextToolProvider:

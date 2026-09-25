@@ -15,6 +15,7 @@ from typing import Any, Protocol
 
 from writing_agent.task_graph import ContextRevisionV1, canonical_json, domain_hash
 from writing_agent.task_graph_environment import EnvironmentBatch, WriterStepV1
+from writing_agent.task_graph_sampling import PreparedRequestV1, SamplingEvidenceV1
 from writing_agent.task_graph_store import RuntimeHandle
 
 
@@ -80,7 +81,7 @@ class SamplingHarness(Protocol):
 
     def prepared_request(
         self, context: ContextRevisionV1, payload_ref: str, *, verified: bool
-    ) -> dict[str, Any]: ...
+    ) -> PreparedRequestV1: ...
 
     def evidence(
         self,
@@ -91,7 +92,7 @@ class SamplingHarness(Protocol):
         raw_output_ref: str | None,
         usage: Mapping[str, Any],
         adapter_trace: Mapping[str, Any] | None,
-    ) -> dict[str, Any]: ...
+    ) -> SamplingEvidenceV1: ...
 
 
 class ExecutionEnvironment(Protocol):

@@ -556,7 +556,7 @@ class TransactionalWriterV1:
         return self.store.put_artifact(
             self.dependencies.sampling.prepared_request(
                 runtime.context, payload_ref, verified=False
-            )
+            ).to_wire()
         )
 
     def prepare_verified_messages(
@@ -578,7 +578,7 @@ class TransactionalWriterV1:
                 runtime.context,
                 PreparedRequestV1.from_wire(prepared).payload_ref,
                 verified=True,
-            )
+            ).to_wire()
         )
 
     def submit_action(
@@ -738,7 +738,7 @@ class TransactionalWriterV1:
             raw_output_ref,
             usage,
             trace,
-        )
+        ).to_wire()
         trace_ref = self.store.put_artifact(trace_body)
         if exceeded is not None:
             return self._sampled_budget_stop(
