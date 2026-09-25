@@ -33,6 +33,11 @@ stale decisions, no-tool responses, and draft/canon separation. It checks the ha
 it does not evaluate a model.
 The CLI exits nonzero if any task fails.
 
+The checkpointed task-graph runtime is opt-in and does not replace this CLI path.
+See [transactional writer stepping](docs/task-graph-writer.md) and the
+[deterministic scripted-author slice](docs/task-graph-scripted.md) for its direct
+Python API, offline replay, and current limits.
+
 ## Layout
 
 ```text

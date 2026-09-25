@@ -19,13 +19,20 @@ from writing_agent.task_graph_artifacts import (
     validate_phase3_artifact_closure,
 )
 from writing_agent.task_graph_contracts import (
-    FILE_TOOLS,
+    GRAPH_TOOLS,
     WRITER_FAMILIES,
+    AuthorPacketV1,
     CheckContractV1,
+    DecisionBindingsV1,
     EdgeContractV1,
+    EvaluatorPacketV1,
     GuardContractV1,
+    InteractionPolicyV1,
     NodeContractV1,
+    RequirementUpdateV1,
+    RewardContractV1,
     ScriptContractV1,
+    ScriptedAuthorV1,
 )
 
 SUPPORTED_CONTROLLER_VERSIONS = frozenset({"deterministic-v1"})
@@ -135,14 +142,14 @@ class StoreArtifactResolver:
 @dataclass(frozen=True)
 class AdmissionPolicyV1:
     writer_family: str | None = None
-    allowed_tools: frozenset[str] = FILE_TOOLS
+    allowed_tools: frozenset[str] = GRAPH_TOOLS
     controller_versions: frozenset[str] = SUPPORTED_CONTROLLER_VERSIONS
     check_versions: frozenset[str] = SUPPORTED_CHECK_VERSIONS
 
     def __post_init__(self) -> None:
         if self.writer_family is not None and self.writer_family not in WRITER_FAMILIES:
             raise ValueError("unsupported requested writer family")
-        if not self.allowed_tools <= FILE_TOOLS:
+        if not self.allowed_tools <= GRAPH_TOOLS:
             raise ValueError("admission policy cannot authorize unknown tools")
         if not self.controller_versions <= SUPPORTED_CONTROLLER_VERSIONS:
             raise ValueError("admission policy cannot authorize unknown controllers")
@@ -157,7 +164,12 @@ class AdmittedNodeV1:
     edges: tuple[EdgeContractV1, ...]
     guards: Mapping[str, GuardContractV1]
     checks: Mapping[str, CheckContractV1]
-    script: ScriptContractV1 | None
+    script: ScriptContractV1 | ScriptedAuthorV1 | None
+    author_packet: AuthorPacketV1 | None = None
+    interaction_policy: InteractionPolicyV1 | None = None
+    decision_bindings: DecisionBindingsV1 | None = None
+    evaluator_packet: EvaluatorPacketV1 | None = None
+    reward_contract: RewardContractV1 | None = None
 
 
 @dataclass(frozen=True)
@@ -251,7 +263,70 @@ def admit_graph(
         interaction = contract.interaction_contract
         script = _validate_interaction(resolver, spec, contract, policy)
         checks = _validate_checks(resolver, spec, contract, policy)
+        if interaction.mode == "scripted_author" and any(
+            check.evaluator_version != "deterministic-v1"
+            or check.spec.get("kind")
+            not in {"nonempty", "contains", "excludes", "excludes_all", "word_range", "exact"}
+            or "path" not in check.spec
+            or check.public_evidence_refs
+            or check.private_evidence_refs
+            for check in checks.values()
+        ):
+            raise AdmissionError(
+                "unsupported_check", "scripted author permits only strict deterministic file checks"
+            )
+        if interaction.mode == "scripted_author" and not any(
+            check.required and check.applicability in {"each_turn", "node_exit_candidate"}
+            for check in checks.values()
+        ):
+            raise AdmissionError(
+                "check_coverage", "scripted author needs a terminal required check"
+            )
+        author_packet = interaction_policy = decision_bindings = None
+        if interaction.mode == "scripted_author":
+            author_packet, interaction_policy, decision_bindings = _validate_scripted_author(
+                resolver, spec, contract, script, checks
+            )
+        evaluator_packet = reward_contract = None
+        if (
+            interaction.mode == "scripted_author"
+            and contract.completion_contract.evaluation_packet_ref is not None
+        ):
+            evaluator_packet = _contract(
+                resolver,
+                contract.completion_contract.evaluation_packet_ref,
+                EvaluatorPacketV1,
+                private=True,
+            )
+            reward_contract = _contract(
+                resolver, evaluator_packet.reward_contract_ref, RewardContractV1, private=True
+            )
+            if set(evaluator_packet.check_ids) != set(checks):
+                raise AdmissionError("evaluator_coverage", "evaluator packet check IDs differ")
+            if set(reward_contract.components) - set(checks):
+                raise AdmissionError("reward_coverage", "reward names undeclared checks")
         edges, guards = _validate_edges(resolver, spec, specs, edge_ids)
+        if interaction.mode == "scripted_author" and any(
+            edge.effect != "terminate" for edge in edges
+        ):
+            raise AdmissionError("unsupported_edge", "scripted-author v1 is single-node terminal")
+        if interaction.mode == "scripted_author":
+            complete_status = (
+                "accepted_partial" if contract.completion_contract.accepted_partial else "complete"
+            )
+            if not any(
+                guard.kind == "always"
+                or guard.kind == "task_status"
+                and guard.arguments["status"] == complete_status
+                or guard.kind == "execution_status"
+                and guard.arguments["status"] == "valid"
+                or guard.kind == "interaction_complete"
+                and guard.arguments["value"] is True
+                or guard.kind == "check_status"
+                and guard.arguments["status"] == "pass"
+                for guard in guards.values()
+            ):
+                raise AdmissionError("guard_coverage", "no terminal guard can pass on completion")
         for guard in guards.values():
             if guard.kind == "check_status" and guard.arguments["check_id"] not in checks:
                 raise AdmissionError(
@@ -265,11 +340,22 @@ def admit_graph(
             guards=MappingProxyType(guards),
             checks=MappingProxyType(checks),
             script=script,
+            author_packet=author_packet,
+            interaction_policy=interaction_policy,
+            decision_bindings=decision_bindings,
+            evaluator_packet=evaluator_packet,
+            reward_contract=reward_contract,
         )
         if interaction.mode == "none" and contract.budget_contract.max_author_calls:
             raise AdmissionError(
                 "interaction_budget", f"node {spec.id} has author budget but no interaction"
             )
+        if interaction.mode == "scripted_author" and "ask_author" not in entry.tool_allowlist:
+            raise AdmissionError("invalid_tool", "scripted author node must expose ask_author")
+        if interaction.mode == "scripted_author" and contract.completion_contract.repair_turns:
+            raise AdmissionError("unsupported_repair", "scripted-author v1 has no repair loop")
+        if interaction.mode != "scripted_author" and "ask_author" in entry.tool_allowlist:
+            raise AdmissionError("invalid_tool", "ask_author requires scripted_author mode")
         if contract.budget_contract.max_graph_hops != instance.budgets["max_graph_hops"]:
             raise AdmissionError(
                 "budget_contract", f"node {spec.id} disagrees with the graph hop bound"
@@ -330,7 +416,7 @@ def _validate_interaction(
     spec: NodeSpecV1,
     contract: NodeContractV1,
     policy: AdmissionPolicyV1,
-) -> ScriptContractV1 | None:
+) -> ScriptContractV1 | ScriptedAuthorV1 | None:
     interaction = contract.interaction_contract
     completion = contract.completion_contract
     budget = contract.budget_contract
@@ -343,14 +429,17 @@ def _validate_interaction(
             "unsupported_interaction",
             f"node {spec.id} uses simulated_author before typed role contracts exist",
         )
-    if interaction.mandatory_feedback:
+    if interaction.mandatory_feedback and interaction.mode != "scripted_author":
         raise AdmissionError(
             "unsupported_feedback",
             f"node {spec.id} declares mandatory feedback before feedback rules exist",
         )
     script = None
     if interaction.script_ref is not None:
-        script = _contract(resolver, interaction.script_ref, ScriptContractV1, private=True)
+        contract_type = (
+            ScriptedAuthorV1 if interaction.mode == "scripted_author" else ScriptContractV1
+        )
+        script = _contract(resolver, interaction.script_ref, contract_type, private=True)
     for identity, private in (
         (interaction.author_packet_ref, True),
         (interaction.interaction_policy_ref, False),
@@ -359,7 +448,7 @@ def _validate_interaction(
         if identity is not None:
             _resolve_plain(resolver, identity, private=private)
     if interaction.mode == "scripted":
-        assert script is not None
+        assert isinstance(script, ScriptContractV1)
         if len(script.fixed_followups) != interaction.scripted_turns:
             raise AdmissionError(
                 "script_coverage", f"node {spec.id} fixed follow-up coverage is inconsistent"
@@ -369,8 +458,19 @@ def _validate_interaction(
             raise AdmissionError(
                 "script_coverage", f"node {spec.id} lacks scripted responses for {sorted(missing)}"
             )
-    elif script is not None:
+    elif interaction.mode != "scripted_author" and script is not None:
         raise AdmissionError("script_coverage", f"node {spec.id} has an inapplicable script")
+    if interaction.mode == "scripted_author":
+        if completion.evaluation_packet_ref is None:
+            raise AdmissionError("evaluator_coverage", "scripted author needs an evaluator packet")
+        if budget.max_tool_calls < 1:
+            raise AdmissionError("interaction_budget", "scripted author needs an ask tool call")
+        if budget.max_author_calls < len(interaction.mandatory_feedback) + 1:
+            raise AdmissionError(
+                "interaction_budget", "author budget cannot cover feedback and ask"
+            )
+        if budget.max_steps < len(interaction.mandatory_feedback) + 2:
+            raise AdmissionError("interaction_budget", "writer budget cannot cover author turns")
     required_author_calls = interaction.scripted_turns + len(interaction.mandatory_feedback)
     required_author_calls += int(bool(interaction.required_script_keys))
     if interaction.mode == "simulated_author" and budget.max_author_calls < 1:
@@ -393,6 +493,79 @@ def _validate_interaction(
     if completion.evaluation_packet_ref is not None:
         _resolve_plain(resolver, completion.evaluation_packet_ref, private=True)
     return script
+
+
+def _validate_scripted_author(
+    resolver: ArtifactResolver,
+    spec: NodeSpecV1,
+    contract: NodeContractV1,
+    script: ScriptContractV1 | ScriptedAuthorV1 | None,
+    checks: Mapping[str, CheckContractV1],
+) -> tuple[AuthorPacketV1, InteractionPolicyV1, DecisionBindingsV1]:
+    interaction = contract.interaction_contract
+    assert isinstance(script, ScriptedAuthorV1)
+    assert interaction.author_packet_ref and interaction.interaction_policy_ref
+    assert interaction.decision_bindings_ref
+    packet = _contract(resolver, interaction.author_packet_ref, AuthorPacketV1, private=True)
+    policy = _contract(
+        resolver, interaction.interaction_policy_ref, InteractionPolicyV1, private=False
+    )
+    bindings = _contract(
+        resolver, interaction.decision_bindings_ref, DecisionBindingsV1, private=True
+    )
+    decision_ids = {item["id"] for item in policy.public_decisions}
+    if set(bindings.bindings) != decision_ids or set(script.answers) != decision_ids:
+        raise AdmissionError("script_coverage", f"node {spec.id} needs exact decision coverage")
+    if set(bindings.bindings.values()) - set(packet.preferences):
+        raise AdmissionError("script_coverage", "decision binding names missing author preference")
+    public_labels = "\n".join(item["label"] for item in policy.public_decisions)
+    if any(
+        private_text in public_labels
+        for private_text in (
+            *packet.preferences.values(),
+            *packet.requirements.values(),
+            *(rule["utterance"] for rule in script.answers.values()),
+            *(rule["utterance"] for rule in script.feedback),
+        )
+    ):
+        raise AdmissionError("visibility", "public decision label contains private author text")
+    if tuple(rule["id"] for rule in script.feedback) != policy.mandatory_feedback or (
+        policy.mandatory_feedback != interaction.mandatory_feedback
+    ):
+        raise AdmissionError("script_coverage", "mandatory feedback routes disagree")
+    for public_id, rule in script.answers.items():
+        if rule["value"] not in rule["utterance"]:
+            raise AdmissionError("script_coverage", "author answer must state its bound value")
+        if (
+            rule["mode"] == "fixed_answer"
+            and rule["value"] != packet.preferences[bindings.bindings[public_id]]
+        ):
+            raise AdmissionError("script_coverage", "fixed answer differs from author packet")
+        if set(rule["prerequisite_check_ids"]) - set(checks):
+            raise AdmissionError("script_coverage", "answer prerequisite names unknown check")
+    superseded_ids: set[str] = set()
+    replacement_ids: set[str] = set()
+    for feedback in script.feedback:
+        available = {
+            check.id
+            for check in checks.values()
+            if check.applicability in {"each_turn", f"before_feedback:{feedback['id']}"}
+        }
+        if set(feedback["prerequisite_check_ids"]) - available:
+            raise AdmissionError("script_coverage", "feedback prerequisite names unknown check")
+        update_ref = feedback["requirement_update_ref"]
+        if update_ref is not None:
+            update = _contract(resolver, update_ref, RequirementUpdateV1, private=True)
+            if (
+                update.supersedes not in packet.requirements
+                or update.supersedes in superseded_ids
+                or update.id in packet.requirements
+                or update.id in replacement_ids
+            ):
+                raise AdmissionError("requirement_update", "unauthorized superseded requirement")
+            superseded_ids.add(update.supersedes)
+            replacement_ids.add(update.id)
+    return packet, policy, bindings
 
 
 def _validate_checks(

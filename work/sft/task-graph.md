@@ -329,7 +329,7 @@ never appear in the child. Sequence order is local to the resolved causal chain.
 EventV1 = {
   id: Hash, previous: Hash | null, seq: int,
   lineage_id: str, rollout_id: str | null, node_visit_id: str | null,
-  kind: EventKind, actor: writer | author | environment | evaluator,
+  kind: EventKind, actor: writer | writer_runtime | author | environment | evaluator,
   audience: set[writer, author, controller, evaluator, trainer],
   payload_ref: Hash, caused_by: list[Hash],
   versions_ref: Hash, provenance_ref: Hash
@@ -344,6 +344,10 @@ MessageV1 = {
 
 `id` hashes the canonical body excluding `id`; hash chaining covers payload and
 provenance references. Timestamps belong in unhashed operational side records.
+`writer_runtime` is the trusted adapter actor for sampled writer-budget stops and
+exhaustion records, not a second learnable policy. Ordinary writer actions remain
+`writer`; generic environment events are never inferred to be writer stops from
+their kind alone.
 Unknown event kinds/versions fail closed. Audience is an enforced allowlist, not a
 hint for a serializer. Serialize sets (including audience) as sorted unique arrays.
 `MessageV1.origin` is a stable logical ID; the containing event hash is supplied by

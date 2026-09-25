@@ -16,6 +16,7 @@ from typing import Any, ClassVar, Self
 from writing_agent.task_graph import domain_hash, validate_hash
 
 FILE_TOOLS = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file"})
+GRAPH_TOOLS = FILE_TOOLS | {"ask_author"}
 WRITER_FAMILIES = frozenset({"F1", "F2", "F3", "F4", "F5"})
 CHECK_APPLICABILITY = frozenset({"each_turn", "node_exit_candidate"})
 TASK_STATUSES = frozenset({"complete", "accepted_partial", "incomplete", "unknown"})
@@ -139,7 +140,7 @@ class NodeEntryV1(_Contract):
         if self.context_policy not in {"carry", "seed", "drop"}:
             raise ValueError("unsupported entry context policy")
         _strings(self.tool_allowlist, "tool_allowlist")
-        if set(self.tool_allowlist) - FILE_TOOLS:
+        if set(self.tool_allowlist) - GRAPH_TOOLS:
             raise ValueError("entry declares an unsupported writer tool")
         if self.family is not None and self.family not in WRITER_FAMILIES:
             raise ValueError("entry declares an unsupported writer family")
@@ -159,7 +160,7 @@ class InteractionContractV1(_Contract):
     ARTIFACT_TYPE: ClassVar[str] = "InteractionContractV1"
 
     def validate(self) -> None:
-        if self.mode not in {"none", "scripted", "simulated_author"}:
+        if self.mode not in {"none", "scripted", "scripted_author", "simulated_author"}:
             raise ValueError("unsupported interaction mode")
         for ref in (
             self.script_ref,
@@ -198,6 +199,16 @@ class InteractionContractV1(_Contract):
                 or self.fallback_policy != "none"
             ):
                 raise ValueError("scripted interaction cannot carry simulator contracts")
+        if self.mode == "scripted_author" and (
+            self.script_ref is None
+            or self.author_packet_ref is None
+            or self.interaction_policy_ref is None
+            or self.decision_bindings_ref is None
+            or self.fallback_policy != "none"
+            or self.scripted_turns
+            or self.required_script_keys
+        ):
+            raise ValueError("scripted_author requires a complete deterministic role contract")
         if self.mode == "simulated_author" and (
             self.author_packet_ref is None or self.interaction_policy_ref is None
         ):
@@ -319,6 +330,196 @@ class ScriptContractV1(_Contract):
             for key, value in self.responses.items()
         ):
             raise TypeError("script responses must map nonempty string keys to text")
+
+
+@dataclass(frozen=True)
+class AuthorPacketV1(_Contract):
+    """Private author facts, never an evaluator packet or a writer message."""
+
+    preferences: Mapping[str, str] = MappingProxyType({})
+    requirements: Mapping[str, str] = MappingProxyType({})
+    ARTIFACT_TYPE: ClassVar[str] = "AuthorPacketV1"
+
+    def validate(self) -> None:
+        for name in ("preferences", "requirements"):
+            values = getattr(self, name)
+            if not isinstance(values, Mapping) or any(
+                not isinstance(key, str) or not key or not isinstance(value, str) or not value
+                for key, value in values.items()
+            ):
+                raise ValueError(f"{name} must map nonempty ids to nonempty text")
+
+
+@dataclass(frozen=True)
+class InteractionPolicyV1(_Contract):
+    """Public request vocabulary; contains no answer, requirement, or rubric text."""
+
+    public_decisions: tuple[Mapping[str, str], ...] = ()
+    max_decisions_per_request: int = 1
+    max_question_chars: int = 1000
+    max_proposals: int = 8
+    max_proposal_chars: int = 1000
+    repeat: str = "replay_disclosed_answer"
+    mandatory_feedback: tuple[str, ...] = ()
+    ARTIFACT_TYPE: ClassVar[str] = "InteractionPolicyV1"
+
+    def validate(self) -> None:
+        ids = []
+        for item in self.public_decisions:
+            if (
+                not isinstance(item, Mapping)
+                or set(item) != {"id", "label"}
+                or any(not isinstance(value, str) or not value for value in item.values())
+            ):
+                raise ValueError("public decisions need exactly id and label")
+            ids.append(item["id"])
+        if not ids or len(ids) != len(set(ids)):
+            raise ValueError("public decision ids must be nonempty and unique")
+        for name in (
+            "max_decisions_per_request",
+            "max_question_chars",
+            "max_proposals",
+            "max_proposal_chars",
+        ):
+            _nonnegative(getattr(self, name), name, positive=True)
+        if self.max_decisions_per_request > len(ids):
+            raise ValueError("request decision limit exceeds declared topics")
+        if self.repeat != "replay_disclosed_answer":
+            raise ValueError("unsupported repeat policy")
+        _strings(self.mandatory_feedback, "mandatory_feedback")
+
+
+@dataclass(frozen=True)
+class DecisionBindingsV1(_Contract):
+    bindings: Mapping[str, str] = MappingProxyType({})
+    ARTIFACT_TYPE: ClassVar[str] = "DecisionBindingsV1"
+
+    def validate(self) -> None:
+        if not isinstance(self.bindings, Mapping) or any(
+            not isinstance(key, str) or not key or not isinstance(value, str) or not value
+            for key, value in self.bindings.items()
+        ):
+            raise ValueError("decision bindings must map public ids to private ids")
+
+
+@dataclass(frozen=True)
+class RequirementUpdateV1(_Contract):
+    id: str = ""
+    supersedes: str = ""
+    replacement: str = ""
+    ARTIFACT_TYPE: ClassVar[str] = "RequirementUpdateV1"
+
+    def validate(self) -> None:
+        if not all(
+            isinstance(value, str) and value
+            for value in (self.id, self.supersedes, self.replacement)
+        ):
+            raise ValueError("requirement update needs id, supersedes, and replacement")
+
+
+@dataclass(frozen=True)
+class ScriptedAuthorV1(_Contract):
+    """Exact prepared answers and ordered feedback, never executable code."""
+
+    answers: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
+    feedback: tuple[Mapping[str, Any], ...] = ()
+    ARTIFACT_TYPE: ClassVar[str] = "ScriptedAuthorV1"
+
+    def validate(self) -> None:
+        if not isinstance(self.answers, Mapping):
+            raise TypeError("answers must be a map")
+        for key, rule in self.answers.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or not isinstance(rule, Mapping)
+                or set(rule) != {"mode", "utterance", "value", "selector", "prerequisite_check_ids"}
+            ):
+                raise ValueError("invalid scripted answer rule")
+            if rule["mode"] not in {
+                "fixed_answer",
+                "declared_option_id",
+                "declared_option_position",
+            }:
+                raise ValueError("unsupported answer mode")
+            if not isinstance(rule["utterance"], str) or not rule["utterance"]:
+                raise ValueError("script utterance must be nonempty")
+            if not isinstance(rule["value"], str) or not rule["value"]:
+                raise ValueError("script decision value must be nonempty")
+            if rule["mode"] == "fixed_answer" and rule["selector"] is not None:
+                raise ValueError("fixed answer cannot select a proposal")
+            if rule["mode"] == "declared_option_id" and (
+                not isinstance(rule["selector"], str) or not rule["selector"]
+            ):
+                raise ValueError("option-id selector must be an id")
+            if rule["mode"] == "declared_option_position" and (
+                type(rule["selector"]) is not int or rule["selector"] < 0
+            ):
+                raise ValueError("option-position selector must be nonnegative")
+            if not isinstance(rule["prerequisite_check_ids"], (list, tuple)):
+                raise TypeError("answer prerequisites must be an array")
+            _strings(tuple(rule["prerequisite_check_ids"]), "answer prerequisites")
+        feedback_ids = []
+        for rule in self.feedback:
+            if not isinstance(rule, Mapping) or set(rule) != {
+                "id",
+                "utterance",
+                "prerequisite_check_ids",
+                "requirement_update_ref",
+            }:
+                raise ValueError("invalid feedback rule")
+            if (
+                not isinstance(rule["id"], str)
+                or not rule["id"]
+                or not isinstance(rule["utterance"], str)
+                or not rule["utterance"]
+            ):
+                raise ValueError("feedback id and utterance must be nonempty")
+            if not isinstance(rule["prerequisite_check_ids"], (list, tuple)):
+                raise TypeError("feedback prerequisites must be an array")
+            _strings(tuple(rule["prerequisite_check_ids"]), "feedback prerequisites")
+            validate_hash(rule["requirement_update_ref"], optional=True)
+            feedback_ids.append(rule["id"])
+        if len(feedback_ids) != len(set(feedback_ids)):
+            raise ValueError("feedback ids must be unique")
+
+
+@dataclass(frozen=True)
+class RewardContractV1(_Contract):
+    """Integer basis-point weights make scoring exact and replayable."""
+
+    components: Mapping[str, int] = MappingProxyType({})
+    normalization: int = 10000
+    incomplete_score: int = 0
+    ARTIFACT_TYPE: ClassVar[str] = "RewardContractV1"
+
+    def validate(self) -> None:
+        _nonnegative(self.normalization, "normalization", positive=True)
+        _nonnegative(self.incomplete_score, "incomplete_score")
+        if (
+            not isinstance(self.components, Mapping)
+            or not self.components
+            or any(
+                not isinstance(key, str) or not key or type(value) is not int or value < 0
+                for key, value in self.components.items()
+            )
+        ):
+            raise ValueError("reward components need nonnegative integer weights")
+        if sum(self.components.values()) != self.normalization:
+            raise ValueError("reward weights must sum to normalization")
+        if self.incomplete_score > self.normalization:
+            raise ValueError("incomplete score cannot exceed normalization")
+
+
+@dataclass(frozen=True)
+class EvaluatorPacketV1(_Contract):
+    reward_contract_ref: str = ""
+    check_ids: tuple[str, ...] = ()
+    ARTIFACT_TYPE: ClassVar[str] = "EvaluatorPacketV1"
+
+    def validate(self) -> None:
+        validate_hash(self.reward_contract_ref)
+        _strings(self.check_ids, "evaluator check ids")
 
 
 @dataclass(frozen=True)

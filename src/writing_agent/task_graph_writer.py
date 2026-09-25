@@ -35,6 +35,45 @@ from writing_agent.task_graph_projection import (
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace
 
+ASK_AUTHOR_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "ask_author",
+        "description": "Ask about declared public decision IDs. This must be the only tool call.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string"},
+                "decision_ids": {"type": "array", "items": {"type": "string"}},
+                "proposals": {"type": "array", "items": {"type": "object"}},
+                "option_refs": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["question", "decision_ids", "proposals", "option_refs"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def writer_tool_schemas(
+    allowlist: tuple[str, ...], interaction_policy=None
+) -> tuple[dict[str, Any], ...]:
+    schemas = tuple(schema for schema in TOOL_SCHEMAS if schema["function"]["name"] in allowlist)
+    if "ask_author" not in allowlist:
+        return schemas
+    if interaction_policy is None:
+        raise ValueError("ask_author schema requires admitted public decision declarations")
+    schema = json.loads(canonical_json(ASK_AUTHOR_SCHEMA))
+    declared = interaction_policy.public_decisions
+    schema["function"]["description"] += " Public decisions: " + "; ".join(
+        f"{item['id']}: {item['label']}" for item in declared
+    )
+    schema["function"]["parameters"]["properties"]["decision_ids"]["items"]["enum"] = [
+        item["id"] for item in declared
+    ]
+    return (*schemas, schema)
+
+
 _READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
 _MAX_ARGUMENT_BYTES = 65_536
 _MAX_CALL_EVIDENCE = 131_072
@@ -190,6 +229,40 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("entry must be an admitted, unsampled ready-writer checkpoint")
         node = graph.node(entry.state.position["node_id"])
+        if node.contract.interaction_contract.mode == "scripted_author":
+            if (
+                entry.state.author_packet_ref
+                != node.contract.interaction_contract.author_packet_ref
+            ):
+                raise WriterRuntimeError("entry author packet differs from admitted private packet")
+            decisions = store.get_artifact(entry.state.decisions_ref, expected_domain="payload")
+            disclosures = store.get_artifact(entry.state.disclosures_ref, expected_domain="payload")
+            requirements = store.get_artifact(
+                entry.state.requirements_ref, expected_domain="payload"
+            )
+            if (
+                decisions
+                != {
+                    "record_type": "DecisionLedgerV1",
+                    "schema": 1,
+                    "values": {},
+                    "proposals": {},
+                }
+                or disclosures
+                != {
+                    "record_type": "DisclosureLedgerV1",
+                    "schema": 1,
+                    "decisions": [],
+                }
+                or requirements
+                != {
+                    "record_type": "RequirementLedgerV1",
+                    "schema": 1,
+                    "active": dict(node.author_packet.requirements),
+                    "superseded": {},
+                }
+            ):
+                raise WriterRuntimeError("scripted-author entry ledgers are not initialized")
         context = store.load_context(entry.state.context_ref)
         request = store.get_artifact(node.contract.entry_contract.request_ref)
         if (
@@ -229,10 +302,8 @@ class TransactionalWriterV1:
             or runtime.state.position["entry_contract"] != node.spec.entry_contract
         ):
             raise WriterRuntimeError("not an admitted writer-node entry")
-        expected_tools = tuple(
-            schema
-            for schema in TOOL_SCHEMAS
-            if schema["function"]["name"] in node.contract.entry_contract.tool_allowlist
+        expected_tools = writer_tool_schemas(
+            node.contract.entry_contract.tool_allowlist, node.interaction_policy
         )
         if canonical_json(runtime.context.tools) != canonical_json(expected_tools):
             raise WriterRuntimeError(
@@ -530,6 +601,13 @@ class TransactionalWriterV1:
                     reason = reason or "Invalid tool arguments JSON"
             if not isinstance(arguments, dict):
                 reason = reason or "Tool arguments must be an object"
+            elif name == "ask_author":
+                try:
+                    from writing_agent.task_graph_scripted import validate_ask_shape
+
+                    validate_ask_shape(arguments)
+                except (TypeError, ValueError) as exc:
+                    reason = reason or str(exc)
             elif not all(
                 isinstance(key, str)
                 and _valid_utf8(key)
@@ -659,6 +737,18 @@ class TransactionalWriterV1:
             # adapter also supplied an unusable batch envelope.
             parse_error = exc
             queue, call_metadata = [], []
+        if node.contract.interaction_contract.mode == "scripted_author":
+            from writing_agent.task_graph_scripted import validate_ask_semantics
+
+            decisions = self.store.get_artifact(state.decisions_ref, expected_domain="payload")
+            for call, metadata in zip(queue, call_metadata, strict=True):
+                if call["name"] == "ask_author" and metadata["validation_error"] is None:
+                    try:
+                        validate_ask_semantics(call["arguments"], node, decisions)
+                    except (TypeError, ValueError) as exc:
+                        metadata["validation_error"] = str(exc)
+                        call["name"] = "invalid_call"
+                        call["arguments"] = {}
         if usage is None:
             usage = {}
         if not isinstance(usage, Mapping) or any(
@@ -990,6 +1080,17 @@ class TransactionalWriterV1:
         metadata = action["calls"][cursor]
         if call["call_id"] != metadata["call_id"]:
             raise WriterRuntimeError("queued call does not match committed action")
+        author_exhausted = call["name"] == "ask_author" and budget["consumed"].get(
+            "author_calls", 0
+        ) >= budget["limits"].get("author_calls", 0)
+        if (
+            call["name"] == "ask_author"
+            and metadata["validation_error"] is None
+            and not author_exhausted
+        ):
+            from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
+
+            return ScriptedAuthorRuntimeV1(self).request(runtime, call, action)
         before_bytes = sum(len(text.encode("utf-8")) for text in state.files.values())
         observation: dict[str, Any]
         files = dict(state.files)
@@ -998,6 +1099,8 @@ class TransactionalWriterV1:
             observation = {"ok": False, "valid": True, "error": "Tool-call budget exceeded"}
         elif metadata["validation_error"] is not None:
             observation = {"ok": False, "valid": False, "error": metadata["validation_error"]}
+        elif author_exhausted:
+            observation = {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
         else:
             stage = Path(tempfile.mkdtemp(prefix="writer-stage-", dir=runtime.workspace.parent))
             try:
@@ -1120,6 +1223,8 @@ class TransactionalWriterV1:
         while runtime.state.continuation["next_call"] < len(
             runtime.state.continuation["tool_queue"]
         ):
+            if runtime.state.position["phase"] != "ready_writer":
+                break
             runtime = self.step_tool(runtime).runtime
         return runtime
 

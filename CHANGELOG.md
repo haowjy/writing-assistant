@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Add an opt-in deterministic scripted-author graph slice: role-typed author and
+  evaluator packets, structured `ask_author`, durable request/reply and disclosure
+  updates, ordered mandatory feedback and preauthorized requirement supersession,
+  frozen deterministic checks, environment terminal routing, exact reward records,
+  and offline semantic restore/replay. The legacy runner remains the default.
+
 - Validate complete writer histories against staged candidates before publication,
   require explicit writer-stop log attribution from the first event, and bind
   action/stop ordinals and adapter logprob references on production and recovery.

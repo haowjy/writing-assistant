@@ -28,7 +28,14 @@ retains its smoke-evaluation and training-format workflows.
   events; it never renders the private event log wholesale. A capable adapter calls
   `prepare_request` before sampling to pin exact request/context evidence; the caller
   then supplies parsed writer output and any raw-output/trace evidence. Neither module
-  invokes a model, author, check, or graph transition. See
+  invokes a model. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
+  owns exact scripted author requests/replies, disclosure and authorized requirement
+  updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
+  checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
+  applies terminal guards and publishes immutable outcome/reward evidence. All three
+  use the writer projection's same prepublication and recovery semantic walk;
+  [task_graph_author_validation.py](../writing_agent/task_graph_author_validation.py)
+  holds the author-side replay rules. See
   [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
   restore API, and the Phase 4 boundary.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
@@ -84,8 +91,24 @@ identity. A tool-only exhausted turn may append `termination_recorded`; a final
 reply enters `checking`, not automatic task completion. Writer-produced
 `budget_charged` and `termination_recorded` use the explicit `writer_runtime` actor
 and require their runtime-log entry even as a first event; generic Phase 2 events
-retain their ordinary source. Native token loss masks and author/check execution
-remain unimplemented.
+retain their ordinary source. Native token loss masks remain unimplemented.
+
+The scripted-author mode is opt-in and separate from the legacy fixed-followup
+compiler. Admission resolves role-typed private author/evaluator packets, the public
+decision policy, exact private script, check programs and reward weights before a
+writer turn. An `ask_author` action is committed before its private request; a
+replayed/restored outstanding request produces the same author reply without a
+provider call. Request and reply boundaries are durable; only explicit author
+utterances and public decisions enter writer context. Final writer turns freeze an
+immutable candidate before deterministic file checks. Check results name that
+candidate, admitted check and evaluator packet, requirement version and recomputed
+evidence. Environment transition and terminal outcome records remain separate from
+reward availability and training eligibility. `task_graph_projection.py` validates
+every new producer's exact field/actor authority and causal binding both against
+staged events before publication and on restore/replay. The evaluator cannot edit
+files or the terminal task/execution status; reward arithmetic is exact integer
+normalization. Model-backed author, semantic judge, compaction and native on-policy
+eligibility are not implemented.
 
 The graph writer uses a separate tool dispatch boundary so expected writer-operational
 path/patch/policy failures can be observed without converting disk, permission or

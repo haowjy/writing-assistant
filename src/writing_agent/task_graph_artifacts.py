@@ -12,10 +12,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from writing_agent.task_graph_contracts import (
+    AuthorPacketV1,
     CheckContractV1,
+    DecisionBindingsV1,
+    EvaluatorPacketV1,
     GuardContractV1,
+    InteractionPolicyV1,
     NodeContractV1,
+    RequirementUpdateV1,
+    RewardContractV1,
     ScriptContractV1,
+    ScriptedAuthorV1,
 )
 
 
@@ -38,9 +45,22 @@ _CONTRACT_TYPES = {
     GuardContractV1.ARTIFACT_TYPE: GuardContractV1,
     CheckContractV1.ARTIFACT_TYPE: CheckContractV1,
     ScriptContractV1.ARTIFACT_TYPE: ScriptContractV1,
+    AuthorPacketV1.ARTIFACT_TYPE: AuthorPacketV1,
+    InteractionPolicyV1.ARTIFACT_TYPE: InteractionPolicyV1,
+    DecisionBindingsV1.ARTIFACT_TYPE: DecisionBindingsV1,
+    ScriptedAuthorV1.ARTIFACT_TYPE: ScriptedAuthorV1,
+    RequirementUpdateV1.ARTIFACT_TYPE: RequirementUpdateV1,
+    RewardContractV1.ARTIFACT_TYPE: RewardContractV1,
+    EvaluatorPacketV1.ARTIFACT_TYPE: EvaluatorPacketV1,
 }
-_PUBLIC_TYPES = frozenset({NodeContractV1.ARTIFACT_TYPE, GuardContractV1.ARTIFACT_TYPE})
-_PRIVATE_TYPES = frozenset({CheckContractV1.ARTIFACT_TYPE, ScriptContractV1.ARTIFACT_TYPE})
+_PUBLIC_TYPES = frozenset(
+    {
+        NodeContractV1.ARTIFACT_TYPE,
+        GuardContractV1.ARTIFACT_TYPE,
+        InteractionPolicyV1.ARTIFACT_TYPE,
+    }
+)
+_PRIVATE_TYPES = frozenset(_CONTRACT_TYPES) - _PUBLIC_TYPES
 
 
 def phase3_typed_artifact_references(
@@ -76,6 +96,14 @@ def phase3_typed_artifact_references(
                 TypedArtifactReference(identity, True)
                 for identity in contract.private_evidence_refs
             ),
+        )
+    if isinstance(contract, EvaluatorPacketV1):
+        return (TypedArtifactReference(contract.reward_contract_ref, True),)
+    if isinstance(contract, ScriptedAuthorV1):
+        return tuple(
+            TypedArtifactReference(rule["requirement_update_ref"], True)
+            for rule in contract.feedback
+            if rule["requirement_update_ref"] is not None
         )
     if not isinstance(contract, NodeContractV1):
         return ()

@@ -325,6 +325,12 @@ def validate_result_production(
         raise ProjectionError("tool result has false file delta")
     old_budget = store.get_artifact(before.budgets_ref, expected_domain="payload")
     new_budget = store.get_artifact(after.budgets_ref, expected_domain="payload")
+    if call["name"] == "ask_author" and (
+        old_budget["consumed"].get("author_calls", 0) < old_budget["limits"].get("author_calls", 0)
+        or record["observation"]
+        != {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
+    ):
+        raise ProjectionError("ask_author error was not justified by exhausted author budget")
     consumed = old_budget["consumed"]
     call_charge = int(consumed.get("tool_calls", 0) < old_budget["limits"]["tool_calls"])
     read_charge = 0
@@ -406,11 +412,12 @@ def execution_value(store, state, context, budget) -> str:
 def _is_writer_stop(store: TaskGraphStore, event: EventV1, state: EnvironmentStateV1) -> bool:
     if event.kind not in {"budget_charged", "termination_recorded"}:
         return False
-    # The source actor makes a first stop recognizable even if its log is lost.
-    # A forged actor alone cannot turn an indexed stop into a generic event.
-    # An unrelated Phase 2 budget event may still carry an older log.
     if event.actor == "writer_runtime":
         return True
+    # An indexed Phase 4 stop cannot evade its actor contract by changing only
+    # the actor. Phase 5 uses the same log but has its own typed terminal producer.
+    if state.author_packet_ref is not None:
+        return False
     log = store.get_artifact(state.external_inputs_ref, expected_domain="payload")
     return (
         isinstance(log, dict)
@@ -525,7 +532,92 @@ def project_writer_context(
         state = store._apply_recorded_effect_body(before, event, effect)
         writer_stop = _is_writer_stop(store, event, state)
         if event.kind in {"writer_action", "tool_result"} or writer_stop:
-            validate_writer_effect(before, state, event, effect, store=store)
+            if not (event.kind == "tool_result" and before.position["phase"] == "awaiting_author"):
+                validate_writer_effect(before, state, event, effect, store=store)
+        if event.kind == "external_requested" and before.author_packet_ref is not None:
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
+            if "private" in store.artifact_visibilities(entry["record_ref"]):
+                from writing_agent.task_graph_author_validation import (
+                    validate_author_request_effect,
+                )
+
+                validate_author_request_effect(store, before, state, event, effect, entry)
+            else:
+                from writing_agent.task_graph_checks import validate_check_batch_effect
+
+                validate_check_batch_effect(store, before, state, event, effect, entry)
+            seen_entries.append(entry)
+            continue
+        if event.kind == "check_recorded" and before.author_packet_ref is not None:
+            from writing_agent.task_graph_checks import validate_check_result_effect
+
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
+            validate_check_result_effect(store, before, state, event, effect, entry)
+            seen_entries.append(entry)
+            continue
+        if (
+            event.kind in {"transition_committed", "termination_recorded", "external_response"}
+            and before.author_packet_ref is not None
+        ):
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
+            record = store.get_artifact(entry["record_ref"])
+            if record.get("record_type") == "ScriptCoverageFailureV1":
+                from writing_agent.task_graph_author_validation import (
+                    validate_coverage_failure_effect,
+                )
+
+                validate_coverage_failure_effect(store, before, state, event, effect, entry)
+            else:
+                from writing_agent.task_graph_terminal import validate_terminal_effect
+
+                validate_terminal_effect(store, before, state, event, effect, entry)
+            seen_entries.append(entry)
+            continue
+        if event.kind == "tool_result" and before.position["phase"] == "awaiting_author":
+            from writing_agent.task_graph_author_validation import validate_author_ack_effect
+
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=True)
+            message = MessageV1.from_dict(
+                store.get_artifact(entry["message_ref"], expected_domain="message")
+            )
+            validate_author_ack_effect(store, before, state, event, effect, entry, message)
+            if not pending or pending.pop(0) != message.call_id:
+                raise ProjectionError("author tool acknowledgement is unpaired")
+            messages.append(message)
+            result_ids.append(f"{event.rollout_id}:tool_result:{len(result_ids)}")
+            seen_entries.append(entry)
+            last_source = event.id
+            continue
+        if event.kind == "decision_disclosed" and before.author_packet_ref is not None:
+            from writing_agent.task_graph_author_validation import (
+                validate_decision_disclosure_effect,
+            )
+
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
+            validate_decision_disclosure_effect(store, before, state, event, effect, entry)
+            seen_entries.append(entry)
+            continue
+        if event.kind == "requirements_changed" and before.author_packet_ref is not None:
+            from writing_agent.task_graph_author_validation import (
+                validate_requirement_update_effect,
+            )
+
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=False)
+            validate_requirement_update_effect(store, before, state, event, effect, entry)
+            seen_entries.append(entry)
+            continue
+        if event.kind == "author_turn" and before.author_packet_ref is not None:
+            from writing_agent.task_graph_author_validation import validate_author_turn_effect
+
+            entry = _writer_log_entry(store, state, event, seen_entries, has_message=True)
+            message = MessageV1.from_dict(
+                store.get_artifact(entry["message_ref"], expected_domain="message")
+            )
+            validate_author_turn_effect(store, before, state, event, effect, entry, message)
+            messages.append(message)
+            seen_entries.append(entry)
+            last_source = event.id
+            continue
         if event.kind == "context_changed":
             if event.actor != "environment" or "writer" in event.audience:
                 raise ProjectionError("context change has invalid actor or audience")
@@ -752,10 +844,12 @@ def project_writer_context(
             if [part["id"] for part in calls] != [call["call_id"] for call in record["calls"]]:
                 raise ProjectionError("action syntax and call metadata differ")
             queue = effect["set"].get("continuation", {}).get("tool_queue", ())
-            if [
-                {"call_id": part["id"], "name": part["name"], "arguments": part["arguments"]}
-                for part in calls
-            ] != queue:
+            if canonical_json(
+                [
+                    {"call_id": part["id"], "name": part["name"], "arguments": part["arguments"]}
+                    for part in calls
+                ]
+            ) != canonical_json(queue):
                 raise ProjectionError("committed tool queue differs from assistant syntax")
             if record["action_id"] in action_ids:
                 raise ProjectionError("duplicate writer action logical ID")
@@ -809,7 +903,8 @@ def project_writer_context(
                 raise ProjectionError("tool observation has the wrong action origin")
             cursor = before.continuation["next_call"]
             if (
-                before.continuation["tool_queue"][cursor] != source[1]
+                canonical_json(before.continuation["tool_queue"][cursor])
+                != canonical_json(source[1])
                 or state.continuation["next_call"] != cursor + 1
                 or state.continuation["tool_queue"] != before.continuation["tool_queue"]
                 or record["result_id"] != f"{event.rollout_id}:tool_result:{len(result_ids)}"
