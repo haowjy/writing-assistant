@@ -25,8 +25,9 @@ retains its smoke-evaluation and training-format workflows.
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
   handle. [task_graph_projection.py](../writing_agent/task_graph_projection.py)
   reconstructs writer context from the entry checkpoint and authorized causal
-  events; it never renders the private event log wholesale. The caller supplies
-  parsed writer output and any exact backend request/trace evidence. Neither module
+  events; it never renders the private event log wholesale. A capable adapter calls
+  `prepare_request` before sampling to pin exact request/context evidence; the caller
+  then supplies parsed writer output and any raw-output/trace evidence. Neither module
   invokes a model, author, check, or graph transition. See
   [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
   restore API, and the Phase 4 boundary.

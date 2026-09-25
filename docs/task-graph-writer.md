@@ -7,8 +7,9 @@ from writing_agent.task_graph_writer import TransactionalWriterV1
 from writing_agent.task_graph_projection import project_writer_context
 
 writer = TransactionalWriterV1(store, admitted_graph, rollout_id, entry_checkpoint_id)
+request_ref = writer.prepare_request(handle, adapter_request)  # before sampling
 step = writer.submit_action(handle, parsed_assistant_message,
-                            exact_request=adapter_request, raw_output=adapter_raw_bytes,
+                            prepared_request_ref=request_ref, raw_output=adapter_raw_bytes,
                             trace=adapter_trace,
                             usage=adapter_usage)
 handle = step.runtime
@@ -17,7 +18,7 @@ while handle.state.continuation["next_call"] < len(handle.state.continuation["to
 projected = project_writer_context(store, entry_checkpoint_id, handle.checkpoint_id)
 ```
 
-The caller supplies the backend's parsed assistant message (`role`, text `content`, optional `tool_calls`) and any exact request/raw-output/trace evidence it has. `exact_request`, `raw_output`, and trace metadata are persisted as immutable artifacts **before** the action commit; absent raw output is marked missing rather than reconstructed from the parsed message. Missing token IDs or logprobs are likewise explicit. Opaque logprobs, if supplied, must be a pre-persisted binary `payload` artifact named by `per_token_logprobs_ref`; numeric arrays are not silently converted through JSON. Even supplied tokens/logprobs do not confer native on-policy eligibility: Phase 4 has no token alignment or native loss mask. Only writer assistant text, call syntax, and endings carry loss-eligible metadata; seed, system, user, author, environment, and tool material do not. Provider usage detail fields are retained but not double-counted into top-level token charges.
+The caller supplies the backend's parsed assistant message (`role`, text `content`, optional `tool_calls`) and any exact request/raw-output/trace evidence it has. A capable adapter calls `prepare_request` **before sampling**; this durably stores the exact request and rendering/context pins, and `submit_action` rejects a stale prepared reference. Preparation is not a paid-call reservation or response journal. The direct `exact_request=` option persists supplied evidence before action commit for fake/evaluation adapters that did not prepare a request. Absent raw output is marked missing rather than reconstructed from the parsed message. Missing token IDs or logprobs are likewise explicit. Opaque logprobs, if supplied, must be a pre-persisted binary `payload` artifact named by `per_token_logprobs_ref`; numeric arrays are not silently converted through JSON. Even supplied tokens/logprobs do not confer native on-policy eligibility: Phase 4 has no token alignment or native loss mask. Only writer assistant text, call syntax, and endings carry loss-eligible metadata; seed, system, user, author, environment, and tool material do not. Provider usage detail fields are retained but not double-counted into top-level token charges.
 
 The entry state's public `budgets_ref` must contain a canonical JSON artifact:
 

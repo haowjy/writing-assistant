@@ -139,6 +139,19 @@ def project_writer_context(
                 raise ProjectionError("writer trace names a different context revision")
             if canonical_json(trace.get("rendering")) != canonical_json(baseline.rendering):
                 raise ProjectionError("writer trace rendering pins differ from context")
+            prepared_ref = trace.get("prepared_request_ref")
+            if prepared_ref is not None:
+                prepared = store.get_artifact(prepared_ref, expected_domain="payload")
+                if (
+                    not isinstance(prepared, dict)
+                    or prepared.get("record_type") != "PreparedWriterRequestV1"
+                    or prepared.get("context_content_hash") != expected_context
+                    or prepared.get("context_revision_ref") != latest_context_ref
+                    or prepared.get("payload_ref") != trace.get("exact_request_ref")
+                    or canonical_json(prepared.get("rendering"))
+                    != canonical_json(baseline.rendering)
+                ):
+                    raise ProjectionError("prepared request differs from writer trace")
             calls = [part for part in message.content if part["type"] == "tool_call"]
             if [part["id"] for part in calls] != [call["call_id"] for call in record["calls"]]:
                 raise ProjectionError("action syntax and call metadata differ")

@@ -185,6 +185,10 @@ class WriterFixture(unittest.TestCase):
 
 class TransactionalWriterTest(WriterFixture):
     def test_interruption_restore_replay_projection_and_final_reply(self):
+        prepared_ref = self.writer.prepare_request(
+            self.runtime, {"rendered": "exact bytes\n", "template": "v1"}
+        )
+        self.assertIsNone(self.store.read_head("rollout-1"))
         first = self.writer.submit_action(
             self.runtime,
             self.action(
@@ -192,7 +196,7 @@ class TransactionalWriterTest(WriterFixture):
                 self.call("read_file", {"path": "draft.txt"}, "b"),
                 self.call("search", {"query": "moon", "path": "notes"}, "c"),
             ),
-            exact_request={"rendered": "exact bytes\n", "template": "v1"},
+            prepared_request_ref=prepared_ref,
             raw_output=b"exact writer bytes\n",
             usage={"prompt_tokens": 9, "completion_tokens": 5},
         )
@@ -203,6 +207,7 @@ class TransactionalWriterTest(WriterFixture):
             ["system", "user", "assistant"],
         )
         trace = self.store.get_artifact(self.record(first)["trace_ref"])
+        self.assertEqual(trace["prepared_request_ref"], prepared_ref)
         self.assertEqual(trace["token_evidence"], "missing")
         self.assertFalse(trace["native_on_policy_eligible"])
         self.assertEqual(trace["raw_output_evidence"], "supplied")
@@ -590,6 +595,7 @@ class TransactionalWriterTest(WriterFixture):
         )
 
     def test_reused_backend_ids_and_nested_usage_are_not_double_charged(self):
+        stale_request = self.writer.prepare_request(self.runtime, b"first-context")
         first = self.writer.submit_action(
             self.runtime,
             self.action(self.call("read_file", {"path": "draft.txt"}, "reused")),
@@ -609,6 +615,12 @@ class TransactionalWriterTest(WriterFixture):
         self.assertEqual(trace["logprob_evidence"], "missing")
         self.assertFalse(trace["native_on_policy_eligible"])
         drained = self.writer.step_tool(first.runtime).runtime
+        with self.assertRaisesRegex(WriterRuntimeError, "sampling context"):
+            self.writer.submit_action(
+                drained,
+                self.action(content="Stale request"),
+                prepared_request_ref=stale_request,
+            )
         second = self.writer.submit_action(
             drained,
             self.action(

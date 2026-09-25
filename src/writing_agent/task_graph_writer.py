@@ -323,7 +323,13 @@ class TransactionalWriterV1:
         final = self._reduced(intermediate, context_event, context_effect)
         extra_refs = tuple(
             record[name]
-            for name in ("trace_ref", "request_ref", "raw_output_ref", "logprob_ref")
+            for name in (
+                "trace_ref",
+                "request_ref",
+                "prepared_request_ref",
+                "raw_output_ref",
+                "logprob_ref",
+            )
             if isinstance(record.get(name), str)
         )
         commit = self.store.publish(
@@ -428,12 +434,45 @@ class TransactionalWriterV1:
             )
         return queue, metadata
 
+    def prepare_request(self, runtime: RuntimeHandle, exact_request: Any) -> str:
+        """Durably pin exact backend input before an adapter samples a writer.
+
+        Preparation does not dispatch or reserve a paid call. The returned ref
+        binds the request to this exact context; an unused artifact is an orphan.
+        """
+        if exact_request is None:
+            raise WriterRuntimeError("prepared request requires exact backend input")
+        _, budget = self._check(runtime)
+        state = runtime.state
+        if (
+            state.position["phase"] != "ready_writer"
+            or state.continuation["next_call"] != len(state.continuation["tool_queue"])
+            or budget["consumed"].get("writer_turns", 0) >= budget["limits"]["writer_turns"]
+        ):
+            raise WriterRuntimeError("request preparation requires an available writer turn")
+        self._head(runtime)
+        payload_ref = (
+            self.store.put_bytes_artifact(exact_request)
+            if isinstance(exact_request, bytes)
+            else self.store.put_artifact(exact_request)
+        )
+        return self.store.put_artifact(
+            {
+                "record_type": "PreparedWriterRequestV1",
+                "context_content_hash": runtime.context.content_hash,
+                "context_revision_ref": runtime.context.identity(),
+                "rendering": dict(runtime.context.rendering),
+                "payload_ref": payload_ref,
+            }
+        )
+
     def submit_action(
         self,
         runtime: RuntimeHandle,
         message: Mapping[str, Any],
         *,
         exact_request: Any | None = None,
+        prepared_request_ref: str | None = None,
         raw_output: str | bytes | None = None,
         trace: Mapping[str, Any] | None = None,
         usage: Mapping[str, int] | None = None,
@@ -527,14 +566,31 @@ class TransactionalWriterV1:
                 > budget["limits"]["context_tokens"]
             ):
                 raise WriterRuntimeError("context capacity exceeded")
-        # Exact request/rendering metadata is immutable before the action event.
-        request_ref = (
-            self.store.put_bytes_artifact(exact_request)
-            if isinstance(exact_request, bytes)
-            else self.store.put_artifact(exact_request)
-            if exact_request is not None
-            else None
-        )
+        if exact_request is not None and prepared_request_ref is not None:
+            raise WriterRuntimeError("supply either an exact or a prepared request, not both")
+        if prepared_request_ref is not None:
+            validate_hash(prepared_request_ref)
+            prepared = self.store.get_artifact(prepared_request_ref, expected_domain="payload")
+            if (
+                not isinstance(prepared, dict)
+                or prepared.get("record_type") != "PreparedWriterRequestV1"
+                or prepared.get("context_content_hash") != runtime.context.content_hash
+                or prepared.get("context_revision_ref") != runtime.context.identity()
+                or canonical_json(prepared.get("rendering"))
+                != canonical_json(runtime.context.rendering)
+            ):
+                raise WriterRuntimeError("prepared request does not match the sampling context")
+            request_ref = prepared["payload_ref"]
+            self.store.get_artifact(request_ref)
+        else:
+            # The direct path still persists supplied evidence before publication.
+            request_ref = (
+                self.store.put_bytes_artifact(exact_request)
+                if isinstance(exact_request, bytes)
+                else self.store.put_artifact(exact_request)
+                if exact_request is not None
+                else None
+            )
         if raw_output is not None and not isinstance(raw_output, (str, bytes)):
             raise WriterRuntimeError("raw output must be exact text or bytes when supplied")
         raw_output_ref = (
@@ -551,6 +607,7 @@ class TransactionalWriterV1:
             "context_revision_ref": runtime.context.identity(),
             "rendering": dict(runtime.context.rendering),
             "exact_request_ref": request_ref,
+            "prepared_request_ref": prepared_request_ref,
             "raw_output_ref": raw_output_ref,
             "raw_output_evidence": "supplied" if raw_output is not None else "missing",
             "logprob_ref": trace.get("per_token_logprobs_ref") if trace is not None else None,
@@ -599,6 +656,7 @@ class TransactionalWriterV1:
             "action_id": action_id,
             "trace_ref": trace_ref,
             "request_ref": request_ref,
+            "prepared_request_ref": prepared_request_ref,
             "raw_output_ref": raw_output_ref,
             "logprob_ref": trace_body["logprob_ref"],
             "calls": call_metadata,
