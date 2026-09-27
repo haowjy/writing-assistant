@@ -61,6 +61,20 @@ from writing_agent.task_graph_errors import (
     StoreError,
     WrongRecordDomainError,
 )
+from writing_agent.task_graph_records import (
+    LEGACY_PAYLOAD_RECORD_TYPES,
+    RECORD_TYPES,
+    MaterializedContextV1,
+    context_reference_edges,
+    materialize_context_nodes,
+    record_reference_edges,
+)
+from writing_agent.task_graph_records import (
+    ContextContentV1 as ChainedContextContentV1,
+)
+from writing_agent.task_graph_records import (
+    ContextRevisionV1 as ChainedContextRevisionV1,
+)
 
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -270,6 +284,10 @@ class TaskGraphStore:
     @_operation_scoped
     def persist(self, record: Any) -> str:
         """Persist one typed immutable record, plus context content when needed."""
+        if isinstance(record, ChainedContextContentV1):
+            return self._write_record(record, "context_content")
+        if isinstance(record, ChainedContextRevisionV1):
+            return self._write_record(record, "context_revisions")
         if isinstance(record, ContextRevisionV1):
             content = ContextContentV1.from_revision(record)
             self._write_record(content, "contexts")
@@ -294,6 +312,23 @@ class TaskGraphStore:
     @_operation_scoped
     def load_context(self, identity: str) -> ContextRevisionV1:
         return self._validator().validate(("context", identity))
+
+    @_operation_scoped
+    def load_context_revision(self, identity: str) -> ChainedContextRevisionV1:
+        """Load a chained transition-seam context revision."""
+        return self._validator().validate(("context_revision", identity))
+
+    @_operation_scoped
+    def materialize_context(self, identity: str) -> MaterializedContextV1:
+        """Flatten a new context chain after validating its complete closure."""
+        validator = self._validator()
+        revision = validator.validate(("context_revision", identity))
+        nodes = {
+            node_identity: value
+            for (kind, node_identity), value in validator.loaded.items()
+            if kind == "context_node"
+        }
+        return materialize_context_nodes(revision, nodes)
 
     @_operation_scoped
     def load_checkpoint(self, identity: str) -> CheckpointV1:
@@ -866,6 +901,8 @@ class TaskGraphStore:
             "checkpoints",
             "events",
             "contexts",
+            "context_content",
+            "context_revisions",
             "artifacts",
             "private",
             "commits",
@@ -940,7 +977,12 @@ class TaskGraphStore:
 
     def _write_record(self, record: Any, directory: str) -> str:
         identity = record.identity()
-        self._write_immutable(self._record_path(directory, identity), canonical_bytes(record))
+        wire = (
+            record.to_wire()
+            if isinstance(record, (ChainedContextContentV1, ChainedContextRevisionV1))
+            else record
+        )
+        self._write_immutable(self._record_path(directory, identity), canonical_bytes(wire))
         return identity
 
     def _write_immutable(self, path: Path, data: bytes) -> None:
@@ -1102,6 +1144,8 @@ class _ClosureValidator:
         "event": (EventV1, "events"),
         "context": (ContextRevisionV1, "contexts"),
         "context_content": (ContextContentV1, "contexts"),
+        "context_node": (ChainedContextContentV1, "context_content"),
+        "context_revision": (ChainedContextRevisionV1, "context_revisions"),
         "checkpoint": (CheckpointV1, "checkpoints"),
         "commit": (CommitV1, "commits"),
     }
@@ -1110,6 +1154,8 @@ class _ClosureValidator:
         "events": "event",
         "checkpoints": "checkpoint",
         "commits": "commit",
+        "context_content": "context_node",
+        "context_revisions": "context_revision",
         "artifacts": "artifact",
         "private": "private",
     }
@@ -1122,6 +1168,8 @@ class _ClosureValidator:
         self.resolved: dict[tuple[str, str], tuple[str, str]] = {}
         self.active: set[tuple[str, str]] = set()
         self.completed: set[tuple[str, str]] = set()
+        self.byte_references: set[str] = set()
+        self.payload_references: set[str] = set()
         if parent is not None:
             # Only completed (closure-validated, disk-backed) results are shared.
             self.completed = set(parent.completed)
@@ -1210,6 +1258,8 @@ class _ClosureValidator:
             "instances",
             "events",
             "contexts",
+            "context_content",
+            "context_revisions",
             "checkpoints",
             "commits",
             "artifacts",
@@ -1229,6 +1279,12 @@ class _ClosureValidator:
 
     def _resolve_key(self, requested: tuple[str, str]) -> tuple[str, str]:
         if requested in self.resolved:
+            if requested[0] == "bytes":
+                self.byte_references.add(requested[1])
+                self._check_resolved_payload_kind(requested[0], requested[1])
+            elif requested[0] == "artifact|bytes":
+                self.payload_references.add(requested[1])
+                self._check_resolved_payload_kind(requested[0], requested[1])
             return self.resolved[requested]
         if requested in self.loaded:
             return requested
@@ -1236,6 +1292,26 @@ class _ClosureValidator:
         validate_hash(identity)
         virtual_kinds = {candidate for candidate, item in self.virtual if item == identity}
         locations = self._path_locations(identity)
+        if kind in {"bytes", "artifact|bytes"}:
+            if "artifacts" not in locations:
+                if locations or "private" in locations or virtual_kinds:
+                    raise WrongRecordDomainError(
+                        f"reference {identity} is not stored as a public payload artifact"
+                    )
+                raise MissingReferenceError(f"missing public payload artifact: {identity}")
+            other_locations = set(locations) - {"artifacts"}
+            if other_locations:
+                found_locations = sorted(("artifacts", *other_locations))
+                raise WrongRecordDomainError(
+                    f"reference {identity} exists in ambiguous locations: {found_locations}"
+                )
+            if kind == "bytes":
+                self.byte_references.add(identity)
+            else:
+                self.payload_references.add(identity)
+            self.resolved[requested] = ("artifact", identity)
+            self._check_resolved_payload_kind(kind, identity)
+            return ("artifact", identity)
         disk_kinds: set[str] = set()
         for location in locations:
             if location == "contexts":
@@ -1251,7 +1327,8 @@ class _ClosureValidator:
             # A virtual value and its same typed persisted location are one
             # candidate; distinct domains/locations are always ambiguous.
             normalized = {
-                "contexts" if value.startswith("context") else value for value in candidates
+                "contexts" if value in {"context", "context_content", "contexts"} else value
+                for value in candidates
             }
             if len(normalized) != 1:
                 raise WrongRecordDomainError(
@@ -1284,6 +1361,18 @@ class _ClosureValidator:
                 raise WrongRecordDomainError(f"reference {identity} is {actual}, expected {kind}")
         self.resolved[requested] = requested
         return requested
+
+    def _check_resolved_payload_kind(self, edge_kind: str, identity: str) -> None:
+        target = ("artifact", identity)
+        if target not in self.completed:
+            return
+        artifact = self.loaded[target]
+        if edge_kind == "bytes" and artifact.domain != "payload:bytes":
+            raise WrongRecordDomainError(
+                f"byte edge {identity} targets non-binary payload {artifact.domain!r}"
+            )
+        if edge_kind == "artifact|bytes" and artifact.domain not in {"payload", "payload:bytes"}:
+            raise WrongRecordDomainError(f"payload edge {identity} targets {artifact.domain!r}")
 
     @staticmethod
     def _expected_location(kind: str) -> str:
@@ -1379,19 +1468,48 @@ class _ClosureValidator:
                 ("artifact", getattr(value, name))
                 for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
             ]
+        if kind in {"context_node", "context_revision"}:
+            return list(context_reference_edges(value))
         if kind in {"artifact", "private"}:
-            if (
-                value.domain == "payload"
-                and isinstance(value.value, Mapping)
-                and "artifact_type" in value.value
-            ):
-                if value.value["artifact_type"] == _REPLAY_EFFECT:
+            if value.domain == "payload" and isinstance(value.value, Mapping):
+                if value.value.get("artifact_type") == _REPLAY_EFFECT:
                     return self._recorded_effect_edges(value.value)
-                return self._phase3_contract_edges(value.value, private=value.private)
+                if "record_type" in value.value:
+                    record_type = value.value["record_type"]
+                    if not isinstance(record_type, str):
+                        raise WrongRecordDomainError(
+                            f"unregistered task-graph record_type: {record_type!r}"
+                        )
+                    if record_type in LEGACY_PAYLOAD_RECORD_TYPES:
+                        return []
+                    if record_type not in RECORD_TYPES:
+                        raise WrongRecordDomainError(
+                            f"unregistered task-graph record_type: {record_type!r}"
+                        )
+                    try:
+                        return list(record_reference_edges(record_type, value.value))
+                    except (TypeError, ValueError) as exc:
+                        raise CorruptRecordError(
+                            f"invalid task-graph payload record: {record_type}"
+                        ) from exc
+                if "artifact_type" in value.value:
+                    return self._phase3_contract_edges(value.value, private=value.private)
             return []
         if kind == "checkpoint":
             edges = [("checkpoint", identity) for identity in value.parents]
-            edges.extend(self._state_edges(value.state))
+            versions_key = self._resolve_key(("artifact", value.state.versions_ref))
+            versions = self._load(versions_key)
+            transition_semantics = (
+                versions.value.get("transition_semantics")
+                if versions.domain == "payload" and isinstance(versions.value, Mapping)
+                else None
+            )
+            edges.extend(
+                self._state_edges(
+                    value.state,
+                    chained_context=transition_semantics == "task-graph-derive-v1",
+                )
+            )
             edges.extend(("any", identity) for identity in value.artifact_refs)
             return edges
         if kind == "commit":
@@ -1403,27 +1521,30 @@ class _ClosureValidator:
         return []
 
     @staticmethod
-    def _state_edges(state: EnvironmentStateV1) -> list[tuple[str, str]]:
+    def _state_edges(
+        state: EnvironmentStateV1, *, chained_context: bool = False
+    ) -> list[tuple[str, str]]:
         edges = [
             ("instance", state.instance_ref),
-            ("context", state.context_ref),
-            *(
-                ("artifact", identity)
-                for identity in (
-                    state.position["entry_contract"],
-                    state.requirements_ref,
-                    state.decisions_ref,
-                    state.disclosures_ref,
-                    state.versions_ref,
-                    state.budgets_ref,
-                    state.rng_ref,
-                    state.external_inputs_ref,
-                    state.outcome_ref,
-                    state.provenance_ref,
-                )
-            ),
-            *(("any", identity) for identity in state.history["imported_refs"]),
+            ("context_revision" if chained_context else "context", state.context_ref),
         ]
+        for index, identity in enumerate(
+            (
+                state.position["entry_contract"],
+                state.requirements_ref,
+                state.decisions_ref,
+                state.disclosures_ref,
+                state.versions_ref,
+                state.budgets_ref,
+                state.rng_ref,
+                state.external_inputs_ref,
+                state.outcome_ref,
+                state.provenance_ref,
+            )
+        ):
+            kind = "private" if chained_context and index == 1 else "artifact"
+            edges.append((kind, identity))
+        edges.extend(("any", identity) for identity in state.history["imported_refs"])
         if state.author_packet_ref is not None:
             edges.append(("private", state.author_packet_ref))
         if state.continuation["author_request"] is not None:
@@ -1544,6 +1665,16 @@ class _ClosureValidator:
         kind, identity = key
         if kind == "artifact" or kind == "private":
             self._validate_artifact(value, identity)
+            if kind == "artifact" and identity in self.byte_references:
+                if value.domain != "payload:bytes":
+                    raise WrongRecordDomainError(
+                        f"byte edge {identity} targets non-binary payload {value.domain!r}"
+                    )
+            if kind == "artifact" and identity in self.payload_references:
+                if value.domain not in {"payload", "payload:bytes"}:
+                    raise WrongRecordDomainError(
+                        f"payload edge {identity} targets {value.domain!r}"
+                    )
         elif kind == "event":
             payload = self.loaded[("artifact", value.payload_ref)]
             if payload.domain != "payload":
@@ -1561,6 +1692,13 @@ class _ClosureValidator:
             content = self.loaded[("context_content", value.content_hash)]
             if content != ContextContentV1.from_revision(value):
                 raise CorruptRecordError("context content does not match its revision")
+        elif kind == "context_revision":
+            if ("context_node", value.content_ref) not in self.loaded:
+                raise CorruptRecordError("context revision content was not validated")
+        elif kind == "context_node":
+            # The record codec enforces the root/child fields. All root pins and
+            # any parent node have already been resolved by typed closure.
+            return
         elif kind == "checkpoint":
             self._validate_checkpoint(value)
         elif kind == "commit":

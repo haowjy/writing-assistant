@@ -13,6 +13,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from dataclasses import field as dataclass_field
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, ClassVar
 
@@ -56,8 +57,20 @@ EVENT_KINDS = frozenset(
         "fetch_recorded",
         "external_response",
         "budget_charged",
+        "reward_recorded",
     }
 )
+
+
+class Phase(StrEnum):
+    """Phases used by the transition-seam controller."""
+
+    READY_WRITER = "ready_writer"
+    CHECKING = "checking"
+    AWAITING_AUTHOR = "awaiting_author"
+    AWAITING_CHECKS = "awaiting_checks"
+    READY_TRANSITION = "ready_transition"
+    TERMINAL = "terminal"
 
 
 def _utf8(value: str, label: str = "string") -> str:
@@ -527,6 +540,10 @@ class MessageV1(_Record):
                     _logical_id(item["call_id"], "tool result call id")
                     if not isinstance(item["content"], (str, Mapping, list, tuple)):
                         raise TypeError("tool result content has invalid shape")
+                    parts.append(item)
+                elif kind == "invalid_tool_call" and set(item) == {"type", "id", "raw"}:
+                    _logical_id(item["id"], "invalid tool call id")
+                    _json_value(item["raw"])
                     parts.append(item)
                 else:
                     raise ValueError("invalid message part shape")

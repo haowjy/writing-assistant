@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add strict transition-seam wire codecs and declared payload edges, plus chained context
+  records in version-pinned store locations while preserving legacy runtime records.
+
 - Add canonical sampled-message intake, declarative tool-call parsing, and pure file-effect
   contracts for the transition seam.
 

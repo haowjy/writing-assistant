@@ -15,6 +15,7 @@ from writing_agent.task_graph import (
     LineageRefV1,
     MessageV1,
     NodeSpecV1,
+    Phase,
     canonical_json,
     domain_hash,
     domain_hash_bytes,
@@ -191,6 +192,21 @@ class TaskGraphRecordsTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             MessageV1(content=(Mutable([1]),), origin="author")
 
+    def test_transition_phase_and_invalid_tool_call_message_part(self):
+        self.assertEqual(Phase.READY_WRITER.value, "ready_writer")
+        message = MessageV1(
+            role="assistant",
+            content=({"type": "invalid_tool_call", "id": "bad-1", "raw": {"x": 1}},),
+            origin="writer:sample",
+        )
+        self.assertEqual(MessageV1.from_json(message.to_json()), message)
+        for malformed in (
+            {"type": "invalid_tool_call", "id": "bad-1", "raw": {"x": 1}, "extra": 2},
+            {"type": "invalid_tool_call", "id": 1, "raw": {}},
+        ):
+            with self.subTest(part=malformed), self.assertRaises((TypeError, ValueError)):
+                MessageV1(content=(malformed,), origin="writer:sample")
+
     def test_event_allowlist_and_sequence_directions(self):
         kwargs = dict(
             lineage_id="line", audience=("writer",), payload_ref=H, versions_ref=H, provenance_ref=H
@@ -219,6 +235,7 @@ class TaskGraphRecordsTest(unittest.TestCase):
                 "fetch_recorded",
                 "external_response",
                 "budget_charged",
+                "reward_recorded",
             }
         )
         self.assertEqual(EVENT_KINDS, expected)
