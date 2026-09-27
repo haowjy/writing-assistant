@@ -44,7 +44,30 @@ def validate_ask_semantics(arguments, node, decisions) -> None:
         raise ValueError("ask_author redefines a prior proposal")
 
 
-def frozen_prerequisite_results(store, state):
+def frozen_prerequisite_results(store=None, state=None, *, view=None, reader=None):
+    """Freeze check results for an author request.
+
+    The old producer passes ``store, state``. Derives pass a verified view and
+    its artifact reader, keeping the same policy projection free of store access.
+    """
+    if view is not None:
+        if reader is None or store is not None or state is not None:
+            raise TypeError("view prerequisite lookup requires only an artifact reader")
+        frozen = {}
+        for check in view.outcome.checks:
+            result_ref = check["result_ref"]
+            if result_ref is None:
+                continue
+            request_ref = check["request_ref"]
+            request = reader.artifact(request_ref, private=True)
+            result = reader.artifact(result_ref)
+            frozen[request["check_id"]] = {
+                "result_ref": result_ref,
+                "status": result["status"],
+            }
+        return frozen
+    if store is None or state is None:
+        raise TypeError("legacy prerequisite lookup requires store and state")
     from writing_agent.task_graph_terminal import current_check_results
 
     _, results = current_check_results(store, state)
