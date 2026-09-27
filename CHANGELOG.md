@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Scan the full `writing_agent` import graph and report cycles outside the task-graph module family.
+
 - Centralize re-entrant operation scopes, give closure validation ownership of rejected-candidate
   cleanup, preserve operation exceptions during debug audits, and remove store pass-through methods.
 
