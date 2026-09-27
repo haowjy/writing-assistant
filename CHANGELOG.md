@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Separate adapter-message intake from strict recorded-form validation, reject malformed typed
+  markers, run the full canonical-call differential by default, and copy exported queue arguments.
+
 - Restore fail-closed read-side coverage for record-domain artifacts stored outside the store API.
 
 - Add strict transition-seam wire codecs and declared payload edges, plus chained context

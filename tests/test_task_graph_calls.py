@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import random
 import unittest
-from itertools import islice
 
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_calls import (
@@ -15,6 +13,7 @@ from writing_agent.task_graph_calls import (
     intake_message,
     parse_calls,
     tool_effect_contract,
+    validate_intake_record,
 )
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
 from writing_agent.task_graph_local import LocalTextToolProvider
@@ -22,7 +21,6 @@ from writing_agent.task_graph_ports import EnvironmentAction, EnvironmentSnapsho
 from writing_agent.task_graph_writer import TransactionalWriterV1
 
 ALLOWED = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file", "ask_author"})
-_FULL_DIFF = os.environ.get("TASK_GRAPH_CALLS_FULL_DIFF") == "1"
 
 
 def _legacy_parse(batch, prior, scripted):
@@ -47,15 +45,22 @@ def _new_parse(batch, prior, scripted):
     record = intake_message({"content": "hello", "tool_calls": batch})
     encoded = canonical_json(record)
     decoded = json.loads(encoded)
-    if canonical_json(intake_message(decoded)) != encoded:
-        raise AssertionError("intake did not reach a canonical fixed point")
     parsed = parse_calls(
+        record,
+        id_prefix="r:call:0",
+        allowed=ALLOWED,
+        prior_raw_ids=prior,
+        ask_semantics=_ask_semantics if scripted else None,
+    )
+    round_trip = parse_calls(
         decoded,
         id_prefix="r:call:0",
         allowed=ALLOWED,
         prior_raw_ids=prior,
         ask_semantics=_ask_semantics if scripted else None,
     )
+    if parsed != round_trip:
+        raise AssertionError("parsed calls changed after canonical JSON round trip")
     queue = [
         {"call_id": entry.call_id, "name": entry.name, "arguments": entry.arguments}
         for entry in parsed
@@ -274,10 +279,57 @@ class IntakeAndParserTests(unittest.TestCase):
         )
         encoded = canonical_json(record)
         restored = json.loads(encoded)
-        self.assertEqual(canonical_json(intake_message(restored)), encoded)
-        parsed = parse_calls(restored, id_prefix="r:call:0", allowed=ALLOWED)
+        parsed = parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
+        self.assertEqual(parsed, parse_calls(restored, id_prefix="r:call:0", allowed=ALLOWED))
         self.assertIsNone(parsed[0].rejection)
         self.assertEqual(parsed[0].arguments, {"$noncanonical": "bytes", "hex": "00"})
+
+        forged = {
+            "$sampled_message_v1": True,
+            "content": 1.5,
+            "tool_calls_was_list": True,
+            "calls": [{"bounded": True, "value": (1,)}],
+        }
+        canonicalized = intake_message(forged)
+        self.assertIsNot(canonicalized, forged)
+        canonical_json(canonicalized)
+        self.assertEqual(canonicalized["content"]["$noncanonical"], "float")
+
+    def test_recorded_intake_rejects_malformed_markers(self):
+        malformed_markers = (
+            (
+                "unhashable mapping key",
+                {"$noncanonical": "mapping", "items": [[[1], 2]]},
+            ),
+            ("short mapping pair", {"$noncanonical": "mapping", "items": [[1]]}),
+            ("invalid codepoint", {"$noncanonical": "surrogate-string", "codepoints": [-1]}),
+            ("invalid float repr", {"$noncanonical": "float", "repr": "not-a-float"}),
+            ("invalid bytes hex", {"$noncanonical": "bytes", "hex": "not-hex"}),
+            (
+                "unexpected marker key",
+                {"$noncanonical": "float", "repr": "1.0", "extra": True},
+            ),
+        )
+        for name, marker in malformed_markers:
+            record = {
+                "$sampled_message_v1": True,
+                "content": None,
+                "tool_calls_was_list": True,
+                "calls": [{"bounded": True, "value": marker}],
+            }
+            with self.subTest(marker=name), self.assertRaises(ValueError):
+                parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
+
+    def test_recorded_intake_validator_rejects_malformed_wrapper(self):
+        with self.assertRaises(ValueError):
+            validate_intake_record(
+                {
+                    "$sampled_message_v1": True,
+                    "content": None,
+                    "tool_calls_was_list": True,
+                    "calls": [{"bounded": False, "value": {"not": "bounded-call"}}],
+                }
+            )
 
     def test_intake_encodes_non_json_values_and_non_array_calls(self):
         record = intake_message({"content": (b"x", 1.5), "tool_calls": "not calls"})
@@ -287,16 +339,6 @@ class IntakeAndParserTests(unittest.TestCase):
         with self.assertRaises(WriterRuntimeError):
             parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
 
-    def test_fast_seeded_differential_subset(self):
-        for seed in (7, 11):
-            for batch, prior, scripted in islice(_fuzz_generator(seed), 1_003):
-                with self.subTest(seed=seed, batch=repr(batch)[:80]):
-                    self.assertEqual(
-                        _diff_outcome(_legacy_parse, batch, prior, scripted),
-                        _diff_outcome(_new_parse, batch, prior, scripted),
-                    )
-
-    @unittest.skipUnless(_FULL_DIFF, "set TASK_GRAPH_CALLS_FULL_DIFF=1 for 60,006 batches")
     def test_full_seeded_differential_60006_batches(self):
         count = 0
         for seed in (7, 11):
@@ -320,8 +362,9 @@ class IntakeAndParserTests(unittest.TestCase):
 
     def test_queue_entry_wire_shape(self):
         entry = ToolQueueEntry("r:call:0:0", "read_file", {"path": "a.txt"})
+        wire = entry.to_dict()
         self.assertEqual(
-            entry.to_dict(),
+            wire,
             {
                 "call_id": "r:call:0:0",
                 "name": "read_file",
@@ -329,6 +372,8 @@ class IntakeAndParserTests(unittest.TestCase):
                 "rejection": None,
             },
         )
+        wire["arguments"]["path"] = "mutated.txt"
+        self.assertEqual(entry.arguments, {"path": "a.txt"})
 
 
 class ToolEffectTests(unittest.TestCase):
@@ -419,6 +464,23 @@ class ToolEffectTests(unittest.TestCase):
                 {"path": "draft.txt", "content": "expected"},
                 before,
                 {"draft.txt": "different"},
+            )
+
+    def test_contract_rejects_ambiguous_or_empty_patch_target(self):
+        before = {"draft.txt": "alpha beta beta"}
+        with self.assertRaises(AdapterContractError):
+            self._contract(
+                "patch_file",
+                {"path": "draft.txt", "old": "beta", "new": "gamma"},
+                before,
+                {"draft.txt": "alpha gamma beta"},
+            )
+        with self.assertRaises(AdapterContractError):
+            self._contract(
+                "patch_file",
+                {"path": "draft.txt", "old": "", "new": "gamma"},
+                before,
+                before,
             )
 
     def test_contract_rejects_non_ok_effect_and_oversize_results(self):
