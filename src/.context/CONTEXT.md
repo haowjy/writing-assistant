@@ -84,6 +84,9 @@ retains its smoke-evaluation and training-format workflows.
   operation evidence, and context byte accounting. The writer publishes a
   `context_changed` operation only at a drained `ready_writer` boundary; the
   semantic replay validates its selection and budget before publication and on recovery.
+  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) wraps
+  those pure rules for the transition seam and derives member starts from persisted
+  group specs; named seed contexts come from verified view ancestry rather than replay.
   The immutable admitted writer entry activates that semantic walk even for the
   first context operation, a retyped child runtime log, or a multi-event batch;
   generic Phase 2 lineages without a typed entry retain their generic reducer.
