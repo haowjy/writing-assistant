@@ -34,6 +34,7 @@ from writing_agent.task_graph_group_contract import (
     _required_policy,
     _seed,
 )
+from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_sampling import (
     ProjectionError,
@@ -42,7 +43,7 @@ from writing_agent.task_graph_sampling import (
     bind_group_sampling_claims,
     decode_and_bind_sampling,
 )
-from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore, _operation_scoped
+from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
 
 
 class GroupCoordinatorV1:
@@ -67,7 +68,7 @@ class GroupCoordinatorV1:
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
-    @_operation_scoped
+    @operation_scoped
     def seal(
         self,
         entry_checkpoint_id: str,
@@ -149,7 +150,7 @@ class GroupCoordinatorV1:
         finally:
             os.unlink(temporary)
 
-    @_operation_scoped
+    @operation_scoped
     def resume(self, group_id: str) -> GroupSpecV1:
         validate_hash(group_id)
         path = self.groups_root / group_id / "spec.json"
@@ -179,7 +180,7 @@ class GroupCoordinatorV1:
         if canonical_bytes(_required_policy(policy, rendering)) != canonical_bytes(spec.policy):
             raise GroupError("member policy contract drifted")
 
-    @_operation_scoped
+    @operation_scoped
     def start(self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]) -> RuntimeHandle:
         """Idempotently publish one fresh branch and restore its private workspace."""
         if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
@@ -265,7 +266,7 @@ class GroupCoordinatorV1:
             raise GroupError("materialized member workspace differs from sealed parent")
         return runtime
 
-    @_operation_scoped
+    @operation_scoped
     def restore_member(self, spec: GroupSpecV1, ordinal: int, destination: Path) -> RuntimeHandle:
         if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
             raise GroupError("invalid member ordinal")
@@ -325,7 +326,7 @@ class GroupCoordinatorV1:
         )
         return body
 
-    @_operation_scoped
+    @operation_scoped
     def collect(self, spec: GroupSpecV1, result: GroupMemberResultV1) -> str:
         if self.session is not None:
             self.session.require_seal(spec.policy["adapter_ref"])
@@ -370,7 +371,7 @@ class GroupCoordinatorV1:
                 self._receipt(path, {"result_ref": ref})
         return ref
 
-    @_operation_scoped
+    @operation_scoped
     def collect_scripted(
         self,
         spec: GroupSpecV1,
@@ -426,7 +427,7 @@ class GroupCoordinatorV1:
         )
         return self.collect(spec, result)
 
-    @_operation_scoped
+    @operation_scoped
     def collect_invalid(
         self, spec: GroupSpecV1, ordinal: int, *, reason: str, evidence_ref: str | None = None
     ) -> str:
@@ -658,7 +659,7 @@ class GroupCoordinatorV1:
                     raise GroupError("reward/eligibility contract or arithmetic is misbound")
         return ordinal
 
-    @_operation_scoped
+    @operation_scoped
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
         if self.session is not None:
             self.session.require_seal(spec.policy["adapter_ref"])

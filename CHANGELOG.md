@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Centralize re-entrant operation scopes, give closure validation ownership of rejected-candidate
+  cleanup, preserve operation exceptions during debug audits, and remove store pass-through methods.
+
 - Centralize deterministic ask-author shape validation in the canonical call module and re-export
   it from the scripted-author boundary.
 

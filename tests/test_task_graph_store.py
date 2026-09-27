@@ -30,6 +30,7 @@ from writing_agent.task_graph_store import (
     ReplayError,
     TaskGraphStore,
     WrongRecordDomainError,
+    _ClosureValidator,
 )
 
 
@@ -223,6 +224,38 @@ class TaskGraphStoreTest(unittest.TestCase):
             # must read and hash the artifact again.
             self.assertEqual(self.store.get_artifact(identity), value)
             self.assertEqual(read.call_count, 2)
+
+    def test_scope_exit_audit_does_not_replace_operation_error(self):
+        with (
+            mock.patch.dict(os.environ, {"CWA_TASK_GRAPH_AUDIT_SCOPE_EXIT": "1"}),
+            mock.patch(
+                "writing_agent.task_graph_store._ClosureValidator.audit_artifacts",
+                side_effect=CorruptRecordError("audit failure"),
+            ) as audit,
+        ):
+            with self.assertRaises(LookupError):
+                with self.store.operation():
+                    raise LookupError("operation failure")
+        audit.assert_not_called()
+        self.assertIsNone(getattr(self.store._session, "validator", None))
+
+    def test_closure_validator_discards_rejected_candidate_state(self):
+        validator = _ClosureValidator(self.store)
+        keys = {("event", "1" * 64), ("commit", "2" * 64)}
+        validator.virtual.update({key: object() for key in keys})
+        validator.loaded.update({key: object() for key in keys})
+        validator.completed.update(keys)
+        validator.active.update(keys)
+        validator.resolved[("artifact", "alias")] = ("event", "1" * 64)
+        validator.resolved[("commit", "2" * 64)] = ("checkpoint", "3" * 64)
+
+        validator.discard(keys)
+
+        self.assertFalse(validator.virtual)
+        self.assertFalse(validator.loaded)
+        self.assertFalse(validator.completed)
+        self.assertFalse(validator.active)
+        self.assertFalse(validator.resolved)
 
     def publish_change(self, lineage="main", expected=None, parent=None, before=None, text="beta"):
         if before is None:

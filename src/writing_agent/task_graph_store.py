@@ -25,7 +25,6 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +60,7 @@ from writing_agent.task_graph_errors import (
     StoreError,
     WrongRecordDomainError,
 )
+from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_records import (
     LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_TYPES,
@@ -163,18 +163,6 @@ def _noop_fault(stage: str) -> None:
     del stage
 
 
-def _operation_scoped(method):
-    """Run store and legacy role entry points in one validator operation."""
-
-    @wraps(method)
-    def wrapped(owner, *args, **kwargs):
-        store = getattr(owner, "store", owner)
-        with store.operation():
-            return method(owner, *args, **kwargs)
-
-    return wrapped
-
-
 def _json_copy(value):
     """Copy the JSON-shaped values returned by the artifact decoder."""
     if type(value) is dict:
@@ -225,7 +213,7 @@ class TaskGraphStore:
 
     # -- immutable object codecs -------------------------------------------------
 
-    @_operation_scoped
+    @operation_scoped
     def put_artifact(self, value: Any, *, domain: str = "payload", private: bool = False) -> str:
         if domain not in {"payload", "message"} or (domain == "message" and private):
             raise ValueError("artifacts may use only payload or message domains")
@@ -239,7 +227,7 @@ class TaskGraphStore:
         self._write_immutable(self._artifact_path(identity, private), canonical_bytes(envelope))
         return identity
 
-    @_operation_scoped
+    @operation_scoped
     def put_bytes_artifact(
         self, value: bytes, *, domain: str = "payload", private: bool = False
     ) -> str:
@@ -253,7 +241,7 @@ class TaskGraphStore:
         self._write_immutable(self._artifact_path(identity, private), canonical_bytes(envelope))
         return identity
 
-    @_operation_scoped
+    @operation_scoped
     def get_artifact(
         self,
         identity: str,
@@ -270,7 +258,7 @@ class TaskGraphStore:
             )
         return _json_copy(value)
 
-    @_operation_scoped
+    @operation_scoped
     def artifact_visibilities(self, identity: str) -> frozenset[str]:
         """Return storage visibility locations without decoding artifact contents."""
         validate_hash(identity)
@@ -281,7 +269,7 @@ class TaskGraphStore:
             result.add("private")
         return frozenset(result)
 
-    @_operation_scoped
+    @operation_scoped
     def persist(self, record: Any) -> str:
         """Persist one typed immutable record, plus context content when needed."""
         if isinstance(record, ChainedContextContentV1):
@@ -301,24 +289,24 @@ class TaskGraphStore:
                 return self._write_record(record, directory)
         raise TypeError(f"unsupported persisted record: {type(record).__name__}")
 
-    @_operation_scoped
+    @operation_scoped
     def load_instance(self, identity: str) -> GraphInstanceV1:
         return self._validator().validate(("instance", identity))
 
-    @_operation_scoped
+    @operation_scoped
     def load_event(self, identity: str) -> EventV1:
         return self._validator().validate(("event", identity))
 
-    @_operation_scoped
+    @operation_scoped
     def load_context(self, identity: str) -> ContextRevisionV1:
         return self._validator().validate(("context", identity))
 
-    @_operation_scoped
+    @operation_scoped
     def load_context_revision(self, identity: str) -> ChainedContextRevisionV1:
         """Load a chained transition-seam context revision."""
         return self._validator().validate(("context_revision", identity))
 
-    @_operation_scoped
+    @operation_scoped
     def materialize_context(self, identity: str) -> MaterializedContextV1:
         """Flatten a new context chain after validating its complete closure."""
         validator = self._validator()
@@ -330,15 +318,15 @@ class TaskGraphStore:
         }
         return materialize_context_nodes(revision, nodes)
 
-    @_operation_scoped
+    @operation_scoped
     def load_checkpoint(self, identity: str) -> CheckpointV1:
         return self._validator().validate(("checkpoint", identity))
 
-    @_operation_scoped
+    @operation_scoped
     def load_commit(self, identity: str) -> CommitV1:
         return self._validator().validate(("commit", identity))
 
-    @_operation_scoped
+    @operation_scoped
     def save_checkpoint(
         self,
         state: EnvironmentStateV1,
@@ -363,7 +351,7 @@ class TaskGraphStore:
 
     # -- authority and atomic publication ---------------------------------------
 
-    @_operation_scoped
+    @operation_scoped
     def read_head(self, lineage_id: str) -> str | None:
         return self._read_head(lineage_id, self._validator())
 
@@ -391,7 +379,7 @@ class TaskGraphStore:
                 )
         return head
 
-    @_operation_scoped
+    @operation_scoped
     def publish(
         self,
         lineage_id: str,
@@ -407,7 +395,7 @@ class TaskGraphStore:
         """Atomically publish an event batch, checkpoint, commit, and lineage head.
 
         ``parent_checkpoint`` is only valid for a lineage's first commit (including
-        a branch rooted at an immutable checkpoint).  Repeating the identical CAS
+        a branch rooted at an immutable checkpoint). Repeating the identical CAS
         request after publication is idempotent and returns the existing commit.
         """
         self._lineage_name(lineage_id)
@@ -424,31 +412,8 @@ class TaskGraphStore:
             raise TypeError("events must contain EventV1 records")
         if not batch:
             raise ValueError("a published commit requires at least one event")
-        return self._publish(
-            lineage_id,
-            expected_head,
-            batch,
-            next_state,
-            artifact_refs=artifact_refs,
-            parent_checkpoint=parent_checkpoint,
-            fault=fault,
-            _validation=_validation,
-        )
 
-    def _publish(
-        self,
-        lineage_id,
-        expected_head,
-        batch,
-        next_state,
-        *,
-        artifact_refs,
-        parent_checkpoint,
-        fault,
-        _validation,
-    ) -> str:
         hook = fault or _noop_fault
-
         validator = _validation or self._validator()
         base_checkpoint = parent_checkpoint
         if expected_head is not None:
@@ -456,9 +421,8 @@ class TaskGraphStore:
         if base_checkpoint is None:
             raise ReplayError("publication requires an actual parent checkpoint")
         validator.validate(("checkpoint", base_checkpoint))
-        parents = () if base_checkpoint is None else (base_checkpoint,)
         checkpoint = CheckpointV1(
-            parents=parents,
+            parents=(base_checkpoint,),
             state=next_state,
             event_head=next_state.history["head"],
             artifact_refs=tuple(artifact_refs),
@@ -493,7 +457,7 @@ class TaskGraphStore:
                     validator.add_virtual("event", event.identity(), event)
                 validator.add_virtual("checkpoint", checkpoint.identity(), checkpoint)
                 validator.add_virtual("commit", commit.identity(), commit)
-                # Commit validation is the publication reducer seam.  It starts from
+                # Commit validation is the publication reducer seam. It starts from
                 # the actual parent state, rejects unsupported recorded transitions,
                 # and requires exact full-state equality before any new immutable is
                 # written.
@@ -519,17 +483,10 @@ class TaskGraphStore:
                 hook("after_head_publication")
                 return commit.identity()
             except BaseException:
-                for key in candidate_keys:
-                    validator.virtual.pop(key, None)
-                    validator.loaded.pop(key, None)
-                    validator.completed.discard(key)
-                for requested, resolved in tuple(validator.resolved.items()):
-                    if resolved in candidate_keys:
-                        validator.resolved.pop(requested, None)
-                validator.active.difference_update(candidate_keys)
+                validator.discard(candidate_keys)
                 raise
 
-    @_operation_scoped
+    @operation_scoped
     def branch(
         self,
         parent_checkpoint: str,
@@ -562,7 +519,7 @@ class TaskGraphStore:
 
     # -- materialization, restore, and inspection -------------------------------
 
-    @_operation_scoped
+    @operation_scoped
     def materialize(
         self,
         checkpoint_id: str,
@@ -634,7 +591,7 @@ class TaskGraphStore:
                 raise
             raise MaterializationError("workspace materialization failed") from exc
 
-    @_operation_scoped
+    @operation_scoped
     def restore(
         self,
         checkpoint_id: str,
@@ -642,9 +599,6 @@ class TaskGraphStore:
         *,
         fault: FaultHook | None = None,
     ) -> RuntimeHandle:
-        return self._restore(checkpoint_id, fresh_root, fault=fault)
-
-    def _restore(self, checkpoint_id, fresh_root, *, fault) -> RuntimeHandle:
         checkpoint = self.load_checkpoint(checkpoint_id)
         self._validate_writer_history(checkpoint_id)
         workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
@@ -655,7 +609,7 @@ class TaskGraphStore:
             shutil.rmtree(workspace, ignore_errors=True)
             raise
 
-    @_operation_scoped
+    @operation_scoped
     def diff(self, before_id: str, after_id: str, *, text: bool = False) -> CheckpointDifference:
         before = self.load_checkpoint(before_id).state
         after = self.load_checkpoint(after_id).state
@@ -697,7 +651,7 @@ class TaskGraphStore:
 
     # -- recorded replay ---------------------------------------------------------
 
-    @_operation_scoped
+    @operation_scoped
     def replay(
         self,
         lineage_id: str,
@@ -705,9 +659,6 @@ class TaskGraphStore:
         committed_suffix: Sequence[str],
     ) -> str:
         """Reduce a published suffix using recorded Phase 2 fixture effects only."""
-        return self._replay(lineage_id, start_checkpoint, committed_suffix)
-
-    def _replay(self, lineage_id, start_checkpoint, committed_suffix) -> str:
         validator = self._validator()
         current_id = start_checkpoint
         current = validator.validate(("checkpoint", current_id))
@@ -794,7 +745,11 @@ class TaskGraphStore:
 
     @contextmanager
     def operation(self):
-        """Share verified closure results for the duration of one operation."""
+        """Share closure results for one operation; never yield inside this context.
+
+        The thread-local session remains active until the context exits, so yielding
+        from a suspended generator would expose its verified cache to unrelated calls.
+        """
         validator = getattr(self._session, "validator", None)
         if validator is not None:
             yield
@@ -802,13 +757,15 @@ class TaskGraphStore:
         validator = _ClosureValidator(self)
         self._session.validator = validator
         try:
-            yield
-        finally:
             try:
+                yield
+            except BaseException:
+                raise
+            else:
                 if os.environ.get("CWA_TASK_GRAPH_AUDIT_SCOPE_EXIT") == "1":
                     validator.audit_artifacts()
-            finally:
-                self._session.validator = None
+        finally:
+            self._session.validator = None
 
     def _validator(self) -> _ClosureValidator:
         """Return a fresh validator seeded from the open operation session, if any."""
@@ -1175,6 +1132,17 @@ class _ClosureValidator:
             self.completed = set(parent.completed)
             self.loaded = {key: parent.loaded[key] for key in parent.completed}
             self.resolved = dict(parent.resolved)
+
+    def discard(self, keys: set[tuple[str, str]]) -> None:
+        """Remove candidate and cache state associated with rejected keys."""
+        for key in keys:
+            self.virtual.pop(key, None)
+            self.loaded.pop(key, None)
+            self.completed.discard(key)
+            self.active.discard(key)
+        for requested, resolved in tuple(self.resolved.items()):
+            if requested in keys or resolved in keys:
+                self.resolved.pop(requested, None)
 
     def _merge_into_parent(self) -> None:
         parent = self.parent

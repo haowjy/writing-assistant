@@ -7,21 +7,12 @@ author model, interpret prose, run checks, or decide completion.
 from __future__ import annotations
 
 import json
-from functools import wraps
 
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_accounting import charge_tool_attempt
 from writing_agent.task_graph_calls import validate_ask_shape
 from writing_agent.task_graph_errors import WriterRuntimeError
-
-
-def _operation_scoped(method):
-    @wraps(method)
-    def wrapped(owner, *args, **kwargs):
-        with owner.store.operation():
-            return method(owner, *args, **kwargs)
-
-    return wrapped
+from writing_agent.task_graph_operation import operation_scoped
 
 
 def validate_ask_semantics(arguments, node, decisions) -> None:
@@ -138,7 +129,7 @@ class ScriptedAuthorRuntimeV1:
             raise WriterRuntimeError("runtime author packet differs from admitted author packet")
         return node, budget
 
-    @_operation_scoped
+    @operation_scoped
     def request(self, runtime, call, action):
         """Commit the request after its writer action, before resolving a reply."""
         node, budget = self._node(runtime)
@@ -194,7 +185,7 @@ class ScriptedAuthorRuntimeV1:
             result_effect=True,
         )
 
-    @_operation_scoped
+    @operation_scoped
     def reply(self, runtime):
         """Resolve one committed request without any live provider or model call."""
         node, budget = self._node(runtime)
@@ -349,7 +340,7 @@ class ScriptedAuthorRuntimeV1:
             result_effect=True,
         )
 
-    @_operation_scoped
+    @operation_scoped
     def request_feedback(self, runtime):
         """Issue one frozen feedback item after its declared progress prerequisites."""
         from writing_agent.task_graph_checks import applicable_checks
