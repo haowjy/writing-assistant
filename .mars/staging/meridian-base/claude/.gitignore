@@ -1,8 +1,0 @@
-.DS_Store
-mars.lock
-.mars
-.agents/
-.meridian/
-meridian.toml
-.claude/
-.codex/
