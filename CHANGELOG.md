@@ -8,6 +8,8 @@
 - Derive checks, transitions, sealing and rewards through one `OutcomeV1` lifecycle, and
   resolve evaluator contracts for non-interactive writer nodes that declare them.
 
+- Derive author requests and replies as single pure transitions, keeping requirement ledgers private.
+
 - Derive strict record field specs and `REFS` from each field declaration, keep binding
   rules on their records, and split the shared wire core from group and payload codecs.
 
