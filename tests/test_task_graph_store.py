@@ -17,7 +17,9 @@ from writing_agent.task_graph import (
     GraphInstanceV1,
     MessageV1,
     NodeSpecV1,
+    canonical_bytes,
     canonical_json,
+    domain_hash,
     tree_hash,
 )
 from writing_agent.task_graph_store import (
@@ -818,6 +820,23 @@ class TaskGraphStoreTest(unittest.TestCase):
                 ).to_dict(),
                 domain="event",
             )
+
+        event_body = {"record_type": "EventV1", "foreign": True}
+        event_ref = domain_hash("event", event_body)
+        self.store._artifact_path(event_ref, False).write_bytes(
+            canonical_bytes(
+                {
+                    "schema": 1,
+                    "domain": "event",
+                    "encoding": "json",
+                    "body": event_body,
+                }
+            )
+        )
+        with self.assertRaises(WrongRecordDomainError):
+            self.store.get_artifact(event_ref)
+        with self.assertRaises(WrongRecordDomainError):
+            self.store.save_checkpoint(state, artifact_refs=(event_ref,))
 
     def test_deep_branched_closure_is_iterative_and_reads_each_record_once(self):
         depth = 180

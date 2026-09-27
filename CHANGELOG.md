@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Restore fail-closed read-side coverage for record-domain artifacts stored outside the store API.
+
 - Add strict transition-seam wire codecs and declared payload edges, plus chained context
   records in version-pinned store locations while preserving legacy runtime records.
 
