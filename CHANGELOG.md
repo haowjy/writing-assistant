@@ -5,6 +5,9 @@
 - Derive context operations from sealed policies and ancestry, derive member starts from
   persisted group specs, and persist each spec at seal time.
 
+- Derive checks, transitions, sealing and rewards through one `OutcomeV1` lifecycle, and
+  resolve evaluator contracts for non-interactive writer nodes that declare them.
+
 - Derive strict record field specs and `REFS` from each field declaration, keep binding
   rules on their records, and split the shared wire core from group and payload codecs.
 
