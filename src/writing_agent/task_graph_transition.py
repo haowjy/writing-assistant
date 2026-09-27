@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias
+from typing import Any, Literal, Protocol, TypeAlias
 
 from writing_agent.task_graph import (
     CheckpointV1,
@@ -17,12 +17,14 @@ from writing_agent.task_graph import (
     canonical_bytes,
     validate_hash,
 )
+from writing_agent.task_graph_admission import AdmittedNodeV1
 from writing_agent.task_graph_contracts import RewardContractV1
 from writing_agent.task_graph_records import (
     AuthorReplyV1,
     ContextOperationInputV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
+    GroupSpecV1,
     MaterializedContextV1,
     MemberStartV1,
     OutcomeV1,
@@ -30,10 +32,6 @@ from writing_agent.task_graph_records import (
     WriterTurnV1,
     _WireRecord,
 )
-
-if TYPE_CHECKING:
-    from writing_agent.task_graph_admission import AdmittedNodeV1
-    from writing_agent.task_graph_group_contract import GroupSpecV1
 
 Hash: TypeAlias = str
 

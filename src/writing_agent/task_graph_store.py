@@ -61,10 +61,10 @@ from writing_agent.task_graph_errors import (
     WrongRecordDomainError,
 )
 from writing_agent.task_graph_operation import operation_scoped
+from writing_agent.task_graph_record_contracts import SEMANTICS_V1
 from writing_agent.task_graph_records import (
     LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_TYPES,
-    SEMANTICS_V1,
     ExecutionVersionsV1,
     MaterializedContextV1,
     materialize_context_nodes,
@@ -80,6 +80,8 @@ from writing_agent.task_graph_records import (
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _REPLAY_EFFECT = "Phase2RecordedEffectV1"
+_CONTEXT_LOCATION_ALIASES = {"context": "context_revisions", "context_revision": "contexts"}
+_LEGACY_GROUP_EDGE_KINDS = {"context_revision": "context", "private": "artifact|private"}
 _RECORDED_SET_FIELDS = frozenset(
     {
         "instance_ref",
@@ -1232,7 +1234,6 @@ class _ClosureValidator:
                 raise CorruptRecordError(f"cached artifact identity mismatch: {identity}")
 
     def _path_locations(self, identity: str) -> list[str]:
-        validate_hash(identity)
         locations: list[str] = []
         for directory in (
             "instances",
@@ -1326,6 +1327,7 @@ class _ClosureValidator:
 
         expected_location = self._expected_location(kind)
         other_locations = {location for location in locations if location != expected_location}
+        other_locations.discard(_CONTEXT_LOCATION_ALIASES.get(kind))
         if other_locations:
             raise WrongRecordDomainError(
                 f"reference {identity} exists in ambiguous locations: "
@@ -1474,6 +1476,17 @@ class _ClosureValidator:
                         )
                     try:
                         edges = list(record_reference_edges(record_type, value.value))
+                        if (
+                            record_type == "GroupSpecV1"
+                            and self._checkpoint_semantics(
+                                value.value["environment"]["entry_checkpoint_id"]
+                            )
+                            is None
+                        ):
+                            edges = [
+                                (_LEGACY_GROUP_EDGE_KINDS.get(kind, kind), ref)
+                                for kind, ref in edges
+                            ]
                         if record_type == "CheckRequestV1":
                             if self._checkpoint_semantics(value.value["target_checkpoint"]) is None:
                                 requirement = value.value["requirement_version"]

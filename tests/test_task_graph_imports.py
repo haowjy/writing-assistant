@@ -24,6 +24,32 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_derive_writer",
     "writing_agent.task_graph_controller",
 }
+LAYER_RANKS = {
+    **{
+        f"writing_agent.{name}": 0
+        for name in (
+            "task_graph_errors",
+            "task_graph_records",
+            "task_graph_wire",
+            "task_graph_record_contracts",
+            "task_graph_payloads",
+            "task_graph_operation",
+        )
+    },
+    **{f"writing_agent.{name}": 1 for name in ("task_graph_calls", "task_graph_controller")},
+    **{
+        f"writing_agent.{name}": 3
+        for name in (
+            "task_graph_transition",
+            "task_graph_derive_entry",
+            "task_graph_derive_context",
+            "task_graph_derive_outcome",
+            "task_graph_derive_author",
+            "task_graph_derive_writer",
+        )
+    },
+    "writing_agent.task_graph_group_contract": 4,
+}
 
 
 def _module_name(path: Path) -> str:
@@ -73,7 +99,14 @@ class RuntimeImports(ast.NodeVisitor):
         self.nodes.append(node)
 
 
-def build_import_graph() -> dict[str, set[str]]:
+class AllImports(RuntimeImports):
+    """Collect runtime and TYPE_CHECKING imports for layer-order assertions."""
+
+    def visit_If(self, node: ast.If) -> None:
+        self.generic_visit(node)
+
+
+def build_import_graph(*, include_type_checking: bool = False) -> dict[str, set[str]]:
     """Read every Python module in writing_agent, including nested imports."""
     paths = sorted(SOURCE_PACKAGE.rglob("*.py"))
     modules_by_path = {path: _module_name(path) for path in paths}
@@ -84,7 +117,7 @@ def build_import_graph() -> dict[str, set[str]]:
         source = modules_by_path[path]
         package = source if path.name == "__init__.py" else source.rpartition(".")[0]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        imports = RuntimeImports()
+        imports = AllImports() if include_type_checking else RuntimeImports()
         imports.visit(tree)
         for node in imports.nodes:
             if isinstance(node, ast.Import):
@@ -265,6 +298,19 @@ class TaskGraphImportTests(unittest.TestCase):
             "writing_agent.workspace",
         }
         self.assertFalse(imported & forbidden)
+
+    def test_all_seam_imports_follow_layer_order_including_type_only_edges(self) -> None:
+        graph = build_import_graph(include_type_checking=True)
+        for source, targets in graph.items():
+            if source not in LAYER_RANKS:
+                continue
+            for target in targets & LAYER_RANKS.keys():
+                with self.subTest(source=source, target=target):
+                    self.assertGreaterEqual(
+                        LAYER_RANKS[source],
+                        LAYER_RANKS[target],
+                        f"upward seam import {source} -> {target}",
+                    )
 
 
 if __name__ == "__main__":

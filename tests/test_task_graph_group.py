@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 from fractions import Fraction
+from pathlib import Path
 from unittest.mock import patch
 
 from tests import test_task_graph_scripted as scripted
@@ -79,6 +80,32 @@ class GroupCoordinatorTests(unittest.TestCase):
             load_canonical_json(path.read_bytes()),
             {"schema": 1, "domain": "payload", "encoding": "json", "body": spec.to_wire()},
         )
+
+    def test_resume_accepts_a_pre_s1_group_spec_receipt(self):
+        receipt = (Path(__file__).parent / "fixtures" / "pre_s1_group_spec.json").read_bytes()
+        spec = GroupSpecV1.from_json(receipt)
+        path = self.coordinator.groups_root / spec.group_id / "spec.json"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(receipt)
+        context_policy = ContextPolicyV1("drop").to_wire()
+
+        def get_artifact(identity):
+            if identity == spec.policy["context_policy_ref"]:
+                return context_policy
+            return {"pin": identity}
+
+        with (
+            patch("writing_agent.task_graph_group._environment", return_value=spec.environment),
+            patch.object(self.store, "get_artifact", side_effect=get_artifact),
+        ):
+            resumed = self.coordinator.resume(spec.group_id)
+
+        self.assertEqual(canonical_bytes(resumed.to_wire()), receipt)
+
+    def test_group_spec_payload_reads_legacy_context_by_pinned_semantics(self):
+        spec = self.group()
+
+        self.assertEqual(self.store.get_artifact(spec.identity()), spec.to_wire())
 
     def test_full_contract_drift_and_start_isolation(self):
         receipt = self.root / "atomic-receipt.json"
