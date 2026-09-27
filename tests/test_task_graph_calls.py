@@ -13,11 +13,13 @@ from writing_agent.task_graph_calls import (
     intake_message,
     parse_calls,
     tool_effect_contract,
+    validate_ask_shape,
     validate_intake_record,
 )
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
 from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentAction, EnvironmentSnapshot, EnvironmentSpec
+from writing_agent.task_graph_scripted import validate_ask_shape as scripted_validate_ask_shape
 from writing_agent.task_graph_writer import TransactionalWriterV1
 
 ALLOWED = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file", "ask_author"})
@@ -267,6 +269,11 @@ def _targeted_cases():
 
 
 class IntakeAndParserTests(unittest.TestCase):
+    def test_ask_author_shape_has_one_reexported_rule(self):
+        self.assertIs(scripted_validate_ask_shape, validate_ask_shape)
+        with self.assertRaises(ValueError):
+            validate_ask_shape({"question": "missing exact fields"})
+
     def test_intake_fixed_point_and_marker_key_escape(self):
         message = {
             "content": {"$noncanonical": "float", "repr": "nan"},

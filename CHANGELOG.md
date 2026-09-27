@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Centralize deterministic ask-author shape validation in the canonical call module and re-export
+  it from the scripted-author boundary.
+
 - Separate adapter-message intake from strict recorded-form validation, reject malformed typed
   markers, run the full canonical-call differential by default, and copy exported queue arguments.
 

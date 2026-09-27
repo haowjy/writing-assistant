@@ -396,28 +396,27 @@ def _oversized(call: _RawCall) -> bool:
     )
 
 
-def _ask_shape(call: _RawCall) -> str | None:
-    """Keep ask_author's deterministic syntax checks in this parser boundary."""
-    arguments = call.arguments
+def validate_ask_shape(arguments: Mapping[str, Any]) -> None:
+    """Reject malformed structured ask-author syntax before semantic validation."""
     if not isinstance(arguments, Mapping) or set(arguments) != {
         "question",
         "decision_ids",
         "proposals",
         "option_refs",
     }:
-        return "ask_author needs exact structured arguments"
+        raise ValueError("ask_author needs exact structured arguments")
     question = arguments["question"]
     if not isinstance(question, str) or not question.strip():
-        return "ask_author question must be nonempty text"
+        raise ValueError("ask_author question must be nonempty text")
     ids = arguments["decision_ids"]
     if (
         not isinstance(ids, (list, tuple))
         or not ids
         or any(not isinstance(item, str) or not item for item in ids)
     ):
-        return "ask_author decision_ids must be nonempty text IDs"
+        raise ValueError("ask_author decision_ids must be nonempty text IDs")
     if len(ids) != len(set(ids)):
-        return "ask_author repeats a decision ID"
+        raise ValueError("ask_author repeats a decision ID")
     proposals = arguments["proposals"]
     if not isinstance(proposals, (list, tuple)) or any(
         not isinstance(item, Mapping)
@@ -425,19 +424,24 @@ def _ask_shape(call: _RawCall) -> str | None:
         or any(not isinstance(value, str) or not value for value in item.values())
         for item in proposals
     ):
-        return "ask_author proposals need exact id/text pairs"
+        raise ValueError("ask_author proposals need exact id/text pairs")
     proposal_ids = [item["id"] for item in proposals]
     if len(proposal_ids) != len(set(proposal_ids)):
-        return "ask_author repeats a proposal ID"
+        raise ValueError("ask_author repeats a proposal ID")
     refs = arguments["option_refs"]
     if not isinstance(refs, (list, tuple)) or any(
         not isinstance(ref, str) or not ref for ref in refs
     ):
-        return "ask_author option_refs must be text IDs"
+        raise ValueError("ask_author option_refs must be text IDs")
     if len(refs) != len(set(refs)):
-        return "ask_author repeats an option reference"
+        raise ValueError("ask_author repeats an option reference")
+    canonical_json(arguments)
+
+
+def _ask_shape(call: _RawCall) -> str | None:
+    """Turn the shared ask-author syntax rule into a parser rejection reason."""
     try:
-        canonical_json(arguments)
+        validate_ask_shape(call.arguments)
     except (TypeError, ValueError) as exc:
         return str(exc)
     return None
