@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Derive writer turns and tool results once from typed inputs, with strict re-cut sampling
+  evidence and sealed group-policy binding.
+
 - Derive strict record field specs and `REFS` from each field declaration, keep binding
   rules on their records, and split the shared wire core from group and payload codecs.
 

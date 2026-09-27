@@ -14,6 +14,7 @@ from typing import Any
 
 from writing_agent.task_graph import canonical_bytes, canonical_json, validate_hash
 from writing_agent.task_graph_errors import ProjectionError, VerifiedMessagesStaleError
+from writing_agent.task_graph_records import WriterRequestV1, WriterTurnV1
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 _ACTION_RECORD_FIELDS = {
@@ -390,17 +391,35 @@ class ActionSamplingBindingV1:
 
 
 @dataclass(frozen=True)
+class WriterTurnSamplingBindingV1:
+    """Bind re-cut sampling evidence to a typed turn and its active context."""
+
+    turn: WriterTurnV1
+    context: Any
+    reader: Any
+
+
+@dataclass(frozen=True)
+class BoundWriterTurnSamplingV1:
+    turn: WriterTurnV1
+    prepared: WriterRequestV1 | None
+    eligibility: EligibilityDecisionV1 = CURRENT_ELIGIBILITY
+
+
+@dataclass(frozen=True)
 class TrainingEligibilityBindingV1:
     wire: Any
     outcome_ref: str
 
 
 def decode_and_bind_sampling(
-    binding: ActionSamplingBindingV1 | TrainingEligibilityBindingV1,
-) -> BoundSamplingV1 | EligibilityDecisionV1:
-    """The only public decoder for V1 action and terminal sampling claims."""
+    binding: ActionSamplingBindingV1 | WriterTurnSamplingBindingV1 | TrainingEligibilityBindingV1,
+) -> BoundSamplingV1 | BoundWriterTurnSamplingV1 | EligibilityDecisionV1:
+    """The only public decoder for old and re-cut sampling claims."""
     if isinstance(binding, TrainingEligibilityBindingV1):
         return _decode_training_eligibility(binding.wire, binding.outcome_ref)
+    if isinstance(binding, WriterTurnSamplingBindingV1):
+        return _decode_writer_turn_sampling(binding.turn, binding.context, binding.reader)
     if not isinstance(binding, ActionSamplingBindingV1):
         raise TypeError("unsupported sampling binding request")
     return _decode_action_sampling(
@@ -416,33 +435,137 @@ def decode_and_bind_sampling(
 
 
 def bind_group_sampling_claims(
-    policy: Mapping[str, str], writer_seed: int, trace: Mapping[str, Any], claims: Any
+    policy: Mapping[str, str],
+    writer_seed: int,
+    trace: Mapping[str, Any],
+    claims: Any,
+    *,
+    model_id: str | None = None,
+    context_content_hash: str | None = None,
+    context_revision_ref: str | None = None,
+    rendering: Mapping[str, Any] | None = None,
 ) -> None:
-    """Apply sealed group policy only to claims an adapter actually made."""
-    if not isinstance(claims, dict):
+    """Compare adapter claims with caller-pinned group and active-view values.
+
+    Keyword expectations are supplied by the new derive. Their ``None`` defaults
+    preserve the old group caller, which still binds against the legacy trace.
+    """
+    if not isinstance(claims, Mapping):
         return
-    for field in (
-        "model_ref",
-        "behavior_policy_ref",
-        "tokenizer_ref",
-        "template_ref",
-        "adapter_ref",
-        "decoding_ref",
-        "context_policy_ref",
-    ):
-        if field in claims and claims[field] != policy[field]:
+    for field, expected in policy.items():
+        if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
             raise ProjectionError(f"writer sample used a different {field}")
-    if "policy_ref" in claims and claims["policy_ref"] != policy["behavior_policy_ref"]:
+    if "policy_ref" in claims and canonical_bytes(claims["policy_ref"]) != canonical_bytes(
+        policy["behavior_policy_ref"]
+    ):
         raise ProjectionError("writer sample used a different behavior policy")
     for field, expected in (
         ("seed", writer_seed),
-        ("model", trace["model"]),
-        ("context_content_hash", trace["context_content_hash"]),
-        ("context_revision_ref", trace["context_revision_ref"]),
-        ("rendering", trace["rendering"]),
+        ("model", trace.get("model") if model_id is None else model_id),
+        (
+            "context_content_hash",
+            trace.get("context_content_hash")
+            if context_content_hash is None
+            else context_content_hash,
+        ),
+        (
+            "context_revision_ref",
+            trace.get("context_revision_ref")
+            if context_revision_ref is None
+            else context_revision_ref,
+        ),
+        ("rendering", trace.get("rendering") if rendering is None else rendering),
     ):
-        if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
+        if (
+            expected is not None
+            and field in claims
+            and canonical_bytes(claims[field]) != canonical_bytes(expected)
+        ):
             raise ProjectionError(f"writer sample request/adapter changed {field}")
+
+
+def _decode_writer_turn_sampling(
+    turn: WriterTurnV1, context: Any, reader: Any
+) -> BoundWriterTurnSamplingV1:
+    if not isinstance(turn, WriterTurnV1):
+        raise ProjectionError("sampling input is not a WriterTurnV1")
+    if turn.context_revision_ref != context.revision_ref:
+        raise ProjectionError("writer turn context revision differs from the active context")
+
+    adapter = turn.adapter_trace
+    if adapter is not None:
+        if not isinstance(adapter, Mapping) or "native_on_policy_eligible" in adapter:
+            raise ProjectionError("adapter trace may not claim native eligibility")
+        tokens_present = "generated_token_ids" in adapter
+        tokens = adapter.get("generated_token_ids")
+        if tokens_present and (
+            not isinstance(tokens, (tuple, list))
+            or any(type(token) is not int or token < 0 for token in tokens)
+        ):
+            raise ProjectionError("generated token IDs must be nonnegative integers")
+        if tokens_present and (
+            type(turn.usage.get("completion_tokens")) is not int
+            or turn.usage["completion_tokens"] != len(tokens)
+        ):
+            raise ProjectionError("completion usage differs from generated token count")
+
+        logprob_fields = {
+            "per_token_logprobs_ref",
+            "per_token_logprobs_codec",
+            "per_token_logprobs_shape",
+        }
+        present = logprob_fields & set(adapter)
+        if present and present != logprob_fields:
+            raise ProjectionError("logprobs require a reference, codec and shape")
+        if present:
+            shape = adapter["per_token_logprobs_shape"]
+            if (
+                "generated_token_ids" not in adapter
+                or adapter["per_token_logprobs_codec"] != "f32-le"
+                or not isinstance(shape, (tuple, list))
+                or len(shape) != 1
+                or type(shape[0]) is not int
+                or shape[0] != len(tokens)
+            ):
+                raise ProjectionError("logprob shape is not aligned with generated tokens")
+            try:
+                logprobs = reader.bytes_artifact(adapter["per_token_logprobs_ref"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ProjectionError("logprob byte artifact is unavailable") from exc
+            if not isinstance(logprobs, bytes) or len(logprobs) != 4 * len(tokens):
+                raise ProjectionError("logprob byte artifact has the wrong shape")
+        elif "per_token_logprobs_ref" in adapter:
+            # The wire codec also rejects this partial triplet; keep the decoder strict
+            # for direct callers that provide an intentionally forged instance.
+            raise ProjectionError("ref-only logprobs are not typed evidence")
+
+    prepared = None
+    if turn.prepared_request_ref is not None:
+        try:
+            body = reader.artifact(turn.prepared_request_ref)
+            prepared = (
+                body if isinstance(body, WriterRequestV1) else WriterRequestV1.from_dict(body)
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProjectionError("prepared writer request cannot be decoded") from exc
+        if (
+            prepared.context_revision_ref != context.revision_ref
+            or prepared.context_revision_ref != turn.context_revision_ref
+            or prepared.payload_ref != turn.request_ref
+        ):
+            raise ProjectionError("prepared writer request is not bound to the sampled turn")
+        if prepared.verified_messages:
+            try:
+                payload = reader.artifact(prepared.payload_ref)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ProjectionError("verified request payload is unavailable") from exc
+            messages = [message.to_dict() for message in context.messages]
+            if not isinstance(payload, Mapping) or canonical_bytes(
+                payload.get("messages")
+            ) != canonical_bytes(messages):
+                raise ProjectionError("verified request messages differ from the active context")
+
+    return BoundWriterTurnSamplingV1(turn, prepared)
 
 
 def _decode_action_sampling(
