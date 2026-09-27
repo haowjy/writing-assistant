@@ -191,6 +191,18 @@ def strongly_connected_components(graph: dict[str, set[str]]) -> list[tuple[str,
 
 
 class TaskGraphImportTests(unittest.TestCase):
+    def test_legacy_runtime_modules_do_not_reference_lineage_views(self) -> None:
+        for filename in ("task_graph_scripted.py", "task_graph_sampling.py"):
+            path = SOURCE_PACKAGE / filename
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            with self.subTest(module=filename):
+                self.assertFalse(
+                    any(
+                        isinstance(node, ast.Name) and node.id == "LineageView"
+                        for node in ast.walk(tree)
+                    )
+                )
+
     def test_task_graph_modules_import_only_public_names_across_module_boundaries(self) -> None:
         for module_path in sorted(SOURCE_PACKAGE.glob("task_graph*.py")):
             tree = ast.parse(module_path.read_text(encoding="utf-8"))

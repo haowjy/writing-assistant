@@ -9,22 +9,15 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import MessageV1, canonical_bytes, canonical_json, validate_hash
-from writing_agent.task_graph_calls import ToolQueueEntry, parse_calls
+from writing_agent.task_graph import canonical_bytes, canonical_json, validate_hash
 from writing_agent.task_graph_errors import (
     ProjectionError,
     VerifiedMessagesStaleError,
-    WriterRuntimeError,
 )
-from writing_agent.task_graph_records import (
-    OutcomeV1,
-    WriterRequestV1,
-    WriterTurnV1,
-)
-from writing_agent.task_graph_wire import decode_canonical_value
+from writing_agent.task_graph_records import WriterRequestV1, WriterTurnV1
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 _ACTION_RECORD_FIELDS = {
@@ -492,155 +485,6 @@ def bind_group_sampling_claims(
             and canonical_bytes(claims[field]) != canonical_bytes(expected)
         ):
             raise ProjectionError(f"writer sample request/adapter changed {field}")
-
-
-def bind_group_writer_sampling(view, turn: WriterTurnV1, reader) -> None:
-    """Bind group sampling claims to the active sealed member and context."""
-    spec = view.group
-    lineage_id = view.state.position["lineage_id"]
-    member = next((item for item in spec.members if item.member_id == lineage_id), None)
-    if member is None:
-        raise ProjectionError("writer lineage is absent from its sealed group spec")
-    try:
-        model = reader.artifact(spec.policy["model_ref"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ProjectionError("sealed group model is unavailable") from exc
-    if not isinstance(model, Mapping) or not isinstance(model.get("model_id"), str):
-        raise ProjectionError("sealed group model has no model ID")
-    claims = turn.adapter_trace
-    bind_group_sampling_claims(
-        spec.policy,
-        member.writer_seed,
-        claims or {},
-        claims or {},
-        model_id=model["model_id"],
-        context_content_hash=view.context.content_ref,
-        context_revision_ref=view.context.revision_ref,
-        rendering=view.context.rendering,
-    )
-
-
-def usage_overrun_outcome(
-    outcome: OutcomeV1, checkpoint_ref: str, requirements_ref: str, reason: str
-):
-    return replace(
-        outcome,
-        task_status="incomplete",
-        execution_status="valid",
-        stop_reason=reason,
-        candidate_checkpoint=checkpoint_ref,
-        requirement_version=requirements_ref,
-    )
-
-
-def parse_writer_turn_calls(
-    view, turn: WriterTurnV1, reader, ask_semantics=None
-) -> list[ToolQueueEntry]:
-    """Parse a sampled turn's calls against its active allowlist and prior raw IDs."""
-    ordinal = turn.action_id.removeprefix(f"{view.state.position['lineage_id']}:action:")
-    if not ordinal.isdecimal():
-        raise ProjectionError("sampled action ID has an invalid ordinal")
-    id_prefix = f"{view.state.position['lineage_id']}:call:{ordinal}"
-    if not turn.message.tool_calls_was_list:
-        return [ToolQueueEntry(f"{id_prefix}:0", "invalid_call", {}, "tool_calls must be an array")]
-    prior = _prior_raw_call_ids(view, turn.action_id, reader)
-    if view.mode.ask_semantics:
-        if ask_semantics is None:
-            raise ProjectionError("ask semantics are required for this writer turn")
-        decisions = reader.artifact(view.state.decisions_ref)
-
-        def ask(arguments):
-            ask_semantics(arguments, view.node, decisions)
-    else:
-        ask = None
-
-    try:
-        return parse_calls(
-            turn.message,
-            id_prefix=id_prefix,
-            allowed=frozenset(view.node.contract.entry_contract.tool_allowlist),
-            prior_raw_ids=prior,
-            ask_semantics=ask,
-        )
-    except WriterRuntimeError as exc:
-        raise ProjectionError("sampled calls violate the canonical call envelope") from exc
-
-
-def _prior_raw_call_ids(view, action_id: str, reader) -> frozenset[str]:
-    prior: set[str] = set()
-    for sample in view.samples:
-        if sample.action_id == action_id:
-            break
-        if sample.outcome != "action":
-            continue
-        try:
-            raw = reader.artifact(sample.turn_ref)
-            turn = raw if isinstance(raw, WriterTurnV1) else WriterTurnV1.from_dict(raw)
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("writer sample history cannot be decoded") from exc
-        if turn.message.tool_calls_was_list:
-            prior.update(_raw_call_ids(turn))
-    return frozenset(prior)
-
-
-def _raw_call_ids(turn: WriterTurnV1) -> set[str]:
-    found: set[str] = set()
-    for item in turn.message.calls:
-        if not item["bounded"]:
-            continue
-        raw = decode_canonical_value(item["value"])
-        if not isinstance(raw, Mapping):
-            continue
-        raw_id = raw.get("id")
-        if (
-            isinstance(raw_id, str)
-            and raw_id
-            and not any(character.isspace() for character in raw_id)
-            and raw_id.isprintable()
-        ):
-            found.add(raw_id)
-    return found
-
-
-def updated_raw_call_ids(prior: frozenset[str], turn: WriterTurnV1) -> frozenset[str]:
-    return (
-        prior if not turn.message.tool_calls_was_list else frozenset((*prior, *_raw_call_ids(turn)))
-    )
-
-
-def assistant_message(
-    action_id: str, content: str, turn: WriterTurnV1, queue: list[ToolQueueEntry]
-) -> MessageV1:
-    parts: list[dict[str, Any]] = []
-    if content:
-        parts.append({"type": "text", "text": content})
-    for index, call in enumerate(queue):
-        raw = (
-            turn.message.calls[index]["value"]
-            if turn.message.tool_calls_was_list and index < len(turn.message.calls)
-            else turn.message.calls
-        )
-        if call.rejection is not None:
-            parts.append({"type": "invalid_tool_call", "id": call.call_id, "raw": raw})
-        else:
-            parts.append(
-                {
-                    "type": "tool_call",
-                    "id": call.call_id,
-                    "name": call.name,
-                    "arguments": call.arguments,
-                }
-            )
-    return MessageV1(role="assistant", content=tuple(parts), origin=action_id, loss_eligible=True)
-
-
-def requires_usage_evidence(budget: Mapping[str, Any], usage: Mapping[str, Any]) -> bool:
-    limits = budget["limits"]
-    return ("generated_tokens" in limits and "completion_tokens" not in usage) or (
-        "total_tokens" in limits
-        and "total_tokens" not in usage
-        and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
-    )
 
 
 def _decode_writer_turn_sampling(

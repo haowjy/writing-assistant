@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Return author and writer transition logic to the derive modules, leaving scripted
+  policy and sampling codecs in their runtime modules.
+
 - Publish the strict wire-record API, derive registries from declarations, and require
   explicit value kinds for derived artifacts.
 

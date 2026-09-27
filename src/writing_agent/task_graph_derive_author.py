@@ -9,6 +9,7 @@ from typing import Any
 
 from writing_agent.task_graph import MessageV1, canonical_bytes, canonical_json, domain_hash, thaw
 from writing_agent.task_graph_accounting import charge_tool_attempt
+from writing_agent.task_graph_checks import applicable_checks
 from writing_agent.task_graph_contracts import RequirementUpdateV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_common import (
@@ -28,15 +29,8 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_scripted import (
     ScriptCoverageError,
-    author_message,
-    derive_feedback_request_fields,
-    derive_writer_request_fields,
-    frozen_prerequisite_results,
-    require_unsupported_coverage,
     resolve_script_reply,
-    validate_derived_author_request,
-    validate_feedback_reply,
-    wire_author_reply,
+    validate_ask_semantics,
 )
 from writing_agent.task_graph_transition import (
     ArtifactReader,
@@ -62,11 +56,74 @@ def derive_author_request(
         raise ProjectionError("lineage does not authorize author requests")
 
     source = directive["source"]
-    prereqs = frozen_prerequisite_results(view=view, reader=reader)
+    prereqs = {}
+    for check in view.outcome.checks:
+        result_ref = check["result_ref"]
+        if result_ref is None:
+            continue
+        request = reader.artifact(check["request_ref"], private=True)
+        result = reader.artifact(result_ref)
+        prereqs[request["check_id"]] = {"result_ref": result_ref, "status": result["status"]}
+
     if source == "writer_request":
-        request_fields = derive_writer_request_fields(view, reader)
+        continuation = view.state.continuation
+        cursor = continuation["next_call"]
+        queue = continuation["tool_queue"]
+        if cursor >= len(queue):
+            raise ProjectionError("writer author request has no pending call")
+        call = queue[cursor]
+        call_source = view.call_sources.get(call["call_id"])
+        if (
+            call["name"] != "ask_author"
+            or call_source is None
+            or call_source.queue_index != cursor
+            or not view.state.history["action_ids"]
+            or call_source.action_id != view.state.history["action_ids"][-1]
+        ):
+            raise ProjectionError("writer author request does not bind the pending call")
+        arguments = thaw(call["arguments"])
+        try:
+            validate_ask_semantics(arguments, view.node, reader.artifact(view.state.decisions_ref))
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ProjectionError("writer author request has invalid ask semantics") from exc
+        public_ids = [item["id"] for item in view.node.interaction_policy.public_decisions]
+        selected = set(arguments["decision_ids"])
+        decision_ids = [identity for identity in public_ids if identity in selected]
+        if not decision_ids:
+            raise ProjectionError("writer author request has no public decision")
+        request_fields = {
+            "action_id": call_source.action_id,
+            "call_id": call["call_id"],
+            "feedback_id": None,
+            "arguments": arguments,
+            "decision_ids": decision_ids,
+        }
     elif source == "mandatory_feedback":
-        request_fields = derive_feedback_request_fields(view, prereqs)
+        cursor = view.state.continuation["feedback_cursor"]
+        rules = view.mode.feedback_rules
+        if cursor >= len(rules) or view.state.continuation["check_requests"]:
+            raise ProjectionError("mandatory feedback is not ready")
+        rule = rules[cursor]
+        expected_phase = "awaiting_checks" if applicable_checks(view.node, cursor) else "checking"
+        if view.state.position["phase"] != expected_phase:
+            raise ProjectionError("mandatory feedback skipped its progress checks")
+        if any(
+            prereqs.get(check_id, {}).get("status") != "pass"
+            for check_id in rule["prerequisite_check_ids"]
+        ):
+            raise ProjectionError("mandatory feedback prerequisites did not pass")
+        consumed, limits = view.budget["consumed"], view.budget["limits"]
+        if any(
+            consumed.get(key, 0) >= limits.get(key, 0) for key in ("author_calls", "writer_turns")
+        ):
+            raise ProjectionError("mandatory feedback budget is exhausted")
+        request_fields = {
+            "action_id": None,
+            "call_id": None,
+            "feedback_id": rule["id"],
+            "arguments": None,
+            "decision_ids": [],
+        }
     else:  # The input codec closes this; keep the derive fail-closed too.
         raise ProjectionError("unsupported author request source")
 
@@ -132,7 +189,24 @@ def derive_author_reply(
     if request_ref is None or reply.request_ref != request_ref:
         raise ProjectionError("author reply does not bind the outstanding request")
     request = reader.artifact(request_ref, private=True)
-    validate_derived_author_request(view, request)
+    interaction = view.node.contract.interaction_contract
+    expected_request_id = (
+        f"{view.state.position['lineage_id']}:author:"
+        f"{view.budget['consumed'].get('author_calls', 0) - 1}"
+    )
+    if (
+        not isinstance(request, Mapping)
+        or request.get("record_type") != "AuthorRequestV1"
+        or request.get("schema") != 1
+        or request.get("requirement_version") != view.state.requirements_ref
+        or request.get("author_packet_ref") != view.state.author_packet_ref
+        or request.get("author_packet_ref") != interaction.author_packet_ref
+        or request.get("script_ref") != interaction.script_ref
+        or request.get("request_id") != expected_request_id
+    ):
+        raise ProjectionError("outstanding author request is not a derived role request")
+    if request["source"] not in {"writer_request", "mandatory_feedback"}:
+        raise ProjectionError("unsupported author request source")
     script = view.node.script
     if view.mode.interaction != "scripted_author" or script is None:
         raise ProjectionError("lineage has no admitted deterministic author")
@@ -143,7 +217,21 @@ def derive_author_reply(
     decisions = reader.artifact(view.state.decisions_ref)
     disclosures = reader.artifact(view.state.disclosures_ref)
     if request["source"] == "mandatory_feedback":
-        validate_feedback_reply(view, reply, request)
+        cursor = view.state.continuation["feedback_cursor"]
+        if cursor >= len(view.mode.feedback_rules):
+            raise ProjectionError("feedback cursor exceeds the admitted script")
+        rule = view.mode.feedback_rules[cursor]
+        if (
+            request["feedback_id"] != rule["id"]
+            or request["action_id"] is not None
+            or request["call_id"] is not None
+            or request["arguments"] is not None
+            or request["decision_ids"]
+            or reply.decision_ids
+            or reply.selected_proposals
+            or reply.utterance != rule["utterance"]
+        ):
+            raise ProjectionError("author reply differs from mandatory feedback")
         expected_decisions = decisions
         expected_disclosures = disclosures
     else:
@@ -158,7 +246,17 @@ def derive_author_reply(
             raise ProjectionError("script cannot answer the recorded author request") from exc
         except (KeyError, TypeError, ValueError) as exc:
             raise ProjectionError("author request is not covered by the admitted script") from exc
-        expected = wire_author_reply(expected_reply)
+        selected = {
+            decision_id: ([] if proposal_id is None else [proposal_id])
+            for decision_id, proposal_id in expected_reply["selected_proposals"].items()
+        }
+        expected = AuthorReplyV1(
+            request_ref=expected_reply["request_ref"],
+            status="answered",
+            utterance=expected_reply["utterance"],
+            decision_ids=expected_reply["decision_ids"],
+            selected_proposals=selected,
+        )
         if canonical_bytes(reply.to_wire()) != canonical_bytes(expected.to_wire()):
             raise ProjectionError("author reply differs from the admitted script")
 
@@ -220,7 +318,7 @@ def _derive_answered_reply(
             ),
         )
         history_changes = {"tool_result_ids": tool_results}
-        messages = (acknowledgement, author_message(request, reply.utterance))
+        messages = (acknowledgement, _author_message(request, reply.utterance))
         artifacts.extend(
             (
                 payload_artifact(dict(decisions)),
@@ -238,7 +336,7 @@ def _derive_answered_reply(
             raise ProjectionError("feedback reply differs from its cursor")
         continuation["feedback_cursor"] += 1
         history_changes = {}
-        messages = (author_message(request, reply.utterance),)
+        messages = (_author_message(request, reply.utterance),)
         update_ref = rule["requirement_update_ref"]
         if update_ref is not None:
             old_ledger = reader.artifact(view.state.requirements_ref, private=True)
@@ -295,14 +393,23 @@ def _derive_coverage_failure(
     script,
     reader,
 ) -> Transition:
-    require_unsupported_coverage(
-        request,
-        reply,
-        request_ref,
-        script,
-        reader.artifact(view.state.decisions_ref),
-        reader.artifact(view.state.disclosures_ref),
-    )
+    if request["source"] != "writer_request":
+        raise ProjectionError("mandatory feedback cannot claim unsupported coverage")
+    if reply.decision_ids or reply.selected_proposals:
+        raise ProjectionError("coverage failure cannot disclose decisions")
+    try:
+        resolve_script_reply(
+            script,
+            {**request, "request_ref": request_ref},
+            reader.artifact(view.state.decisions_ref),
+            reader.artifact(view.state.disclosures_ref),
+        )
+    except ScriptCoverageError:
+        pass
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError("author request is malformed") from exc
+    else:
+        raise ProjectionError("script covers the request; coverage failure is forged")
 
     outcome = OutcomeV1(
         schema=1,
@@ -338,6 +445,14 @@ def _derive_coverage_failure(
         artifacts=(outcome_artifact,),
         include_input=False,
         outcome=outcome,
+    )
+
+
+def _author_message(request: Mapping[str, Any], utterance: str) -> MessageV1:
+    return MessageV1(
+        role="user",
+        origin=request["request_id"],
+        content=({"type": "text", "text": utterance},),
     )
 
 
