@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add canonical sampled-message intake, declarative tool-call parsing, and pure file-effect
+  contracts for the transition seam.
+
 - Centralize task-graph runtime exceptions in a dependency-free leaf module, remove unused
   task-graph aliases, and guard the import seam with an AST-based SCC test.
 
