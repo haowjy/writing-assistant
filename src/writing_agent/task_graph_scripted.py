@@ -7,63 +7,12 @@ author model, interpret prose, run checks, or decide completion.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
-from functools import wraps
-from typing import Any
 
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_accounting import charge_tool_attempt
+from writing_agent.task_graph_calls import validate_ask_shape
 from writing_agent.task_graph_errors import WriterRuntimeError
-
-
-def _operation_scoped(method):
-    @wraps(method)
-    def wrapped(owner, *args, **kwargs):
-        with owner.store.operation():
-            return method(owner, *args, **kwargs)
-
-    return wrapped
-
-
-def validate_ask_shape(arguments: Mapping[str, Any]) -> None:
-    """Reject malformed structured control syntax before any author operation."""
-    if not isinstance(arguments, Mapping) or set(arguments) != {
-        "question",
-        "decision_ids",
-        "proposals",
-        "option_refs",
-    }:
-        raise ValueError("ask_author needs exact structured arguments")
-    if not isinstance(arguments["question"], str) or not arguments["question"].strip():
-        raise ValueError("ask_author question must be nonempty text")
-    ids = arguments["decision_ids"]
-    if (
-        not isinstance(ids, (list, tuple))
-        or not ids
-        or any(not isinstance(x, str) or not x for x in ids)
-    ):
-        raise ValueError("ask_author decision_ids must be nonempty text IDs")
-    if len(ids) != len(set(ids)):
-        raise ValueError("ask_author repeats a decision ID")
-    proposals = arguments["proposals"]
-    if not isinstance(proposals, (list, tuple)) or any(
-        not isinstance(item, Mapping)
-        or set(item) != {"id", "text"}
-        or any(not isinstance(value, str) or not value for value in item.values())
-        for item in proposals
-    ):
-        raise ValueError("ask_author proposals need exact id/text pairs")
-    proposal_ids = [item["id"] for item in proposals]
-    if len(proposal_ids) != len(set(proposal_ids)):
-        raise ValueError("ask_author repeats a proposal ID")
-    refs = arguments["option_refs"]
-    if not isinstance(refs, (list, tuple)) or any(
-        not isinstance(ref, str) or not ref for ref in refs
-    ):
-        raise ValueError("ask_author option_refs must be text IDs")
-    if len(refs) != len(set(refs)):
-        raise ValueError("ask_author repeats an option reference")
-    canonical_json(arguments)
+from writing_agent.task_graph_operation import operation_scoped
 
 
 def validate_ask_semantics(arguments, node, decisions) -> None:
@@ -180,7 +129,7 @@ class ScriptedAuthorRuntimeV1:
             raise WriterRuntimeError("runtime author packet differs from admitted author packet")
         return node, budget
 
-    @_operation_scoped
+    @operation_scoped
     def request(self, runtime, call, action):
         """Commit the request after its writer action, before resolving a reply."""
         node, budget = self._node(runtime)
@@ -236,7 +185,7 @@ class ScriptedAuthorRuntimeV1:
             result_effect=True,
         )
 
-    @_operation_scoped
+    @operation_scoped
     def reply(self, runtime):
         """Resolve one committed request without any live provider or model call."""
         node, budget = self._node(runtime)
@@ -391,7 +340,7 @@ class ScriptedAuthorRuntimeV1:
             result_effect=True,
         )
 
-    @_operation_scoped
+    @operation_scoped
     def request_feedback(self, runtime):
         """Issue one frozen feedback item after its declared progress prerequisites."""
         from writing_agent.task_graph_checks import applicable_checks

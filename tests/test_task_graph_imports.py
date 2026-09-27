@@ -8,48 +8,74 @@ from pathlib import Path
 
 SOURCE_PACKAGE = Path(__file__).resolve().parents[1] / "src" / "writing_agent"
 NEW_SEAM_MODULES = {
-    "task_graph_errors",
-    "task_graph_calls",
-    "task_graph_records",
-    "task_graph_transition",
-    "task_graph_derive_entry",
+    "writing_agent.task_graph_errors",
+    "writing_agent.task_graph_calls",
+    "writing_agent.task_graph_records",
+    "writing_agent.task_graph_operation",
+    "writing_agent.task_graph_transition",
+    "writing_agent.task_graph_derive_entry",
 }
 
 
+def _module_name(path: Path) -> str:
+    relative = path.relative_to(SOURCE_PACKAGE).with_suffix("")
+    parts = list(relative.parts)
+    if parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(("writing_agent", *parts))
+
+
+def _add_edge(graph: dict[str, set[str]], source: str, target: str) -> None:
+    """Include imported modules and package initializers Python loads on the way."""
+    parts = target.split(".")
+    for end in range(1, len(parts)):
+        package = ".".join(parts[:end])
+        if package in graph:
+            graph[source].add(package)
+    if target in graph:
+        graph[source].add(target)
+
+
 def build_import_graph() -> dict[str, set[str]]:
-    """Read every task-graph module, including imports nested in functions."""
-    paths = sorted(SOURCE_PACKAGE.glob("task_graph*.py"))
-    modules = {path.stem for path in paths}
+    """Read every Python module in writing_agent, including nested imports."""
+    paths = sorted(SOURCE_PACKAGE.rglob("*.py"))
+    modules_by_path = {path: _module_name(path) for path in paths}
+    modules = set(modules_by_path.values())
     graph = {module: set() for module in modules}
 
     for path in paths:
+        source = modules_by_path[path]
+        package = source if path.name == "__init__.py" else source.rpartition(".")[0]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    parts = alias.name.split(".")
-                    if len(parts) > 1 and parts[0] == "writing_agent":
-                        target = parts[1]
-                        if target in modules:
-                            graph[path.stem].add(target)
+                    if alias.name == "writing_agent" or alias.name.startswith("writing_agent."):
+                        _add_edge(graph, source, alias.name)
             elif isinstance(node, ast.ImportFrom):
-                if node.module is None:
-                    targets = (alias.name for alias in node.names)
-                    if node.level:
-                        graph[path.stem].update(target for target in targets if target in modules)
+                if node.level:
+                    package_parts = package.split(".")
+                    parent_parts = package_parts[: len(package_parts) - node.level + 1]
+                    base_parts = [*parent_parts]
+                    if node.module:
+                        base_parts.extend(node.module.split("."))
+                    base = ".".join(base_parts)
                 else:
-                    module_name = node.module
-                    if node.level:
-                        module_name = f"writing_agent.{module_name}"
-                    parts = module_name.split(".")
-                    if len(parts) > 1 and parts[0] == "writing_agent":
-                        target = parts[1]
-                        if target in modules:
-                            graph[path.stem].add(target)
-                    elif module_name == "writing_agent":
-                        graph[path.stem].update(
-                            alias.name for alias in node.names if alias.name in modules
-                        )
+                    base = node.module or ""
+
+                if base == "writing_agent" or base.startswith("writing_agent."):
+                    _add_edge(graph, source, base)
+                    for alias in node.names:
+                        imported = f"{base}.{alias.name}"
+                        if imported in graph:
+                            _add_edge(graph, source, imported)
+                elif node.level and base in graph:
+                    _add_edge(graph, source, base)
+                    if node.module is None:
+                        for alias in node.names:
+                            imported = f"{base}.{alias.name}"
+                            if imported in graph:
+                                _add_edge(graph, source, imported)
     return graph
 
 
@@ -101,53 +127,74 @@ class TaskGraphImportTests(unittest.TestCase):
             for component in components
             if len(component) > 1 or component[0] in graph[component[0]]
         ]
+        cycles_through_other_modules = [
+            component
+            for component in cyclic_components
+            if any(not module.rsplit(".", 1)[-1].startswith("task_graph") for module in component)
+        ]
         edge_count = sum(len(targets) for targets in graph.values())
         print(
-            "task_graph import graph: "
+            "writing_agent import graph: "
             f"{len(graph)} modules, {edge_count} edges, {len(components)} SCCs, "
-            f"{len(cyclic_components)} cyclic SCCs: {cyclic_components}"
+            f"{len(cyclic_components)} cyclic SCCs: {cyclic_components}; "
+            f"cycles through non-task_graph modules: {cycles_through_other_modules}"
         )
 
-        self.assertIn("task_graph_errors", graph)
-        self.assertEqual(graph["task_graph_errors"], set())
-        self.assertLessEqual(
-            graph["task_graph_calls"],
-            {"task_graph", "task_graph_accounting", "task_graph_errors"},
+        error_module = SOURCE_PACKAGE / "task_graph_errors.py"
+        error_tree = ast.parse(error_module.read_text(encoding="utf-8"))
+        self.assertFalse(
+            any(isinstance(node, (ast.Import, ast.ImportFrom)) for node in ast.walk(error_tree))
         )
+        self.assertIn("writing_agent.task_graph_errors", graph)
         self.assertLessEqual(
-            graph["task_graph_records"],
-            {"task_graph", "task_graph_contracts"},
-        )
-        self.assertLessEqual(
-            graph["task_graph_transition"],
+            graph["writing_agent.task_graph_calls"],
             {
-                "task_graph",
-                "task_graph_admission",
-                "task_graph_contracts",
-                "task_graph_group_contract",
-                "task_graph_records",
+                "writing_agent",
+                "writing_agent.task_graph",
+                "writing_agent.task_graph_accounting",
+                "writing_agent.task_graph_errors",
             },
         )
         self.assertLessEqual(
-            graph["task_graph_derive_entry"],
+            graph["writing_agent.task_graph_records"],
             {
-                "task_graph",
-                "task_graph_admission",
-                "task_graph_contracts",
-                "task_graph_records",
-                "task_graph_transition",
+                "writing_agent",
+                "writing_agent.task_graph",
+                "writing_agent.task_graph_contracts",
+            },
+        )
+        self.assertLessEqual(
+            graph["writing_agent.task_graph_transition"],
+            {
+                "writing_agent",
+                "writing_agent.task_graph",
+                "writing_agent.task_graph_admission",
+                "writing_agent.task_graph_contracts",
+                "writing_agent.task_graph_group_contract",
+                "writing_agent.task_graph_records",
+            },
+        )
+        self.assertLessEqual(
+            graph["writing_agent.task_graph_derive_entry"],
+            {
+                "writing_agent",
+                "writing_agent.task_graph",
+                "writing_agent.task_graph_admission",
+                "writing_agent.task_graph_contracts",
+                "writing_agent.task_graph_records",
+                "writing_agent.task_graph_transition",
             },
         )
         for forbidden in {
-            "task_graph_store",
-            "task_graph_ports",
-            "task_graph_local",
-            "task_graph_writer",
-            "task_graph_environment",
-            "task_graph_replay",
+            "writing_agent.task_graph_store",
+            "writing_agent.task_graph_ports",
+            "writing_agent.task_graph_local",
+            "writing_agent.task_graph_writer",
+            "writing_agent.task_graph_environment",
+            "writing_agent.task_graph_replay",
         }:
             with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, graph["task_graph_derive_entry"])
+                self.assertNotIn(forbidden, graph["writing_agent.task_graph_derive_entry"])
         for module in NEW_SEAM_MODULES:
             with self.subTest(module=module):
                 self.assertIn(module, graph)

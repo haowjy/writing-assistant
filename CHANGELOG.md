@@ -6,6 +6,24 @@
   with explicit artifact outputs; centralize static tool schemas so derives do not import the
   workspace or a runtime port.
 
+- Specify canonical changed-path effects and verify an identical-content write records an empty delta.
+
+- Compute the tool-result workspace byte total once and rely on the pinned workspace/storage limit
+  relation instead of checking an unreachable second bound.
+
+- Scan the full `writing_agent` import graph and report cycles outside the task-graph module family.
+
+- Centralize re-entrant operation scopes, give closure validation ownership of rejected-candidate
+  cleanup, preserve operation exceptions during debug audits, and remove store pass-through methods.
+
+- Centralize deterministic ask-author shape validation in the canonical call module and re-export
+  it from the scripted-author boundary.
+
+- Separate adapter-message intake from strict recorded-form validation, reject malformed typed
+  markers, run the full canonical-call differential by default, and copy exported queue arguments.
+
+- Restore fail-closed read-side coverage for record-domain artifacts stored outside the store API.
+
 - Add strict transition-seam wire codecs and declared payload edges, plus chained context
   records in version-pinned store locations while preserving legacy runtime records.
 
