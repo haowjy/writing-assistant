@@ -95,7 +95,10 @@ class GroupCoordinatorTests(unittest.TestCase):
             return {"pin": identity}
 
         with (
-            patch("writing_agent.task_graph_group._environment", return_value=spec.environment),
+            patch(
+                "writing_agent.task_graph_group.resolve_group_environment",
+                return_value=spec.environment,
+            ),
             patch.object(self.store, "get_artifact", side_effect=get_artifact),
         ):
             resumed = self.coordinator.resume(spec.group_id)

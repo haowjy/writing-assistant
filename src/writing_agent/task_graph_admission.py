@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash, safe_path
+from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash, safe_path, thaw
 from writing_agent.task_graph_artifacts import (
     TypedArtifactError,
     validate_phase3_artifact_closure,
@@ -95,15 +95,7 @@ class MappingArtifactResolver:
             raise AdmissionError("missing_reference", f"missing artifact {identity}") from exc
         if domain_hash("payload", value) != identity:
             raise AdmissionError("corrupt_reference", f"artifact hash mismatch for {identity}")
-        return _wire_copy(value)
-
-
-def _wire_copy(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _wire_copy(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_wire_copy(item) for item in value]
-    return value
+        return thaw(value)
 
 
 class StoreArtifactResolver:

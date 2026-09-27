@@ -73,7 +73,7 @@ class Phase(StrEnum):
     TERMINAL = "terminal"
 
 
-def _utf8(value: str, label: str = "string") -> str:
+def utf8(value: str, label: str = "string") -> str:
     if not isinstance(value, str):
         raise TypeError(f"{label} must be a string")
     try:
@@ -83,8 +83,8 @@ def _utf8(value: str, label: str = "string") -> str:
     return value
 
 
-def _logical_id(value: str, label: str = "logical id") -> str:
-    value = _utf8(value, label)
+def logical_id(value: str, label: str = "logical id") -> str:
+    value = utf8(value, label)
     if not value or any(ch.isspace() or ord(ch) < 0x20 for ch in value):
         raise ValueError(f"invalid {label}")
     return value
@@ -92,7 +92,7 @@ def _logical_id(value: str, label: str = "logical id") -> str:
 
 def _action_id(value: str) -> str:
     """Validate a stable logical action identifier, not an event hash."""
-    value = _logical_id(value, "action id")
+    value = logical_id(value, "action id")
     if _HASH_RE.fullmatch(value):
         raise ValueError("action id must be logical, not a SHA-256 hash")
     return value
@@ -105,7 +105,7 @@ def _tool_result_id(value: str) -> str:
     identity assigned by the rollout).  The result event's SHA-256 is a
     separate reference and must not be substituted here.
     """
-    value = _logical_id(value, "tool result id")
+    value = logical_id(value, "tool result id")
     if _HASH_RE.fullmatch(value):
         raise ValueError("tool result id must be logical, not a SHA-256 hash")
     return value
@@ -117,7 +117,7 @@ def _json_value(value: Any) -> Any:
     if kind is str or kind is int or kind is bool or value is None:
         return value
     if is_dataclass(value):
-        if not isinstance(value, _Record):
+        if not isinstance(value, Record):
             raise TypeError("arbitrary dataclasses are not canonical values")
         return {field.name: _json_value(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, Mapping):
@@ -157,7 +157,7 @@ def _wire_value(value: Any) -> None:
 
 def canonical_json(value: Any) -> str:
     """Return canonical JSON v1 (compact UTF-8-safe text, without a newline)."""
-    if isinstance(value, _Record) and type(value).to_dict is _Record.to_dict:
+    if isinstance(value, Record) and type(value).to_dict is Record.to_dict:
         return value._canonical().decode("utf-8")
     text = _dumps(_json_value(value))
     _strict_utf8(text)
@@ -182,7 +182,7 @@ def _no_float(text: str) -> Any:
 
 
 def canonical_bytes(value: Any) -> bytes:
-    if isinstance(value, _Record) and type(value).to_dict is _Record.to_dict:
+    if isinstance(value, Record) and type(value).to_dict is Record.to_dict:
         return value._canonical()
     return canonical_json(value).encode("utf-8", "strict")
 
@@ -266,7 +266,7 @@ def validate_hash(value: str, *, optional: bool = False) -> str | None:
 
 def safe_path(path: str) -> str:
     """Validate a canonical relative POSIX path (without normalising it)."""
-    _utf8(path, "path")
+    utf8(path, "path")
     if not isinstance(path, str) or not path or "\\" in path or path.startswith("/"):
         raise ValueError("unsafe relative path")
     pieces = path.split("/")
@@ -317,18 +317,26 @@ def tree_hash(files: Mapping[str, str]) -> str:
     return domain_hash("tree", entries)
 
 
-def _freeze(value: Any) -> Any:
+def freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType({k: _freeze(v) for k, v in value.items()})
+        return MappingProxyType({k: freeze(v) for k, v in value.items()})
     if isinstance(value, (list, tuple)):
-        return tuple(_freeze(v) for v in value)
+        return tuple(freeze(v) for v in value)
     if isinstance(value, (set, frozenset)):
-        return frozenset(_freeze(v) for v in value)
+        return frozenset(freeze(v) for v in value)
+    return value
+
+
+def thaw(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: thaw(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [thaw(item) for item in value]
     return value
 
 
 @dataclass(frozen=True)
-class _Record:
+class Record:
     schema: int = 1
     DOMAIN: ClassVar[str] = "state"
 
@@ -340,7 +348,7 @@ class _Record:
         _strict_utf8(_dumps(_json_value(self)))
         for field in fields(self):
             if field.name != "schema":
-                object.__setattr__(self, field.name, _freeze(getattr(self, field.name)))
+                object.__setattr__(self, field.name, freeze(getattr(self, field.name)))
         self.validate()
 
     def validate(self) -> None:
@@ -350,13 +358,13 @@ class _Record:
         # _json_value already builds fresh dict/list containers.
         return _json_value(self)
 
-    # Records are frozen after __post_init__ (every field is frozen by _freeze
+    # Records are frozen after __post_init__ (every field is frozen by freeze
     # into tuples/MappingProxyType over private dicts, or is itself a frozen
     # record), so their canonical bytes and identity are pure functions of the
     # instance. The cache lives in the instance __dict__, outside dataclass
     # fields, so eq/hash/repr and wire bytes are unchanged.
     def _canonical(self) -> bytes:
-        memoizable = type(self).to_dict is _Record.to_dict
+        memoizable = type(self).to_dict is Record.to_dict
         cached = self.__dict__.get("_canonical_cache") if memoizable else None
         if cached is not None:
             return cached
@@ -372,7 +380,7 @@ class _Record:
         cached = self.__dict__.get("_identity_cache")
         if cached is not None:
             return cached
-        memoizable = type(self).to_dict is _Record.to_dict
+        memoizable = type(self).to_dict is Record.to_dict
         if memoizable and not isinstance(self, (EventV1, LineageRefV1)):
             cached = hashlib.sha256(_DOMAINS[self.DOMAIN] + self._canonical()).hexdigest()
             self.__dict__["_identity_cache"] = cached
@@ -441,7 +449,7 @@ def _logical_tuple(values: Any, validator, label: str) -> None:
 
 
 @dataclass(frozen=True)
-class NodeSpecV1(_Record):
+class NodeSpecV1(Record):
     id: str = ""
     kind: str = "writer"
     families: tuple[str, ...] = ()
@@ -450,7 +458,7 @@ class NodeSpecV1(_Record):
     DOMAIN: ClassVar[str] = "instance"
 
     def validate(self) -> None:
-        _logical_id(self.id, "node id")
+        logical_id(self.id, "node id")
         if self.kind not in {"writer", "environment"}:
             raise ValueError("invalid node kind")
         if not isinstance(self.families, tuple) or any(
@@ -467,7 +475,7 @@ class NodeSpecV1(_Record):
 
 
 @dataclass(frozen=True)
-class GraphInstanceV1(_Record):
+class GraphInstanceV1(Record):
     template_ref: str = ""
     entry_node: str = ""
     nodes: tuple[NodeSpecV1 | Mapping[str, Any], ...] = ()
@@ -486,7 +494,7 @@ class GraphInstanceV1(_Record):
         super().__post_init__()
 
     def validate(self) -> None:
-        _logical_id(self.entry_node, "entry node")
+        logical_id(self.entry_node, "entry node")
         validate_hash(self.template_ref)
         # Validate the container before iterating: strings/mappings are
         # iterable Python values but are not JSON arrays and must never be
@@ -509,7 +517,7 @@ class GraphInstanceV1(_Record):
 
 
 @dataclass(frozen=True)
-class MessageV1(_Record):
+class MessageV1(Record):
     role: str = "user"
     content: tuple[Any, ...] = ()
     call_id: str | None = None
@@ -533,18 +541,18 @@ class MessageV1(_Record):
                 ):
                     parts.append(item)
                 elif kind == "tool_call" and set(item) == {"type", "id", "name", "arguments"}:
-                    _logical_id(item["id"], "tool call id")
-                    _logical_id(item["name"], "tool name")
+                    logical_id(item["id"], "tool call id")
+                    logical_id(item["name"], "tool name")
                     if not isinstance(item["arguments"], Mapping):
                         raise TypeError("tool call arguments must be an object")
                     parts.append(item)
                 elif kind == "tool_result" and set(item) == {"type", "call_id", "content"}:
-                    _logical_id(item["call_id"], "tool result call id")
+                    logical_id(item["call_id"], "tool result call id")
                     if not isinstance(item["content"], (str, Mapping, list, tuple)):
                         raise TypeError("tool result content has invalid shape")
                     parts.append(item)
                 elif kind == "invalid_tool_call" and set(item) == {"type", "id", "raw"}:
-                    _logical_id(item["id"], "invalid tool call id")
+                    logical_id(item["id"], "invalid tool call id")
                     _json_value(item["raw"])
                     parts.append(item)
                 else:
@@ -563,9 +571,9 @@ class MessageV1(_Record):
             raise ValueError("invalid call_id")
         if not self.origin:
             raise ValueError("message origin is required")
-        _logical_id(self.origin, "message origin")
+        logical_id(self.origin, "message origin")
         if self.call_id is not None:
-            _logical_id(self.call_id, "call_id")
+            logical_id(self.call_id, "call_id")
         if self.trust not in {"instructions", "untrusted_data"}:
             raise ValueError("invalid message trust")
         if not isinstance(self.loss_eligible, bool):
@@ -576,7 +584,7 @@ class MessageV1(_Record):
 
 
 @dataclass(frozen=True)
-class EventV1(_Record):
+class EventV1(Record):
     id: str | None = None
     previous: str | None = None
     seq: int = 1
@@ -610,7 +618,7 @@ class EventV1(_Record):
             raise ValueError("an event without a predecessor must have sequence 1")
         if self.previous is not None and self.seq <= 1:
             raise ValueError("an event with a predecessor must have sequence greater than 1")
-        _logical_id(self.lineage_id, "event lineage_id")
+        logical_id(self.lineage_id, "event lineage_id")
         if self.kind not in EVENT_KINDS:
             raise ValueError("unknown event kind")
         if self.actor not in {"writer", "author", "environment", "evaluator", "writer_runtime"}:
@@ -620,7 +628,7 @@ class EventV1(_Record):
             (self.node_visit_id, "node_visit_id"),
         ):
             if value is not None:
-                _logical_id(value, label)
+                logical_id(value, label)
         if (
             not isinstance(self.audience, tuple)
             or not self.audience
@@ -654,7 +662,7 @@ _DEFAULT_RENDERING = MappingProxyType(
 
 
 @dataclass(frozen=True)
-class ContextContentV1(_Record):
+class ContextContentV1(Record):
     """Provenance-free writer input identity."""
 
     messages: tuple[MessageV1 | Mapping[str, Any], ...] = ()
@@ -692,8 +700,8 @@ class ContextContentV1(_Record):
     def validate(self) -> None:
         if not self.messages:
             raise ValueError("context content requires messages")
-        _utf8(self.projection_version, "projection version")
-        _logical_id(self.prefix_id, "prefix id")
+        utf8(self.projection_version, "projection version")
+        logical_id(self.prefix_id, "prefix id")
         validate_hash(self.template_ref)
         validate_hash(self.tokenizer_ref)
         validate_hash(self.tool_schema_ref)
@@ -733,7 +741,7 @@ def context_content_hash(
 
 
 @dataclass(frozen=True)
-class ContextRevisionV1(_Record):
+class ContextRevisionV1(Record):
     messages: tuple[MessageV1 | Mapping[str, Any], ...] = ()
     tools: tuple[Mapping[str, Any], ...] = ()
     content_hash: str | None = None
@@ -779,14 +787,14 @@ class ContextRevisionV1(_Record):
             raise ValueError("rendering must contain exactly the pinned inputs")
         if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.rendering.items()):
             raise ValueError("rendering values must be strings")
-        _utf8(self.rendering["projection_version"], "projection version")
-        _logical_id(self.rendering["prefix_id"], "prefix id")
+        utf8(self.rendering["projection_version"], "projection version")
+        logical_id(self.rendering["prefix_id"], "prefix id")
         for key in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
             validate_hash(self.rendering[key])
 
 
 @dataclass(frozen=True)
-class EnvironmentStateV1(_Record):
+class EnvironmentStateV1(Record):
     instance_ref: str = ""
     position: Mapping[str, Any] = dataclass_field(default_factory=dict)
     files: Mapping[str, str] = dataclass_field(default_factory=dict)
@@ -863,16 +871,16 @@ class EnvironmentStateV1(_Record):
         files = validate_file_tree(self.files)
         if self.tree_hash != tree_hash(files):
             raise ValueError("tree_hash does not match files")
-        _logical_id(self.position["node_id"], "node id")
-        _logical_id(self.position["visit_id"], "visit id")
-        _logical_id(self.position["lineage_id"], "position lineage id")
+        logical_id(self.position["node_id"], "node id")
+        logical_id(self.position["visit_id"], "visit id")
+        logical_id(self.position["lineage_id"], "position lineage id")
         validate_hash(self.position["entry_contract"])
         validate_hash(self.position["start_checkpoint"], optional=True)
         loop_counts = self.position["loop_counts"]
         if not isinstance(loop_counts, Mapping):
             raise TypeError("loop_counts must be an object")
         for loop_id, count in loop_counts.items():
-            _logical_id(loop_id, "loop id")
+            logical_id(loop_id, "loop id")
             if type(count) is not int or count < 0:
                 raise ValueError("loop counts must be nonnegative integers")
         phase = self.position.get("phase")
@@ -916,11 +924,11 @@ class EnvironmentStateV1(_Record):
                 frozenset(rejection_fields),
             }:
                 raise ValueError("invalid tool call shape")
-            call_id = _logical_id(call["call_id"], "tool call id")
+            call_id = logical_id(call["call_id"], "tool call id")
             if call_id in call_ids:
                 raise ValueError("continuation tool_queue call IDs must be unique")
             call_ids.add(call_id)
-            _logical_id(call["name"], "tool name")
+            logical_id(call["name"], "tool name")
             if not isinstance(call["arguments"], Mapping):
                 raise TypeError("tool arguments must be an object")
             if "rejection" in call:
@@ -943,7 +951,7 @@ class EnvironmentStateV1(_Record):
             if not isinstance(refs, tuple):
                 raise TypeError(f"{key} must be an array")
             for request_id in refs:
-                _logical_id(request_id, f"{key} id")
+                logical_id(request_id, f"{key} id")
         if (
             type(self.continuation["feedback_cursor"]) is not int
             or self.continuation["feedback_cursor"] < 0
@@ -954,7 +962,7 @@ class EnvironmentStateV1(_Record):
 
 
 @dataclass(frozen=True)
-class CheckpointV1(_Record):
+class CheckpointV1(Record):
     parents: tuple[str, ...] = ()
     state: EnvironmentStateV1 | Mapping[str, Any] = None  # type: ignore[assignment]
     event_head: str | None = None
@@ -983,7 +991,7 @@ class CheckpointV1(_Record):
 
 
 @dataclass(frozen=True)
-class CommitV1(_Record):
+class CommitV1(Record):
     parent_commit: str | None = None
     events: tuple[str, ...] = ()
     checkpoint: str = ""
@@ -996,14 +1004,14 @@ class CommitV1(_Record):
 
 
 @dataclass(frozen=True)
-class LineageRefV1(_Record):
+class LineageRefV1(Record):
     lineage_id: str = ""
     head_commit: str | None = None
     expected_head: str | None = None
     DOMAIN: ClassVar[str] = "lineage"
 
     def validate(self) -> None:
-        _logical_id(self.lineage_id, "lineage_id")
+        logical_id(self.lineage_id, "lineage_id")
         validate_hash(self.head_commit, optional=True)
         validate_hash(self.expected_head, optional=True)
 
@@ -1018,6 +1026,11 @@ __all__ = [
     "domain_hash",
     "domain_hash_bytes",
     "validate_hash",
+    "utf8",
+    "logical_id",
+    "freeze",
+    "thaw",
+    "Record",
     "safe_path",
     "validate_file_tree",
     "file_hash",

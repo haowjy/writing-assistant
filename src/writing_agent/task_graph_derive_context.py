@@ -24,12 +24,11 @@ from writing_agent.task_graph_derive_common import (
     payload_artifact,
 )
 from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupSpecV1
 from writing_agent.task_graph_records import (
     ContextContentV1,
     ContextOperationInputV1,
-    ContextPolicyV1,
     ContextRevisionV1,
-    GroupSpecV1,
     MemberStartV1,
 )
 from writing_agent.task_graph_transition import (

@@ -191,6 +191,19 @@ def strongly_connected_components(graph: dict[str, set[str]]) -> list[tuple[str,
 
 
 class TaskGraphImportTests(unittest.TestCase):
+    def test_task_graph_modules_import_only_public_names_across_module_boundaries(self) -> None:
+        for module_path in sorted(SOURCE_PACKAGE.glob("task_graph*.py")):
+            tree = ast.parse(module_path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom) or not node.module:
+                    continue
+                if not node.module.startswith("writing_agent.task_graph"):
+                    continue
+                for imported in node.names:
+                    with self.subTest(module=module_path.name, line=node.lineno):
+                        self.assertFalse(imported.name.startswith("_"))
+                        self.assertFalse(imported.asname and imported.asname.startswith("_"))
+
     def test_new_seam_modules_are_not_in_import_cycles(self) -> None:
         graph = build_import_graph()
         components = strongly_connected_components(graph)
@@ -226,6 +239,7 @@ class TaskGraphImportTests(unittest.TestCase):
                 "writing_agent.task_graph_accounting",
                 "writing_agent.task_graph_errors",
                 "writing_agent.task_graph_records",
+                "writing_agent.task_graph_wire",
             },
         )
         self.assertLessEqual(
@@ -249,6 +263,8 @@ class TaskGraphImportTests(unittest.TestCase):
                 "writing_agent.task_graph_contracts",
                 "writing_agent.task_graph_group_contract",
                 "writing_agent.task_graph_records",
+                "writing_agent.task_graph_record_contracts",
+                "writing_agent.task_graph_wire",
             },
         )
         self.assertLessEqual(

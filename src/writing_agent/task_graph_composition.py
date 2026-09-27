@@ -19,6 +19,7 @@ from writing_agent.task_graph_ports import (
     RuntimeDependenciesV1,
     SampleResult,
 )
+from writing_agent.task_graph_record_contracts import GroupSpecV1
 
 
 @dataclass(frozen=True)
@@ -79,8 +80,6 @@ class RuntimeSession:
         ):
             raise ValueError("group member lacks its sealed seed witness")
         validate_hash(seed["group_id"])
-        from writing_agent.task_graph_group_contract import GroupSpecV1
-
         path = store.root / "groups" / seed["group_id"] / "spec.json"
         try:
             spec = GroupSpecV1.from_dict(load_canonical_json(path.read_bytes()))

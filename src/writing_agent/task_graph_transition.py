@@ -12,26 +12,29 @@ from writing_agent.task_graph import (
     EventV1,
     MessageV1,
     Phase,
-    _freeze,
-    _Record,
+    Record,
     canonical_bytes,
+    domain_hash,
+    domain_hash_bytes,
+    freeze,
+    load_canonical_json,
     validate_hash,
 )
 from writing_agent.task_graph_admission import AdmittedNodeV1
 from writing_agent.task_graph_contracts import RewardContractV1
+from writing_agent.task_graph_record_contracts import GroupSpecV1
 from writing_agent.task_graph_records import (
     AuthorReplyV1,
     ContextOperationInputV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
-    GroupSpecV1,
     MaterializedContextV1,
     MemberStartV1,
     OutcomeV1,
     ToolObservationV1,
     WriterTurnV1,
-    _WireRecord,
 )
+from writing_agent.task_graph_wire import WireRecord
 
 Hash: TypeAlias = str
 
@@ -46,7 +49,7 @@ class LineageMode:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "feedback_rules", tuple(_freeze(rule) for rule in self.feedback_rules)
+            self, "feedback_rules", tuple(freeze(rule) for rule in self.feedback_rules)
         )
         if self.interaction not in {"none", "scripted_author"}:
             raise ValueError("unsupported lineage interaction mode")
@@ -83,9 +86,9 @@ class ContextView:
         for source in self.sources:
             validate_hash(source, optional=True)
         object.__setattr__(self, "sources", tuple(self.sources))
-        object.__setattr__(self, "messages", tuple(_freeze(message) for message in self.messages))
-        object.__setattr__(self, "tools", tuple(_freeze(tool) for tool in self.tools))
-        object.__setattr__(self, "rendering", _freeze(self.rendering))
+        object.__setattr__(self, "messages", tuple(freeze(message) for message in self.messages))
+        object.__setattr__(self, "tools", tuple(freeze(tool) for tool in self.tools))
+        object.__setattr__(self, "rendering", freeze(self.rendering))
         if len(self.messages) != len(self.sources):
             raise ValueError("context messages and sources must align")
         for identity in (self.content_ref, self.revision_ref):
@@ -176,17 +179,17 @@ class LineageView:
         for identity in (self.root_checkpoint_id, self.checkpoint_id):
             validate_hash(identity)
         validate_hash(self.head_event_id, optional=True)
-        object.__setattr__(self, "state", _freeze(self.state))
-        object.__setattr__(self, "budget", _freeze(self.budget))
-        object.__setattr__(self, "outcome", _freeze(self.outcome))
-        object.__setattr__(self, "check_statuses", _freeze(self.check_statuses))
+        object.__setattr__(self, "state", freeze(self.state))
+        object.__setattr__(self, "budget", freeze(self.budget))
+        object.__setattr__(self, "outcome", freeze(self.outcome))
+        object.__setattr__(self, "check_statuses", freeze(self.check_statuses))
         object.__setattr__(self, "raw_call_ids", frozenset(self.raw_call_ids))
-        object.__setattr__(self, "call_sources", _freeze(self.call_sources))
+        object.__setattr__(self, "call_sources", freeze(self.call_sources))
         object.__setattr__(self, "samples", tuple(self.samples))
-        object.__setattr__(self, "node", _freeze(self.node))
-        object.__setattr__(self, "mode", _freeze(self.mode))
-        object.__setattr__(self, "tool_spec", _freeze(self.tool_spec))
-        object.__setattr__(self, "group", _freeze(self.group))
+        object.__setattr__(self, "node", freeze(self.node))
+        object.__setattr__(self, "mode", freeze(self.mode))
+        object.__setattr__(self, "tool_spec", freeze(self.tool_spec))
+        object.__setattr__(self, "group", freeze(self.group))
 
 
 class ArtifactReader(Protocol):
@@ -204,46 +207,26 @@ class ArtifactReader(Protocol):
 @dataclass(frozen=True)
 class DerivedArtifact:
     ref: Hash
-    value: bytes | _Record | _WireRecord
+    value: bytes | Record | WireRecord
     kind: str
-    value_kind: Literal["record", "canonical_json", "bytes"] | None = None
+    value_kind: Literal["record", "canonical_json", "bytes"]
 
     def __post_init__(self) -> None:
-        from writing_agent.task_graph import domain_hash, domain_hash_bytes, load_canonical_json
-
         validate_hash(self.ref)
-        if not isinstance(self.value, (bytes, _Record, _WireRecord)):
+        if not isinstance(self.value, (bytes, Record, WireRecord)):
             raise TypeError("derived artifact values must be canonical bytes or typed records")
         if self.kind not in {"artifact", "private", "context_revision", "context_node"}:
             raise ValueError("unsupported derived artifact kind")
         value_kind = self.value_kind
-        if value_kind is None:
-            if isinstance(self.value, bytes):
-                try:
-                    body = load_canonical_json(self.value)
-                    is_canonical_payload = (
-                        canonical_bytes(body) == self.value
-                        and domain_hash("payload", body) == self.ref
-                    )
-                except (TypeError, ValueError):
-                    is_canonical_payload = False
-                value_kind = (
-                    "canonical_json"
-                    if is_canonical_payload
-                    else "bytes"
-                    if domain_hash_bytes("payload", self.value) == self.ref
-                    else "canonical_json"
-                )
-            else:
-                value_kind = "record"
-            object.__setattr__(self, "value_kind", value_kind)
-        if value_kind == "record" and not isinstance(self.value, (_Record, _WireRecord)):
+        if value_kind not in {"record", "canonical_json", "bytes"}:
+            raise ValueError("unsupported derived artifact value kind")
+        if value_kind == "record" and not isinstance(self.value, (Record, WireRecord)):
             raise TypeError("record artifacts require a typed record")
         if value_kind == "canonical_json" and isinstance(self.value, bytes):
             identity = domain_hash("payload", load_canonical_json(self.value))
         elif value_kind == "bytes" and isinstance(self.value, bytes):
             identity = domain_hash_bytes("payload", self.value)
-        elif value_kind == "record" and isinstance(self.value, (_Record, _WireRecord)):
+        elif value_kind == "record" and isinstance(self.value, (Record, WireRecord)):
             identity = self.value.identity()
         else:
             raise ValueError("artifact value kind does not match its value")
@@ -281,11 +264,11 @@ class Transition:
             raise TypeError("transition artifacts must be DerivedArtifact records")
         if not isinstance(self.view, LineageView):
             raise TypeError("transition view must be LineageView")
-        object.__setattr__(self, "event", _freeze(self.event))
-        object.__setattr__(self, "input", _freeze(self.input))
-        object.__setattr__(self, "state", _freeze(self.state))
+        object.__setattr__(self, "event", freeze(self.event))
+        object.__setattr__(self, "input", freeze(self.input))
+        object.__setattr__(self, "state", freeze(self.state))
         object.__setattr__(self, "artifacts", tuple(self.artifacts))
-        object.__setattr__(self, "view", _freeze(self.view))
+        object.__setattr__(self, "view", freeze(self.view))
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any] | None:

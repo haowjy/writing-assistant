@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from writing_agent.task_graph import MessageV1, canonical_bytes, canonical_json, domain_hash
+from writing_agent.task_graph import MessageV1, canonical_bytes, canonical_json, domain_hash, thaw
 from writing_agent.task_graph_accounting import charge_tool_attempt
 from writing_agent.task_graph_contracts import RequirementUpdateV1
 from writing_agent.task_graph_controller import next_step
@@ -19,7 +19,6 @@ from writing_agent.task_graph_derive_common import (
     new_event,
     next_state,
     payload_artifact,
-    wire_copy,
 )
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_records import (
@@ -102,7 +101,7 @@ def derive_author_request(
     budget = json.loads(canonical_json(view.budget))
     budget["consumed"]["author_calls"] = author_calls + 1
     budget_ref = domain_hash("payload", budget)
-    continuation = wire_copy(view.state.continuation)
+    continuation = thaw(view.state.continuation)
     if continuation["author_request"] is not None:
         raise ProjectionError("an author request is already outstanding")
     continuation["author_request"] = request_ref
@@ -184,9 +183,9 @@ def _derive_answered_reply(
     reader,
 ) -> Transition:
     source = request["source"]
-    continuation = wire_copy(view.state.continuation)
+    continuation = thaw(view.state.continuation)
     continuation["author_request"] = None
-    position = wire_copy(view.state.position)
+    position = thaw(view.state.position)
     position["phase"] = "ready_writer"
     changes: dict[str, Any] = {"continuation": continuation, "position": position}
     artifacts: list[DerivedArtifact] = []
@@ -321,9 +320,9 @@ def _derive_coverage_failure(
         eligibility_ref=None,
     )
     outcome_artifact = payload_artifact(outcome)
-    continuation = wire_copy(view.state.continuation)
+    continuation = thaw(view.state.continuation)
     continuation["author_request"] = None
-    position = wire_copy(view.state.position)
+    position = thaw(view.state.position)
     position["phase"] = "terminal"
     return build_transition(
         view,

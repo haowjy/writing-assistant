@@ -18,24 +18,26 @@ from writing_agent.task_graph import (
     tree_hash,
     validate_hash,
 )
-from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_group_contract import (
-    POLICY_FIELDS,
     GroupAdvantageV1,
     GroupDecisionV1,
-    GroupError,
     GroupMemberResultV1,
-    GroupMemberSpecV1,
     GroupSegmentCreditV1,
-    GroupSpecV1,
-    _environment,
-    _fraction,
-    _hash,
-    _required_policy,
-    _seed,
+    derive_group_seed,
+    fraction_wire,
+    payload_hash,
+    resolve_group_environment,
+    validate_group_policy,
 )
 from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_projection import project_writer_context
+from writing_agent.task_graph_record_contracts import (
+    POLICY_FIELDS,
+    ContextPolicyV1,
+    GroupError,
+    GroupMemberSpecV1,
+    GroupSpecV1,
+)
 from writing_agent.task_graph_sampling import (
     ProjectionError,
     SamplingEvidenceV1,
@@ -79,13 +81,13 @@ class GroupCoordinatorV1:
         member_count: int,
         runner_mode: str = "real",
     ) -> GroupSpecV1:
-        environment = _environment(self.store, entry_checkpoint_id)
+        environment = resolve_group_environment(self.store, entry_checkpoint_id)
         rendering = dict(
             self.store.load_context(
                 self.store.load_checkpoint(entry_checkpoint_id).state.context_ref
             ).rendering
         )
-        policy = _required_policy(policy, rendering)
+        policy = validate_group_policy(policy, rendering)
         if self.session is not None:
             self.session.require_seal(policy["adapter_ref"])
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
@@ -95,7 +97,7 @@ class GroupCoordinatorV1:
             raise GroupError("group size must be 2..64")
         if type(group_sequence) is not int or group_sequence < 0:
             raise GroupError("group sequence must be nonnegative")
-        group_id = _hash(
+        group_id = payload_hash(
             [
                 "GroupIdV1",
                 group_sequence,
@@ -110,8 +112,8 @@ class GroupCoordinatorV1:
             GroupMemberSpecV1(
                 member_id=f"grp-{group_id[:24]}-{ordinal:02d}",
                 ordinal=ordinal,
-                writer_seed=_seed(group_seed, "writer", ordinal),
-                environment_seed=_seed(group_seed, "environment"),
+                writer_seed=derive_group_seed(group_seed, "writer", ordinal),
+                environment_seed=derive_group_seed(group_seed, "environment"),
             )
             for ordinal in range(member_count)
         )
@@ -163,7 +165,10 @@ class GroupCoordinatorV1:
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(spec.policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(spec.policy["context_policy_ref"]))
-        if _environment(self.store, spec.environment["entry_checkpoint_id"]) != spec.environment:
+        if (
+            resolve_group_environment(self.store, spec.environment["entry_checkpoint_id"])
+            != spec.environment
+        ):
             raise GroupError("sealed entry contract drifted")
         return spec
 
@@ -172,7 +177,7 @@ class GroupCoordinatorV1:
     ) -> None:
         if self.session is not None:
             self.session.require_seal(spec.policy["adapter_ref"])
-        candidate = _environment(self.store, checkpoint_id)
+        candidate = resolve_group_environment(self.store, checkpoint_id)
         if canonical_bytes(candidate) != canonical_bytes(spec.environment):
             raise GroupError("member entry differs from full sealed environment contract")
         rendering = dict(
@@ -180,7 +185,9 @@ class GroupCoordinatorV1:
                 self.store.load_checkpoint(checkpoint_id).state.context_ref
             ).rendering
         )
-        if canonical_bytes(_required_policy(policy, rendering)) != canonical_bytes(spec.policy):
+        if canonical_bytes(validate_group_policy(policy, rendering)) != canonical_bytes(
+            spec.policy
+        ):
             raise GroupError("member policy contract drifted")
 
     @operation_scoped
@@ -415,7 +422,7 @@ class GroupCoordinatorV1:
             "start_checkpoint_id": start,
             "execution_status": execution_status,
             "reward_status": reward_status,
-            "reward": _fraction(reward)
+            "reward": fraction_wire(reward)
             if reward_status == "available" and reward is not None
             else None,
             "native_optimizer_eligible": False,
@@ -539,7 +546,7 @@ class GroupCoordinatorV1:
                     or type(value["numerator"]) is not int
                     or type(value["denominator"]) is not int
                     or value["denominator"] <= 0
-                    or _fraction(Fraction(value["numerator"], value["denominator"])) != value
+                    or fraction_wire(Fraction(value["numerator"], value["denominator"])) != value
                 ):
                     raise GroupError("scripted reward is not a canonical exact fraction")
             elif fixture.get("reward") is not None:
@@ -719,14 +726,14 @@ class GroupCoordinatorV1:
                         group_id=spec.group_id,
                         member_id=result.member_id,
                         result_ref=result_refs[ordinal],
-                        reward=_fraction(reward),
-                        mean=_fraction(mean),
-                        variance=_fraction(variance),
-                        centered=_fraction(reward - mean),
+                        reward=fraction_wire(reward),
+                        mean=fraction_wire(mean),
+                        variance=fraction_wire(variance),
+                        centered=fraction_wire(reward - mean),
                         expression="zero"
                         if variance == 0
                         else "centered / sqrt(population_variance)",
-                        advantage=_fraction(Fraction()) if variance == 0 else None,
+                        advantage=fraction_wire(Fraction()) if variance == 0 else None,
                         zero_variance=variance == 0,
                     )
                     advantage_ref = self.store.put_artifact(advantage.to_dict())
@@ -798,7 +805,7 @@ class GroupCoordinatorV1:
             for index, part in enumerate(message.content):
                 kind = {"text": "assistant_text", "tool_call": "tool_syntax"}.get(part["type"])
                 if kind is not None and action["loss_eligibility"].get(kind) is True:
-                    segments.append((kind, index, _hash(part)))
+                    segments.append((kind, index, payload_hash(part)))
             if action["loss_eligibility"].get("assistant_ending") is True:
                 segments.append(("assistant_ending", None, None))
             for kind, part_index, content_hash in segments:

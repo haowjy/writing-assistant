@@ -16,7 +16,8 @@ from typing import Any
 from writing_agent.task_graph import canonical_json, safe_path, validate_file_tree
 from writing_agent.task_graph_accounting import READ_TOOLS
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
-from writing_agent.task_graph_records import SampledMessageV1, decode_canonical_value
+from writing_agent.task_graph_records import SampledMessageV1
+from writing_agent.task_graph_wire import decode_canonical_value
 
 _MAX_ARGUMENT_BYTES = 65_536
 _MAX_CALL_EVIDENCE_BYTES = 131_072

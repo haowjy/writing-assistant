@@ -15,8 +15,8 @@ from writing_agent.task_graph_wire import (
     ListOf,
     RecordOf,
     Str,
-    _f,
-    _WireRecord,
+    WireRecord,
+    obj,
 )
 
 
@@ -58,8 +58,8 @@ def _group_seed(group_seed: int, role: str, ordinal: int | None = None) -> int:
 _mode_spec = Enum(frozenset({"real", "fixture"}))
 _operation_spec = Enum(frozenset({"carry", "seed", "drop", "compact"}))
 _semantics_spec = Enum(frozenset({SEMANTICS_V1}))
-_tool_spec = _f(max_file_bytes=Int(minimum=1), max_workspace_bytes=Int(minimum=1))
-_environment_spec = _f(
+_tool_spec = obj(max_file_bytes=Int(minimum=1), max_workspace_bytes=Int(minimum=1))
+_environment_spec = obj(
     **{
         name: Hash(None)
         for name in "entry_state_hash entry_tree_hash instance_hash graph_hash node_contract_hash "
@@ -82,14 +82,14 @@ _environment_spec = _f(
     requirements_ref=Hash("private"),
     horizon=Str(nonempty=True),
 )
-_policy_spec = _f(
+_policy_spec = obj(
     **{name: Hash("artifact") for name in POLICY_FIELDS - {"rng_derivation_version"}},
     rng_derivation_version=Str(nonempty=True),
 )
 
 
 @dataclass(frozen=True)
-class GroupMemberSpecV1(_WireRecord):
+class GroupMemberSpecV1(WireRecord):
     member_id: Annotated[str, Str(nonempty=True, logical=True)]
     ordinal: Annotated[int, Int()]
     writer_seed: Annotated[int, Int()]
@@ -99,7 +99,7 @@ class GroupMemberSpecV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class GroupSpecV1(_WireRecord):
+class GroupSpecV1(WireRecord):
     group_id: Annotated[str, Hash(None)]
     group_sequence: Annotated[int, Int(minimum=0)]
     group_seed: Annotated[int, Int(minimum=0)]
@@ -145,7 +145,7 @@ class GroupSpecV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class ContextPolicyV1(_WireRecord):
+class ContextPolicyV1(WireRecord):
     operation: Annotated[str, _operation_spec]
     retained_exchanges: Annotated[int, Int()] = 0
     seed_name: Annotated[
@@ -183,7 +183,7 @@ class ContextPolicyV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class ExecutionVersionsV1(_WireRecord):
+class ExecutionVersionsV1(WireRecord):
     schema: Annotated[int, Int(equals=1)]
     transition_semantics: Annotated[str, _semantics_spec]
     admission_policy_ref: Annotated[str, Hash("artifact")]

@@ -13,7 +13,7 @@ from fractions import Fraction
 from typing import Any
 
 from writing_agent.task_graph import (
-    _Record,
+    Record,
     canonical_bytes,
     domain_hash,
     validate_hash,
@@ -21,31 +21,25 @@ from writing_agent.task_graph import (
 from writing_agent.task_graph_admission import StoreArtifactResolver, admit_graph
 from writing_agent.task_graph_compaction import require_quiescent
 from writing_agent.task_graph_projection import project_writer_context
-from writing_agent.task_graph_records import (
+from writing_agent.task_graph_record_contracts import (
     POLICY_FIELDS,
     GroupError,
-)
-from writing_agent.task_graph_records import (
-    GroupMemberSpecV1 as GroupMemberSpecV1,
-)
-from writing_agent.task_graph_records import (
-    GroupSpecV1 as GroupSpecV1,
 )
 from writing_agent.task_graph_store import TaskGraphStore
 
 
-def _hash(value: Any) -> str:
+def payload_hash(value: Any) -> str:
     return domain_hash("payload", value)
 
 
-def _seed(group_seed: int, role: str, ordinal: int | None = None) -> int:
+def derive_group_seed(group_seed: int, role: str, ordinal: int | None = None) -> int:
     if type(group_seed) is not int or group_seed < 0:
         raise GroupError("group seed must be a nonnegative integer")
     material = canonical_bytes(["GroupSeedV1", group_seed, role, ordinal])
     return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
 
 
-def _fraction(value: Fraction) -> dict[str, int]:
+def fraction_wire(value: Fraction) -> dict[str, int]:
     return {"numerator": value.numerator, "denominator": value.denominator}
 
 
@@ -59,12 +53,12 @@ def _read_fraction(value: Mapping[str, int]) -> Fraction:
     ):
         raise GroupError("invalid exact fraction")
     fraction = Fraction(value["numerator"], value["denominator"])
-    if _fraction(fraction) != dict(value):
+    if fraction_wire(fraction) != dict(value):
         raise GroupError("fraction is not canonical and reduced")
     return fraction
 
 
-def _required_policy(policy: dict[str, str], rendering: dict[str, str]) -> dict[str, str]:
+def validate_group_policy(policy: dict[str, str], rendering: dict[str, str]) -> dict[str, str]:
     if set(policy) != POLICY_FIELDS or any(
         not isinstance(v, str) or not v for v in policy.values()
     ):
@@ -79,7 +73,7 @@ def _required_policy(policy: dict[str, str], rendering: dict[str, str]) -> dict[
     return dict(policy)
 
 
-def _environment(store: TaskGraphStore, checkpoint_id: str) -> dict[str, Any]:
+def resolve_group_environment(store: TaskGraphStore, checkpoint_id: str) -> dict[str, Any]:
     """Resolve every equality-critical entry input before admission, not only messages."""
     checkpoint = store.load_checkpoint(checkpoint_id)
     state = checkpoint.state
@@ -111,26 +105,26 @@ def _environment(store: TaskGraphStore, checkpoint_id: str) -> dict[str, Any]:
         "entry_state_hash": state.identity(),
         "entry_tree_hash": state.tree_hash,
         "instance_hash": instance.identity(),
-        "graph_hash": _hash(instance.to_dict()),
+        "graph_hash": payload_hash(instance.to_dict()),
         "node_id": node.spec.id,
         "node_visit_id": state.position["visit_id"],
         "node_contract_hash": contract.identity(),
-        "controller_contract_hash": _hash(contract.completion),
-        "check_contracts_hash": _hash([c.to_dict() for c in node.checks.values()]),
+        "controller_contract_hash": payload_hash(contract.completion),
+        "check_contracts_hash": payload_hash([c.to_dict() for c in node.checks.values()]),
         "reward_contract_hash": node.reward_contract.identity() if node.reward_contract else None,
         "simulator_contract_hash": node.script.identity() if node.script else None,
         # Admission resolves these content-addressed refs, including byte artifacts.
-        "source_refs_hash": _hash(instance.source_refs),
-        "request_refs_hash": _hash(instance.request_refs),
+        "source_refs_hash": payload_hash(instance.source_refs),
+        "request_refs_hash": payload_hash(instance.request_refs),
         "visible_prefix_hash": context.content_hash,
         "context_revision_ref": context.identity(),
-        "context_messages_hash": _hash([m.to_dict() for m in context.messages]),
-        "rendering_hash": _hash(context.rendering),
-        "tool_schemas_hash": _hash(context.tools),
+        "context_messages_hash": payload_hash([m.to_dict() for m in context.messages]),
+        "rendering_hash": payload_hash(context.rendering),
+        "tool_schemas_hash": payload_hash(context.tools),
         "budget_ref": state.budgets_ref,
-        "budget_hash": _hash(budget),
+        "budget_hash": payload_hash(budget),
         "versions_ref": state.versions_ref,
-        "versions_hash": _hash(store.get_artifact(state.versions_ref)),
+        "versions_hash": payload_hash(store.get_artifact(state.versions_ref)),
         "author_packet_ref": state.author_packet_ref,
         "requirements_ref": state.requirements_ref,
         "decisions_ref": state.decisions_ref,
@@ -139,13 +133,13 @@ def _environment(store: TaskGraphStore, checkpoint_id: str) -> dict[str, Any]:
         "rng_ref": state.rng_ref,
         "outcome_ref": state.outcome_ref,
         "provenance_ref": state.provenance_ref,
-        "continuation_hash": _hash(state.continuation),
+        "continuation_hash": payload_hash(state.continuation),
         "horizon": "node_exit",
     }
 
 
 @dataclass(frozen=True)
-class GroupMemberResultV1(_Record):
+class GroupMemberResultV1(Record):
     record_type: str = "GroupMemberResultV1"
     group_id: str = ""
     member_id: str = ""
@@ -210,7 +204,7 @@ class GroupMemberResultV1(_Record):
 
 
 @dataclass(frozen=True)
-class GroupDecisionV1(_Record):
+class GroupDecisionV1(Record):
     record_type: str = "GroupDecisionV1"
     group_id: str = ""
     status: str = "pending"
@@ -242,7 +236,7 @@ class GroupDecisionV1(_Record):
 
 
 @dataclass(frozen=True)
-class GroupAdvantageV1(_Record):
+class GroupAdvantageV1(Record):
     record_type: str = "GroupAdvantageV1"
     group_id: str = ""
     member_id: str = ""
@@ -289,7 +283,7 @@ class GroupAdvantageV1(_Record):
 
 
 @dataclass(frozen=True)
-class GroupSegmentCreditV1(_Record):
+class GroupSegmentCreditV1(Record):
     record_type: str = "GroupSegmentCreditV1"
     group_id: str = ""
     member_id: str = ""

@@ -14,7 +14,7 @@ from dataclasses import dataclass, fields
 from dataclasses import field as dataclass_field
 from typing import Any, ClassVar, Self
 
-from writing_agent.task_graph import _freeze, canonical_json, domain_hash, validate_hash
+from writing_agent.task_graph import canonical_json, domain_hash, freeze, thaw, validate_hash
 
 FILE_TOOLS = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file"})
 GRAPH_TOOLS = FILE_TOOLS | {"ask_author"}
@@ -134,14 +134,6 @@ def writer_tool_schemas(allowlist: tuple[str, ...], interaction_policy=None) -> 
     return (*schemas, schema)
 
 
-def _thaw(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _thaw(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(item) for item in value]
-    return value
-
-
 def _nonnegative(value: int, label: str, *, positive: bool = False) -> None:
     if type(value) is not int or value < (1 if positive else 0):
         qualifier = "positive" if positive else "nonnegative"
@@ -167,7 +159,7 @@ class _Contract:
             raise ValueError(f"unsupported {self.ARTIFACT_TYPE} schema")
         for field in fields(self):
             if field.name != "schema":
-                object.__setattr__(self, field.name, _freeze(getattr(self, field.name)))
+                object.__setattr__(self, field.name, freeze(getattr(self, field.name)))
         self.validate()
 
     def validate(self) -> None:
@@ -176,7 +168,7 @@ class _Contract:
     def to_dict(self) -> dict[str, Any]:
         return {
             "artifact_type": self.ARTIFACT_TYPE,
-            **{field.name: _thaw(getattr(self, field.name)) for field in fields(self)},
+            **{field.name: thaw(getattr(self, field.name)) for field in fields(self)},
         }
 
     def identity(self) -> str:
@@ -678,19 +670,19 @@ class NodeContractV1(_Contract):
 
     @property
     def entry_contract(self) -> NodeEntryV1:
-        return NodeEntryV1.from_dict(_thaw(self.entry))
+        return NodeEntryV1.from_dict(thaw(self.entry))
 
     @property
     def interaction_contract(self) -> InteractionContractV1:
-        return InteractionContractV1.from_dict(_thaw(self.interaction))
+        return InteractionContractV1.from_dict(thaw(self.interaction))
 
     @property
     def budget_contract(self) -> BudgetContractV1:
-        return BudgetContractV1.from_dict(_thaw(self.budgets))
+        return BudgetContractV1.from_dict(thaw(self.budgets))
 
     @property
     def completion_contract(self) -> CompletionContractV1:
-        return CompletionContractV1.from_dict(_thaw(self.completion))
+        return CompletionContractV1.from_dict(thaw(self.completion))
 
     def validate(self) -> None:
         if not isinstance(self.node_id, str) or not self.node_id:

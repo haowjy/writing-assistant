@@ -12,45 +12,38 @@ from writing_agent.task_graph_wire import (
     Int,
     JsonValue,
     ListOf,
-    Obj,
     PayloadCodec,
     Str,
     UnionOf,
+    obj,
 )
-
-_TEXT = Str()
-_JSON = JsonValue()
-
-
-def _obj(**fields: Any) -> Obj:
-    return Obj(MappingProxyType(fields))
 
 
 def _codec(record_type: str, **fields: Any) -> PayloadCodec:
-    return PayloadCodec(record_type, _obj(**fields))
+    return PayloadCodec(record_type, obj(**fields))
 
 
 _AUTHOR_PREREQUISITES = DictOf(
-    _obj(result_ref=Hash("artifact"), status=Enum(frozenset({"pass", "fail"})))
+    obj(result_ref=Hash("artifact"), status=Enum(frozenset({"pass", "fail"})))
 )
 _REWARD_COMPONENTS = DictOf(
-    _obj(
+    obj(
         weight=Int(),
         earned=Int(),
         status=Enum(frozenset({"pass", "fail", "not_run"})),
     )
 )
 
-PAYLOAD_RECORD_CODECS = MappingProxyType(
+_PAYLOAD_RECORD_CODECS = MappingProxyType(
     {
         "DecisionLedgerV1": _codec(
             "DecisionLedgerV1",
             schema=Int(equals=1),
-            values=DictOf(_JSON),
-            proposals=DictOf(_JSON),
+            values=DictOf(JsonValue()),
+            proposals=DictOf(JsonValue()),
         ),
         "DisclosureLedgerV1": _codec(
-            "DisclosureLedgerV1", schema=Int(equals=1), decisions=ListOf(_JSON)
+            "DisclosureLedgerV1", schema=Int(equals=1), decisions=ListOf(JsonValue())
         ),
         "AuthorRequestV1": _codec(
             "AuthorRequestV1",
@@ -60,7 +53,7 @@ PAYLOAD_RECORD_CODECS = MappingProxyType(
             action_id=Str(logical=True, optional=True),
             call_id=Str(logical=True, optional=True),
             feedback_id=Str(logical=True, optional=True),
-            arguments=UnionOf((_JSON, type(None))),
+            arguments=UnionOf((JsonValue(), type(None))),
             decision_ids=ListOf(Str(nonempty=True, logical=True)),
             prerequisite_results=_AUTHOR_PREREQUISITES,
             requirement_version=Hash("artifact|private"),
@@ -110,8 +103,13 @@ PAYLOAD_RECORD_CODECS = MappingProxyType(
         "RequirementLedgerV1": _codec(
             "RequirementLedgerV1",
             schema=Int(equals=1),
-            active=DictOf(_TEXT),
-            superseded=DictOf(_TEXT),
+            active=DictOf(Str()),
+            superseded=DictOf(Str()),
         ),
     }
 )
+
+
+def payload_record_codecs() -> tuple[tuple[str, PayloadCodec], ...]:
+    """Return shared payload codec entries for the central record registry."""
+    return tuple(_PAYLOAD_RECORD_CODECS.items())

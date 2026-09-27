@@ -43,6 +43,7 @@ from writing_agent.task_graph import (
     file_hash,
     load_canonical_json,
     safe_path,
+    thaw,
     tree_hash,
     validate_file_tree,
     validate_hash,
@@ -61,11 +62,10 @@ from writing_agent.task_graph_errors import (
     WrongRecordDomainError,
 )
 from writing_agent.task_graph_operation import operation_scoped
-from writing_agent.task_graph_record_contracts import SEMANTICS_V1
+from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_records import (
     LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_TYPES,
-    ExecutionVersionsV1,
     MaterializedContextV1,
     materialize_context_nodes,
     record_reference_edges,
@@ -166,15 +166,6 @@ def _noop_fault(stage: str) -> None:
     del stage
 
 
-def _json_copy(value):
-    """Copy the JSON-shaped values returned by the artifact decoder."""
-    if type(value) is dict:
-        return {key: _json_copy(item) for key, item in value.items()}
-    if type(value) is list:
-        return [_json_copy(item) for item in value]
-    return value
-
-
 class TaskGraphStore:
     """Deep, standard-library store for immutable task-graph state.
 
@@ -259,7 +250,7 @@ class TaskGraphStore:
             raise WrongRecordDomainError(
                 f"artifact {identity} has domain {domain!r}, expected {expected_domain!r}"
             )
-        return _json_copy(value)
+        return thaw(value)
 
     @operation_scoped
     def artifact_visibilities(self, identity: str) -> frozenset[str]:

@@ -21,39 +21,35 @@ from writing_agent.task_graph import (
     domain_hash,
     tree_hash,
 )
-from writing_agent.task_graph_errors import MissingReferenceError, WrongRecordDomainError
-from writing_agent.task_graph_records import (
-    ALL_RECORD_CODECS,
-    LEGACY_PAYLOAD_RECORD_TYPES,
-    RECORD_EDGES,
-    RECORD_TYPES,
-    SHARED_WIRE_V1_RECORD_TYPES,
-    AdmissionPolicyV1,
-    AuthorReplyV1,
+from writing_agent.task_graph_errors import (
+    MaterializationError,
+    MissingReferenceError,
+    WrongRecordDomainError,
+)
+from writing_agent.task_graph_record_contracts import (
     CompactionError,
-    ContextContentV1,
-    ContextOperationInputV1,
     ContextPolicyV1,
-    ContextRevisionV1,
-    DictOf,
-    EnvironmentStepV1,
-    EvaluatorResultV1,
     ExecutionVersionsV1,
-    ExternalInputsV1,
     GroupError,
     GroupMemberSpecV1,
     GroupSpecV1,
-    Hash,
-    KindUnion,
-    ListOf,
-    MaterializationError,
+)
+from writing_agent.task_graph_records import (
+    LEGACY_PAYLOAD_RECORD_TYPES,
+    RECORD_EDGES,
+    RECORD_TYPES,
+    AdmissionPolicyV1,
+    AuthorReplyV1,
+    ContextContentV1,
+    ContextOperationInputV1,
+    ContextRevisionV1,
+    EnvironmentStepV1,
+    EvaluatorResultV1,
+    ExternalInputsV1,
     MemberStartV1,
-    Obj,
     OutcomeV1,
-    RecordOf,
     SampledMessageV1,
     ToolObservationV1,
-    UnionOf,
     WriterRequestV1,
     WriterTurnV1,
     is_sha256_string,
@@ -61,6 +57,7 @@ from writing_agent.task_graph_records import (
     record_reference_edges,
 )
 from writing_agent.task_graph_store import TaskGraphStore
+from writing_agent.task_graph_wire import DictOf, Hash, KindUnion, ListOf, Obj, RecordOf, UnionOf
 
 H = "a" * 64
 P = "b" * 64
@@ -374,7 +371,7 @@ def record_examples():
     )
 
 
-def payload_codec_examples():
+def shared_payload_examples():
     return {
         "DecisionLedgerV1": {
             "record_type": "DecisionLedgerV1",
@@ -448,12 +445,6 @@ def payload_codec_examples():
             "active": {"req-1": "Keep the reveal deferred."},
             "superseded": {},
         },
-        "ExecutionVersionsV1": {
-            "schema": 1,
-            "transition_semantics": "task-graph-derive-v1",
-            "admission_policy_ref": H,
-            "tool_spec": {"max_file_bytes": 128_000, "max_workspace_bytes": 4096},
-        },
     }
 
 
@@ -524,7 +515,7 @@ def _replace_ref(body, path, replacement):
 class RecordCodecTests(unittest.TestCase):
     def test_every_registered_refs_mapping_matches_the_wire_contract(self):
         self.assertEqual(
-            {name: tuple(sorted(codec.REFS.items())) for name, codec in ALL_RECORD_CODECS.items()},
+            {name: tuple(sorted(refs.items())) for name, refs in RECORD_EDGES.items()},
             EXPECTED_REFS,
         )
 
@@ -541,12 +532,19 @@ class RecordCodecTests(unittest.TestCase):
 
     def test_every_codec_has_a_canonical_exact_round_trip(self):
         examples = record_examples()
-        classes = {codec for codec in ALL_RECORD_CODECS.values() if isinstance(codec, type)}
-        self.assertEqual({type(item) for item in examples}, classes)
+        class_names = {
+            item.RECORD_TYPE or item.EDGE_TYPE or type(item).__name__ for item in examples
+        }
+        self.assertEqual(class_names, set(RECORD_EDGES) - set(shared_payload_examples()))
         record_types = [item.RECORD_TYPE for item in examples if item.RECORD_TYPE is not None]
         self.assertEqual(len(record_types), len(set(record_types)))
+        self.assertEqual(
+            {item.RECORD_TYPE for item in examples if item.RECORD_TYPE is not None}
+            | set(shared_payload_examples()),
+            set(RECORD_TYPES),
+        )
         self.assertFalse(set(RECORD_TYPES) & LEGACY_PAYLOAD_RECORD_TYPES)
-        self.assertFalse(SHARED_WIRE_V1_RECORD_TYPES & LEGACY_PAYLOAD_RECORD_TYPES)
+        self.assertNotIn("ExecutionVersionsV1", RECORD_TYPES)
         for record in examples:
             with self.subTest(record=type(record).__name__):
                 wire = record.to_wire()
@@ -644,9 +642,8 @@ class RecordCodecTests(unittest.TestCase):
             if paths:
                 non_edges[record.RECORD_TYPE or type(record).__name__] = paths
             examples.append((type(record).__name__, spec, record.to_wire()))
-        for name, body in payload_codec_examples().items():
-            codec = ALL_RECORD_CODECS[name]
-            spec = codec.FIELD_SPEC if isinstance(codec, type) else codec.fields
+        for name, body in shared_payload_examples().items():
+            spec = RECORD_TYPES[name].fields
             non_edges_for_codec = frozenset(
                 path for path, edge in _hash_specs(spec) if edge is None
             )
@@ -761,7 +758,7 @@ class RecordCodecTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             WriterTurnV1.from_dict(wire)
 
-    def test_legacy_set_excludes_shared_and_registered_record_names(self):
+    def test_legacy_set_excludes_registered_record_names(self):
         expected_legacy = set(
             """AuthorToolAckV1 AuthorTurnV1 CheckBatchV1 CheckResultV1 ContextOperationV1
             DecisionDisclosureV1 DeterministicCheckEvidenceV1 FixtureFileCountEvidenceV1
@@ -775,19 +772,12 @@ class RecordCodecTests(unittest.TestCase):
             WriterToolResultV1""".split()
         )
         self.assertEqual(LEGACY_PAYLOAD_RECORD_TYPES, expected_legacy)
-        self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(SHARED_WIRE_V1_RECORD_TYPES))
         self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(RECORD_TYPES))
+        self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(shared_payload_examples()))
         self.assertNotIn("EvaluatorPacketV1", LEGACY_PAYLOAD_RECORD_TYPES)
         self.assertNotIn("RuntimePortDescriptorV1", LEGACY_PAYLOAD_RECORD_TYPES)
 
-    def test_shared_wire_v1_record_list_matches_the_documented_set(self):
-        expected = set(
-            """AuthorRequestV1 CheckRequestV1 DecisionLedgerV1 DisclosureLedgerV1
-            RequirementLedgerV1 RewardV1 TrainingEligibilityV1 GroupMemberSeedsV1""".split()
-        )
-        self.assertEqual(SHARED_WIRE_V1_RECORD_TYPES, expected)
-
-    def test_registered_shared_shapes_and_execution_versions_are_typed(self):
+    def test_registered_shared_shapes_and_untagged_execution_versions_are_typed(self):
         expected = {
             "DecisionLedgerV1": (),
             "DisclosureLedgerV1": (),
@@ -815,7 +805,7 @@ class RecordCodecTests(unittest.TestCase):
             "RequirementLedgerV1": (),
             "ExecutionVersionsV1": (("artifact", H),),
         }
-        for record_type, body in payload_codec_examples().items():
+        for record_type, body in shared_payload_examples().items():
             with self.subTest(record_type=record_type):
                 self.assertEqual(record_reference_edges(record_type, body), expected[record_type])
                 with self.assertRaises((TypeError, ValueError)):
@@ -825,6 +815,12 @@ class RecordCodecTests(unittest.TestCase):
                 with self.assertRaises((TypeError, ValueError)):
                     record_reference_edges(record_type, missing)
         self.assertIn(("private", Q), expected["CheckRequestV1"])
+        versions = next(item for item in record_examples() if isinstance(item, ExecutionVersionsV1))
+        self.assertEqual(
+            record_reference_edges("ExecutionVersionsV1", versions.to_wire()),
+            expected["ExecutionVersionsV1"],
+        )
+        self.assertNotIn("ExecutionVersionsV1", RECORD_TYPES)
 
     def test_admission_policy_wire_is_sorted_and_unique(self):
         wire = AdmissionPolicyV1(

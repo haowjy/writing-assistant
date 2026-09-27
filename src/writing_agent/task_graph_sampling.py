@@ -23,8 +23,8 @@ from writing_agent.task_graph_records import (
     OutcomeV1,
     WriterRequestV1,
     WriterTurnV1,
-    decode_canonical_value,
 )
+from writing_agent.task_graph_wire import decode_canonical_value
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 _ACTION_RECORD_FIELDS = {

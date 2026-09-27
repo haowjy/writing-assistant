@@ -8,29 +8,15 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Annotated, Any, ClassVar
 
+import writing_agent.task_graph_record_contracts  # noqa: F401 - populate the wire registry
+from writing_agent import task_graph_errors
 from writing_agent.task_graph import (
     MessageV1,
     domain_hash,
     safe_path,
 )
 from writing_agent.task_graph_contracts import EXECUTION_STATUSES, TASK_STATUSES
-from writing_agent.task_graph_errors import MaterializationError
-from writing_agent.task_graph_payloads import PAYLOAD_RECORD_CODECS
-from writing_agent.task_graph_record_contracts import (
-    POLICY_FIELDS as POLICY_FIELDS,
-)
-from writing_agent.task_graph_record_contracts import (
-    CompactionError as CompactionError,
-)
-from writing_agent.task_graph_record_contracts import (
-    ContextPolicyV1,
-    ExecutionVersionsV1,
-    GroupMemberSpecV1,
-    GroupSpecV1,
-)
-from writing_agent.task_graph_record_contracts import (
-    GroupError as GroupError,
-)
+from writing_agent.task_graph_payloads import payload_record_codecs
 from writing_agent.task_graph_wire import (
     Bool,
     CanonicalIntake,
@@ -46,18 +32,16 @@ from writing_agent.task_graph_wire import (
     RecordOf,
     Str,
     UnionOf,
-    _f,
-    _o,
-    _validate_codec,
-    _WireRecord,
+    WireRecord,
+    obj,
+    obj_opt,
+    record_class,
+    registered_record_classes,
     validate_canonical_value,
+    validate_codec,
 )
-from writing_agent.task_graph_wire import (
-    Obj as Obj,
-)
-from writing_agent.task_graph_wire import (
-    decode_canonical_value as decode_canonical_value,
-)
+
+_PAYLOAD_CODECS = payload_record_codecs()
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _TRACE_REF_KEYS = (
@@ -69,7 +53,7 @@ _TRACE_LOGPROB_KEYS = frozenset(
 )
 _JSON = JsonValue()
 _TEXT = Str()
-_TRACE_SCHEMA = _o(
+_TRACE_SCHEMA = obj_opt(
     {},
     {
         "model": _TEXT,
@@ -82,27 +66,27 @@ _TRACE_SCHEMA = _o(
     },
     extra=_JSON,
 )
-_RENDERING_SCHEMA = _f(
+_RENDERING_SCHEMA = obj(
     projection_version=Str(nonempty=True),
     prefix_id=Str(nonempty=True, logical=True),
     template_ref=Hash("artifact"),
     tokenizer_ref=Hash("artifact"),
     tool_schema_ref=Hash("artifact"),
 )
-_USAGE_SCHEMA = _o(
+_USAGE_SCHEMA = obj_opt(
     {},
     {key: Int() for key in ("prompt_tokens", "completion_tokens", "total_tokens")},
     extra=_JSON,
 )
-_TOOL_DISPATCH = _f(
-    spec=_f(max_file_bytes=Int(minimum=1), max_workspace_bytes=Int(minimum=1)),
-    observation=_o({"ok": Bool(), "valid": Bool()}, {"result": _JSON, "error": _TEXT}),
-    effect=DictOf(_f(before=Str(optional=True), after=Str(optional=True))),
+_TOOL_DISPATCH = obj(
+    spec=obj(max_file_bytes=Int(minimum=1), max_workspace_bytes=Int(minimum=1)),
+    observation=obj_opt({"ok": Bool(), "valid": Bool()}, {"result": _JSON, "error": _TEXT}),
+    effect=DictOf(obj(before=Str(optional=True), after=Str(optional=True))),
 )
 
 
 @dataclass(frozen=True)
-class SampledMessageV1(_WireRecord):
+class SampledMessageV1(WireRecord):
     content: Annotated[Any, CanonicalIntake()]
     tool_calls_was_list: Annotated[bool, Bool()]
     calls: Annotated[Any, _JSON]
@@ -125,7 +109,7 @@ class SampledMessageV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class WriterTurnV1(_WireRecord):
+class WriterTurnV1(WireRecord):
     action_id: Annotated[str, Str(nonempty=True, logical=True)]
     context_revision_ref: Annotated[str, Hash("context_revision")]
     request_ref: Annotated[str | None, Hash("artifact|bytes", optional=True)]
@@ -152,7 +136,7 @@ class WriterTurnV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class WriterRequestV1(_WireRecord):
+class WriterRequestV1(WireRecord):
     context_revision_ref: Annotated[str, Hash("context_revision")]
     payload_ref: Annotated[str, Hash("artifact|bytes")]
     verified_messages: Annotated[bool, Bool()]
@@ -160,7 +144,7 @@ class WriterRequestV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class ToolObservationV1(_WireRecord):
+class ToolObservationV1(WireRecord):
     call_id: Annotated[str, Str(nonempty=True, logical=True)]
     dispatch: Annotated[Mapping[str, Any] | None, UnionOf((type(None), _TOOL_DISPATCH))]
     RECORD_TYPE: ClassVar[str] = "ToolObservationV1"
@@ -175,7 +159,7 @@ class ToolObservationV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class AuthorReplyV1(_WireRecord):
+class AuthorReplyV1(WireRecord):
     request_ref: Annotated[str, Hash("private")]
     status: Annotated[str, Enum(frozenset({"answered", "unsupported_coverage"}))]
     utterance: Annotated[str | None, Str(optional=True)]
@@ -195,7 +179,7 @@ class AuthorReplyV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class EvaluatorResultV1(_WireRecord):
+class EvaluatorResultV1(WireRecord):
     request_ref: Annotated[str, Hash("private")]
     status: Annotated[str, Enum(frozenset({"pass", "fail"}))]
     evidence_ref: Annotated[str, Hash("artifact")]
@@ -203,38 +187,38 @@ class EvaluatorResultV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class ContextOperationInputV1(_WireRecord):
+class ContextOperationInputV1(WireRecord):
     policy_ref: Annotated[str, Hash("artifact")]
     RECORD_TYPE: ClassVar[str] = "ContextOperationInputV1"
 
 
 @dataclass(frozen=True)
-class EnvironmentStepV1(_WireRecord):
+class EnvironmentStepV1(WireRecord):
     directive: Annotated[
         Mapping[str, Any],
         KindUnion(
             "kind",
             MappingProxyType(
                 {
-                    "request_author": _f(
+                    "request_author": obj(
                         kind=Enum(frozenset({"request_author"})),
                         source=Enum(frozenset({"writer_request", "mandatory_feedback"})),
                     ),
-                    "request_checks": _f(kind=Enum(frozenset({"request_checks"}))),
-                    "commit_transition": _f(
+                    "request_checks": obj(kind=Enum(frozenset({"request_checks"}))),
+                    "commit_transition": obj(
                         kind=Enum(frozenset({"commit_transition"})),
                         edge_id=Str(nonempty=True, logical=True),
                     ),
-                    "seal_outcome": _f(
+                    "seal_outcome": obj(
                         kind=Enum(frozenset({"seal_outcome"})),
                         task_status=Enum(frozenset(TASK_STATUSES)),
                         stop_reason=Str(nonempty=True, optional=True),
                     ),
-                    "stop_exhausted": _f(
+                    "stop_exhausted": obj(
                         kind=Enum(frozenset({"stop_exhausted"})),
                         stop_reason=Str(nonempty=True),
                     ),
-                    "publish_reward": _f(kind=Enum(frozenset({"publish_reward"}))),
+                    "publish_reward": obj(kind=Enum(frozenset({"publish_reward"}))),
                 }
             ),
         ),
@@ -243,21 +227,21 @@ class EnvironmentStepV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class MemberStartV1(_WireRecord):
+class MemberStartV1(WireRecord):
     group_spec_ref: Annotated[str, Hash("artifact")]
     ordinal: Annotated[int, Int()]
     RECORD_TYPE: ClassVar[str] = "MemberStartV1"
 
 
 @dataclass(frozen=True)
-class ExternalInputsV1(_WireRecord):
+class ExternalInputsV1(WireRecord):
     schema: Annotated[int, Int(equals=1)]
     source_refs: Annotated[tuple[str, ...] | list[str], ListOf(Hash("artifact"))]
     RECORD_TYPE: ClassVar[str] = "ExternalInputsV1"
 
 
 @dataclass(frozen=True)
-class AdmissionPolicyV1(_WireRecord):
+class AdmissionPolicyV1(WireRecord):
     schema: Annotated[int, Int(equals=1)]
     writer_family: Annotated[str | None, Str(nonempty=True, optional=True)]
     allowed_tools: Annotated[tuple[str, ...] | list[str], ListOf(Str(nonempty=True))]
@@ -283,7 +267,7 @@ class AdmissionPolicyV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class OutcomeV1(_WireRecord):
+class OutcomeV1(WireRecord):
     schema: Annotated[int, Int(equals=1)]
     task_status: Annotated[str, Enum(frozenset(TASK_STATUSES))]
     execution_status: Annotated[str, Enum(frozenset(EXECUTION_STATUSES))]
@@ -294,7 +278,7 @@ class OutcomeV1(_WireRecord):
     requirement_version: Annotated[str | None, Hash("private", optional=True)]
     checks: Annotated[
         tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]],
-        ListOf(_f(request_ref=Hash("private"), result_ref=Hash("artifact", optional=True))),
+        ListOf(obj(request_ref=Hash("private"), result_ref=Hash("artifact", optional=True))),
     ]
     transition_edge_id: Annotated[str | None, Str(logical=True, optional=True)]
     failed_request_ref: Annotated[str | None, Hash("private", optional=True)]
@@ -304,7 +288,7 @@ class OutcomeV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class ContextContentV1(_WireRecord):
+class ContextContentV1(WireRecord):
     parent_ref: Annotated[str | None, Hash("context_node", optional=True)]
     messages: Annotated[
         tuple[MessageV1 | Mapping[str, Any], ...] | list[MessageV1 | Mapping[str, Any]],
@@ -312,10 +296,11 @@ class ContextContentV1(_WireRecord):
     ]
     tools: Annotated[
         tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]] | None,
-        UnionOf((type(None), ListOf(_o({}, extra=_JSON)))),
+        UnionOf((type(None), ListOf(obj_opt({}, extra=_JSON)))),
     ]
     rendering: Annotated[Mapping[str, Any] | None, UnionOf((type(None), _RENDERING_SCHEMA))]
     RECORD_TYPE: ClassVar[str | None] = None
+    EDGE_TYPE: ClassVar[str] = "context_node"
 
     def check(self) -> None:
         is_root = self.parent_ref is None
@@ -327,47 +312,26 @@ class ContextContentV1(_WireRecord):
 
 
 @dataclass(frozen=True)
-class ContextRevisionV1(_WireRecord):
+class ContextRevisionV1(WireRecord):
     content_ref: Annotated[str, Hash("context_node")]
     event_head: Annotated[str | None, Hash("event", optional=True)]
     provenance_refs: Annotated[tuple[str, ...] | list[str], ListOf(Hash("event"))]
     RECORD_TYPE: ClassVar[str | None] = None
+    EDGE_TYPE: ClassVar[str] = "context_revision"
 
     def identity(self) -> str:
         return domain_hash("context", self.to_wire())
 
 
-_WIRE_CLASSES = (
-    SampledMessageV1,
-    WriterTurnV1,
-    WriterRequestV1,
-    ToolObservationV1,
-    AuthorReplyV1,
-    EvaluatorResultV1,
-    ContextOperationInputV1,
-    EnvironmentStepV1,
-    MemberStartV1,
-    ExternalInputsV1,
-    AdmissionPolicyV1,
-    OutcomeV1,
-    ContextContentV1,
-    ContextRevisionV1,
-    GroupMemberSpecV1,
-    GroupSpecV1,
-    ContextPolicyV1,
-    ExecutionVersionsV1,
-)
-RECORD_TYPES: Mapping[str, type[_WireRecord] | PayloadCodec] = MappingProxyType(
+RECORD_TYPES: Mapping[str, type[WireRecord] | PayloadCodec] = MappingProxyType(
     {
-        **{record.RECORD_TYPE: record for record in _WIRE_CLASSES if record.RECORD_TYPE},
-        **dict(PAYLOAD_RECORD_CODECS),
-        "ExecutionVersionsV1": ExecutionVersionsV1,
+        **{
+            record.RECORD_TYPE: record
+            for record in registered_record_classes()
+            if record.RECORD_TYPE
+        },
+        **dict(_PAYLOAD_CODECS),
     }
-)
-
-SHARED_WIRE_V1_RECORD_TYPES = frozenset(
-    "AuthorRequestV1 CheckRequestV1 DecisionLedgerV1 DisclosureLedgerV1 RequirementLedgerV1 "
-    "RewardV1 TrainingEligibilityV1 GroupMemberSeedsV1".split()
 )
 
 LEGACY_PAYLOAD_RECORD_TYPES = frozenset(
@@ -384,19 +348,11 @@ LEGACY_PAYLOAD_RECORD_TYPES = frozenset(
 
 RECORD_EDGES: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
-        **{record_type: codec.REFS for record_type, codec in RECORD_TYPES.items()},
-        "context_node": ContextContentV1.REFS,
-        "context_revision": ContextRevisionV1.REFS,
-    }
-)
-ALL_RECORD_CODECS: Mapping[str, Any] = MappingProxyType(
-    {
-        **dict(RECORD_TYPES),
-        "SampledMessageV1": SampledMessageV1,
-        "GroupMemberSpecV1": GroupMemberSpecV1,
-        "ExecutionVersionsV1": ExecutionVersionsV1,
-        "context_node": ContextContentV1,
-        "context_revision": ContextRevisionV1,
+        **{
+            record.RECORD_TYPE or record.EDGE_TYPE or record.__name__: record.REFS
+            for record in registered_record_classes()
+        },
+        **{record_type: codec.REFS for record_type, codec in _PAYLOAD_CODECS},
     }
 )
 
@@ -405,15 +361,17 @@ def record_reference_edges(
     record_type: str, body: Mapping[str, Any]
 ) -> tuple[tuple[str, str], ...]:
     """Validate one registered payload and return its direct declared edges."""
-    try:
-        codec = ALL_RECORD_CODECS[record_type]
-    except KeyError as exc:
-        raise ValueError(f"unregistered task-graph record: {record_type!r}") from exc
+    codec = RECORD_TYPES.get(record_type)
+    if codec is None:
+        try:
+            codec = record_class(record_type)
+        except KeyError as exc:
+            raise ValueError(f"unregistered task-graph record: {record_type!r}") from exc
     if isinstance(codec, type):
         record = codec.from_dict(dict(body))
         edges = record._wire_edges
     else:
-        edges = _validate_codec(codec, body)
+        edges = validate_codec(codec, body)
     return tuple((edge, identity) for _, edge, identity in edges)
 
 
@@ -448,7 +406,7 @@ def materialize_context_nodes(
             break
         identity = node.parent_ref
     if root is None or root.tools is None or root.rendering is None:
-        raise MaterializationError("context chain has no materializable root")
+        raise task_graph_errors.MaterializationError("context chain has no materializable root")
     messages = tuple(message for chunk in reversed(chunks) for message in chunk)
     return MaterializedContextV1(messages, root.tools, root.rendering)
 

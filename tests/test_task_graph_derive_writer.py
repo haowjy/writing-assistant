@@ -12,12 +12,15 @@ from writing_agent.task_graph import CheckpointV1, canonical_bytes, domain_hash
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_derive_writer import derive_tool_result, derive_writer_turn
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
-from writing_agent.task_graph_record_contracts import _group_hash, _group_seed
+from writing_agent.task_graph_record_contracts import (
+    GroupMemberSpecV1,
+    GroupSpecV1,
+    _group_hash,
+    _group_seed,
+)
 from writing_agent.task_graph_records import (
     ContextContentV1,
     ContextRevisionV1,
-    GroupMemberSpecV1,
-    GroupSpecV1,
     OutcomeV1,
     ToolObservationV1,
     WriterRequestV1,

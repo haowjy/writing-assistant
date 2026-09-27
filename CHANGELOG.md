@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Publish the strict wire-record API, derive registries from declarations, and require
+  explicit value kinds for derived artifacts.
+
 - Unify transition construction across derives, persist typed queue rejections, and bind
   derived artifact refs to their explicit value domains.
 

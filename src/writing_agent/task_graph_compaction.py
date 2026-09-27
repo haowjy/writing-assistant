@@ -15,17 +15,17 @@ from writing_agent.task_graph import (
     ContextRevisionV1,
     EnvironmentStateV1,
     MessageV1,
-    _Record,
+    Record,
     canonical_bytes,
     canonical_json,
     domain_hash_bytes,
     validate_hash,
 )
-from writing_agent.task_graph_records import CompactionError, ContextPolicyV1
+from writing_agent.task_graph_record_contracts import CompactionError, ContextPolicyV1
 
 
 @dataclass(frozen=True)
-class ContextOperationV1(_Record):
+class ContextOperationV1(Record):
     """Content-addressed immutable witness for one active-context replacement."""
 
     record_type: str = "ContextOperationV1"

@@ -115,7 +115,10 @@ class TransitionValueTests(unittest.TestCase):
         self.assertEqual(artifact.value_kind, "canonical_json")
         self.assertEqual(
             DerivedArtifact(
-                ref=self.outcome.identity(), value=self.outcome, kind="artifact"
+                ref=self.outcome.identity(),
+                value=self.outcome,
+                kind="artifact",
+                value_kind="record",
             ).value_kind,
             "record",
         )
@@ -135,11 +138,17 @@ class TransitionValueTests(unittest.TestCase):
                 ref=domain_hash_bytes("payload", json_bytes_as_artifact),
                 value=json_bytes_as_artifact,
                 kind="artifact",
+                value_kind="bytes",
             ).value_kind,
             "bytes",
         )
         with self.assertRaises(ValueError):
-            DerivedArtifact(ref="a" * 64, value=payload, kind="private")
+            DerivedArtifact(
+                ref="a" * 64,
+                value=payload,
+                kind="private",
+                value_kind="canonical_json",
+            )
         with self.assertRaises(ValueError):
             DerivedArtifact(
                 ref=domain_hash("payload", body),
@@ -148,7 +157,14 @@ class TransitionValueTests(unittest.TestCase):
                 value_kind="bytes",
             )
         with self.assertRaises(TypeError):
-            DerivedArtifact(ref="b" * 64, value={"raw": "mapping"}, kind="artifact")
+            DerivedArtifact(
+                ref="b" * 64,
+                value={"raw": "mapping"},
+                kind="artifact",
+                value_kind="canonical_json",
+            )
+        with self.assertRaises(TypeError):
+            DerivedArtifact(ref="b" * 64, value=payload, kind="artifact")
         with self.assertRaises(TypeError):
             artifact.value[0] = 0
 

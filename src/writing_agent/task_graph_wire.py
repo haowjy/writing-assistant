@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sys
+import typing
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields
 from types import MappingProxyType
@@ -10,13 +10,13 @@ from typing import Annotated, Any, ClassVar, get_args, get_origin
 
 from writing_agent.task_graph import (
     MessageV1,
-    _freeze,
-    _logical_id,
-    _utf8,
     canonical_bytes,
     canonical_json,
     domain_hash,
+    freeze,
     load_canonical_json,
+    logical_id,
+    utf8,
     validate_hash,
 )
 
@@ -79,12 +79,12 @@ class Obj:
     extra: Any | None = None
 
 
-def _f(**required: Any) -> Obj:
+def obj(**required: Any) -> Obj:
     """Build one closed object shape without a parallel field table."""
     return Obj(MappingProxyType(required))
 
 
-def _o(
+def obj_opt(
     required: Mapping[str, Any], optional: Mapping[str, Any] | None = None, *, extra: Any = None
 ) -> Obj:
     return Obj(
@@ -117,7 +117,7 @@ class MessageValue:
 
 @dataclass(frozen=True)
 class RecordOf:
-    record: type[_WireRecord]
+    record: type[WireRecord]
 
 
 @dataclass(frozen=True)
@@ -133,14 +133,14 @@ class PayloadCodec:
         return _derived_refs(self.fields)
 
     def from_dict(self, body: Mapping[str, Any]) -> dict[str, Any]:
-        _validate_codec(self, body)
+        validate_codec(self, body)
         return dict(body)
 
 
 def _canonical_json_value(value: Any) -> None:
     if value is None or type(value) in (str, int, bool):
         if type(value) is str:
-            _utf8(value)
+            utf8(value)
         return
     if isinstance(value, (tuple, list)):
         for item in value:
@@ -151,7 +151,7 @@ def _canonical_json_value(value: Any) -> None:
     for key, item in value.items():
         if type(key) is not str:
             raise TypeError("canonical object keys must be strings")
-        _utf8(key, "canonical object key")
+        utf8(key, "canonical object key")
         _canonical_json_value(item)
 
 
@@ -171,7 +171,7 @@ def _decode_canonical_value(value: Any) -> Any:
     """Validate and decode exactly one canonical value produced by adapter intake."""
     if value is None or type(value) in (str, int, bool):
         if type(value) is str:
-            _utf8(value)
+            utf8(value)
         return value
     if isinstance(value, list):
         return [_decode_canonical_value(item) for item in value]
@@ -193,7 +193,7 @@ def _decode_canonical_value(value: Any) -> Any:
         representation = value["repr"]
         if type(representation) is not str:
             raise TypeError("float marker repr must be a string")
-        _utf8(representation, "float marker repr")
+        utf8(representation, "float marker repr")
         try:
             decoded = float(representation)
         except (ValueError, OverflowError) as exc:
@@ -205,7 +205,7 @@ def _decode_canonical_value(value: Any) -> Any:
         hexadecimal = value["hex"]
         if type(hexadecimal) is not str:
             raise TypeError("bytes marker hex must be a string")
-        _utf8(hexadecimal, "bytes marker hex")
+        utf8(hexadecimal, "bytes marker hex")
         try:
             decoded = bytes.fromhex(hexadecimal)
         except ValueError as exc:
@@ -245,7 +245,7 @@ def _decode_canonical_value(value: Any) -> Any:
         type_name = value["type"]
         if type(type_name) is not str or not type_name:
             raise ValueError("unsupported type must be nonempty text")
-        _utf8(type_name, "unsupported type")
+        utf8(type_name, "unsupported type")
         return object()
     return object()
 
@@ -277,7 +277,7 @@ def _wire_value(value: Any) -> None:
 
 
 def _json_value(value: Any) -> Any:
-    if isinstance(value, _WireRecord):
+    if isinstance(value, WireRecord):
         return value.to_wire()
     if isinstance(value, MessageV1):
         return value.to_dict()
@@ -324,7 +324,7 @@ def _walk_spec(
         if isinstance(spec, Str):
             if type(value) is not str:
                 raise TypeError(f"{label} must be a string")
-            _utf8(value, label)
+            utf8(value, label)
             if spec.nonempty and not value:
                 raise ValueError(f"{label} must be nonempty")
             if spec.no_whitespace_or_controls and any(
@@ -332,7 +332,7 @@ def _walk_spec(
             ):
                 raise ValueError(f"{label} cannot contain whitespace or control characters")
             if spec.logical:
-                _logical_id(value, label)
+                logical_id(value, label)
         elif isinstance(spec, Int):
             if type(value) is not int:
                 raise TypeError(f"{label} must be an integer")
@@ -374,7 +374,7 @@ def _walk_spec(
         for key, item in value.items():
             if type(key) is not str:
                 raise TypeError(f"{label} keys must be strings")
-            _utf8(key, f"{label} key")
+            utf8(key, f"{label} key")
             result[key] = _walk_spec(spec.value, item, f"{label}.{key}", f"{path}{{}}", edges)
         return result
     elif isinstance(spec, Obj):
@@ -478,7 +478,7 @@ def _derived_refs(spec: Obj) -> Mapping[str, str]:
     return MappingProxyType({path: edge for path, edge, _ in found})
 
 
-def _validate_codec(
+def validate_codec(
     codec: PayloadCodec, body: Mapping[str, Any]
 ) -> tuple[tuple[str, str, Any], ...]:
     if type(body) is not dict:
@@ -496,23 +496,33 @@ def _validate_codec(
     return tuple(edges)
 
 
-class _WireRecord:
+_RECORD_CLASSES: dict[str, type[WireRecord]] = {}
+
+
+def registered_record_classes() -> tuple[type[WireRecord], ...]:
+    """Return the record classes registered by their declarations."""
+    return tuple(_RECORD_CLASSES.values())
+
+
+def record_class(record_name: str) -> type[WireRecord]:
+    """Resolve a registered record class, including untagged domain records."""
+    return _RECORD_CLASSES[record_name]
+
+
+class WireRecord:
     """Base for strict, frozen wire values with optional payload record types."""
 
     RECORD_TYPE: ClassVar[str | None] = None
+    EDGE_TYPE: ClassVar[str | None] = None
     FIELD_SPEC: ClassVar[Obj] = Obj(MappingProxyType({}))
     REFS: ClassVar[Mapping[str, str]] = MappingProxyType({})
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        namespace = vars(sys.modules[cls.__module__])
+        annotations = typing.get_type_hints(cls, include_extras=True)
         specs: dict[str, Any] = {}
-        for name, raw_annotation in cls.__dict__.get("__annotations__", {}).items():
-            annotation = (
-                eval(raw_annotation, namespace, vars(cls))
-                if isinstance(raw_annotation, str)
-                else raw_annotation
-            )
+        for name in cls.__dict__.get("__annotations__", {}):
+            annotation = annotations[name]
             if get_origin(annotation) is ClassVar:
                 continue
             if get_origin(annotation) is not Annotated:
@@ -523,6 +533,10 @@ class _WireRecord:
             specs[name] = args[1]
         cls.FIELD_SPEC = Obj(MappingProxyType(specs))
         cls.REFS = _derived_refs(cls.FIELD_SPEC)
+        registry_name = cls.RECORD_TYPE or cls.EDGE_TYPE or cls.__name__
+        if registry_name in _RECORD_CLASSES:
+            raise TypeError(f"duplicate task-graph record registration: {registry_name}")
+        _RECORD_CLASSES[registry_name] = cls
 
     def __post_init__(self) -> None:
         values = {item.name: getattr(self, item.name) for item in fields(self)}
@@ -535,7 +549,7 @@ class _WireRecord:
             object.__setattr__(self, name, value)
         self.check()
         for item in fields(self):
-            object.__setattr__(self, item.name, _freeze(getattr(self, item.name)))
+            object.__setattr__(self, item.name, freeze(getattr(self, item.name)))
         object.__setattr__(self, "_wire_edges", tuple(edges))
         canonical_bytes(self.to_wire())
 

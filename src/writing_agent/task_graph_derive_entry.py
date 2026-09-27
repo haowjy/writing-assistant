@@ -10,9 +10,9 @@ from writing_agent.task_graph import (
     EnvironmentStateV1,
     MessageV1,
     Phase,
-    _freeze,
     canonical_bytes,
     domain_hash,
+    freeze,
     tree_hash,
     validate_hash,
 )
@@ -60,7 +60,7 @@ class EntryParamsV1:
             validate_hash(getattr(self, name))
         if not isinstance(self.rendering, Mapping):
             raise TypeError("rendering pins must be an object")
-        object.__setattr__(self, "rendering", _freeze(self.rendering))
+        object.__setattr__(self, "rendering", freeze(self.rendering))
 
 
 def params_of(state: EnvironmentStateV1, reader: ArtifactReader) -> EntryParamsV1:
@@ -262,14 +262,20 @@ def derive_entry(
         },
     )
     artifacts = (
-        DerivedArtifact(requirements_ref, canonical_bytes(requirements), "private"),
-        DerivedArtifact(decisions_ref, canonical_bytes(decisions), "artifact"),
-        DerivedArtifact(disclosures_ref, canonical_bytes(disclosures), "artifact"),
-        DerivedArtifact(budget_ref, canonical_bytes(budget), "artifact"),
-        DerivedArtifact(outcome_ref, outcome, "artifact"),
-        DerivedArtifact(external_inputs_ref, external_inputs, "artifact"),
-        DerivedArtifact(context_content.identity(), context_content, "context_node"),
-        DerivedArtifact(context_revision.identity(), context_revision, "context_revision"),
+        DerivedArtifact(
+            requirements_ref, canonical_bytes(requirements), "private", "canonical_json"
+        ),
+        DerivedArtifact(decisions_ref, canonical_bytes(decisions), "artifact", "canonical_json"),
+        DerivedArtifact(
+            disclosures_ref, canonical_bytes(disclosures), "artifact", "canonical_json"
+        ),
+        DerivedArtifact(budget_ref, canonical_bytes(budget), "artifact", "canonical_json"),
+        DerivedArtifact(outcome_ref, outcome, "artifact", "record"),
+        DerivedArtifact(external_inputs_ref, external_inputs, "artifact", "record"),
+        DerivedArtifact(context_content.identity(), context_content, "context_node", "record"),
+        DerivedArtifact(
+            context_revision.identity(), context_revision, "context_revision", "record"
+        ),
     )
     return EntryV1(state, artifacts)
 

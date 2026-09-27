@@ -10,8 +10,11 @@ from writing_agent.task_graph import (
     CheckpointV1,
     EventV1,
     MessageV1,
+    Record,
     canonical_bytes,
     domain_hash,
+    load_canonical_json,
+    thaw,
     tree_hash,
 )
 from writing_agent.task_graph import (
@@ -32,6 +35,7 @@ from writing_agent.task_graph_transition import (
     LineageView,
     Transition,
 )
+from writing_agent.task_graph_wire import WireRecord
 
 DeriveKey = str | tuple[str, str]
 
@@ -70,13 +74,13 @@ def next_state(view: LineageView, event: EventV1, **changes: Any):
     """Apply state changes and centrally advance history and the file-tree identity."""
     body = view.state.to_dict()
     history = dict(body["history"])
-    history.update(wire_copy(changes.pop("history", {})))
-    history.update(wire_copy(changes.pop("history_changes", {})))
+    history.update(thaw(changes.pop("history", {})))
+    history.update(thaw(changes.pop("history_changes", {})))
     history.update(head=event.id, seq=event.seq)
     for field in ("position", "continuation"):
         if field in changes:
-            body[field] = {**body[field], **wire_copy(changes.pop(field))}
-    body.update(wire_copy(changes))
+            body[field] = {**body[field], **thaw(changes.pop(field))}
+    body.update(thaw(changes))
     body["history"] = history
     body["tree_hash"] = tree_hash(body["files"])
     return type(view.state).from_dict(body)
@@ -184,17 +188,17 @@ def build_transition(
 
 def payload_artifact(value: Any, kind: str = "artifact") -> DerivedArtifact:
     """Create one identity-checked derived artifact from a typed record or payload body."""
-    if hasattr(value, "to_wire") and callable(value.to_wire):
+    if isinstance(value, (WireRecord, Record)):
         if kind in {"context_node", "context_revision"}:
             return DerivedArtifact(value.identity(), value, kind, "record")
-        body = value.to_wire()
+        body = value.to_wire() if isinstance(value, WireRecord) else value.to_dict()
         return DerivedArtifact(
             domain_hash("payload", body), canonical_bytes(body), kind, "canonical_json"
         )
     if isinstance(value, Mapping):
         body = dict(value)
         record_type = body.get("record_type")
-        if record_type in RECORD_TYPES:
+        if isinstance(record_type, str) and record_type in RECORD_TYPES:
             RECORD_TYPES[record_type].from_dict(body)
         return DerivedArtifact(
             domain_hash("payload", body), canonical_bytes(body), kind, "canonical_json"
@@ -240,20 +244,17 @@ def _changed_value(ref, old_ref, old_value, artifacts):
     for artifact in artifacts:
         if artifact.ref == ref:
             value = artifact.value
+            if artifact.value_kind == "record":
+                if isinstance(value, (WireRecord, Record)):
+                    return value
+                raise ValueError("changed view reference has no typed record")
             if artifact.value_kind == "canonical_json":
-                from writing_agent.task_graph import load_canonical_json
-
                 body = load_canonical_json(value)
-                return type(old_value).from_dict(body) if hasattr(old_value, "from_dict") else body
-            if hasattr(value, "to_wire"):
-                return value
+                if isinstance(body, Mapping):
+                    record_type = body.get("record_type")
+                    codec = RECORD_TYPES.get(record_type) if isinstance(record_type, str) else None
+                    if codec is not None:
+                        return codec.from_dict(body)
+                return body
             raise ValueError("changed view reference has no decodable payload")
     raise ValueError("changed view reference has no derived artifact")
-
-
-def wire_copy(value):
-    if isinstance(value, Mapping):
-        return {key: wire_copy(item) for key, item in value.items()}
-    if isinstance(value, (tuple, list)):
-        return [wire_copy(item) for item in value]
-    return value
