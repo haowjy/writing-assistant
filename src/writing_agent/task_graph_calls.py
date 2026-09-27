@@ -629,10 +629,9 @@ def tool_effect_contract(
             raise ValueError("tool has no declared file-effect contract")
         if any(len(text.encode("utf-8")) > max_file_bytes for text in new.values()):
             raise ValueError("tool result exceeds the per-file limit")
-        if sum(len(text.encode("utf-8")) for text in new.values()) > max_workspace_bytes:
+        workspace_bytes = sum(len(text.encode("utf-8")) for text in new.values())
+        if workspace_bytes > max_workspace_bytes:
             raise ValueError("tool result exceeds the workspace limit")
-        if sum(len(text.encode("utf-8")) for text in new.values()) > storage_bytes_limit:
-            raise ValueError("tool result exceeds the storage budget")
 
         if not observation_ok:
             expected = old

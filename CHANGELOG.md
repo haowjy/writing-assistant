@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Compute the tool-result workspace byte total once and rely on the pinned workspace/storage limit
+  relation instead of checking an unreachable second bound.
+
 - Scan the full `writing_agent` import graph and report cycles outside the task-graph module family.
 
 - Centralize re-entrant operation scopes, give closure validation ownership of rejected-candidate
