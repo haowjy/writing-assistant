@@ -310,30 +310,34 @@ def admit_graph(
                 resolver, spec, contract, script, checks
             )
         evaluator_packet = reward_contract = None
-        if (
-            interaction.mode == "scripted_author"
-            and contract.completion_contract.evaluation_packet_ref is not None
-        ):
-            evaluator_packet = _contract(
-                resolver,
-                contract.completion_contract.evaluation_packet_ref,
-                EvaluatorPacketV1,
-                private=True,
+        evaluation_packet_ref = contract.completion_contract.evaluation_packet_ref
+        if spec.kind == "writer" and evaluation_packet_ref is not None:
+            packet_body = _resolve_plain(resolver, evaluation_packet_ref, private=True)
+            legacy_evaluation = (
+                isinstance(packet_body, Mapping)
+                and packet_body.get("kind") == "legacy-evaluation-package"
             )
-            reward_contract = _contract(
-                resolver, evaluator_packet.reward_contract_ref, RewardContractV1, private=True
-            )
-            if set(evaluator_packet.check_ids) != set(checks):
-                raise AdmissionError("evaluator_coverage", "evaluator packet check IDs differ")
-            if set(reward_contract.components) - set(checks):
-                raise AdmissionError("reward_coverage", "reward names undeclared checks")
-            if any(
-                checks[check_id].applicability not in {"each_turn", "node_exit_candidate"}
-                for check_id in reward_contract.components
-            ):
-                raise AdmissionError(
-                    "reward_coverage", "reward component lacks terminal check evidence"
+            if not legacy_evaluation:
+                evaluator_packet = _contract(
+                    resolver,
+                    evaluation_packet_ref,
+                    EvaluatorPacketV1,
+                    private=True,
                 )
+                reward_contract = _contract(
+                    resolver, evaluator_packet.reward_contract_ref, RewardContractV1, private=True
+                )
+                if set(evaluator_packet.check_ids) != set(checks):
+                    raise AdmissionError("evaluator_coverage", "evaluator packet check IDs differ")
+                if set(reward_contract.components) - set(checks):
+                    raise AdmissionError("reward_coverage", "reward names undeclared checks")
+                if any(
+                    checks[check_id].applicability not in {"each_turn", "node_exit_candidate"}
+                    for check_id in reward_contract.components
+                ):
+                    raise AdmissionError(
+                        "reward_coverage", "reward component lacks terminal check evidence"
+                    )
         edges, guards = _validate_edges(resolver, spec, specs, edge_ids)
         if interaction.mode == "scripted_author" and any(
             edge.effect != "terminate" for edge in edges
