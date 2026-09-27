@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Scope closure validation reuse to one re-entrant store operation, return copied artifact
+  bodies, reject artifact writes using record domains, and avoid redundant canonical codec
+  and frozen-record identity walks.
+
 - Centralize task-graph runtime exceptions in a dependency-free leaf module, remove unused
   task-graph aliases, and guard the import seam with an AST-based SCC test.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import wraps
 from types import MappingProxyType
 
 from writing_agent.task_graph_controller import (
@@ -15,6 +16,15 @@ from writing_agent.task_graph_sampling import (
     TrainingEligibilityBindingV1,
     decode_and_bind_sampling,
 )
+
+
+def _operation_scoped(method):
+    @wraps(method)
+    def wrapped(owner, *args, **kwargs):
+        with owner.store.operation():
+            return method(owner, *args, **kwargs)
+
+    return wrapped
 
 
 def current_check_results(store, state):
@@ -133,6 +143,7 @@ class ScriptedTerminalV1:
         self.publication = writer.publication
         self.store = writer.store
 
+    @_operation_scoped
     def transition(self, runtime):
         node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
@@ -188,6 +199,7 @@ class ScriptedTerminalV1:
             restore_prefix="terminal",
         )
 
+    @_operation_scoped
     def terminal_outcome(self, runtime):
         node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
@@ -241,6 +253,7 @@ class ScriptedTerminalV1:
             restore_prefix="terminal",
         )
 
+    @_operation_scoped
     def stop_incomplete(self, runtime):
         """Seal a verifiable feedback prerequisite or budget failure."""
         node, _ = self.writer.validate_runtime(runtime)
@@ -278,6 +291,7 @@ class ScriptedTerminalV1:
             restore_prefix="terminal",
         )
 
+    @_operation_scoped
     def reward(self, runtime):
         node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state

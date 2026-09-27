@@ -977,6 +977,19 @@ def replay_writer_history(
     candidate_state: EnvironmentStateV1 | None = None,
 ) -> ValidatedReplayResult:
     """Replay the stored suffix and optional staged batch with identical authority."""
+    with store.operation():
+        return _replay_writer_history(
+            store,
+            base_checkpoint_id,
+            target_checkpoint_id,
+            candidate_events=candidate_events,
+            candidate_state=candidate_state,
+        )
+
+
+def _replay_writer_history(
+    store, base_checkpoint_id, target_checkpoint_id, *, candidate_events, candidate_state
+) -> ValidatedReplayResult:
     from writing_agent.task_graph_contracts import NodeContractV1
 
     base = store.load_checkpoint(base_checkpoint_id)

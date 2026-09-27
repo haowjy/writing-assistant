@@ -189,8 +189,11 @@ terminal stop. Already-sampled token overrun commits usage/output evidence and a
 terminal budget stop without tool execution. Exact pre-sampling context-token capacity
 and non-whitespace read counting are not supported and fail at runtime initialization.
 
-Reference closure uses one operation-scoped typed traversal with loaded, active, and
-completed sets. Checkpoint/commit/event depth is traversed iteratively; supplemental
+Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
+and loaded, active, and completed sets. Closure-validated immutable objects are reused
+only within the outermost store or role operation; each later operation re-reads and
+re-hashes them. Artifact reads return deep JSON-shaped copies, so caller mutation cannot
+alter a verified value. Checkpoint/commit/event depth is traversed iteratively; supplemental
 and imported references cannot bypass the validators for their resolved record domain.
 There is no process-global validation cache. Immutable-name and ref-name retries repeat
 their containing-directory durability barrier even when equal bytes or the matching

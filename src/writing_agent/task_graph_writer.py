@@ -61,7 +61,7 @@ from writing_agent.task_graph_sampling import (
     make_prepared_request,
     make_sampling_evidence,
 )
-from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
+from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore, _operation_scoped
 
 _MAX_ARGUMENT_BYTES = 65_536
 _MAX_CALL_EVIDENCE = 131_072
@@ -249,6 +249,7 @@ class TransactionalWriterV1:
         ):
             raise WriterRuntimeError("unsupported read tokenizer for semantic validation")
 
+    @_operation_scoped
     def validate_runtime(self, runtime: RuntimeHandle) -> tuple[Any, dict[str, Any]]:
         if self.session.sealed_adapter_ref is not None:
             self.session.require_seal(self.session.sealed_adapter_ref)
@@ -315,6 +316,7 @@ class TransactionalWriterV1:
             raise WriterRuntimeError("storage counter differs from checkpoint files")
         return node, budget
 
+    @_operation_scoped
     def change_context(self, runtime: RuntimeHandle, policy: ContextPolicyV1) -> WriterStepV1:
         """Publish one fixed, zero-mask context operation at a completed exchange."""
         if not isinstance(policy, ContextPolicyV1):
@@ -541,6 +543,7 @@ class TransactionalWriterV1:
             )
         return queue, metadata
 
+    @_operation_scoped
     def prepare_request(self, runtime: RuntimeHandle, exact_request: Any) -> str:
         """Durably pin caller-owned backend input, without verifying its messages.
 
@@ -579,6 +582,7 @@ class TransactionalWriterV1:
             make_prepared_request(runtime.context, payload_ref, verified=False).to_wire()
         )
 
+    @_operation_scoped
     def prepare_verified_messages(
         self, runtime: RuntimeHandle, exact_request: Mapping[str, Any]
     ) -> str:
@@ -624,6 +628,7 @@ class TransactionalWriterV1:
                 ) from exc
             raise WriterRuntimeError(str(exc)) from exc
 
+    @_operation_scoped
     def submit_action(
         self,
         runtime: RuntimeHandle,
@@ -922,6 +927,7 @@ class TransactionalWriterV1:
             ),
         )
 
+    @_operation_scoped
     def step_tool(self, runtime: RuntimeHandle) -> WriterStepV1:
         _, budget = self.validate_runtime(runtime)
         self.publication.head(runtime)
@@ -1057,6 +1063,7 @@ class TransactionalWriterV1:
         batch.append_visible((tool_message,), event)
         return batch.publish(event, record_ref)
 
+    @_operation_scoped
     def drain_tools(self, runtime: RuntimeHandle) -> RuntimeHandle:
         """Resume only uncommitted queued calls; each iteration publishes one result."""
         while runtime.state.continuation["next_call"] < len(
@@ -1067,6 +1074,7 @@ class TransactionalWriterV1:
             runtime = self.step_tool(runtime).runtime
         return runtime
 
+    @_operation_scoped
     def stop_exhausted(self, runtime: RuntimeHandle) -> WriterStepV1:
         """Seal a drained writer entry with no remaining turn or token capacity.
 

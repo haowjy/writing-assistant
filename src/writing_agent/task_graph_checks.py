@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import wraps
+
 from writing_agent.task_graph_contracts import (
     CheckContractV1,
     InteractionPolicyV1,
@@ -13,6 +15,15 @@ from writing_agent.task_graph_evaluation import (
     StoreEvidenceResolver,
     verify_evaluation_evidence,
 )
+
+
+def _operation_scoped(method):
+    @wraps(method)
+    def wrapped(owner, *args, **kwargs):
+        with owner.store.operation():
+            return method(owner, *args, **kwargs)
+
+    return wrapped
 
 
 def applicable_checks(node, feedback_cursor: int) -> tuple[CheckContractV1, ...]:
@@ -38,6 +49,7 @@ class DeterministicChecksV1:
         self.publication = writer.publication
         self.store = writer.store
 
+    @_operation_scoped
     def request_checks(self, runtime):
         node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state
@@ -88,6 +100,7 @@ class DeterministicChecksV1:
             result_effect=True,
         )
 
+    @_operation_scoped
     def check_next(self, runtime):
         node, _ = self.writer.validate_runtime(runtime)
         state = runtime.state

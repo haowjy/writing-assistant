@@ -98,34 +98,11 @@ def _tool_result_id(value: str) -> str:
     return value
 
 
-def _validate_utf8(value: Any) -> None:
-    """Validate every string and object key recursively, without normalizing."""
-    if isinstance(value, str):
-        _utf8(value)
-    elif isinstance(value, Mapping):
-        for key, item in value.items():
-            _utf8(key, "object key")
-            _validate_utf8(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _validate_utf8(item)
-
-
-def _reject_float(value: Any) -> None:
-    if isinstance(value, float):
-        raise ValueError("canonical JSON does not permit floats")
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError("canonical JSON object keys must be strings")
-            _reject_float(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _reject_float(item)
-
-
 def _json_value(value: Any) -> Any:
     """Convert frozen records to JSON-compatible values without losing order."""
+    kind = type(value)
+    if kind is str or kind is int or kind is bool or value is None:
+        return value
     if is_dataclass(value):
         if not isinstance(value, _Record):
             raise TypeError("arbitrary dataclasses are not canonical values")
@@ -167,15 +144,33 @@ def _wire_value(value: Any) -> None:
 
 def canonical_json(value: Any) -> str:
     """Return canonical JSON v1 (compact UTF-8-safe text, without a newline)."""
-    _validate_utf8(value)
-    value = _json_value(value)
-    _reject_float(value)
+    if isinstance(value, _Record) and type(value).to_dict is _Record.to_dict:
+        return value._canonical().decode("utf-8")
+    text = _dumps(_json_value(value))
+    _strict_utf8(text)
+    return text
+
+
+def _dumps(value: Any) -> str:
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
     )
 
 
+def _strict_utf8(text: str) -> bytes:
+    try:
+        return text.encode("utf-8", "strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError("string must be valid UTF-8") from exc
+
+
+def _no_float(text: str) -> Any:
+    raise ValueError("canonical JSON does not permit floats")
+
+
 def canonical_bytes(value: Any) -> bytes:
+    if isinstance(value, _Record) and type(value).to_dict is _Record.to_dict:
+        return value._canonical()
     return canonical_json(value).encode("utf-8", "strict")
 
 
@@ -198,14 +193,16 @@ def load_canonical_json(data: str | bytes) -> Any:
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_pairs_no_duplicates,
+            parse_float=_no_float,
             parse_constant=lambda value: (_ for _ in ()).throw(
                 ValueError(f"invalid constant: {value}")
             ),
         )
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
         raise ValueError("invalid canonical JSON") from exc
-    _reject_float(value)
-    if canonical_bytes(value) != raw:
+    # json.loads yields only dict/list/str/int/bool/None with string keys and
+    # (with parse_float) no floats, so it can be re-serialized directly.
+    if _strict_utf8(_dumps(value)) != raw:
         raise ValueError("JSON is not canonical JSON v1")
     return value
 
@@ -315,14 +312,6 @@ def _freeze(value: Any) -> Any:
     return value
 
 
-def _thaw(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {k: _thaw(v) for k, v in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(v) for v in value]
-    return value
-
-
 @dataclass(frozen=True)
 class _Record:
     schema: int = 1
@@ -331,23 +320,48 @@ class _Record:
     def __post_init__(self) -> None:
         if type(self.schema) is not int or self.schema != CANONICAL_VERSION:
             raise ValueError(f"unsupported {type(self).__name__} schema")
-        _validate_utf8(self.to_dict())
+        # One walk: _json_value rejects floats/unsupported values/non-string
+        # keys; the strict encode of its serialization rejects lone surrogates.
+        _strict_utf8(_dumps(_json_value(self)))
         for field in fields(self):
             if field.name != "schema":
                 object.__setattr__(self, field.name, _freeze(getattr(self, field.name)))
-        _reject_float(self.to_dict())
         self.validate()
 
     def validate(self) -> None:
         pass
 
     def to_dict(self) -> dict[str, Any]:
-        return _thaw(_json_value(self))
+        # _json_value already builds fresh dict/list containers.
+        return _json_value(self)
+
+    # Records are frozen after __post_init__ (every field is frozen by _freeze
+    # into tuples/MappingProxyType over private dicts, or is itself a frozen
+    # record), so their canonical bytes and identity are pure functions of the
+    # instance. The cache lives in the instance __dict__, outside dataclass
+    # fields, so eq/hash/repr and wire bytes are unchanged.
+    def _canonical(self) -> bytes:
+        memoizable = type(self).to_dict is _Record.to_dict
+        cached = self.__dict__.get("_canonical_cache") if memoizable else None
+        if cached is not None:
+            return cached
+        encoded = canonical_json(self.to_dict()).encode("utf-8", "strict")
+        if memoizable:
+            self.__dict__["_canonical_cache"] = encoded
+        return encoded
 
     def to_json(self) -> str:
         return canonical_json(self)
 
     def identity(self) -> str:
+        cached = self.__dict__.get("_identity_cache")
+        if cached is not None:
+            return cached
+        memoizable = type(self).to_dict is _Record.to_dict
+        if memoizable and not isinstance(self, (EventV1, LineageRefV1)):
+            cached = hashlib.sha256(_DOMAINS[self.DOMAIN] + self._canonical()).hexdigest()
+            self.__dict__["_identity_cache"] = cached
+            return cached
         body = self.to_dict()
         # EventV1 carries its address for interchange, but an identity never
         # hashes the field that contains that identity.
@@ -356,7 +370,10 @@ class _Record:
         if isinstance(self, LineageRefV1):
             # expected_head is a compare-and-swap request, not lineage authority.
             body.pop("expected_head", None)
-        return domain_hash(self.DOMAIN, body)
+        identity = domain_hash(self.DOMAIN, body)
+        if memoizable:
+            self.__dict__["_identity_cache"] = identity
+        return identity
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]):
@@ -389,7 +406,7 @@ class _Record:
         else:
             raise TypeError("JSON input must be str or bytes")
         record = cls.from_dict(load_canonical_json(raw))
-        if canonical_bytes(record.to_dict()) != raw:
+        if record._canonical() != raw:
             raise ValueError("decoded record did not preserve canonical bytes")
         return record
 

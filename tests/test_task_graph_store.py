@@ -201,6 +201,27 @@ class TaskGraphStoreTest(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def test_operation_reuses_verified_artifacts_and_returns_deep_copies(self):
+        value = {"nested": [{"items": ["original"]}]}
+        identity = self.store.put_artifact(value)
+        read_bytes = self.store._read_bytes
+
+        with (
+            mock.patch.dict(os.environ, {"CWA_TASK_GRAPH_AUDIT_SCOPE_EXIT": "1"}),
+            mock.patch.object(self.store, "_read_bytes", wraps=read_bytes) as read,
+        ):
+            with self.store.operation():
+                returned = self.store.get_artifact(identity)
+                returned["nested"][0]["items"].append("caller mutation")
+                self.assertEqual(self.store.get_artifact(identity), value)
+            self.assertEqual(read.call_count, 1)
+            self.assertIsNone(getattr(self.store._session, "validator", None))
+
+            # Verification is deliberately operation-scoped: the next read
+            # must read and hash the artifact again.
+            self.assertEqual(self.store.get_artifact(identity), value)
+            self.assertEqual(read.call_count, 2)
+
     def publish_change(self, lineage="main", expected=None, parent=None, before=None, text="beta"):
         if before is None:
             parent, before = self.fixture.root()
@@ -785,19 +806,18 @@ class TaskGraphStoreTest(unittest.TestCase):
         with self.assertRaises(WrongRecordDomainError):
             self.store.save_checkpoint(state, artifact_refs=(duplicate,))
 
-        event_envelope = self.store.put_artifact(
-            EventV1(
-                lineage_id="seed",
-                kind="tool_result",
-                audience=("controller",),
-                payload_ref=self.fixture.common["entry"],
-                versions_ref=self.fixture.common["versions"],
-                provenance_ref=self.fixture.common["provenance"],
-            ).to_dict(),
-            domain="event",
-        )
-        with self.assertRaises(WrongRecordDomainError):
-            self.store.save_checkpoint(state, artifact_refs=(event_envelope,))
+        with self.assertRaises(ValueError):
+            self.store.put_artifact(
+                EventV1(
+                    lineage_id="seed",
+                    kind="tool_result",
+                    audience=("controller",),
+                    payload_ref=self.fixture.common["entry"],
+                    versions_ref=self.fixture.common["versions"],
+                    provenance_ref=self.fixture.common["provenance"],
+                ).to_dict(),
+                domain="event",
+            )
 
     def test_deep_branched_closure_is_iterative_and_reads_each_record_once(self):
         depth = 180
