@@ -70,6 +70,16 @@ class GroupCoordinatorTests(unittest.TestCase):
             self.coordinator.start(spec, ordinal, policy=self.policy) for ordinal in range(2)
         )
 
+    def test_sealed_spec_is_persisted_as_a_payload_artifact(self):
+        from writing_agent.task_graph import load_canonical_json
+
+        spec = self.group()
+        path = self.store._artifact_path(spec.identity(), False)
+        self.assertEqual(
+            load_canonical_json(path.read_bytes()),
+            {"schema": 1, "domain": "payload", "encoding": "json", "body": spec.to_wire()},
+        )
+
     def test_full_contract_drift_and_start_isolation(self):
         receipt = self.root / "atomic-receipt.json"
         with patch("writing_agent.task_graph_group.os.link", side_effect=OSError("fault")):

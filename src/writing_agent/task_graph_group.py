@@ -124,6 +124,9 @@ class GroupCoordinatorV1:
             policy=policy,
             members=members,
         )
+        # Keep the sealed contract addressable to the pure member-start derive.
+        # Its payload identity is exactly GroupSpecV1.identity().
+        self.store.put_artifact(spec.to_wire())
         with self._locked(group_id) as directory:
             self._receipt(directory / "spec.json", spec.to_dict())
         return spec

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Derive context operations from sealed policies and ancestry, derive member starts from
+  persisted group specs, and persist each spec at seal time.
+
 - Derive strict record field specs and `REFS` from each field declaration, keep binding
   rules on their records, and split the shared wire core from group and payload codecs.
 

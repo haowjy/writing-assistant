@@ -17,6 +17,7 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_operation",
     "writing_agent.task_graph_transition",
     "writing_agent.task_graph_derive_entry",
+    "writing_agent.task_graph_derive_context",
     "writing_agent.task_graph_controller",
 }
 
