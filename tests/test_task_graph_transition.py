@@ -6,7 +6,13 @@ import unittest
 from dataclasses import FrozenInstanceError, replace
 
 from tests.task_graph_fixtures import make_entry_fixture
-from writing_agent.task_graph import MessageV1, Phase, canonical_bytes
+from writing_agent.task_graph import (
+    MessageV1,
+    Phase,
+    canonical_bytes,
+    domain_hash,
+    domain_hash_bytes,
+)
 from writing_agent.task_graph_records import OutcomeV1
 from writing_agent.task_graph_transition import (
     CheckpointChain,
@@ -97,12 +103,50 @@ class TransitionValueTests(unittest.TestCase):
         self.assertIsNone(mode.reward)
 
     def test_derived_artifact_requires_canonical_bytes_or_typed_record(self) -> None:
+        body = {"nested": [{"value": "safe"}]}
+        payload = canonical_bytes(body)
         artifact = DerivedArtifact(
-            ref="a" * 64,
-            value=canonical_bytes({"nested": [{"value": "safe"}]}),
+            ref=domain_hash("payload", body),
+            value=payload,
             kind="private",
+            value_kind="canonical_json",
         )
         self.assertEqual(artifact.value, b'{"nested":[{"value":"safe"}]}')
+        self.assertEqual(artifact.value_kind, "canonical_json")
+        self.assertEqual(
+            DerivedArtifact(
+                ref=self.outcome.identity(), value=self.outcome, kind="artifact"
+            ).value_kind,
+            "record",
+        )
+        binary = b"\x00\xffopaque"
+        self.assertEqual(
+            DerivedArtifact(
+                ref=domain_hash_bytes("payload", binary),
+                value=binary,
+                kind="artifact",
+                value_kind="bytes",
+            ).value_kind,
+            "bytes",
+        )
+        json_bytes_as_artifact = b'{"nested":[{"value":"safe"}]}'
+        self.assertEqual(
+            DerivedArtifact(
+                ref=domain_hash_bytes("payload", json_bytes_as_artifact),
+                value=json_bytes_as_artifact,
+                kind="artifact",
+            ).value_kind,
+            "bytes",
+        )
+        with self.assertRaises(ValueError):
+            DerivedArtifact(ref="a" * 64, value=payload, kind="private")
+        with self.assertRaises(ValueError):
+            DerivedArtifact(
+                ref=domain_hash("payload", body),
+                value=binary,
+                kind="artifact",
+                value_kind="bytes",
+            )
         with self.assertRaises(TypeError):
             DerivedArtifact(ref="b" * 64, value={"raw": "mapping"}, kind="artifact")
         with self.assertRaises(TypeError):

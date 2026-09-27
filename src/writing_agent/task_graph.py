@@ -909,7 +909,12 @@ class EnvironmentStateV1(_Record):
         for call in queue:
             if not isinstance(call, Mapping):
                 raise TypeError("tool_queue entries must be objects")
-            if set(call) != {"call_id", "name", "arguments"}:
+            legacy_fields = {"call_id", "name", "arguments"}
+            rejection_fields = {*legacy_fields, "rejection"}
+            if frozenset(call) not in {
+                frozenset(legacy_fields),
+                frozenset(rejection_fields),
+            }:
                 raise ValueError("invalid tool call shape")
             call_id = _logical_id(call["call_id"], "tool call id")
             if call_id in call_ids:
@@ -918,6 +923,16 @@ class EnvironmentStateV1(_Record):
             _logical_id(call["name"], "tool name")
             if not isinstance(call["arguments"], Mapping):
                 raise TypeError("tool arguments must be an object")
+            if "rejection" in call:
+                rejection = call["rejection"]
+                if rejection is not None and not isinstance(rejection, str):
+                    raise TypeError("tool rejection must be text or null")
+                if rejection is not None and (
+                    call["name"] != "invalid_call" or call["arguments"] != {}
+                ):
+                    raise ValueError("rejected calls must use invalid_call and empty arguments")
+                if rejection is None and call["name"] == "invalid_call":
+                    raise ValueError("invalid_call requires a rejection")
         validate_hash(self.continuation["author_request"], optional=True)
         refs = self.continuation["check_requests"]
         if not isinstance(refs, tuple):

@@ -7,12 +7,14 @@ author model, interpret prose, run checks, or decide completion.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_accounting import charge_tool_attempt
 from writing_agent.task_graph_calls import validate_ask_shape
-from writing_agent.task_graph_errors import WriterRuntimeError
+from writing_agent.task_graph_errors import ProjectionError, WriterRuntimeError
 from writing_agent.task_graph_operation import operation_scoped
+from writing_agent.task_graph_records import AuthorReplyV1
 
 
 def validate_ask_semantics(arguments, node, decisions) -> None:
@@ -133,6 +135,160 @@ def resolve_script_reply(script, request, decisions, disclosures):
         "selected_proposals": selected,
     }
     return values, ledger, reply
+
+
+def derive_writer_request_fields(view, reader):
+    """Validate and project one queued ask_author call into its request fields."""
+    continuation = view.state.continuation
+    cursor = continuation["next_call"]
+    queue = continuation["tool_queue"]
+    if cursor >= len(queue):
+        raise ProjectionError("writer author request has no pending call")
+    call = queue[cursor]
+    source = view.call_sources.get(call["call_id"])
+    if (
+        call["name"] != "ask_author"
+        or source is None
+        or source.queue_index != cursor
+        or not view.state.history["action_ids"]
+        or source.action_id != view.state.history["action_ids"][-1]
+    ):
+        raise ProjectionError("writer author request does not bind the pending call")
+    arguments = _mutable_wire(call["arguments"])
+    try:
+        validate_ask_semantics(arguments, view.node, reader.artifact(view.state.decisions_ref))
+    except (TypeError, ValueError, KeyError) as exc:
+        raise ProjectionError("writer author request has invalid ask semantics") from exc
+    public_ids = [item["id"] for item in view.node.interaction_policy.public_decisions]
+    selected = set(arguments["decision_ids"])
+    decision_ids = [identity for identity in public_ids if identity in selected]
+    if not decision_ids:
+        raise ProjectionError("writer author request has no public decision")
+    return {
+        "action_id": source.action_id,
+        "call_id": call["call_id"],
+        "feedback_id": None,
+        "arguments": arguments,
+        "decision_ids": decision_ids,
+    }
+
+
+def derive_feedback_request_fields(view, prereqs):
+    """Project the next admitted mandatory-feedback request, if it is ready."""
+    cursor = view.state.continuation["feedback_cursor"]
+    rules = view.mode.feedback_rules
+    if cursor >= len(rules) or view.state.continuation["check_requests"]:
+        raise ProjectionError("mandatory feedback is not ready")
+    rule = rules[cursor]
+    from writing_agent.task_graph_checks import applicable_checks
+
+    expected_phase = "awaiting_checks" if applicable_checks(view.node, cursor) else "checking"
+    if view.state.position["phase"] != expected_phase:
+        raise ProjectionError("mandatory feedback skipped its progress checks")
+    if any(
+        prereqs.get(check_id, {}).get("status") != "pass"
+        for check_id in rule["prerequisite_check_ids"]
+    ):
+        raise ProjectionError("mandatory feedback prerequisites did not pass")
+    consumed, limits = view.budget["consumed"], view.budget["limits"]
+    if any(consumed.get(key, 0) >= limits.get(key, 0) for key in ("author_calls", "writer_turns")):
+        raise ProjectionError("mandatory feedback budget is exhausted")
+    return {
+        "action_id": None,
+        "call_id": None,
+        "feedback_id": rule["id"],
+        "arguments": None,
+        "decision_ids": [],
+    }
+
+
+def validate_derived_author_request(view, request):
+    """Fail closed unless a stored request matches its private active role state."""
+    interaction = view.node.contract.interaction_contract
+    expected_request_id = (
+        f"{view.state.position['lineage_id']}:author:"
+        f"{view.budget['consumed'].get('author_calls', 0) - 1}"
+    )
+    if (
+        not isinstance(request, Mapping)
+        or request.get("record_type") != "AuthorRequestV1"
+        or request.get("schema") != 1
+        or request.get("requirement_version") != view.state.requirements_ref
+        or request.get("author_packet_ref") != view.state.author_packet_ref
+        or request.get("author_packet_ref") != interaction.author_packet_ref
+        or request.get("script_ref") != interaction.script_ref
+        or request.get("request_id") != expected_request_id
+    ):
+        raise ProjectionError("outstanding author request is not a derived role request")
+    if request["source"] not in {"writer_request", "mandatory_feedback"}:
+        raise ProjectionError("unsupported author request source")
+
+
+def validate_feedback_reply(view, reply: AuthorReplyV1, request: Mapping[str, object]) -> None:
+    cursor = view.state.continuation["feedback_cursor"]
+    if cursor >= len(view.mode.feedback_rules):
+        raise ProjectionError("feedback cursor exceeds the admitted script")
+    rule = view.mode.feedback_rules[cursor]
+    if (
+        request["feedback_id"] != rule["id"]
+        or request["action_id"] is not None
+        or request["call_id"] is not None
+        or request["arguments"] is not None
+        or request["decision_ids"]
+        or reply.decision_ids
+        or reply.selected_proposals
+        or reply.utterance != rule["utterance"]
+    ):
+        raise ProjectionError("author reply differs from mandatory feedback")
+
+
+def author_message(request: Mapping[str, object], utterance: str) -> MessageV1:
+    return MessageV1(
+        role="user",
+        origin=request["request_id"],
+        content=({"type": "text", "text": utterance},),
+    )
+
+
+def wire_author_reply(legacy_reply: Mapping[str, object]) -> AuthorReplyV1:
+    selected = {
+        decision_id: ([] if proposal_id is None else [proposal_id])
+        for decision_id, proposal_id in legacy_reply["selected_proposals"].items()
+    }
+    return AuthorReplyV1(
+        request_ref=legacy_reply["request_ref"],
+        status="answered",
+        utterance=legacy_reply["utterance"],
+        decision_ids=legacy_reply["decision_ids"],
+        selected_proposals=selected,
+    )
+
+
+def require_unsupported_coverage(request, reply, request_ref, script, decisions, disclosures):
+    if request["source"] != "writer_request":
+        raise ProjectionError("mandatory feedback cannot claim unsupported coverage")
+    if reply.decision_ids or reply.selected_proposals:
+        raise ProjectionError("coverage failure cannot disclose decisions")
+    try:
+        resolve_script_reply(
+            script,
+            {**request, "request_ref": request_ref},
+            decisions,
+            disclosures,
+        )
+    except ScriptCoverageError:
+        return
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError("author request is malformed") from exc
+    raise ProjectionError("script covers the request; coverage failure is forged")
+
+
+def _mutable_wire(value):
+    if isinstance(value, Mapping):
+        return {key: _mutable_wire(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_mutable_wire(item) for item in value]
+    return value
 
 
 class ScriptedAuthorRuntimeV1:

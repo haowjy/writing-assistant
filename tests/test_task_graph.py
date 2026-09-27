@@ -360,6 +360,38 @@ class TaskGraphRecordsTest(unittest.TestCase):
             }
         )
         self.assertEqual(valid.history["action_ids"], ("r1:action:0",))
+        legacy_invalid = {"call_id": "call-2", "name": "invalid_call", "arguments": {}}
+        EnvironmentStateV1(
+            **{
+                **state.to_dict(),
+                "continuation": {**state.continuation, "tool_queue": (legacy_invalid,)},
+            }
+        )
+        rejected = {
+            "call_id": "call-3",
+            "name": "invalid_call",
+            "arguments": {},
+            "rejection": "bad syntax",
+        }
+        EnvironmentStateV1(
+            **{
+                **state.to_dict(),
+                "continuation": {**state.continuation, "tool_queue": (rejected,)},
+            }
+        )
+        for changed in (
+            {**rejected, "name": "write_file"},
+            {**rejected, "arguments": {"path": "a.txt"}},
+            {**rejected, "rejection": 1},
+            {**rejected, "rejection": None},
+        ):
+            with self.subTest(changed=changed), self.assertRaises((TypeError, ValueError)):
+                EnvironmentStateV1(
+                    **{
+                        **state.to_dict(),
+                        "continuation": {**state.continuation, "tool_queue": (changed,)},
+                    }
+                )
         with self.assertRaises(ValueError):
             EnvironmentStateV1(**{**state.to_dict(), "history": {**history, "action_ids": (H,)}})
         with self.assertRaises(ValueError):

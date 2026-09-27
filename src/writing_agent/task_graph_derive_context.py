@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 
 from writing_agent.task_graph import (
-    CheckpointV1,
-    EventV1,
-    canonical_bytes,
-    domain_hash,
+    ContextRevisionV1 as MaterializedContextRevisionV1,
 )
 from writing_agent.task_graph import (
-    ContextRevisionV1 as MaterializedContextRevisionV1,
+    domain_hash,
 )
 from writing_agent.task_graph_compaction import (
     make_record,
@@ -21,6 +17,12 @@ from writing_agent.task_graph_compaction import (
     summary_hash,
 )
 from writing_agent.task_graph_controller import next_step
+from writing_agent.task_graph_derive_common import (
+    DeriveKey,
+    build_transition,
+    evidence_reader,
+    payload_artifact,
+)
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_records import (
     ContextContentV1,
@@ -32,44 +34,10 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_transition import (
     ArtifactReader,
-    CheckpointChain,
     ContextView,
-    DerivedArtifact,
     LineageView,
     Transition,
 )
-
-
-class _EvidenceReader:
-    """Adapt the hash-addressed reader to the compaction helper's former API."""
-
-    def __init__(self, reader, summary_ref, summary):
-        self.reader, self.summary_ref, self.summary = reader, summary_ref, summary
-
-    def get_artifact(self, identity, **_):
-        if identity == self.summary_ref:
-            return self.summary.encode("utf-8")
-        return self.reader.bytes_artifact(identity)
-
-    def load_event(self, identity):
-        return self.reader.artifact(identity, domain="event")
-
-
-def _event(view, payload_ref, *, kind, lineage_id=None):
-    identity = lineage_id or view.state.position["lineage_id"]
-    return EventV1(
-        previous=view.head_event_id,
-        seq=view.state.history["seq"] + 1,
-        lineage_id=identity,
-        rollout_id=identity,
-        node_visit_id=view.state.position["visit_id"],
-        kind=kind,
-        actor="environment",
-        audience=("controller", "trainer"),
-        payload_ref=payload_ref,
-        versions_ref=view.state.versions_ref,
-        provenance_ref=view.state.provenance_ref,
-    )
 
 
 def _materialized_context(context, event_head, messages=None):
@@ -80,26 +48,6 @@ def _materialized_context(context, event_head, messages=None):
         event_head=event_head,
         provenance_refs=(event_head,) if event_head else (),
     )
-
-
-def _transition(view, input_record, event, state, artifacts, context, budget, group):
-    checkpoint = CheckpointV1(
-        parents=(view.checkpoint_id,),
-        state=state,
-        event_head=event.id,
-        artifact_refs=tuple(sorted(artifact.ref for artifact in artifacts)),
-    )
-    next_view = replace(
-        view,
-        checkpoint_id=checkpoint.identity(),
-        head_event_id=event.id,
-        state=state,
-        budget=budget,
-        context=context,
-        ancestry=CheckpointChain(checkpoint.identity(), context, view.ancestry),
-        group=group,
-    )
-    return Transition(event, input_record, state, artifacts, next_view)
 
 
 def derive_context_operation(
@@ -142,9 +90,9 @@ def derive_context_operation(
         # Recompute the non-persisted evidence record through the same helper used by
         # legacy replay. Its summary bytes are deterministic derived evidence, not an
         # artifact written by this transition.
-        evidence_reader = _EvidenceReader(reader, summary_ref, summary)
+        compaction_reader = evidence_reader(reader, summary_ref=summary_ref, summary=summary)
         _record, budget, selected_sources = make_record(
-            evidence_reader,
+            compaction_reader,
             view.state,
             old,
             view.context.sources,
@@ -171,14 +119,6 @@ def derive_context_operation(
         provenance_refs=(view.head_event_id,) if view.head_event_id else (),
     )
     budget_ref = domain_hash("payload", budget)
-    input_ref = operation.identity()
-    event = _event(view, input_ref, kind="context_changed")
-    state = replace(
-        view.state,
-        context_ref=revision.identity(),
-        budgets_ref=budget_ref,
-        history={**view.state.history, "head": event.id, "seq": event.seq},
-    )
     context = ContextView(
         messages=messages,
         sources=selected_sources,
@@ -188,12 +128,22 @@ def derive_context_operation(
         revision_ref=revision.identity(),
     )
     artifacts = (
-        DerivedArtifact(input_ref, operation, "artifact"),
-        DerivedArtifact(content.identity(), content, "context_node"),
-        DerivedArtifact(revision.identity(), revision, "context_revision"),
-        DerivedArtifact(budget_ref, canonical_bytes(budget), "artifact"),
+        payload_artifact(content, "context_node"),
+        payload_artifact(revision, "context_revision"),
+        payload_artifact(budget),
     )
-    return _transition(view, operation, event, state, artifacts, context, budget, view.group)
+    return build_transition(
+        view,
+        operation,
+        kind="context_changed",
+        actor="environment",
+        audience=("controller", "trainer"),
+        state_changes={"context_ref": revision.identity(), "budgets_ref": budget_ref},
+        artifacts=artifacts,
+        context=context,
+        budget=budget,
+        group=view.group,
+    )
 
 
 def derive_member_start(
@@ -241,32 +191,27 @@ def derive_member_start(
         "environment_seed": member.environment_seed,
         "parent_rng_ref": view.state.rng_ref,
     }
-    seeds_ref = domain_hash("payload", seeds)
-    input_ref = start.identity()
-    event = _event(view, input_ref, kind="rollout_started", lineage_id=member.member_id)
-    state = replace(
-        view.state,
-        position={
-            **view.state.position,
-            "lineage_id": member.member_id,
-            "start_checkpoint": entry_id,
+    seeds_artifact = payload_artifact(seeds)
+    seeds_ref = seeds_artifact.ref
+    return build_transition(
+        view,
+        start,
+        kind="rollout_started",
+        actor="environment",
+        audience=("controller", "trainer"),
+        lineage_id=member.member_id,
+        state_changes={
+            "position": {"lineage_id": member.member_id, "start_checkpoint": entry_id},
+            "rng_ref": seeds_ref,
+            "history": {"branch_base": view.head_event_id},
         },
-        rng_ref=seeds_ref,
-        history={
-            **view.state.history,
-            "head": event.id,
-            "seq": event.seq,
-            "branch_base": view.head_event_id,
-        },
+        artifacts=(seeds_artifact,),
+        context=view.context,
+        group=spec,
     )
-    artifacts = (
-        DerivedArtifact(input_ref, start, "artifact"),
-        DerivedArtifact(seeds_ref, canonical_bytes(seeds), "artifact"),
-    )
-    return _transition(view, start, event, state, artifacts, view.context, view.budget, spec)
 
 
-DERIVES: dict[str, Callable] = {
+DERIVES: dict[DeriveKey, Callable] = {
     "ContextOperationInputV1": derive_context_operation,
     "MemberStartV1": derive_member_start,
 }
