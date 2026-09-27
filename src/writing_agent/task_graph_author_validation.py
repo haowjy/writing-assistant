@@ -9,6 +9,7 @@ import json
 
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_contracts import InteractionPolicyV1, NodeContractV1
+from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_scripted import (
     ScriptCoverageError,
     frozen_prerequisite_results,
@@ -19,8 +20,6 @@ from writing_agent.task_graph_scripted import (
 
 def validate_author_request_effect(store, before, after, event, effect, entry) -> None:
     """The same deterministic request semantics run before publication and on restore."""
-    from writing_agent.task_graph_projection import ProjectionError
-
     old_author_calls = store.get_artifact(before.budgets_ref)["consumed"].get("author_calls", 0)
     if (
         event.actor != "environment"
@@ -182,8 +181,6 @@ def validate_author_request_effect(store, before, after, event, effect, entry) -
 
 
 def validate_author_ack_effect(store, before, after, event, effect, entry, message) -> None:
-    from writing_agent.task_graph_projection import ProjectionError
-
     request_ref = before.continuation["author_request"]
     if request_ref is None:
         raise ProjectionError("author acknowledgement has no outstanding request")
@@ -243,7 +240,6 @@ def validate_author_ack_effect(store, before, after, event, effect, entry, messa
 
 def validate_decision_disclosure_effect(store, before, after, event, effect, entry) -> None:
     from writing_agent.task_graph_contracts import ScriptedAuthorV1
-    from writing_agent.task_graph_projection import ProjectionError
 
     request_ref = before.continuation["author_request"]
     if request_ref is None:
@@ -295,7 +291,6 @@ def _feedback_utterance(store, request, before):
 
 def validate_requirement_update_effect(store, before, after, event, effect, entry) -> None:
     from writing_agent.task_graph_contracts import RequirementUpdateV1, ScriptedAuthorV1
-    from writing_agent.task_graph_projection import ProjectionError
 
     request_ref = before.continuation["author_request"]
     if request_ref is None:
@@ -355,7 +350,6 @@ def validate_requirement_update_effect(store, before, after, event, effect, entr
 
 def validate_coverage_failure_effect(store, before, after, event, effect, entry) -> None:
     from writing_agent.task_graph_contracts import ScriptedAuthorV1
-    from writing_agent.task_graph_projection import ProjectionError
 
     request_ref = before.continuation["author_request"]
     if request_ref is None or before.position["phase"] != "awaiting_author":
@@ -417,8 +411,6 @@ def validate_coverage_failure_effect(store, before, after, event, effect, entry)
 
 
 def validate_author_turn_effect(store, before, after, event, effect, entry, message) -> None:
-    from writing_agent.task_graph_projection import ProjectionError
-
     request_ref = before.continuation["author_request"]
     if request_ref is None:
         raise ProjectionError("author turn has no outstanding request")

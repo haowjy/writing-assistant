@@ -13,15 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from writing_agent.task_graph import canonical_bytes, canonical_json, validate_hash
-
-
-class ProjectionError(ValueError):
-    """A causal event chain cannot be safely rendered as writer context."""
-
-
-class VerifiedMessagesStaleError(ProjectionError):
-    """A verified request no longer describes the active visible messages."""
-
+from writing_agent.task_graph_errors import ProjectionError, VerifiedMessagesStaleError
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 _ACTION_RECORD_FIELDS = {

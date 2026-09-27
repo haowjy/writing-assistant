@@ -9,7 +9,7 @@ from writing_agent.task_graph_controller import (
     OutcomeStatusV1,
     evaluate_guard,
 )
-from writing_agent.task_graph_environment import WriterRuntimeError
+from writing_agent.task_graph_errors import ProjectionError, WriterRuntimeError
 from writing_agent.task_graph_sampling import (
     CURRENT_ELIGIBILITY,
     TrainingEligibilityBindingV1,
@@ -360,8 +360,6 @@ def _admitted_node(store, state):
 
 def validate_terminal_effect(store, before, after, event, effect, entry):
     """Recalculate edge, terminal outcome, and reward at publish and replay time."""
-    from writing_agent.task_graph_projection import ProjectionError
-
     node = _admitted_node(store, before)
     record = store.get_artifact(entry["record_ref"])
     if (

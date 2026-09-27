@@ -15,11 +15,8 @@ from typing import Any
 from writing_agent import task_graph_projection
 from writing_agent.task_graph import ContextRevisionV1, EnvironmentStateV1, EventV1, MessageV1
 from writing_agent.task_graph_accounting import charge_context_append
+from writing_agent.task_graph_errors import WriterRuntimeError
 from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
-
-
-class WriterRuntimeError(ValueError):
-    """The supplied action or restored state violates the graph runtime contract."""
 
 
 @dataclass(frozen=True)

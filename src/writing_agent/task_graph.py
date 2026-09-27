@@ -957,33 +957,6 @@ class LineageRefV1(_Record):
         validate_hash(self.expected_head, optional=True)
 
 
-def record_hash(record: _Record) -> str:
-    if not isinstance(record, _Record):
-        raise TypeError("record_hash expects a task-graph record")
-    return record.identity()
-
-
-# Compatibility aliases for the pre-review prototype; new callers should use
-# the canonical names above.  They are intentionally behavior-identical, not
-# parallel identity implementations.
-canonicalize = canonical_json
-canonical_load = load_canonical_json
-identity_hash = domain_hash
-canonical_hash = domain_hash
-hash_bytes = domain_hash_bytes
-validate_path = safe_path
-hash_file = file_hash
-hash_tree = tree_hash
-GraphInstance = GraphInstanceV1
-Event = EventV1
-Message = MessageV1
-ContextRevision = ContextRevisionV1
-EnvironmentState = EnvironmentStateV1
-Checkpoint = CheckpointV1
-Commit = CommitV1
-LineageRef = LineageRefV1
-
-
 __all__ = [
     "CANONICAL_VERSION",
     "DOMAIN_TAGS",
@@ -993,20 +966,11 @@ __all__ = [
     "load_canonical_json",
     "domain_hash",
     "domain_hash_bytes",
-    "identity_hash",
-    "canonical_hash",
-    "hash_bytes",
-    "record_hash",
     "validate_hash",
     "safe_path",
-    "validate_path",
     "validate_file_tree",
-    "canonicalize",
-    "canonical_load",
     "file_hash",
     "tree_hash",
-    "hash_file",
-    "hash_tree",
     "GraphInstanceV1",
     "NodeSpecV1",
     "MessageV1",
@@ -1014,14 +978,6 @@ __all__ = [
     "ContextRevisionV1",
     "ContextContentV1",
     "context_content_hash",
-    "GraphInstance",
-    "Event",
-    "Message",
-    "ContextRevision",
-    "EnvironmentState",
-    "Checkpoint",
-    "Commit",
-    "LineageRef",
     "EnvironmentStateV1",
     "CheckpointV1",
     "CommitV1",

@@ -7,7 +7,7 @@ from writing_agent.task_graph_contracts import (
     InteractionPolicyV1,
     NodeContractV1,
 )
-from writing_agent.task_graph_environment import WriterRuntimeError
+from writing_agent.task_graph_errors import ProjectionError, WriterRuntimeError
 from writing_agent.task_graph_evaluation import (
     EvaluationRequestV1,
     StoreEvidenceResolver,
@@ -161,8 +161,6 @@ def _contracts(store, state):
 
 
 def validate_check_batch_effect(store, before, after, event, effect, entry) -> None:
-    from writing_agent.task_graph_projection import ProjectionError
-
     record = store.get_artifact(entry["record_ref"])
     if (
         not isinstance(record, dict)
@@ -229,8 +227,6 @@ def validate_check_batch_effect(store, before, after, event, effect, entry) -> N
 
 
 def validate_check_result_effect(store, before, after, event, effect, entry) -> None:
-    from writing_agent.task_graph_projection import ProjectionError
-
     record = store.get_artifact(entry["record_ref"])
     if (
         not isinstance(record, dict)

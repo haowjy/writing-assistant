@@ -8,8 +8,8 @@ visible context from its authorized contributions.
 from __future__ import annotations
 
 from writing_agent.task_graph import ContextRevisionV1, EnvironmentStateV1, EventV1
+from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_replay import (
-    ProjectionError,
     execution_value,
     replay_writer_history,
     validate_result_production,

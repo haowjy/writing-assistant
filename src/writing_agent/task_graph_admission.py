@@ -124,7 +124,7 @@ class StoreArtifactResolver:
             raise AdmissionError(code, f"invalid artifact {identity}: {exc}") from exc
 
     def _load(self, identity: str, private: bool) -> Any:
-        from writing_agent.task_graph_store import MissingReferenceError, StoreError
+        from writing_agent.task_graph_errors import MissingReferenceError, StoreError
 
         required = "private" if private else "public"
         opposite = "public" if private else "private"

@@ -12,7 +12,7 @@ from typing import Any
 
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_accounting import charge_tool_attempt
-from writing_agent.task_graph_environment import WriterRuntimeError
+from writing_agent.task_graph_errors import WriterRuntimeError
 
 
 def validate_ask_shape(arguments: Mapping[str, Any]) -> None:

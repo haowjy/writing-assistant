@@ -32,9 +32,9 @@ from writing_agent.task_graph_accounting import (
     tool_error,
     tool_result_charge,
 )
+from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_sampling import (
     ActionSamplingBindingV1,
-    ProjectionError,
     decode_and_bind_sampling,
 )
 from writing_agent.task_graph_store import TaskGraphStore

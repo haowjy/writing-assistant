@@ -50,6 +50,15 @@ from writing_agent.task_graph_artifacts import (
     TypedArtifactError,
     phase3_typed_artifact_references,
 )
+from writing_agent.task_graph_errors import (
+    ConcurrentUpdateError,
+    CorruptRecordError,
+    MaterializationError,
+    MissingReferenceError,
+    ReplayError,
+    StoreError,
+    WrongRecordDomainError,
+)
 
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -90,34 +99,6 @@ _RECORDED_DIRECT_REF_KINDS = {
     "outcome_ref": "artifact",
     "provenance_ref": "artifact",
 }
-
-
-class StoreError(RuntimeError):
-    """Base class for persistence failures."""
-
-
-class MissingReferenceError(StoreError):
-    """An immutable reference is absent."""
-
-
-class CorruptRecordError(StoreError):
-    """Stored bytes do not decode to the identity named by their path."""
-
-
-class WrongRecordDomainError(CorruptRecordError):
-    """A valid immutable object was used in a reference of the wrong type."""
-
-
-class ConcurrentUpdateError(StoreError):
-    """The lineage head did not match the compare-and-swap request."""
-
-
-class MaterializationError(StoreError):
-    """A checkpoint could not be safely materialized."""
-
-
-class ReplayError(StoreError):
-    """A recorded suffix did not deterministically reproduce its checkpoints."""
 
 
 @dataclass(frozen=True)
