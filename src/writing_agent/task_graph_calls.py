@@ -16,6 +16,7 @@ from typing import Any
 from writing_agent.task_graph import canonical_json, safe_path, validate_file_tree
 from writing_agent.task_graph_accounting import READ_TOOLS
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
+from writing_agent.task_graph_records import SampledMessageV1, decode_canonical_value
 
 _MAX_ARGUMENT_BYTES = 65_536
 _MAX_CALL_EVIDENCE_BYTES = 131_072
@@ -100,106 +101,6 @@ def _encode_value(
     return _tag("unsupported", type=type(value).__name__)
 
 
-def _decode_value(value: Any) -> Any:
-    """Decode canonical intake values, rejecting malformed or ambiguous markers."""
-
-    def decode(item: Any) -> Any:
-        if item is None or type(item) in (bool, int):
-            return item
-        if type(item) is str:
-            if not _valid_utf8(item):
-                raise ValueError("recorded intake contains invalid UTF-8 text")
-            return item
-        if isinstance(item, list):
-            return [decode(child) for child in item]
-        if not isinstance(item, dict):
-            raise ValueError("recorded intake contains a noncanonical value")
-
-        if "$noncanonical" not in item:
-            if any(not isinstance(key, str) or not _valid_utf8(key) for key in item):
-                raise ValueError("recorded intake object keys must be UTF-8 text")
-            return {key: decode(child) for key, child in item.items()}
-
-        marker = item["$noncanonical"]
-        if not isinstance(marker, str):
-            raise ValueError("recorded intake marker name must be text")
-        marker_keys = {
-            "surrogate-string": {"$noncanonical", "codepoints"},
-            "float": {"$noncanonical", "repr"},
-            "bytes": {"$noncanonical", "hex"},
-            "tuple": {"$noncanonical", "items"},
-            "mapping": {"$noncanonical", "items"},
-            "cycle": {"$noncanonical"},
-            "limit": {"$noncanonical"},
-            "unsupported": {"$noncanonical", "type"},
-        }
-        if marker not in marker_keys or set(item) != marker_keys[marker]:
-            raise ValueError("recorded intake marker has an invalid shape")
-
-        if marker == "surrogate-string":
-            codepoints = item["codepoints"]
-            if not isinstance(codepoints, list) or any(
-                type(point) is not int or not 0 <= point <= 0x10FFFF for point in codepoints
-            ):
-                raise ValueError("recorded surrogate string has invalid codepoints")
-            return "".join(chr(point) for point in codepoints)
-        if marker == "float":
-            representation = item["repr"]
-            if not isinstance(representation, str):
-                raise ValueError("recorded float representation must be text")
-            try:
-                decoded = float(representation)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError("recorded float representation is invalid") from exc
-            if repr(decoded) != representation:
-                raise ValueError("recorded float representation is not canonical")
-            return decoded
-        if marker == "bytes":
-            hexadecimal = item["hex"]
-            if not isinstance(hexadecimal, str):
-                raise ValueError("recorded byte representation must be text")
-            try:
-                decoded = bytes.fromhex(hexadecimal)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("recorded byte representation is invalid") from exc
-            if decoded.hex() != hexadecimal:
-                raise ValueError("recorded byte representation is not canonical")
-            return decoded
-        if marker == "tuple":
-            items = item["items"]
-            if not isinstance(items, list):
-                raise ValueError("recorded tuple items must be a list")
-            return tuple(decode(child) for child in items)
-        if marker == "mapping":
-            items = item["items"]
-            if not isinstance(items, list):
-                raise ValueError("recorded mapping items must be a list")
-            decoded_mapping = {}
-            for pair in items:
-                if not isinstance(pair, list) or len(pair) != 2:
-                    raise ValueError("recorded mapping entries must be pairs")
-                key = decode(pair[0])
-                try:
-                    hash(key)
-                    if key in decoded_mapping:
-                        raise ValueError("recorded mapping has duplicate decoded keys")
-                    decoded_mapping[key] = decode(pair[1])
-                except TypeError as exc:
-                    raise ValueError("recorded mapping keys must be hashable") from exc
-            return decoded_mapping
-        if marker in {"cycle", "limit"}:
-            return object()
-        unsupported_type = item["type"]
-        if not isinstance(unsupported_type, str) or not _valid_utf8(unsupported_type):
-            raise ValueError("recorded unsupported type must be UTF-8 text")
-        return object()
-
-    try:
-        return decode(value)
-    except RecursionError as exc:
-        raise ValueError("recorded intake exceeds the supported nesting depth") from exc
-
-
 def _bounded_call(value: Any) -> bool:
     """Bound one raw call before encoding, matching the legacy evidence boundary."""
     stack = [(value, 0)]
@@ -239,7 +140,7 @@ def _bounded_call(value: Any) -> bool:
     return True
 
 
-def intake_message(message: Any) -> dict[str, Any]:
+def intake_message(message: Any) -> SampledMessageV1:
     """Return the canonical, replayable SampledMessageV1 form of an adapter message."""
     if not isinstance(message, dict):
         message = {}
@@ -254,42 +155,11 @@ def intake_message(message: Any) -> dict[str, Any]:
         ]
     else:
         calls = _encode_value(raw_calls)
-    return {
-        "$sampled_message_v1": True,
-        "content": _encode_value(message.get("content")),
-        "tool_calls_was_list": was_list,
-        "calls": calls,
-    }
-
-
-def validate_intake_record(value: Any) -> dict[str, Any]:
-    """Validate a recorded SampledMessageV1 form without treating it as adapter input."""
-    if (
-        not isinstance(value, dict)
-        or value.get("$sampled_message_v1") is not True
-        or set(value) != {"$sampled_message_v1", "content", "tool_calls_was_list", "calls"}
-    ):
-        raise ValueError("message is not a canonical sampled-message intake")
-    _decode_value(value["content"])
-    was_list = value["tool_calls_was_list"]
-    if type(was_list) is not bool:
-        raise ValueError("canonical sampled-message list flag must be boolean")
-    calls = value["calls"]
-    if not was_list:
-        _decode_value(calls)
-        return value
-    if not isinstance(calls, list):
-        raise ValueError("canonical sampled-message calls must be a list")
-    for call in calls:
-        if not isinstance(call, dict) or set(call) != {"bounded", "value"}:
-            raise ValueError("invalid canonical sampled-message call")
-        if type(call["bounded"]) is not bool:
-            raise ValueError("canonical sampled-message bounded flag must be boolean")
-        if call["bounded"]:
-            _decode_value(call["value"])
-        elif call["value"] != {"$noncanonical": "bounded-call"}:
-            raise ValueError("unbounded call must use the bounded-call marker")
-    return value
+    return SampledMessageV1(
+        content=_encode_value(message.get("content")),
+        tool_calls_was_list=was_list,
+        calls=calls,
+    )
 
 
 @dataclass(frozen=True)
@@ -516,7 +386,7 @@ def _names_ask_author(raw: Any) -> bool:
 
 
 def parse_calls(
-    message: Mapping[str, Any],
+    message: SampledMessageV1,
     *,
     id_prefix: str,
     allowed: frozenset[str],
@@ -524,16 +394,17 @@ def parse_calls(
     ask_semantics: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[ToolQueueEntry]:
     """Parse calls only from canonical intake; first matching rule owns rejection."""
-    message = validate_intake_record(message)
-    if not isinstance(message["tool_calls_was_list"], bool) or not message["tool_calls_was_list"]:
+    if not isinstance(message, SampledMessageV1):
+        raise TypeError("parse_calls requires a validated SampledMessageV1")
+    if not message.tool_calls_was_list:
         raise WriterRuntimeError("tool_calls must be an array")
 
     decoded_calls: list[tuple[bool, Any]] = []
-    for item in message["calls"]:
+    for item in message.calls:
         decoded_calls.append(
             (
                 item["bounded"],
-                _decode_value(item["value"]) if item["bounded"] else None,
+                decode_canonical_value(item["value"]) if item["bounded"] else None,
             )
         )
 

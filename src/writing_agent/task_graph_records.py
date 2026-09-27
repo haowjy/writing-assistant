@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from types import MappingProxyType
 from typing import Any, ClassVar
 
 from writing_agent.task_graph import (
     MessageV1,
+    _freeze,
     _logical_id,
     _utf8,
     canonical_bytes,
@@ -25,9 +26,11 @@ from writing_agent.task_graph import (
     validate_hash,
 )
 from writing_agent.task_graph_contracts import EXECUTION_STATUSES, TASK_STATUSES
+from writing_agent.task_graph_errors import MaterializationError
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-_NONCANONICAL_MARKERS = {
+SEMANTICS_V1 = "task-graph-derive-v1"
+_INTAKE_MARKER_FIELDS = {
     "float": {"$noncanonical", "repr"},
     "bytes": {"$noncanonical", "hex"},
     "tuple": {"$noncanonical", "items"},
@@ -54,14 +57,6 @@ _TRACE_LOGPROB_KEYS = frozenset(
         "per_token_logprobs_shape",
     }
 )
-
-
-def _freeze(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, (tuple, list)):
-        return tuple(_freeze(item) for item in value)
-    return value
 
 
 def _wire_value(value: Any) -> None:
@@ -134,55 +129,87 @@ def _array(value: Any, label: str) -> tuple[Any, ...]:
     return tuple(value)
 
 
-def _canonical_value(value: Any) -> None:
-    """Validate the intake codec's JSON value and noncanonical marker forms."""
+def _decode_canonical_value(value: Any) -> Any:
+    """Validate and decode exactly one canonical value produced by adapter intake."""
     if value is None or type(value) in (str, int, bool):
         if type(value) is str:
             _utf8(value)
-        return
-    if isinstance(value, (tuple, list)):
-        for item in value:
-            _canonical_value(item)
-        return
+        return value
+    if isinstance(value, list):
+        return [_decode_canonical_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_decode_canonical_value(item) for item in value)
     if not isinstance(value, Mapping):
         raise TypeError("value is not a canonical intake value")
     if any(type(key) is not str for key in value):
         raise TypeError("canonical object keys must be strings")
     if "$noncanonical" in value:
         marker = value["$noncanonical"]
-        if type(marker) is not str or marker not in _NONCANONICAL_MARKERS:
+        if type(marker) is not str or marker not in _INTAKE_MARKER_FIELDS:
             raise ValueError("unknown or forged noncanonical marker")
-        if set(value) != _NONCANONICAL_MARKERS[marker]:
+        if set(value) != _INTAKE_MARKER_FIELDS[marker]:
             raise ValueError("noncanonical marker has the wrong key set")
         if marker == "float":
             _string(value["repr"], "float marker repr")
+            try:
+                decoded = float(value["repr"])
+            except (ValueError, OverflowError) as exc:
+                raise ValueError("float marker representation is invalid") from exc
+            if repr(decoded) != value["repr"]:
+                raise ValueError("float marker representation is not canonical")
+            return decoded
         elif marker == "bytes":
             _string(value["hex"], "bytes marker hex")
-            if len(value["hex"]) % 2 or any(c not in "0123456789abcdef" for c in value["hex"]):
-                raise ValueError("bytes marker must contain lowercase hexadecimal")
+            try:
+                decoded = bytes.fromhex(value["hex"])
+            except ValueError as exc:
+                raise ValueError("bytes marker contains invalid hexadecimal") from exc
+            if decoded.hex() != value["hex"]:
+                raise ValueError("bytes marker hexadecimal is not canonical")
+            return decoded
         elif marker in {"tuple", "mapping"}:
             items = _array(value["items"], "marker items")
             if marker == "tuple":
-                for item in items:
-                    _canonical_value(item)
+                return tuple(_decode_canonical_value(item) for item in items)
             else:
+                decoded_mapping = {}
                 for pair in items:
                     pair = _array(pair, "mapping item")
                     if len(pair) != 2:
                         raise ValueError("mapping item must be a key/value pair")
-                    _canonical_value(pair[0])
-                    _canonical_value(pair[1])
+                    key = _decode_canonical_value(pair[0])
+                    item = _decode_canonical_value(pair[1])
+                    try:
+                        if key in decoded_mapping:
+                            raise ValueError("mapping marker has duplicate decoded keys")
+                        decoded_mapping[key] = item
+                    except TypeError as exc:
+                        raise ValueError("mapping marker keys must be hashable") from exc
+                return decoded_mapping
         elif marker == "surrogate-string":
             points = _array(value["codepoints"], "surrogate codepoints")
+            decoded_points = []
             for point in points:
                 _integer(point, "surrogate codepoint", minimum=0)
                 if point > 0x10FFFF:
                     raise ValueError("surrogate codepoint is outside Unicode")
+                decoded_points.append(chr(point))
+            return "".join(decoded_points)
         elif marker == "unsupported":
             _string(value["type"], "unsupported type", nonempty=True)
-        return
-    for item in value.values():
-        _canonical_value(item)
+            return object()
+        return object()
+    return {key: _decode_canonical_value(item) for key, item in value.items()}
+
+
+def validate_canonical_value(value: Any) -> None:
+    """Validate a canonical intake value without preserving adapter-only values."""
+    _decode_canonical_value(value)
+
+
+def decode_canonical_value(value: Any) -> Any:
+    """Decode a value already carried by a validated :class:`SampledMessageV1`."""
+    return _decode_canonical_value(value)
 
 
 def _json_shape(value: Any) -> None:
@@ -217,21 +244,289 @@ def _schema(value: Any) -> int:
 
 
 @dataclass(frozen=True)
+class Hash:
+    """A hash field; ``edge=None`` explicitly means a hash, but not a ref."""
+
+    edge: str | None
+    optional: bool = False
+
+
+@dataclass(frozen=True)
+class Str:
+    nonempty: bool = False
+    logical: bool = False
+
+
+@dataclass(frozen=True)
+class Int:
+    minimum: int | None = 0
+    equals: int | None = None
+
+
+@dataclass(frozen=True)
+class Bool:
+    pass
+
+
+@dataclass(frozen=True)
+class JsonValue:
+    pass
+
+
+@dataclass(frozen=True)
+class Enum:
+    values: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ListOf:
+    item: Any
+    unique: bool = False
+
+
+@dataclass(frozen=True)
+class DictOf:
+    value: Any
+
+
+@dataclass(frozen=True)
+class Obj:
+    required: Mapping[str, Any]
+    optional: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    extra: Any | None = None
+
+
+@dataclass(frozen=True)
+class Open:
+    """An arbitrary object containing only canonical JSON values."""
+
+
+@dataclass(frozen=True)
+class UnionOf:
+    options: tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class KindUnion:
+    discriminator: str
+    variants: Mapping[str, Obj]
+
+
+@dataclass(frozen=True)
+class CanonicalIntake:
+    """A value using the adapter-intake marker vocabulary."""
+
+
+@dataclass(frozen=True)
+class MessageValue:
+    """A wire ``MessageV1`` object from the task-graph base layer."""
+
+
+@dataclass(frozen=True)
+class RecordOf:
+    record: type[_WireRecord]
+
+
+@dataclass(frozen=True)
+class _PayloadCodec:
+    record_type: str
+    fields: Obj
+    tagged: bool = True
+
+    @property
+    def REFS(self) -> Mapping[str, str]:
+        return _derived_refs(self.fields)
+
+    def from_dict(self, body: Mapping[str, Any]) -> dict[str, Any]:
+        _validate_codec(self, body)
+        return dict(body)
+
+
+def _validate_spec(spec: Any, value: Any, label: str) -> None:
+    if isinstance(spec, Hash):
+        validate_hash(value, optional=spec.optional)
+    elif isinstance(spec, Str):
+        _string(value, label, nonempty=spec.nonempty)
+        if spec.logical:
+            _logical_id(value, label)
+    elif isinstance(spec, Int):
+        _integer(value, label, minimum=spec.minimum)
+        if spec.equals is not None and value != spec.equals:
+            raise ValueError(f"{label} must equal {spec.equals}")
+    elif isinstance(spec, Bool):
+        _boolean(value, label)
+    elif isinstance(spec, Enum):
+        if type(value) is not str or value not in spec.values:
+            raise ValueError(f"{label} has an unsupported value")
+    elif isinstance(spec, ListOf):
+        values = _array(value, label)
+        for index, item in enumerate(values):
+            _validate_spec(spec.item, item, f"{label}[{index}]")
+        if spec.unique and len(values) != len(set(values)):
+            raise ValueError(f"{label} must be unique")
+    elif isinstance(spec, DictOf):
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{label} must be an object")
+        for key, item in value.items():
+            _string(key, f"{label} key")
+            _validate_spec(spec.value, item, f"{label}.{key}")
+    elif isinstance(spec, Obj):
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{label} must be an object")
+        keys = set(value)
+        required = set(spec.required)
+        optional = set(spec.optional)
+        if required - keys:
+            raise ValueError(f"{label} is missing fields: {sorted(required - keys)}")
+        unknown = keys - required - optional
+        if unknown and spec.extra is None:
+            raise ValueError(f"{label} has unknown fields: {sorted(unknown)}")
+        for key, item_spec in spec.required.items():
+            _validate_spec(item_spec, value[key], f"{label}.{key}")
+        for key, item_spec in spec.optional.items():
+            if key in value:
+                _validate_spec(item_spec, value[key], f"{label}.{key}")
+        if unknown:
+            _validate_spec(spec.extra, {key: value[key] for key in unknown}, label)
+    elif isinstance(spec, Open):
+        _json_shape(value)
+    elif isinstance(spec, JsonValue):
+        _json_shape(value)
+    elif isinstance(spec, UnionOf):
+        failures = []
+        for option in spec.options:
+            try:
+                _validate_spec(option, value, label)
+                return
+            except (TypeError, ValueError) as exc:
+                failures.append(exc)
+        raise ValueError(f"{label} does not match a permitted shape") from failures[-1]
+    elif isinstance(spec, KindUnion):
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{label} must be a tagged object")
+        kind = value.get(spec.discriminator)
+        try:
+            variant = spec.variants[kind]
+        except (KeyError, TypeError) as exc:
+            raise ValueError(f"{label} has an unknown {spec.discriminator}") from exc
+        _validate_spec(variant, value, label)
+    elif isinstance(spec, CanonicalIntake):
+        validate_canonical_value(value)
+    elif isinstance(spec, MessageValue):
+        if isinstance(value, MessageV1):
+            return
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{label} must be a MessageV1 object")
+        MessageV1.from_dict(dict(value))
+    elif isinstance(spec, RecordOf):
+        if isinstance(value, spec.record):
+            return
+        if not isinstance(value, Mapping):
+            raise TypeError(f"{label} must be a {spec.record.__name__} record")
+        spec.record.from_dict(dict(value))
+    elif spec is type(None):
+        if value is not None:
+            raise TypeError(f"{label} must be null")
+    else:
+        raise TypeError(f"unsupported field specification for {label}: {spec!r}")
+
+
+def _derived_refs(spec: Obj) -> Mapping[str, str]:
+    edges: dict[str, str] = {}
+
+    def walk(value_spec: Any, path: str) -> None:
+        if isinstance(value_spec, Hash):
+            if value_spec.edge is not None:
+                edges[path] = value_spec.edge
+        elif isinstance(value_spec, ListOf):
+            walk(value_spec.item, f"{path}[]")
+        elif isinstance(value_spec, DictOf):
+            walk(value_spec.value, f"{path}{{}}")
+        elif isinstance(value_spec, Obj):
+            for key, child in (*value_spec.required.items(), *value_spec.optional.items()):
+                walk(child, f"{path}.{key}" if path else key)
+        elif isinstance(value_spec, UnionOf):
+            for option in value_spec.options:
+                walk(option, path)
+        elif isinstance(value_spec, KindUnion):
+            for option in value_spec.variants.values():
+                walk(option, path)
+        elif isinstance(value_spec, RecordOf):
+            edges.update(
+                {
+                    f"{path}.{key}" if path else key: kind
+                    for key, kind in value_spec.record.REFS.items()
+                }
+            )
+
+    walk(spec, "")
+    return MappingProxyType(edges)
+
+
+def _validate_codec(codec: _PayloadCodec, body: Mapping[str, Any]) -> None:
+    if type(body) is not dict:
+        raise TypeError("wire record must be a plain object")
+    _wire_value(body)
+    required = set(codec.fields.required)
+    optional = set(codec.fields.optional)
+    if codec.tagged:
+        if body.get("record_type") != codec.record_type:
+            raise ValueError("record_type does not match codec")
+    actual = set(body) - ({"record_type"} if codec.tagged else set())
+    if required - actual or actual - required - optional:
+        raise ValueError("record has missing or unknown fields")
+    _validate_spec(codec.fields, {key: body[key] for key in actual}, codec.record_type)
+
+
+def _edge_values(spec: Any, value: Any) -> tuple[tuple[str, str], ...]:
+    found: list[tuple[str, str]] = []
+    if isinstance(spec, Hash):
+        if value is not None and spec.edge is not None:
+            found.append((spec.edge, value))
+    elif isinstance(spec, ListOf):
+        for item in value:
+            found.extend(_edge_values(spec.item, item))
+    elif isinstance(spec, DictOf):
+        for item in value.values():
+            found.extend(_edge_values(spec.value, item))
+    elif isinstance(spec, Obj):
+        for key, child in (*spec.required.items(), *spec.optional.items()):
+            if key in value:
+                found.extend(_edge_values(child, value[key]))
+    elif isinstance(spec, UnionOf):
+        for option in spec.options:
+            if isinstance(option, Obj):
+                try:
+                    _validate_spec(option, value, "union value")
+                except (TypeError, ValueError):
+                    continue
+                found.extend(_edge_values(option, value))
+                break
+    elif isinstance(spec, KindUnion):
+        found.extend(_edge_values(spec.variants[value[spec.discriminator]], value))
+    elif isinstance(spec, RecordOf):
+        body = value.to_wire() if isinstance(value, spec.record) else value
+        found.extend(_edge_values(spec.record.FIELD_SPEC, body))
+    return tuple(found)
+
+
+@dataclass(frozen=True)
 class _WireRecord:
     """Base for strict, frozen wire values with optional payload record types."""
 
     RECORD_TYPE: ClassVar[str | None] = None
+    FIELD_SPEC: ClassVar[Obj]
     REFS: ClassVar[Mapping[str, str]] = MappingProxyType({})
 
     def __post_init__(self) -> None:
+        self.validate()
+        canonical_bytes(self.to_wire())
         for item in fields(self):
             object.__setattr__(self, item.name, _freeze(getattr(self, item.name)))
-        # This walk also rejects noncanonical floats or unsupported Python values.
         canonical_bytes(self.to_wire())
-        self.validate()
 
     def validate(self) -> None:
-        pass
+        _validate_schema_fields(self)
 
     def to_wire(self) -> dict[str, Any]:
         body = {item.name: _json_value(getattr(self, item.name)) for item in fields(self)}
@@ -289,20 +584,6 @@ class SampledMessageV1(_WireRecord):
     tool_calls_was_list: bool
     calls: Any
 
-    def validate(self) -> None:
-        _canonical_value(self.content)
-        _boolean(self.tool_calls_was_list, "tool_calls_was_list")
-        if self.tool_calls_was_list:
-            for call in _array(self.calls, "calls"):
-                call = _object(call, "call", required={"bounded", "value"})
-                bounded = _boolean(call["bounded"], "bounded")
-                if bounded:
-                    _canonical_value(call["value"])
-                elif call["value"] != {"$noncanonical": "bounded-call"}:
-                    raise ValueError("unbounded calls require the bounded-call marker")
-        else:
-            _canonical_value(self.calls)
-
 
 @dataclass(frozen=True)
 class WriterTurnV1(_WireRecord):
@@ -315,74 +596,11 @@ class WriterTurnV1(_WireRecord):
     adapter_trace: Mapping[str, Any] | None
     message: SampledMessageV1 | Mapping[str, Any]
     RECORD_TYPE: ClassVar[str] = "WriterTurnV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
-        {
-            "context_revision_ref": "context_revision",
-            "request_ref": "artifact|bytes",
-            "prepared_request_ref": "artifact",
-            "raw_output_ref": "artifact|bytes",
-            "adapter_trace.per_token_logprobs_ref": "bytes",
-            **{f"adapter_trace.{key}": "artifact" for key in _TRACE_REF_KEYS},
-        }
-    )
 
     def __post_init__(self) -> None:
         if isinstance(self.message, Mapping):
             object.__setattr__(self, "message", SampledMessageV1.from_dict(dict(self.message)))
         super().__post_init__()
-
-    def validate(self) -> None:
-        _logical_id(self.action_id, "action id")
-        validate_hash(self.context_revision_ref)
-        validate_hash(self.request_ref, optional=True)
-        validate_hash(self.prepared_request_ref, optional=True)
-        validate_hash(self.raw_output_ref, optional=True)
-        if not isinstance(self.usage, Mapping):
-            raise TypeError("usage must be an object")
-        usage = self.usage
-        for key, value in usage.items():
-            _string(key, "usage key", nonempty=True)
-            if key in {"prompt_tokens", "completion_tokens", "total_tokens"}:
-                _integer(value, f"usage.{key}")
-            else:
-                _json_shape(value)
-        if self.adapter_trace is not None:
-            if not isinstance(self.adapter_trace, Mapping):
-                raise TypeError("adapter_trace must be an object")
-            trace = self.adapter_trace
-            if "per_token_logprobs" in trace or "native_on_policy_eligible" in trace:
-                raise ValueError("adapter trace contains a forbidden field")
-            if "model" in trace:
-                _string(trace["model"], "adapter_trace.model")
-            if "seed" in trace:
-                _integer(trace["seed"], "adapter_trace.seed", minimum=None)
-            if "generated_token_ids" in trace:
-                for token in _array(trace["generated_token_ids"], "generated_token_ids"):
-                    _integer(token, "generated token id")
-            for key in _TRACE_REF_KEYS:
-                if key in trace:
-                    validate_hash(trace[key])
-            logprob_fields = _TRACE_LOGPROB_KEYS & set(trace)
-            if logprob_fields and logprob_fields != _TRACE_LOGPROB_KEYS:
-                raise ValueError("logprob reference, codec, and shape must appear together")
-            if logprob_fields:
-                validate_hash(trace["per_token_logprobs_ref"])
-                if trace["per_token_logprobs_codec"] != "f32-le":
-                    raise ValueError("unsupported logprob codec")
-                for dimension in _array(trace["per_token_logprobs_shape"], "logprob shape"):
-                    _integer(dimension, "logprob shape dimension")
-            known = {
-                "model",
-                "seed",
-                "generated_token_ids",
-                *_TRACE_REF_KEYS,
-                *_TRACE_LOGPROB_KEYS,
-            }
-            for key, value in trace.items():
-                if key not in known:
-                    _json_shape(value)
-        if not isinstance(self.message, SampledMessageV1):
-            raise TypeError("message must be SampledMessageV1")
 
 
 @dataclass(frozen=True)
@@ -391,14 +609,6 @@ class WriterRequestV1(_WireRecord):
     payload_ref: str
     verified_messages: bool
     RECORD_TYPE: ClassVar[str] = "WriterRequestV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
-        {"context_revision_ref": "context_revision", "payload_ref": "artifact|bytes"}
-    )
-
-    def validate(self) -> None:
-        validate_hash(self.context_revision_ref)
-        validate_hash(self.payload_ref)
-        _boolean(self.verified_messages, "verified_messages")
 
 
 @dataclass(frozen=True)
@@ -406,37 +616,6 @@ class ToolObservationV1(_WireRecord):
     call_id: str
     dispatch: Mapping[str, Any] | None
     RECORD_TYPE: ClassVar[str] = "ToolObservationV1"
-
-    def validate(self) -> None:
-        _logical_id(self.call_id, "call id")
-        if self.dispatch is None:
-            return
-        dispatch = _object(self.dispatch, "dispatch", required={"spec", "observation", "effect"})
-        spec = _object(
-            dispatch["spec"], "dispatch spec", required={"max_file_bytes", "max_workspace_bytes"}
-        )
-        _integer(spec["max_file_bytes"], "max_file_bytes")
-        _integer(spec["max_workspace_bytes"], "max_workspace_bytes")
-        observation = _object(
-            dispatch["observation"],
-            "tool observation",
-            required={"ok", "valid"},
-            optional={"result", "error"},
-        )
-        _boolean(observation["ok"], "observation.ok")
-        _boolean(observation["valid"], "observation.valid")
-        if "result" in observation:
-            _json_shape(observation["result"])
-        if "error" in observation:
-            _string(observation["error"], "observation.error")
-        if not isinstance(dispatch["effect"], Mapping):
-            raise TypeError("tool effect must be an object")
-        for path, change in dispatch["effect"].items():
-            safe_path(path)
-            change = _object(change, "file effect", required={"before", "after"})
-            for key in ("before", "after"):
-                if change[key] is not None:
-                    _string(change[key], f"effect.{key}")
 
 
 @dataclass(frozen=True)
@@ -447,29 +626,6 @@ class AuthorReplyV1(_WireRecord):
     decision_ids: tuple[str, ...] | list[str]
     selected_proposals: Mapping[str, Any]
     RECORD_TYPE: ClassVar[str] = "AuthorReplyV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType({"request_ref": "private"})
-
-    def validate(self) -> None:
-        validate_hash(self.request_ref)
-        if self.status not in {"answered", "unsupported_coverage"}:
-            raise ValueError("unsupported author reply status")
-        if self.utterance is not None:
-            _string(self.utterance, "utterance")
-        if (self.status == "answered") != (self.utterance is not None):
-            raise ValueError("utterance must be present only for an answered reply")
-        decisions = _array(self.decision_ids, "decision_ids")
-        for decision in decisions:
-            _logical_id(decision, "decision id")
-        if len(decisions) != len(set(decisions)):
-            raise ValueError("decision ids must be unique")
-        if not isinstance(self.selected_proposals, Mapping):
-            raise TypeError("selected_proposals must be an object")
-        for decision, proposals in self.selected_proposals.items():
-            _logical_id(decision, "proposal decision id")
-            if decision not in decisions:
-                raise ValueError("proposal selection names an undisclosed decision")
-            for proposal in _array(proposals, "selected proposals"):
-                _logical_id(proposal, "proposal id")
 
 
 @dataclass(frozen=True)
@@ -478,25 +634,12 @@ class EvaluatorResultV1(_WireRecord):
     status: str
     evidence_ref: str
     RECORD_TYPE: ClassVar[str] = "EvaluatorResultV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
-        {"request_ref": "private", "evidence_ref": "artifact"}
-    )
-
-    def validate(self) -> None:
-        validate_hash(self.request_ref)
-        validate_hash(self.evidence_ref)
-        if self.status not in {"pass", "fail"}:
-            raise ValueError("unsupported evaluator status")
 
 
 @dataclass(frozen=True)
 class ContextOperationInputV1(_WireRecord):
     policy_ref: str
     RECORD_TYPE: ClassVar[str] = "ContextOperationInputV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType({"policy_ref": "artifact"})
-
-    def validate(self) -> None:
-        validate_hash(self.policy_ref)
 
 
 @dataclass(frozen=True)
@@ -504,45 +647,12 @@ class EnvironmentStepV1(_WireRecord):
     directive: Mapping[str, Any]
     RECORD_TYPE: ClassVar[str] = "EnvironmentStepV1"
 
-    def validate(self) -> None:
-        if not isinstance(self.directive, Mapping):
-            raise TypeError("directive must be an object")
-        kind = self.directive.get("kind")
-        shapes = {
-            "request_author": ({"kind", "source"}, {"writer_request", "mandatory_feedback"}),
-            "request_checks": ({"kind"}, None),
-            "commit_transition": ({"kind", "edge_id"}, None),
-            "seal_outcome": ({"kind", "task_status", "stop_reason"}, None),
-            "stop_exhausted": ({"kind", "stop_reason"}, None),
-            "publish_reward": ({"kind"}, None),
-        }
-        if kind not in shapes:
-            raise ValueError("unsupported environment directive")
-        required, choices = shapes[kind]
-        directive = _object(self.directive, "directive", required=required)
-        if kind == "request_author" and directive["source"] not in choices:
-            raise ValueError("unsupported author request source")
-        if kind == "commit_transition":
-            _logical_id(directive["edge_id"], "edge id")
-        if kind == "seal_outcome":
-            if directive["task_status"] not in TASK_STATUSES:
-                raise ValueError("unsupported task status")
-            if directive["stop_reason"] is not None:
-                _string(directive["stop_reason"], "stop reason")
-        if kind == "stop_exhausted":
-            _string(directive["stop_reason"], "stop reason", nonempty=True)
-
 
 @dataclass(frozen=True)
 class MemberStartV1(_WireRecord):
     group_spec_ref: str
     ordinal: int
     RECORD_TYPE: ClassVar[str] = "MemberStartV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType({"group_spec_ref": "artifact"})
-
-    def validate(self) -> None:
-        validate_hash(self.group_spec_ref)
-        _integer(self.ordinal, "ordinal")
 
 
 @dataclass(frozen=True)
@@ -550,12 +660,6 @@ class ExternalInputsV1(_WireRecord):
     schema: int
     source_refs: tuple[str, ...] | list[str]
     RECORD_TYPE: ClassVar[str] = "ExternalInputsV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType({"source_refs[]": "artifact"})
-
-    def validate(self) -> None:
-        _schema(self.schema)
-        for identity in _array(self.source_refs, "source_refs"):
-            validate_hash(identity)
 
 
 @dataclass(frozen=True)
@@ -566,17 +670,6 @@ class AdmissionPolicyV1(_WireRecord):
     controller_versions: tuple[str, ...] | list[str]
     check_versions: tuple[str, ...] | list[str]
     RECORD_TYPE: ClassVar[str] = "AdmissionPolicyV1"
-
-    def validate(self) -> None:
-        _schema(self.schema)
-        if self.writer_family is not None:
-            _string(self.writer_family, "writer_family", nonempty=True)
-        for key in ("allowed_tools", "controller_versions", "check_versions"):
-            values = _array(getattr(self, key), key)
-            for value in values:
-                _string(value, f"{key} item", nonempty=True)
-            if tuple(values) != tuple(sorted(set(values))):
-                raise ValueError(f"{key} must be sorted and unique")
 
     @classmethod
     def from_admission_policy(cls, policy: Any) -> AdmissionPolicyV1:
@@ -605,44 +698,6 @@ class OutcomeV1(_WireRecord):
     reward_ref: str | None
     eligibility_ref: str | None
     RECORD_TYPE: ClassVar[str] = "OutcomeV1"
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
-        {
-            "candidate_checkpoint": "checkpoint",
-            "requirement_version": "private",
-            "checks[].request_ref": "private",
-            "checks[].result_ref": "artifact",
-            "failed_request_ref": "private",
-            "reward_ref": "artifact",
-            "eligibility_ref": "artifact",
-        }
-    )
-
-    def validate(self) -> None:
-        _schema(self.schema)
-        if self.task_status not in TASK_STATUSES:
-            raise ValueError("unsupported task status")
-        if self.execution_status not in EXECUTION_STATUSES:
-            raise ValueError("unsupported execution status")
-        if self.reward_status not in {"pending", "available", "unavailable"}:
-            raise ValueError("unsupported reward status")
-        if self.training_eligibility not in {"pending", "eligible", "ineligible"}:
-            raise ValueError("unsupported training eligibility")
-        if self.stop_reason is not None:
-            _string(self.stop_reason, "stop_reason")
-        if self.transition_edge_id is not None:
-            _logical_id(self.transition_edge_id, "transition edge id")
-        for key in (
-            "candidate_checkpoint",
-            "requirement_version",
-            "failed_request_ref",
-            "reward_ref",
-            "eligibility_ref",
-        ):
-            validate_hash(getattr(self, key), optional=True)
-        for check in _array(self.checks, "checks"):
-            check = _object(check, "outcome check", required={"request_ref", "result_ref"})
-            validate_hash(check["request_ref"])
-            validate_hash(check["result_ref"], optional=True)
 
 
 @dataclass(frozen=True)
@@ -652,49 +707,10 @@ class ContextContentV1(_WireRecord):
     tools: tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]] | None
     rendering: Mapping[str, Any] | None
     RECORD_TYPE: ClassVar[str] = None
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
-        {
-            "parent_ref": "context_node",
-            "rendering.template_ref": "artifact",
-            "rendering.tokenizer_ref": "artifact",
-            "rendering.tool_schema_ref": "artifact",
-        }
-    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(_message(item) for item in self.messages))
         super().__post_init__()
-
-    def validate(self) -> None:
-        validate_hash(self.parent_ref, optional=True)
-        for message in self.messages:
-            if not isinstance(message, MessageV1):
-                raise TypeError("messages must be MessageV1 records")
-        is_root = self.parent_ref is None
-        if is_root and (self.tools is None or self.rendering is None):
-            raise ValueError("root content must carry tools and rendering")
-        if not is_root and (self.tools is not None or self.rendering is not None):
-            raise ValueError("root content alone must carry tools and rendering")
-        if self.tools is not None:
-            for tool in _array(self.tools, "tools"):
-                if not isinstance(tool, Mapping):
-                    raise TypeError("tool definitions must be objects")
-        if self.rendering is not None:
-            rendering = _object(
-                self.rendering,
-                "rendering",
-                required={
-                    "projection_version",
-                    "prefix_id",
-                    "template_ref",
-                    "tokenizer_ref",
-                    "tool_schema_ref",
-                },
-            )
-            _string(rendering["projection_version"], "projection_version", nonempty=True)
-            _logical_id(rendering["prefix_id"], "prefix id")
-            for key in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
-                validate_hash(rendering[key])
 
     def identity(self) -> str:
         return domain_hash("context_content", self.to_wire())
@@ -706,84 +722,675 @@ class ContextRevisionV1(_WireRecord):
     event_head: str | None
     provenance_refs: tuple[str, ...] | list[str]
     RECORD_TYPE: ClassVar[str] = None
-    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
-        {
-            "content_ref": "context_node",
-            "event_head": "event",
-            "provenance_refs[]": "event",
-        }
-    )
-
-    def validate(self) -> None:
-        validate_hash(self.content_ref)
-        validate_hash(self.event_head, optional=True)
-        for identity in _array(self.provenance_refs, "provenance_refs"):
-            validate_hash(identity)
 
     def identity(self) -> str:
         return domain_hash("context", self.to_wire())
 
 
-RECORD_TYPES: Mapping[str, type[_WireRecord]] = MappingProxyType(
+class GroupError(ValueError):
+    """A sealed group contract or immutable group record is invalid."""
+
+
+class CompactionError(ValueError):
+    """A context operation is not safe or its recorded evidence is false."""
+
+
+POLICY_FIELDS = frozenset(
     {
-        record.RECORD_TYPE: record
-        for record in (
-            WriterTurnV1,
-            WriterRequestV1,
-            ToolObservationV1,
-            AuthorReplyV1,
-            EvaluatorResultV1,
-            ContextOperationInputV1,
-            EnvironmentStepV1,
-            MemberStartV1,
-            ExternalInputsV1,
-            OutcomeV1,
-            AdmissionPolicyV1,
-        )
+        "model_ref",
+        "behavior_policy_ref",
+        "tokenizer_ref",
+        "template_ref",
+        "adapter_ref",
+        "decoding_ref",
+        "simulator_ref",
+        "context_policy_ref",
+        "controller_ref",
+        "rng_derivation_version",
     }
 )
 
-# Known legacy payload names remain opaque during coexistence. The old runtime
-# does not publish records from RECORD_TYPES and its closure contract predates
-# typed payload edges; unknown names still fail closed.
-LEGACY_PAYLOAD_RECORD_TYPES = frozenset(
+
+def _group_hash(value: Any) -> str:
+    return domain_hash("payload", value)
+
+
+def _group_seed(group_seed: int, role: str, ordinal: int | None = None) -> int:
+    import hashlib
+
+    material = canonical_bytes(["GroupSeedV1", group_seed, role, ordinal])
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+
+
+@dataclass(frozen=True)
+class GroupMemberSpecV1(_WireRecord):
+    member_id: str = ""
+    ordinal: int = -1
+    writer_seed: int = -1
+    environment_seed: int = -1
+    seed_provenance: str = "sha256-domain-v1"
+
+
+@dataclass(frozen=True)
+class GroupSpecV1(_WireRecord):
+    group_id: str = ""
+    group_sequence: int = -1
+    group_seed: int = -1
+    runner_mode: str = "real"
+    environment: Mapping[str, Any] | None = None
+    policy: Mapping[str, str] | None = None
+    members: tuple[GroupMemberSpecV1 | Mapping[str, Any], ...] = ()
+    RECORD_TYPE: ClassVar[str] = "GroupSpecV1"
+
+    @property
+    def record_type(self) -> str:
+        return self.RECORD_TYPE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "members",
+            tuple(
+                member
+                if isinstance(member, GroupMemberSpecV1)
+                else GroupMemberSpecV1.from_dict(dict(member))
+                for member in self.members
+            ),
+        )
+        super().__post_init__()
+
+
+@dataclass(frozen=True)
+class ContextPolicyV1(_WireRecord):
+    operation: str
+    retained_exchanges: int = 0
+    seed_name: str | None = None
+    seed_checkpoint_ref: str | None = None
+    summarizer_version: str | None = None
+    max_summary_chars: int | None = None
+    max_operations: int = 32
+    max_context_bytes: int = 1_000_000
+    max_context_storage_bytes: int = 8_000_000
+    schema: int = 1
+    RECORD_TYPE: ClassVar[str] = "ContextPolicyV1"
+
+
+@dataclass(frozen=True)
+class ExecutionVersionsV1(_WireRecord):
+    schema: int
+    transition_semantics: str
+    admission_policy_ref: str
+    tool_spec: Mapping[str, Any]
+
+
+def _f(**fields: Any) -> Obj:
+    return Obj(required=fields)
+
+
+def _o(
+    required: Mapping[str, Any],
+    optional: Mapping[str, Any] = MappingProxyType({}),
+    *,
+    extra=None,
+):
+    return Obj(required=required, optional=optional, extra=extra)
+
+
+def _h(edge: str | None, *, optional: bool = False) -> Hash:
+    return Hash(edge, optional)
+
+
+def _s(*, nonempty: bool = False, logical: bool = False) -> Str:
+    return Str(nonempty, logical)
+
+
+def _i(minimum: int | None = 0, *, equals: int | None = None) -> Int:
+    return Int(minimum, equals)
+
+
+def _l(item: Any, *, unique: bool = False) -> ListOf:
+    return ListOf(item, unique)
+
+
+def _enum(*values: str) -> Enum:
+    return Enum(frozenset(values))
+
+
+_TEXT = _s()
+_BOOL = Bool()
+_JSON = JsonValue()
+_INTAKE = CanonicalIntake()
+_NULLABLE_TEXT = UnionOf((_TEXT, type(None)))
+_NULLABLE_LOGICAL = UnionOf((_s(logical=True), type(None)))
+_TOKEN_IDS = _l(_i())
+_TRACE_REFS = {key: _h("artifact") for key in _TRACE_REF_KEYS}
+_TRACE_SCHEMA = _o(
+    {},
+    {
+        "model": _TEXT,
+        "seed": _i(None),
+        "generated_token_ids": _TOKEN_IDS,
+        **_TRACE_REFS,
+        "per_token_logprobs_ref": _h("bytes"),
+        "per_token_logprobs_codec": _enum("f32-le"),
+        "per_token_logprobs_shape": _l(_i()),
+    },
+    extra=Open(),
+)
+_RENDERING_SCHEMA = _f(
+    projection_version=_s(nonempty=True),
+    prefix_id=_s(nonempty=True, logical=True),
+    template_ref=_h("artifact"),
+    tokenizer_ref=_h("artifact"),
+    tool_schema_ref=_h("artifact"),
+)
+
+
+def _sampled_rules(record: _WireRecord) -> None:
+    if not record.tool_calls_was_list:
+        validate_canonical_value(record.calls)
+        return
+    for call in _array(record.calls, "calls"):
+        call = _object(call, "call", required={"bounded", "value"})
+        _boolean(call["bounded"], "bounded")
+        if call["bounded"]:
+            validate_canonical_value(call["value"])
+        elif call["value"] != {"$noncanonical": "bounded-call"}:
+            raise ValueError("unbounded calls require the bounded-call marker")
+
+
+def _writer_turn_rules(record: _WireRecord) -> None:
+    trace = record.adapter_trace
+    if trace is None:
+        return
+    if "per_token_logprobs" in trace or "native_on_policy_eligible" in trace:
+        raise ValueError("adapter trace contains a forbidden field")
+    present = _TRACE_LOGPROB_KEYS & set(trace)
+    if present and present != _TRACE_LOGPROB_KEYS:
+        raise ValueError("logprob reference, codec, and shape must appear together")
+
+
+def _tool_observation_rules(record: _WireRecord) -> None:
+    if record.dispatch is None:
+        return
+    for path, change in record.dispatch["effect"].items():
+        safe_path(path)
+        if change["before"] == change["after"]:
+            raise ValueError("tool effect must omit unchanged paths")
+
+
+def _author_reply_rules(record: _WireRecord) -> None:
+    if (record.status == "answered") != (record.utterance is not None):
+        raise ValueError("utterance must be present only for an answered reply")
+    decisions = set(record.decision_ids)
+    if set(record.selected_proposals) - decisions:
+        raise ValueError("proposal selection names an undisclosed decision")
+
+
+def _directive_rules(record: _WireRecord) -> None:
+    directive = record.directive
+    if directive["kind"] == "seal_outcome" and directive["task_status"] not in TASK_STATUSES:
+        raise ValueError("unsupported task status")
+    if directive["kind"] == "seal_outcome" and directive["stop_reason"] == "":
+        raise ValueError("stop reason must be nonempty when present")
+
+
+def _schema_one(record: _WireRecord) -> None:
+    _schema(record.schema)
+
+
+def _admission_policy_rules(record: _WireRecord) -> None:
+    for name in ("allowed_tools", "controller_versions", "check_versions"):
+        values = getattr(record, name)
+        if tuple(values) != tuple(sorted(set(values))):
+            raise ValueError(f"{name} must be sorted and unique")
+
+
+def _context_content_rules(record: _WireRecord) -> None:
+    is_root = record.parent_ref is None
+    if (record.tools is None) != (record.rendering is None) or is_root != (
+        record.tools is not None
+    ):
+        raise ValueError("root content alone must carry tools and rendering")
+
+
+def _group_member_rules(record: _WireRecord) -> None:
+    if record.seed_provenance != "sha256-domain-v1":
+        raise GroupError("unknown member seed derivation")
+
+
+def _group_spec_rules(record: _WireRecord) -> None:
+    if record.environment is None or record.policy is None:
+        raise GroupError("group spec requires its environment and policy")
+    if record.group_sequence < 0 or record.group_seed < 0 or not 2 <= len(record.members) <= 64:
+        raise GroupError("group size must be 2..64 and seed nonnegative")
+    if record.runner_mode not in {"real", "fixture"}:
+        raise GroupError("unknown group runner mode")
+    if set(record.policy) != POLICY_FIELDS:
+        raise GroupError("incomplete policy contract")
+    expected = _group_hash(
+        [
+            "GroupIdV1",
+            record.group_sequence,
+            record.environment,
+            record.policy,
+            record.group_seed,
+            record.runner_mode,
+            len(record.members),
+        ]
+    )
+    if record.group_id != expected:
+        raise GroupError("group ID does not bind its contract and sequence")
+    if tuple(member.ordinal for member in record.members) != tuple(range(len(record.members))):
+        raise GroupError("member slots are not canonical")
+    for member in record.members:
+        if member.member_id != f"grp-{record.group_id[:24]}-{member.ordinal:02d}":
+            raise GroupError("member ID does not bind its ordinal")
+        if member.writer_seed != _group_seed(record.group_seed, "writer", member.ordinal):
+            raise GroupError("writer seed derivation mismatch")
+        if member.environment_seed != _group_seed(record.group_seed, "environment"):
+            raise GroupError("environment seed derivation mismatch")
+    if len({member.writer_seed for member in record.members}) != len(record.members):
+        raise GroupError("writer streams are not distinct")
+
+
+def _context_policy_rules(record: _WireRecord) -> None:
+    _schema(record.schema)
+    if record.operation == "compact":
+        if (
+            record.summarizer_version != "visible-text-v1"
+            or type(record.max_summary_chars) is not int
+            or record.max_summary_chars < 0
+            or record.seed_name is not None
+            or record.seed_checkpoint_ref is not None
+        ):
+            raise CompactionError("compact requires the fixed visible-text-v1 algorithm")
+    elif record.summarizer_version is not None or record.max_summary_chars is not None:
+        raise CompactionError("only compact may configure the summarizer")
+    if record.operation == "seed":
+        if not record.seed_name or any(
+            char.isspace() or ord(char) < 0x20 for char in record.seed_name
+        ):
+            raise CompactionError("seed requires a named immutable prefix")
+    elif record.seed_name is not None or record.seed_checkpoint_ref is not None:
+        raise CompactionError("only seed may name a prefix")
+    if record.operation != "compact" and record.retained_exchanges:
+        raise CompactionError("only compact may retain a tail")
+
+
+_CLASS_FIELD_SPECS: dict[type[_WireRecord], Obj] = {
+    SampledMessageV1: _f(
+        content=_INTAKE,
+        tool_calls_was_list=_BOOL,
+        calls=_JSON,
+    ),
+    WriterTurnV1: _f(
+        action_id=_s(nonempty=True, logical=True),
+        context_revision_ref=_h("context_revision"),
+        request_ref=_h("artifact|bytes", optional=True),
+        prepared_request_ref=_h("artifact", optional=True),
+        raw_output_ref=_h("artifact|bytes", optional=True),
+        usage=_o(
+            {},
+            {key: _i() for key in ("prompt_tokens", "completion_tokens", "total_tokens")},
+            extra=Open(),
+        ),
+        adapter_trace=UnionOf((_TRACE_SCHEMA, type(None))),
+        message=RecordOf(SampledMessageV1),
+    ),
+    WriterRequestV1: _f(
+        context_revision_ref=_h("context_revision"),
+        payload_ref=_h("artifact|bytes"),
+        verified_messages=_BOOL,
+    ),
+    ToolObservationV1: _f(
+        call_id=_s(nonempty=True, logical=True),
+        dispatch=UnionOf(
+            (
+                type(None),
+                _f(
+                    spec=_f(max_file_bytes=_i(1), max_workspace_bytes=_i(1)),
+                    observation=_o(
+                        {"ok": _BOOL, "valid": _BOOL},
+                        {"result": _JSON, "error": _TEXT},
+                    ),
+                    effect=DictOf(
+                        _f(
+                            before=UnionOf((_TEXT, type(None))),
+                            after=UnionOf((_TEXT, type(None))),
+                        )
+                    ),
+                ),
+            )
+        ),
+    ),
+    AuthorReplyV1: _f(
+        request_ref=_h("private"),
+        status=_enum("answered", "unsupported_coverage"),
+        utterance=UnionOf((_TEXT, type(None))),
+        decision_ids=_l(_s(nonempty=True, logical=True), unique=True),
+        selected_proposals=DictOf(_l(_s(nonempty=True, logical=True), unique=True)),
+    ),
+    EvaluatorResultV1: _f(
+        request_ref=_h("private"),
+        status=_enum("pass", "fail"),
+        evidence_ref=_h("artifact"),
+    ),
+    ContextOperationInputV1: _f(policy_ref=_h("artifact")),
+    EnvironmentStepV1: _f(
+        directive=KindUnion(
+            "kind",
+            {
+                "request_author": _f(
+                    kind=_enum("request_author"),
+                    source=_enum("writer_request", "mandatory_feedback"),
+                ),
+                "request_checks": _f(kind=_enum("request_checks")),
+                "commit_transition": _f(
+                    kind=_enum("commit_transition"), edge_id=_s(nonempty=True, logical=True)
+                ),
+                "seal_outcome": _f(
+                    kind=_enum("seal_outcome"),
+                    task_status=_TEXT,
+                    stop_reason=UnionOf((_TEXT, type(None))),
+                ),
+                "stop_exhausted": _f(kind=_enum("stop_exhausted"), stop_reason=_s(nonempty=True)),
+                "publish_reward": _f(kind=_enum("publish_reward")),
+            },
+        )
+    ),
+    MemberStartV1: _f(group_spec_ref=_h("artifact"), ordinal=_i()),
+    ExternalInputsV1: _f(schema=_i(1, equals=1), source_refs=_l(_h("artifact"))),
+    AdmissionPolicyV1: _f(
+        schema=_i(1, equals=1),
+        writer_family=UnionOf((_s(nonempty=True), type(None))),
+        allowed_tools=_l(_s(nonempty=True)),
+        controller_versions=_l(_s(nonempty=True)),
+        check_versions=_l(_s(nonempty=True)),
+    ),
+    OutcomeV1: _f(
+        schema=_i(1, equals=1),
+        task_status=_enum(*TASK_STATUSES),
+        execution_status=_enum(*EXECUTION_STATUSES),
+        stop_reason=UnionOf((_TEXT, type(None))),
+        reward_status=_enum("pending", "available", "unavailable"),
+        training_eligibility=_enum("pending", "eligible", "ineligible"),
+        candidate_checkpoint=_h("checkpoint", optional=True),
+        requirement_version=_h("private", optional=True),
+        checks=_l(_f(request_ref=_h("private"), result_ref=_h("artifact", optional=True))),
+        transition_edge_id=_NULLABLE_LOGICAL,
+        failed_request_ref=_h("private", optional=True),
+        reward_ref=_h("artifact", optional=True),
+        eligibility_ref=_h("artifact", optional=True),
+    ),
+    ContextContentV1: _f(
+        parent_ref=_h("context_node", optional=True),
+        messages=_l(MessageValue()),
+        tools=UnionOf((type(None), _l(_o({}, extra=_JSON)))),
+        rendering=UnionOf(
+            (
+                type(None),
+                _o(
+                    _RENDERING_SCHEMA.required,
+                ),
+            )
+        ),
+    ),
+    ContextRevisionV1: _f(
+        content_ref=_h("context_node"),
+        event_head=_h("event", optional=True),
+        provenance_refs=_l(_h("event")),
+    ),
+    GroupMemberSpecV1: _f(
+        member_id=_s(nonempty=True, logical=True),
+        ordinal=_i(),
+        writer_seed=_i(),
+        environment_seed=_i(),
+        seed_provenance=_s(nonempty=True),
+    ),
+    GroupSpecV1: _f(
+        group_id=_h(None),
+        group_sequence=_i(),
+        group_seed=_i(),
+        runner_mode=_enum("real", "fixture"),
+        environment=_f(
+            entry_checkpoint_id=_h("checkpoint"),
+            entry_state_hash=_h(None),
+            entry_tree_hash=_h(None),
+            instance_hash=_h(None),
+            graph_hash=_h(None),
+            node_id=_s(nonempty=True, logical=True),
+            node_visit_id=_s(nonempty=True, logical=True),
+            node_contract_hash=_h(None),
+            controller_contract_hash=_h(None),
+            check_contracts_hash=_h(None),
+            reward_contract_hash=_h(None, optional=True),
+            simulator_contract_hash=_h(None, optional=True),
+            source_refs_hash=_h(None),
+            request_refs_hash=_h(None),
+            visible_prefix_hash=_h(None),
+            context_revision_ref=_h("context_revision"),
+            context_messages_hash=_h(None),
+            rendering_hash=_h(None),
+            tool_schemas_hash=_h(None),
+            budget_ref=_h("artifact"),
+            budget_hash=_h(None),
+            versions_ref=_h("artifact"),
+            versions_hash=_h(None),
+            author_packet_ref=_h("private", optional=True),
+            requirements_ref=_h("private"),
+            decisions_ref=_h("artifact"),
+            disclosures_ref=_h("artifact"),
+            external_inputs_ref=_h("artifact"),
+            rng_ref=_h("artifact"),
+            outcome_ref=_h("artifact"),
+            provenance_ref=_h("artifact"),
+            continuation_hash=_h(None),
+            horizon=_s(nonempty=True),
+        ),
+        policy=_f(
+            model_ref=_h("artifact"),
+            behavior_policy_ref=_h("artifact"),
+            tokenizer_ref=_h("artifact"),
+            template_ref=_h("artifact"),
+            adapter_ref=_h("artifact"),
+            decoding_ref=_h("artifact"),
+            simulator_ref=_h("artifact"),
+            context_policy_ref=_h("artifact"),
+            controller_ref=_h("artifact"),
+            rng_derivation_version=_s(nonempty=True),
+        ),
+        members=_l(RecordOf(GroupMemberSpecV1)),
+    ),
+    ContextPolicyV1: _f(
+        operation=_enum("carry", "seed", "drop", "compact"),
+        retained_exchanges=_i(),
+        seed_name=UnionOf((_NULLABLE_TEXT, type(None))),
+        seed_checkpoint_ref=_h("checkpoint", optional=True),
+        summarizer_version=UnionOf((_NULLABLE_TEXT, type(None))),
+        max_summary_chars=UnionOf((_i(), type(None))),
+        max_operations=_i(),
+        max_context_bytes=_i(),
+        max_context_storage_bytes=_i(),
+        schema=_i(1, equals=1),
+    ),
+    ExecutionVersionsV1: _f(
+        schema=_i(1, equals=1),
+        transition_semantics=_enum(SEMANTICS_V1),
+        admission_policy_ref=_h("artifact"),
+        tool_spec=_f(max_file_bytes=_i(1), max_workspace_bytes=_i(1)),
+    ),
+}
+
+
+def _validate_schema_fields(record: _WireRecord) -> None:
+    spec = record.FIELD_SPEC
+    values = {item.name: getattr(record, item.name) for item in fields(record)}
+    if set(values) != set(spec.required):
+        raise TypeError(f"{type(record).__name__} field declarations differ from its spec")
+    _validate_spec(spec, values, type(record).__name__)
+    for rule in _CLASS_RULES.get(type(record), ()):
+        rule(record)
+
+
+_CLASS_RULES: dict[type[_WireRecord], tuple[Any, ...]] = {
+    SampledMessageV1: (_sampled_rules,),
+    WriterTurnV1: (_writer_turn_rules,),
+    ToolObservationV1: (_tool_observation_rules,),
+    AuthorReplyV1: (_author_reply_rules,),
+    EnvironmentStepV1: (_directive_rules,),
+    ExternalInputsV1: (_schema_one,),
+    AdmissionPolicyV1: (_schema_one, _admission_policy_rules),
+    OutcomeV1: (_schema_one,),
+    ContextContentV1: (_context_content_rules,),
+    GroupMemberSpecV1: (_group_member_rules,),
+    GroupSpecV1: (_group_spec_rules,),
+    ContextPolicyV1: (_context_policy_rules,),
+    ExecutionVersionsV1: (_schema_one,),
+}
+
+for _record, _field_spec in _CLASS_FIELD_SPECS.items():
+    _record.FIELD_SPEC = _field_spec
+    _record.REFS = _derived_refs(_field_spec)
+
+
+def _payload(record_type: str, **field_specs: Any) -> _PayloadCodec:
+    return _PayloadCodec(record_type, _f(**field_specs))
+
+
+_AUTHOR_PREREQUISITES = DictOf(_f(result_ref=_h("artifact"), status=_enum("pass", "fail")))
+_REWARD_COMPONENTS = DictOf(_f(weight=_i(), earned=_i(), status=_enum("pass", "fail", "not_run")))
+_PAYLOAD_RECORD_CODECS: Mapping[str, _PayloadCodec] = MappingProxyType(
+    {
+        "DecisionLedgerV1": _payload(
+            "DecisionLedgerV1",
+            schema=_i(1, equals=1),
+            values=DictOf(_JSON),
+            proposals=DictOf(_JSON),
+        ),
+        "DisclosureLedgerV1": _payload(
+            "DisclosureLedgerV1", schema=_i(1, equals=1), decisions=_l(_JSON)
+        ),
+        "AuthorRequestV1": _payload(
+            "AuthorRequestV1",
+            schema=_i(1, equals=1),
+            request_id=_s(nonempty=True, logical=True),
+            source=_enum("writer_request", "mandatory_feedback"),
+            action_id=_NULLABLE_LOGICAL,
+            call_id=_NULLABLE_LOGICAL,
+            feedback_id=_NULLABLE_LOGICAL,
+            arguments=UnionOf((_JSON, type(None))),
+            decision_ids=_l(_s(nonempty=True, logical=True)),
+            prerequisite_results=_AUTHOR_PREREQUISITES,
+            requirement_version=_h("artifact|private"),
+            script_ref=_h("private"),
+            author_packet_ref=_h("private", optional=True),
+        ),
+        "CheckRequestV1": _payload(
+            "CheckRequestV1",
+            schema=_i(1, equals=1),
+            request_id=_s(nonempty=True, logical=True),
+            target_checkpoint=_h("checkpoint"),
+            requirement_version=_h("private"),
+            check_contract_hash=_h("private"),
+            evaluator_packet_ref=_h("private", optional=True),
+            check_id=_s(nonempty=True, logical=True),
+            purpose=_enum("progress", "completion"),
+        ),
+        "RewardV1": _payload(
+            "RewardV1",
+            schema=_i(1, equals=1),
+            terminal_outcome_ref=_h("artifact"),
+            reward_contract_ref=_h("private"),
+            candidate_checkpoint=_h("checkpoint", optional=True),
+            check_result_refs=_l(_h("artifact")),
+            components=_REWARD_COMPONENTS,
+            numerator=_i(),
+            normalization=_i(1),
+            availability=_enum("available", "unavailable"),
+            eligibility_ref=_h("artifact"),
+        ),
+        "TrainingEligibilityV1": _payload(
+            "TrainingEligibilityV1",
+            schema=_i(1, equals=1),
+            terminal_outcome_ref=_h("artifact"),
+            status=_enum("eligible", "ineligible"),
+            reason=_s(nonempty=True),
+        ),
+        "GroupMemberSeedsV1": _payload(
+            "GroupMemberSeedsV1",
+            group_id=_h(None),
+            member_id=_s(nonempty=True, logical=True),
+            derivation=_s(nonempty=True),
+            writer_seed=_i(),
+            environment_seed=_i(),
+            parent_rng_ref=_h("artifact"),
+        ),
+        "RequirementLedgerV1": _payload(
+            "RequirementLedgerV1",
+            schema=_i(1, equals=1),
+            active=DictOf(_TEXT),
+            superseded=DictOf(_TEXT),
+        ),
+    }
+)
+
+_EXECUTION_VERSIONS_CODEC = _PayloadCodec(
+    "ExecutionVersionsV1", _CLASS_FIELD_SPECS[ExecutionVersionsV1], tagged=False
+)
+
+
+_WIRE_CLASSES = tuple(codec for codec in _CLASS_FIELD_SPECS if codec.RECORD_TYPE is not None)
+RECORD_TYPES: Mapping[str, type[_WireRecord] | _PayloadCodec] = MappingProxyType(
+    {
+        **{record.RECORD_TYPE: record for record in _WIRE_CLASSES},
+        **dict(_PAYLOAD_RECORD_CODECS),
+        "ExecutionVersionsV1": _EXECUTION_VERSIONS_CODEC,
+    }
+)
+
+SHARED_WIRE_V1_RECORD_TYPES = frozenset(
     {
         "AuthorRequestV1",
+        "CheckRequestV1",
+        "DecisionLedgerV1",
+        "DisclosureLedgerV1",
+        "RequirementLedgerV1",
+        "RewardV1",
+        "TrainingEligibilityV1",
+        "GroupMemberSeedsV1",
+    }
+)
+
+# These names are records the new runtime does not write and which have not
+# yet earned an L0 codec. GroupDecisionV1 remains because the group coordinator
+# persists its to_dict() payload; RuntimePortDescriptorV1 is nested only.
+LEGACY_PAYLOAD_RECORD_TYPES = frozenset(
+    {
         "AuthorToolAckV1",
         "AuthorTurnV1",
         "CheckBatchV1",
-        "CheckRequestV1",
         "CheckResultV1",
         "ContextOperationV1",
-        "ContextPolicyV1",
         "DecisionDisclosureV1",
-        "DecisionLedgerV1",
         "DeterministicCheckEvidenceV1",
-        "DisclosureLedgerV1",
-        "EvaluatorPacketV1",
         "FixtureFileCountEvidenceV1",
         "GroupExecutionFailureV1",
         "GroupAdvantageV1",
         "GroupDecisionV1",
-        "GroupMemberSeedsV1",
         "GroupMemberResultV1",
         "GroupSegmentCreditV1",
-        "GroupSpecV1",
         "GroupScriptedTerminalV1",
         "InfrastructureInvalidV1",
         "PreparedWriterRequestV1",
-        "RequirementLedgerV1",
         "RequirementSupersessionV1",
         "RewardAvailabilityV1",
         "RewardPublicationV1",
-        "RewardV1",
         "RuntimeManifestV1",
-        "RuntimePortDescriptorV1",
         "ScriptCoverageFailureV1",
         "ScriptedAuthorReplyV1",
         "TerminalOutcomeCommitV1",
         "TerminalOutcomeV1",
-        "TrainingEligibilityV1",
         "TransitionDecisionV1",
         "TranscriptReviewEvidenceV1",
         "VerifiedWriterMessagesV1",
@@ -796,8 +1403,6 @@ LEGACY_PAYLOAD_RECORD_TYPES = frozenset(
     }
 )
 
-# Registry edge paths are deliberately separate from type dispatch: context
-# records have closure kinds, not payload ``record_type`` fields.
 RECORD_EDGES: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
         **{record_type: codec.REFS for record_type, codec in RECORD_TYPES.items()},
@@ -805,69 +1410,34 @@ RECORD_EDGES: Mapping[str, Mapping[str, str]] = MappingProxyType(
         "context_revision": ContextRevisionV1.REFS,
     }
 )
-ALL_RECORD_CODECS: Mapping[str, type[_WireRecord]] = MappingProxyType(
+ALL_RECORD_CODECS: Mapping[str, Any] = MappingProxyType(
     {
         **dict(RECORD_TYPES),
         "SampledMessageV1": SampledMessageV1,
+        "GroupMemberSpecV1": GroupMemberSpecV1,
+        "ExecutionVersionsV1": ExecutionVersionsV1,
         "context_node": ContextContentV1,
         "context_revision": ContextRevisionV1,
     }
 )
 
 
-def _path_values(record: _WireRecord, path: str) -> tuple[Any, ...]:
-    values: tuple[Any, ...] = (record,)
-    for segment in path.split("."):
-        expand = segment.endswith("[]")
-        key = segment[:-2] if expand else segment
-        next_values = []
-        for value in values:
-            if value is None:
-                continue
-            if isinstance(value, Mapping):
-                child = value.get(key)
-            else:
-                child = getattr(value, key, None)
-            if expand:
-                if child is None:
-                    continue
-                next_values.extend(_array(child, key))
-            else:
-                next_values.append(child)
-        values = tuple(next_values)
-    return values
-
-
 def record_reference_edges(
     record_type: str, body: Mapping[str, Any]
 ) -> tuple[tuple[str, str], ...]:
-    """Decode one registered payload record and return its declared direct edges."""
+    """Validate one registered payload and return its direct declared edges."""
     try:
-        codec = RECORD_TYPES[record_type]
-        ref_paths = RECORD_EDGES[record_type]
+        codec = ALL_RECORD_CODECS[record_type]
+        schema = codec.FIELD_SPEC if isinstance(codec, type) else codec.fields
     except KeyError as exc:
-        raise ValueError(f"unregistered task-graph record_type: {record_type!r}") from exc
-    record = codec.from_dict(dict(body))
-    references = []
-    for path, kind in ref_paths.items():
-        for identity in _path_values(record, path):
-            if identity is None:
-                continue
-            validate_hash(identity)
-            references.append((kind, identity))
-    return tuple(references)
-
-
-def context_reference_edges(record: _WireRecord) -> tuple[tuple[str, str], ...]:
-    """Return closure edges for a new chained-context record."""
-    kind = "context_node" if isinstance(record, ContextContentV1) else "context_revision"
-    references = []
-    for path, edge_kind in RECORD_EDGES[kind].items():
-        for identity in _path_values(record, path):
-            if identity is not None:
-                validate_hash(identity)
-                references.append((edge_kind, identity))
-    return tuple(references)
+        raise ValueError(f"unregistered task-graph record: {record_type!r}") from exc
+    if isinstance(codec, type):
+        record = codec.from_dict(dict(body))
+        value = record.to_wire()
+    else:
+        _validate_codec(codec, body)
+        value = body
+    return _edge_values(schema, value)
 
 
 @dataclass(frozen=True)
@@ -900,7 +1470,8 @@ def materialize_context_nodes(
             root = node
             break
         identity = node.parent_ref
-    assert root is not None and root.tools is not None and root.rendering is not None
+    if root is None or root.tools is None or root.rendering is None:
+        raise MaterializationError("context chain has no materializable root")
     messages = tuple(message for chunk in reversed(chunks) for message in chunk)
     return MaterializedContextV1(messages, root.tools, root.rendering)
 

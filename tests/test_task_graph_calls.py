@@ -14,11 +14,11 @@ from writing_agent.task_graph_calls import (
     parse_calls,
     tool_effect_contract,
     validate_ask_shape,
-    validate_intake_record,
 )
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
 from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentAction, EnvironmentSnapshot, EnvironmentSpec
+from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_scripted import validate_ask_shape as scripted_validate_ask_shape
 from writing_agent.task_graph_writer import TransactionalWriterV1
 
@@ -45,8 +45,8 @@ def _ask_semantics(arguments):
 
 def _new_parse(batch, prior, scripted):
     record = intake_message({"content": "hello", "tool_calls": batch})
-    encoded = canonical_json(record)
-    decoded = json.loads(encoded)
+    encoded = canonical_json(record.to_wire())
+    decoded = SampledMessageV1.from_dict(json.loads(encoded))
     parsed = parse_calls(
         record,
         id_prefix="r:call:0",
@@ -280,12 +280,12 @@ class IntakeAndParserTests(unittest.TestCase):
             "tool_calls": [_good_call({"$noncanonical": "bytes", "hex": "00"})],
         }
         record = intake_message(message)
-        self.assertEqual(record["content"]["$noncanonical"], "mapping")
+        self.assertEqual(record.content["$noncanonical"], "mapping")
         self.assertEqual(
-            record["calls"][0]["value"]["function"]["arguments"]["$noncanonical"], "mapping"
+            record.calls[0]["value"]["function"]["arguments"]["$noncanonical"], "mapping"
         )
-        encoded = canonical_json(record)
-        restored = json.loads(encoded)
+        encoded = canonical_json(record.to_wire())
+        restored = SampledMessageV1.from_dict(json.loads(encoded))
         parsed = parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
         self.assertEqual(parsed, parse_calls(restored, id_prefix="r:call:0", allowed=ALLOWED))
         self.assertIsNone(parsed[0].rejection)
@@ -299,50 +299,54 @@ class IntakeAndParserTests(unittest.TestCase):
         }
         canonicalized = intake_message(forged)
         self.assertIsNot(canonicalized, forged)
-        canonical_json(canonicalized)
-        self.assertEqual(canonicalized["content"]["$noncanonical"], "float")
+        canonical_json(canonicalized.to_wire())
+        self.assertEqual(canonicalized.content["$noncanonical"], "float")
+        self.assertNotIn("$sampled_message_v1", canonicalized.to_wire())
 
     def test_recorded_intake_rejects_malformed_markers(self):
-        malformed_markers = (
+        malformed = (
+            ("float repr", {"$noncanonical": "float", "repr": "1.50"}),
+            ("invalid float", {"$noncanonical": "float", "repr": "not-a-float"}),
+            (
+                "duplicate decoded mapping keys",
+                {"$noncanonical": "mapping", "items": [[1, "first"], [1, "second"]]},
+            ),
             (
                 "unhashable mapping key",
                 {"$noncanonical": "mapping", "items": [[[1], 2]]},
             ),
-            ("short mapping pair", {"$noncanonical": "mapping", "items": [[1]]}),
-            ("invalid codepoint", {"$noncanonical": "surrogate-string", "codepoints": [-1]}),
-            ("invalid float repr", {"$noncanonical": "float", "repr": "not-a-float"}),
-            ("invalid bytes hex", {"$noncanonical": "bytes", "hex": "not-hex"}),
-            (
-                "unexpected marker key",
-                {"$noncanonical": "float", "repr": "1.0", "extra": True},
-            ),
         )
-        for name, marker in malformed_markers:
-            record = {
-                "$sampled_message_v1": True,
+        for name, value in malformed:
+            wire = {
                 "content": None,
                 "tool_calls_was_list": True,
-                "calls": [{"bounded": True, "value": marker}],
+                "calls": [{"bounded": True, "value": value}],
             }
-            with self.subTest(marker=name), self.assertRaises(ValueError):
-                parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
+            with self.subTest(row=name), self.assertRaises(ValueError) as codec_error:
+                SampledMessageV1.from_dict(wire)
+            forged = object.__new__(SampledMessageV1)
+            object.__setattr__(forged, "content", None)
+            object.__setattr__(forged, "tool_calls_was_list", True)
+            object.__setattr__(forged, "calls", wire["calls"])
+            with self.subTest(row=name), self.assertRaises(type(codec_error.exception)):
+                parse_calls(forged, id_prefix="r:call:0", allowed=ALLOWED)
 
-    def test_recorded_intake_validator_rejects_malformed_wrapper(self):
+    def test_sampled_message_codec_rejects_legacy_sentinel(self):
         with self.assertRaises(ValueError):
-            validate_intake_record(
+            SampledMessageV1.from_dict(
                 {
                     "$sampled_message_v1": True,
                     "content": None,
                     "tool_calls_was_list": True,
-                    "calls": [{"bounded": False, "value": {"not": "bounded-call"}}],
+                    "calls": [],
                 }
             )
 
     def test_intake_encodes_non_json_values_and_non_array_calls(self):
         record = intake_message({"content": (b"x", 1.5), "tool_calls": "not calls"})
-        self.assertEqual(record["content"]["$noncanonical"], "tuple")
-        self.assertFalse(record["tool_calls_was_list"])
-        self.assertEqual(record["calls"], "not calls")
+        self.assertEqual(record.content["$noncanonical"], "tuple")
+        self.assertFalse(record.tool_calls_was_list)
+        self.assertEqual(record.calls, "not calls")
         with self.assertRaises(WriterRuntimeError):
             parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
 

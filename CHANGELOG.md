@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Unify task-graph record validation and reference edges under declarative field specs;
+  make sampled-message intake typed, and validate shared payload and execution-version
+  records through store closure.
+
 - Replace the deterministic controller view with pure lineage-view directives and one guarded edge selector.
 
 - Add immutable task-graph transition views, stable nested diff paths, and pure entry derivation

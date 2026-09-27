@@ -21,27 +21,17 @@ from writing_agent.task_graph import (
 from writing_agent.task_graph_admission import StoreArtifactResolver, admit_graph
 from writing_agent.task_graph_compaction import require_quiescent
 from writing_agent.task_graph_projection import project_writer_context
-from writing_agent.task_graph_store import TaskGraphStore
-
-
-class GroupError(ValueError):
-    """A group contract, immutable receipt, or member result is invalid."""
-
-
-POLICY_FIELDS = frozenset(
-    {
-        "model_ref",
-        "behavior_policy_ref",
-        "tokenizer_ref",
-        "template_ref",
-        "adapter_ref",
-        "decoding_ref",
-        "simulator_ref",
-        "context_policy_ref",
-        "controller_ref",
-        "rng_derivation_version",
-    }
+from writing_agent.task_graph_records import (
+    POLICY_FIELDS,
+    GroupError,
 )
+from writing_agent.task_graph_records import (
+    GroupMemberSpecV1 as GroupMemberSpecV1,
+)
+from writing_agent.task_graph_records import (
+    GroupSpecV1 as GroupSpecV1,
+)
+from writing_agent.task_graph_store import TaskGraphStore
 
 
 def _hash(value: Any) -> str:
@@ -152,90 +142,6 @@ def _environment(store: TaskGraphStore, checkpoint_id: str) -> dict[str, Any]:
         "continuation_hash": _hash(state.continuation),
         "horizon": "node_exit",
     }
-
-
-@dataclass(frozen=True)
-class GroupMemberSpecV1(_Record):
-    member_id: str = ""
-    ordinal: int = -1
-    writer_seed: int = -1
-    environment_seed: int = -1
-    seed_provenance: str = "sha256-domain-v1"
-    DOMAIN = "payload"
-
-    def validate(self) -> None:
-        if not self.member_id or type(self.ordinal) is not int or self.ordinal < 0:
-            raise GroupError("invalid group member slot")
-        if any(type(x) is not int or x < 0 for x in (self.writer_seed, self.environment_seed)):
-            raise GroupError("invalid member seed")
-        if self.seed_provenance != "sha256-domain-v1":
-            raise GroupError("unknown member seed derivation")
-
-
-@dataclass(frozen=True)
-class GroupSpecV1(_Record):
-    record_type: str = "GroupSpecV1"
-    group_id: str = ""
-    group_sequence: int = -1
-    group_seed: int = -1
-    runner_mode: str = "real"
-    environment: dict[str, Any] = None  # type: ignore[assignment]
-    policy: dict[str, str] = None  # type: ignore[assignment]
-    members: tuple[GroupMemberSpecV1 | dict, ...] = ()
-    DOMAIN = "payload"
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "members",
-            tuple(
-                m if isinstance(m, GroupMemberSpecV1) else GroupMemberSpecV1.from_dict(m)
-                for m in self.members
-            ),
-        )
-        super().__post_init__()
-
-    def validate(self) -> None:
-        if (
-            self.record_type != "GroupSpecV1"
-            or type(self.group_sequence) is not int
-            or self.group_sequence < 0
-        ):
-            raise GroupError("invalid group identity")
-        if (
-            type(self.group_seed) is not int
-            or self.group_seed < 0
-            or not 2 <= len(self.members) <= 64
-        ):
-            raise GroupError("group size must be 2..64 and seed nonnegative")
-        if self.runner_mode not in {"real", "fixture"}:
-            raise GroupError("unknown group runner mode")
-        validate_hash(self.environment["entry_checkpoint_id"])
-        if set(self.policy) != POLICY_FIELDS:
-            raise GroupError("incomplete policy contract")
-        if self.group_id != _hash(
-            [
-                "GroupIdV1",
-                self.group_sequence,
-                self.environment,
-                self.policy,
-                self.group_seed,
-                self.runner_mode,
-                len(self.members),
-            ]
-        ):
-            raise GroupError("group ID does not bind its contract and sequence")
-        if tuple(m.ordinal for m in self.members) != tuple(range(len(self.members))):
-            raise GroupError("member slots are not canonical")
-        for member in self.members:
-            if member.member_id != f"grp-{self.group_id[:24]}-{member.ordinal:02d}":
-                raise GroupError("member ID does not bind its ordinal")
-            if member.writer_seed != _seed(self.group_seed, "writer", member.ordinal):
-                raise GroupError("writer seed derivation mismatch")
-            if member.environment_seed != _seed(self.group_seed, "environment"):
-                raise GroupError("environment seed derivation mismatch")
-        if len({member.writer_seed for member in self.members}) != len(self.members):
-            raise GroupError("writer streams are not distinct")
 
 
 @dataclass(frozen=True)

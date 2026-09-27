@@ -21,10 +21,7 @@ from writing_agent.task_graph import (
     domain_hash_bytes,
     validate_hash,
 )
-
-
-class CompactionError(ValueError):
-    """A context operation is not safe or its recorded evidence is false."""
+from writing_agent.task_graph_records import CompactionError, ContextPolicyV1
 
 
 @dataclass(frozen=True)
@@ -120,87 +117,6 @@ class ContextOperationV1(_Record):
             or any(type(value) is not int or value < 0 for value in self.charges.values())
         ):
             raise CompactionError("invalid context operation charges")
-
-
-@dataclass(frozen=True)
-class ContextPolicyV1:
-    operation: str
-    retained_exchanges: int = 0
-    seed_name: str | None = None
-    seed_checkpoint_ref: str | None = None
-    summarizer_version: str | None = None
-    max_summary_chars: int | None = None
-    max_operations: int = 32
-    max_context_bytes: int = 1_000_000
-    max_context_storage_bytes: int = 8_000_000
-    schema: int = 1
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.schema) is not int
-            or self.schema != 1
-            or self.operation not in {"carry", "seed", "drop", "compact"}
-        ):
-            raise CompactionError("unsupported context policy")
-        for name in (
-            "retained_exchanges",
-            "max_operations",
-            "max_context_bytes",
-            "max_context_storage_bytes",
-        ):
-            value = getattr(self, name)
-            if type(value) is not int or value < 0:
-                raise CompactionError(f"{name} must be a nonnegative integer")
-        if self.operation == "compact":
-            if (
-                self.summarizer_version != "visible-text-v1"
-                or type(self.max_summary_chars) is not int
-                or self.max_summary_chars < 0
-                or self.seed_name is not None
-                or self.seed_checkpoint_ref is not None
-            ):
-                raise CompactionError("compact requires the fixed visible-text-v1 algorithm")
-        elif self.summarizer_version is not None or self.max_summary_chars is not None:
-            raise CompactionError("only compact may configure the summarizer")
-        if self.operation == "seed":
-            if (
-                not isinstance(self.seed_name, str)
-                or not self.seed_name
-                or any(c.isspace() or ord(c) < 0x20 for c in self.seed_name)
-            ):
-                raise CompactionError("seed requires a named immutable prefix")
-            self.seed_name.encode("utf-8", "strict")
-            validate_hash(self.seed_checkpoint_ref)
-        elif self.seed_name is not None or self.seed_checkpoint_ref is not None:
-            raise CompactionError("only seed may name a prefix")
-        if self.operation != "compact" and self.retained_exchanges:
-            raise CompactionError("only compact may retain a tail")
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "record_type": "ContextPolicyV1",
-            "schema": self.schema,
-            "operation": self.operation,
-            "retained_exchanges": self.retained_exchanges,
-            "seed_name": self.seed_name,
-            "seed_checkpoint_ref": self.seed_checkpoint_ref,
-            "summarizer_version": self.summarizer_version,
-            "max_summary_chars": self.max_summary_chars,
-            "max_operations": self.max_operations,
-            "max_context_bytes": self.max_context_bytes,
-            "max_context_storage_bytes": self.max_context_storage_bytes,
-        }
-
-    @classmethod
-    def from_dict(cls, body: Any) -> ContextPolicyV1:
-        if not isinstance(body, dict) or set(body) != set(cls("carry").to_dict()):
-            raise CompactionError("invalid context policy schema")
-        if body["record_type"] != "ContextPolicyV1":
-            raise CompactionError("invalid context policy type")
-        value = cls(**{key: value for key, value in body.items() if key != "record_type"})
-        if value.to_dict() != body:
-            raise CompactionError("noncanonical context policy")
-        return value
 
 
 def completed_exchanges(messages: tuple[MessageV1, ...]) -> tuple[tuple[int, int], ...]:
