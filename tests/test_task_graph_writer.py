@@ -204,6 +204,20 @@ class WriterFixture(unittest.TestCase):
 
 
 class TransactionalWriterTest(WriterFixture):
+    def test_identical_content_write_produces_empty_file_delta(self):
+        original = self.runtime.state.files["draft.txt"]
+        action = self.writer.submit_action(
+            self.runtime,
+            self.action(self.call("write_file", {"path": "draft.txt", "content": original})),
+        )
+
+        result = self.writer.step_tool(action.runtime)
+        event = self.store.load_event(result.event_id)
+        effect = self.store.get_artifact(event.payload_ref)
+
+        self.assertEqual(effect["file_delta"], {})
+        self.assertEqual(result.runtime.state.files["draft.txt"], original)
+
     def test_generic_phase2_budget_event_is_rejected_on_admitted_writer(self):
         effect = forged_effect(self.runtime.state, changes={})
         effect_ref = self.store.put_artifact(effect)

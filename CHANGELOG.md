@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Specify canonical changed-path effects and verify an identical-content write records an empty delta.
+
 - Compute the tool-result workspace byte total once and rely on the pinned workspace/storage limit
   relation instead of checking an unreachable second bound.
 
