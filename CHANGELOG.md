@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Add immutable task-graph transition views, stable nested diff paths, and pure entry derivation
+  with explicit artifact outputs; centralize static tool schemas so derives do not import the
+  workspace or a runtime port.
+
 - Add strict transition-seam wire codecs and declared payload edges, plus chained context
   records in version-pinned store locations while preserving legacy runtime records.
 

@@ -23,6 +23,10 @@ retains its smoke-evaluation and training-format workflows.
   edges and stores chained contexts separately; it selects the new context kind only when
   the checkpoint's versions artifact pins `transition_semantics`. Existing runtime codecs and
   the legacy `contexts/` directory remain unchanged during coexistence.
+  [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
+  transition/view types and mismatch-path helper; [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py)
+  derives a node's entry state and deterministic root artifacts from its admitted contract,
+  pinned parameters, and a read-only artifact reader.
   [task_graph_controller.py](../writing_agent/task_graph_controller.py) is the pure,
   deterministic directive boundary. It does not step a writer, execute checks, accept
   author transition/completion claims, or mutate runtime state.

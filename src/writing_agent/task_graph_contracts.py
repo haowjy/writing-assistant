@@ -8,13 +8,14 @@ interprets their small vocabulary, while writer and author models never execute 
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from dataclasses import field as dataclass_field
 from types import MappingProxyType
 from typing import Any, ClassVar, Self
 
-from writing_agent.task_graph import domain_hash, validate_hash
+from writing_agent.task_graph import canonical_json, domain_hash, validate_hash
 
 FILE_TOOLS = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file"})
 GRAPH_TOOLS = FILE_TOOLS | {"ask_author"}
@@ -46,6 +47,92 @@ GUARD_BUDGETS = frozenset(
         "wall_time",
     }
 )
+
+
+def _tool_schema(name: str, description: str, required: list[str], **properties: str) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    key: {"type": "string", "description": value}
+                    for key, value in properties.items()
+                },
+                "required": required,
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+TOOL_SCHEMAS = [
+    _tool_schema(
+        "list_dir", "List a workspace directory (up to 500 entries).", [], path="Directory"
+    ),
+    _tool_schema("read_file", "Read a UTF-8 workspace file.", ["path"], path="File"),
+    _tool_schema(
+        "search",
+        "Literal case-insensitive search; up to 100 matches in 1000 files.",
+        ["query"],
+        query="Text",
+        path="File or directory",
+    ),
+    _tool_schema(
+        "write_file",
+        "Create or replace a file. Commit canon only when authorized.",
+        ["path", "content"],
+        path="File",
+        content="Complete text",
+    ),
+    _tool_schema(
+        "patch_file",
+        "Replace one exact text span; fails on ambiguous matches.",
+        ["path", "old", "new"],
+        path="File",
+        old="Unique old text",
+        new="Replacement",
+    ),
+]
+
+ASK_AUTHOR_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "ask_author",
+        "description": "Ask about declared public decision IDs. This must be the only tool call.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string"},
+                "decision_ids": {"type": "array", "items": {"type": "string"}},
+                "proposals": {"type": "array", "items": {"type": "object"}},
+                "option_refs": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["question", "decision_ids", "proposals", "option_refs"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def writer_tool_schemas(allowlist: tuple[str, ...], interaction_policy=None) -> tuple[dict, ...]:
+    """Build the stable tool manifest from an admitted allowlist."""
+    schemas = tuple(schema for schema in TOOL_SCHEMAS if schema["function"]["name"] in allowlist)
+    if "ask_author" not in allowlist:
+        return schemas
+    if interaction_policy is None:
+        raise ValueError("ask_author schema requires admitted public decision declarations")
+    schema = json.loads(canonical_json(ASK_AUTHOR_SCHEMA))
+    declared = interaction_policy.public_decisions
+    schema["function"]["description"] += " Public decisions: " + "; ".join(
+        f"{item['id']}: {item['label']}" for item in declared
+    )
+    schema["function"]["parameters"]["properties"]["decision_ids"]["items"]["enum"] = [
+        item["id"] for item in declared
+    ]
+    return (*schemas, schema)
 
 
 def _freeze(value: Any) -> Any:

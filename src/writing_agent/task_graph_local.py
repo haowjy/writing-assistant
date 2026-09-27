@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import base64
-import json
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from writing_agent.task_graph import canonical_json, domain_hash
+from writing_agent.task_graph_contracts import TOOL_SCHEMAS, writer_tool_schemas
 from writing_agent.task_graph_ports import (
     EnvironmentAction,
     EnvironmentHandle,
@@ -20,45 +19,7 @@ from writing_agent.task_graph_ports import (
     SampleResult,
     ToolManifest,
 )
-from writing_agent.workspace import TOOL_SCHEMAS, Workspace
-
-ASK_AUTHOR_SCHEMA = {
-    "type": "function",
-    "function": {
-        "name": "ask_author",
-        "description": "Ask about declared public decision IDs. This must be the only tool call.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "question": {"type": "string"},
-                "decision_ids": {"type": "array", "items": {"type": "string"}},
-                "proposals": {"type": "array", "items": {"type": "object"}},
-                "option_refs": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["question", "decision_ids", "proposals", "option_refs"],
-            "additionalProperties": False,
-        },
-    },
-}
-
-
-def writer_tool_schemas(
-    allowlist: tuple[str, ...], interaction_policy=None
-) -> tuple[dict[str, Any], ...]:
-    schemas = tuple(schema for schema in TOOL_SCHEMAS if schema["function"]["name"] in allowlist)
-    if "ask_author" not in allowlist:
-        return schemas
-    if interaction_policy is None:
-        raise ValueError("ask_author schema requires admitted public decision declarations")
-    schema = json.loads(canonical_json(ASK_AUTHOR_SCHEMA))
-    declared = interaction_policy.public_decisions
-    schema["function"]["description"] += " Public decisions: " + "; ".join(
-        f"{item['id']}: {item['label']}" for item in declared
-    )
-    schema["function"]["parameters"]["properties"]["decision_ids"]["items"]["enum"] = [
-        item["id"] for item in declared
-    ]
-    return (*schemas, schema)
+from writing_agent.workspace import Workspace
 
 
 def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) -> dict:

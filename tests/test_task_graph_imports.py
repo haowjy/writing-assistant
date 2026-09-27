@@ -7,7 +7,13 @@ import unittest
 from pathlib import Path
 
 SOURCE_PACKAGE = Path(__file__).resolve().parents[1] / "src" / "writing_agent"
-NEW_SEAM_MODULES = {"task_graph_errors", "task_graph_calls", "task_graph_records"}
+NEW_SEAM_MODULES = {
+    "task_graph_errors",
+    "task_graph_calls",
+    "task_graph_records",
+    "task_graph_transition",
+    "task_graph_derive_entry",
+}
 
 
 def build_import_graph() -> dict[str, set[str]]:
@@ -112,6 +118,36 @@ class TaskGraphImportTests(unittest.TestCase):
             graph["task_graph_records"],
             {"task_graph", "task_graph_contracts"},
         )
+        self.assertLessEqual(
+            graph["task_graph_transition"],
+            {
+                "task_graph",
+                "task_graph_admission",
+                "task_graph_contracts",
+                "task_graph_group_contract",
+                "task_graph_records",
+            },
+        )
+        self.assertLessEqual(
+            graph["task_graph_derive_entry"],
+            {
+                "task_graph",
+                "task_graph_admission",
+                "task_graph_contracts",
+                "task_graph_records",
+                "task_graph_transition",
+            },
+        )
+        for forbidden in {
+            "task_graph_store",
+            "task_graph_ports",
+            "task_graph_local",
+            "task_graph_writer",
+            "task_graph_environment",
+            "task_graph_replay",
+        }:
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, graph["task_graph_derive_entry"])
         for module in NEW_SEAM_MODULES:
             with self.subTest(module=module):
                 self.assertIn(module, graph)
@@ -119,6 +155,25 @@ class TaskGraphImportTests(unittest.TestCase):
                     any(module in component for component in cyclic_components),
                     f"{module} appears in cyclic components {cyclic_components}",
                 )
+
+    def test_entry_derivation_has_no_store_port_or_filesystem_imports(self) -> None:
+        path = SOURCE_PACKAGE / "task_graph_derive_entry.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                imported.add(node.module)
+        forbidden = {
+            "os",
+            "pathlib",
+            "writing_agent.task_graph_store",
+            "writing_agent.task_graph_ports",
+            "writing_agent.task_graph_local",
+            "writing_agent.workspace",
+        }
+        self.assertFalse(imported & forbidden)
 
 
 if __name__ == "__main__":
