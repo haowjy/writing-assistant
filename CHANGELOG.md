@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Derive strict record field specs and `REFS` from each field declaration, keep binding
+  rules on their records, and split the shared wire core from group and payload codecs.
+
 - Return entry state and artifacts together, compare materialized contexts, and use typed or
   canonical-byte values for derived artifacts.
 

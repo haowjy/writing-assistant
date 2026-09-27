@@ -63,6 +63,107 @@ P = "b" * 64
 Q = "c" * 64
 R = "d" * 64
 
+EXPECTED_REFS = {
+    "AdmissionPolicyV1": (),
+    "AuthorReplyV1": (("request_ref", "private"),),
+    "AuthorRequestV1": (
+        ("author_packet_ref", "private"),
+        ("prerequisite_results{}.result_ref", "artifact"),
+        ("requirement_version", "artifact|private"),
+        ("script_ref", "private"),
+    ),
+    "CheckRequestV1": (
+        ("check_contract_hash", "private"),
+        ("evaluator_packet_ref", "private"),
+        ("requirement_version", "private"),
+        ("target_checkpoint", "checkpoint"),
+    ),
+    "ContextOperationInputV1": (("policy_ref", "artifact"),),
+    "ContextPolicyV1": (("seed_checkpoint_ref", "checkpoint"),),
+    "DecisionLedgerV1": (),
+    "DisclosureLedgerV1": (),
+    "EnvironmentStepV1": (),
+    "EvaluatorResultV1": (("evidence_ref", "artifact"), ("request_ref", "private")),
+    "ExecutionVersionsV1": (("admission_policy_ref", "artifact"),),
+    "ExternalInputsV1": (("source_refs[]", "artifact"),),
+    "GroupMemberSeedsV1": (("parent_rng_ref", "artifact"),),
+    "GroupMemberSpecV1": (),
+    "GroupSpecV1": (
+        ("environment.author_packet_ref", "private"),
+        ("environment.budget_ref", "artifact"),
+        ("environment.context_revision_ref", "context_revision"),
+        ("environment.decisions_ref", "artifact"),
+        ("environment.disclosures_ref", "artifact"),
+        ("environment.entry_checkpoint_id", "checkpoint"),
+        ("environment.external_inputs_ref", "artifact"),
+        ("environment.outcome_ref", "artifact"),
+        ("environment.provenance_ref", "artifact"),
+        ("environment.requirements_ref", "private"),
+        ("environment.rng_ref", "artifact"),
+        ("environment.versions_ref", "artifact"),
+        ("policy.adapter_ref", "artifact"),
+        ("policy.behavior_policy_ref", "artifact"),
+        ("policy.context_policy_ref", "artifact"),
+        ("policy.controller_ref", "artifact"),
+        ("policy.decoding_ref", "artifact"),
+        ("policy.model_ref", "artifact"),
+        ("policy.simulator_ref", "artifact"),
+        ("policy.template_ref", "artifact"),
+        ("policy.tokenizer_ref", "artifact"),
+    ),
+    "MemberStartV1": (("group_spec_ref", "artifact"),),
+    "OutcomeV1": (
+        ("candidate_checkpoint", "checkpoint"),
+        ("checks[].request_ref", "private"),
+        ("checks[].result_ref", "artifact"),
+        ("eligibility_ref", "artifact"),
+        ("failed_request_ref", "private"),
+        ("requirement_version", "private"),
+        ("reward_ref", "artifact"),
+    ),
+    "RequirementLedgerV1": (),
+    "RewardV1": (
+        ("candidate_checkpoint", "checkpoint"),
+        ("check_result_refs[]", "artifact"),
+        ("eligibility_ref", "artifact"),
+        ("reward_contract_ref", "private"),
+        ("terminal_outcome_ref", "artifact"),
+    ),
+    "SampledMessageV1": (),
+    "ToolObservationV1": (),
+    "TrainingEligibilityV1": (("terminal_outcome_ref", "artifact"),),
+    "WriterRequestV1": (
+        ("context_revision_ref", "context_revision"),
+        ("payload_ref", "artifact|bytes"),
+    ),
+    "WriterTurnV1": (
+        ("adapter_trace.adapter_ref", "artifact"),
+        ("adapter_trace.behavior_policy_ref", "artifact"),
+        ("adapter_trace.context_policy_ref", "artifact"),
+        ("adapter_trace.decoding_ref", "artifact"),
+        ("adapter_trace.model_ref", "artifact"),
+        ("adapter_trace.per_token_logprobs_ref", "bytes"),
+        ("adapter_trace.policy_ref", "artifact"),
+        ("adapter_trace.template_ref", "artifact"),
+        ("adapter_trace.tokenizer_ref", "artifact"),
+        ("context_revision_ref", "context_revision"),
+        ("prepared_request_ref", "artifact"),
+        ("raw_output_ref", "artifact|bytes"),
+        ("request_ref", "artifact|bytes"),
+    ),
+    "context_node": (
+        ("parent_ref", "context_node"),
+        ("rendering.template_ref", "artifact"),
+        ("rendering.tokenizer_ref", "artifact"),
+        ("rendering.tool_schema_ref", "artifact"),
+    ),
+    "context_revision": (
+        ("content_ref", "context_node"),
+        ("event_head", "event"),
+        ("provenance_refs[]", "event"),
+    ),
+}
+
 
 def record_examples():
     message = MessageV1(content=("A draft is on the page.",), origin="entry:request")
@@ -392,6 +493,12 @@ def _replace_ref(body, path, replacement):
 
 
 class RecordCodecTests(unittest.TestCase):
+    def test_every_registered_refs_mapping_matches_the_wire_contract(self):
+        self.assertEqual(
+            {name: tuple(sorted(codec.REFS.items())) for name, codec in ALL_RECORD_CODECS.items()},
+            EXPECTED_REFS,
+        )
+
     def test_every_codec_has_a_canonical_exact_round_trip(self):
         examples = record_examples()
         classes = {codec for codec in ALL_RECORD_CODECS.values() if isinstance(codec, type)}
@@ -461,6 +568,14 @@ class RecordCodecTests(unittest.TestCase):
                 with self.subTest(record=codec.__name__, field="schema"):
                     with self.assertRaises((TypeError, ValueError)):
                         codec.from_dict(wire)
+
+    def test_writer_usage_token_counts_are_nonnegative_integers(self):
+        record = next(item for item in record_examples() if isinstance(item, WriterTurnV1))
+        for value in (True, -1, 1.5):
+            wire = record.to_wire()
+            wire["usage"]["prompt_tokens"] = value
+            with self.subTest(value=value), self.assertRaises((TypeError, ValueError)):
+                WriterTurnV1.from_dict(wire)
 
     def test_refs_lint_covers_named_and_hash_shaped_values(self):
         for record in record_examples():

@@ -19,9 +19,11 @@ retains its smoke-evaluation and training-format workflows.
   Phase 1 node shape; [task_graph_admission.py](../writing_agent/task_graph_admission.py)
   resolves their public/private closure and rejects an unsound graph before sampling.
   During the transition-seam rollout, [task_graph_records.py](../writing_agent/task_graph_records.py)
-  owns the new strict input-record codecs and `REFS` registry. The store follows those typed
-  edges and stores chained contexts separately; it selects the new context kind only when
-  the checkpoint's versions artifact pins `transition_semantics`. Existing runtime codecs and
+  owns the new strict input-record codecs and `REFS` registry; [task_graph_wire.py](../writing_agent/task_graph_wire.py)
+  supplies their shared L0 field vocabulary, validator, edge walker, and record base. The
+  store follows those typed edges and stores chained contexts separately; it selects the new
+  context kind only when the checkpoint's versions artifact pins `transition_semantics`.
+  Existing runtime codecs and
   the legacy `contexts/` directory remain unchanged during coexistence.
   [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
   transition/view types and mismatch-path helper; [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py)

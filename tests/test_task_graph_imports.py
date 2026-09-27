@@ -11,6 +11,9 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_errors",
     "writing_agent.task_graph_calls",
     "writing_agent.task_graph_records",
+    "writing_agent.task_graph_wire",
+    "writing_agent.task_graph_record_contracts",
+    "writing_agent.task_graph_payloads",
     "writing_agent.task_graph_operation",
     "writing_agent.task_graph_transition",
     "writing_agent.task_graph_derive_entry",
@@ -194,6 +197,9 @@ class TaskGraphImportTests(unittest.TestCase):
                 "writing_agent.task_graph",
                 "writing_agent.task_graph_contracts",
                 "writing_agent.task_graph_errors",
+                "writing_agent.task_graph_wire",
+                "writing_agent.task_graph_record_contracts",
+                "writing_agent.task_graph_payloads",
             },
         )
         self.assertLessEqual(
