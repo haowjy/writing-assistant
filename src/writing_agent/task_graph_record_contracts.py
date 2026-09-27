@@ -43,6 +43,8 @@ POLICY_FIELDS = frozenset(
     }
 )
 
+SEMANTICS_V1 = "task-graph-derive-v1"
+
 
 def _group_hash(value: Any) -> str:
     return domain_hash("payload", value)
@@ -55,7 +57,7 @@ def _group_seed(group_seed: int, role: str, ordinal: int | None = None) -> int:
 
 _mode_spec = Enum(frozenset({"real", "fixture"}))
 _operation_spec = Enum(frozenset({"carry", "seed", "drop", "compact"}))
-_semantics_spec = Enum(frozenset({"task-graph-derive-v1"}))
+_semantics_spec = Enum(frozenset({SEMANTICS_V1}))
 _tool_spec = _f(max_file_bytes=Int(minimum=1), max_workspace_bytes=Int(minimum=1))
 _environment_spec = _f(
     **{
@@ -88,28 +90,27 @@ _policy_spec = _f(
 
 @dataclass(frozen=True)
 class GroupMemberSpecV1(_WireRecord):
-    member_id: Annotated[str, Str(nonempty=True, logical=True)] = ""
-    ordinal: Annotated[int, Int()] = -1
-    writer_seed: Annotated[int, Int()] = -1
-    environment_seed: Annotated[int, Int()] = -1
-    seed_provenance: Annotated[str, Str(nonempty=True)] = "sha256-domain-v1"
-
-    def check(self) -> None:
-        if self.seed_provenance != "sha256-domain-v1":
-            raise GroupError("unknown member seed derivation")
+    member_id: Annotated[str, Str(nonempty=True, logical=True)]
+    ordinal: Annotated[int, Int()]
+    writer_seed: Annotated[int, Int()]
+    environment_seed: Annotated[int, Int()]
+    seed_provenance: Annotated[str, Enum(frozenset({"sha256-domain-v1"}))] = "sha256-domain-v1"
+    schema: Annotated[int, Int(equals=1)] = 1
 
 
 @dataclass(frozen=True)
 class GroupSpecV1(_WireRecord):
-    group_id: Annotated[str, Hash(None)] = ""
-    group_sequence: Annotated[int, Int()] = -1
-    group_seed: Annotated[int, Int()] = -1
-    runner_mode: Annotated[str, _mode_spec] = "real"
-    environment: Annotated[Mapping[str, Any] | None, _environment_spec] = None
-    policy: Annotated[Mapping[str, str] | None, _policy_spec] = None
+    group_id: Annotated[str, Hash(None)]
+    group_sequence: Annotated[int, Int(minimum=0)]
+    group_seed: Annotated[int, Int(minimum=0)]
+    runner_mode: Annotated[str, _mode_spec]
+    environment: Annotated[Mapping[str, Any], _environment_spec]
+    policy: Annotated[Mapping[str, str], _policy_spec]
     members: Annotated[
-        tuple[GroupMemberSpecV1 | Mapping[str, Any], ...], ListOf(RecordOf(GroupMemberSpecV1))
-    ] = ()
+        tuple[GroupMemberSpecV1 | Mapping[str, Any], ...],
+        ListOf(RecordOf(GroupMemberSpecV1), min_items=2, max_items=64),
+    ]
+    schema: Annotated[int, Int(equals=1)] = 1
     RECORD_TYPE: ClassVar[str] = "GroupSpecV1"
 
     @property
@@ -117,14 +118,6 @@ class GroupSpecV1(_WireRecord):
         return self.RECORD_TYPE
 
     def check(self) -> None:
-        if self.environment is None or self.policy is None:
-            raise GroupError("group spec requires its environment and policy")
-        if self.group_sequence < 0 or self.group_seed < 0 or not 2 <= len(self.members) <= 64:
-            raise GroupError("group size must be 2..64 and seed nonnegative")
-        if self.runner_mode not in {"real", "fixture"}:
-            raise GroupError("unknown group runner mode")
-        if set(self.policy) != POLICY_FIELDS:
-            raise GroupError("incomplete policy contract")
         expected = _group_hash(
             [
                 "GroupIdV1",
@@ -134,7 +127,7 @@ class GroupSpecV1(_WireRecord):
                 self.group_seed,
                 self.runner_mode,
                 len(self.members),
-            ]
+            ],
         )
         if self.group_id != expected:
             raise GroupError("group ID does not bind its contract and sequence")
@@ -155,7 +148,9 @@ class GroupSpecV1(_WireRecord):
 class ContextPolicyV1(_WireRecord):
     operation: Annotated[str, _operation_spec]
     retained_exchanges: Annotated[int, Int()] = 0
-    seed_name: Annotated[str | None, Str(optional=True)] = None
+    seed_name: Annotated[
+        str | None, Str(nonempty=True, optional=True, no_whitespace_or_controls=True)
+    ] = None
     seed_checkpoint_ref: Annotated[str | None, Hash("checkpoint", optional=True)] = None
     summarizer_version: Annotated[str | None, Str(optional=True)] = None
     max_summary_chars: Annotated[int | None, Int(optional=True)] = None
@@ -177,11 +172,11 @@ class ContextPolicyV1(_WireRecord):
         elif self.summarizer_version is not None or self.max_summary_chars is not None:
             raise CompactionError("only compact may configure the summarizer")
         if self.operation == "seed":
-            if not self.seed_name or any(
-                char.isspace() or ord(char) < 0x20 for char in self.seed_name
-            ):
-                raise CompactionError("seed requires a named immutable prefix")
-        elif self.seed_name is not None or self.seed_checkpoint_ref is not None:
+            if self.seed_name is None or self.seed_checkpoint_ref is None:
+                raise CompactionError("seed requires a named ancestor checkpoint")
+        elif self.operation != "compact" and (
+            self.seed_name is not None or self.seed_checkpoint_ref is not None
+        ):
             raise CompactionError("only seed may name a prefix")
         if self.operation != "compact" and self.retained_exchanges:
             raise CompactionError("only compact may retain a tail")

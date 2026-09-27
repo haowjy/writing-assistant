@@ -401,8 +401,13 @@ class WriterDeriveTests(unittest.TestCase):
             ),
         )
         for name, claims in drift_rows:
-            with self.subTest(name=name), self.assertRaises(ProjectionError):
-                derive_writer_turn(view, make_turn(view, adapter_trace=claims), self.reader)
+            with self.subTest(name=name):
+                if name == "context":
+                    with self.assertRaises(ValueError):
+                        make_turn(view, adapter_trace=claims)
+                else:
+                    with self.assertRaises(ProjectionError):
+                        derive_writer_turn(view, make_turn(view, adapter_trace=claims), self.reader)
 
     def test_group_binding_legacy_caller_still_uses_its_trace(self):
         policy = {"behavior_policy_ref": "a" * 64}

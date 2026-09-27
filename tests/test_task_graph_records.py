@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import tempfile
 import unittest
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
+from unittest.mock import patch
 
 from writing_agent.task_graph import (
     ContextRevisionV1 as LegacyContextRevisionV1,
@@ -28,6 +30,7 @@ from writing_agent.task_graph_records import (
     SHARED_WIRE_V1_RECORD_TYPES,
     AdmissionPolicyV1,
     AuthorReplyV1,
+    CompactionError,
     ContextContentV1,
     ContextOperationInputV1,
     ContextPolicyV1,
@@ -37,6 +40,7 @@ from writing_agent.task_graph_records import (
     EvaluatorResultV1,
     ExecutionVersionsV1,
     ExternalInputsV1,
+    GroupError,
     GroupMemberSpecV1,
     GroupSpecV1,
     Hash,
@@ -62,6 +66,7 @@ H = "a" * 64
 P = "b" * 64
 Q = "c" * 64
 R = "d" * 64
+
 
 EXPECTED_REFS = {
     "AdmissionPolicyV1": (),
@@ -161,6 +166,20 @@ EXPECTED_REFS = {
         ("content_ref", "context_node"),
         ("event_head", "event"),
         ("provenance_refs[]", "event"),
+    ),
+}
+
+EXPECTED_NON_EDGE_HASHES = {
+    "GroupMemberSeedsV1": frozenset({"group_id"}),
+    "GroupSpecV1": frozenset(
+        """group_id environment.entry_state_hash environment.entry_tree_hash
+        environment.instance_hash environment.graph_hash environment.node_contract_hash
+        environment.controller_contract_hash environment.check_contracts_hash
+        environment.source_refs_hash environment.request_refs_hash
+        environment.visible_prefix_hash environment.context_messages_hash
+        environment.rendering_hash environment.tool_schemas_hash environment.budget_hash
+        environment.versions_hash environment.continuation_hash
+        environment.reward_contract_hash environment.simulator_contract_hash""".split()
     ),
 }
 
@@ -471,6 +490,16 @@ def _hash_specs(spec, path=""):
         yield from _hash_specs(spec.record.FIELD_SPEC, path)
 
 
+def edge_path_matches(template, path):
+    parts = []
+    for part in template.split("."):
+        if part.endswith("{}"):
+            parts.extend((re.escape(part[:-2]), r"[^.]+"))
+        else:
+            parts.append(re.escape(part))
+    return re.fullmatch(r"\.".join(parts), path) is not None
+
+
 def _replace_ref(body, path, replacement):
     parts = path.split(".")
 
@@ -498,6 +527,17 @@ class RecordCodecTests(unittest.TestCase):
             {name: tuple(sorted(codec.REFS.items())) for name, codec in ALL_RECORD_CODECS.items()},
             EXPECTED_REFS,
         )
+
+    def test_pre_s1_group_spec_wire_and_identity_are_unchanged(self):
+        literal = (Path(__file__).parent / "fixtures" / "pre_s1_group_spec.json").read_bytes()
+        record = GroupSpecV1.from_json(literal)
+        self.assertEqual(canonical_bytes(record.to_wire()), literal)
+        self.assertEqual(
+            record.identity(),
+            "3e80cde8f3eba7ce6f376d5d5d1e858abdf3f21d88c2cc3e9df26a35ffa46c9e",
+        )
+        self.assertEqual(record.schema, 1)
+        self.assertEqual({member.schema for member in record.members}, {1})
 
     def test_every_codec_has_a_canonical_exact_round_trip(self):
         examples = record_examples()
@@ -594,6 +634,132 @@ class RecordCodecTests(unittest.TestCase):
                     self.assertNotIn(path, record.REFS)
                 else:
                     self.assertEqual(record.REFS[path], edge)
+
+    def test_non_edge_hashes_are_pinned_and_example_hashes_have_declared_hash_paths(self):
+        non_edges = {}
+        examples = []
+        for record in record_examples():
+            spec = record.FIELD_SPEC
+            paths = frozenset(path for path, edge in _hash_specs(spec) if edge is None)
+            if paths:
+                non_edges[record.RECORD_TYPE or type(record).__name__] = paths
+            examples.append((type(record).__name__, spec, record.to_wire()))
+        for name, body in payload_codec_examples().items():
+            codec = ALL_RECORD_CODECS[name]
+            spec = codec.FIELD_SPEC if isinstance(codec, type) else codec.fields
+            non_edges_for_codec = frozenset(
+                path for path, edge in _hash_specs(spec) if edge is None
+            )
+            if non_edges_for_codec:
+                non_edges[name] = non_edges_for_codec
+            examples.append((name, spec, body))
+
+        self.assertEqual(non_edges, EXPECTED_NON_EDGE_HASHES)
+        for name, spec, body in examples:
+            declared_paths = tuple(_hash_specs(spec))
+            for path, value in _walk(body):
+                if not is_sha256_string(value):
+                    continue
+                self.assertTrue(
+                    any(edge_path_matches(template, path) for template, _ in declared_paths),
+                    f"{name}.{path} contains an undeclared SHA-256 value",
+                )
+
+    def test_outcome_wire_fields_remain_pinned(self):
+        outcome = next(item for item in record_examples() if isinstance(item, OutcomeV1))
+        self.assertEqual(
+            set(outcome.to_wire()),
+            set(
+                """record_type schema task_status execution_status stop_reason reward_status
+                training_eligibility candidate_checkpoint requirement_version checks
+                transition_edge_id failed_request_ref reward_ref eligibility_ref""".split()
+            ),
+        )
+
+    def test_group_and_context_policy_binding_rules_reject_drift(self):
+        spec = next(item for item in record_examples() if isinstance(item, GroupSpecV1))
+        first, second = spec.members
+        group_mutations = (
+            ("group ID binding", lambda: replace(spec, group_id="e" * 64)),
+            ("runner mode participates in group ID", lambda: replace(spec, runner_mode="real")),
+            (
+                "member ordinals are canonical",
+                lambda: replace(spec, members=(second, first)),
+            ),
+            (
+                "writer seed derivation",
+                lambda: replace(
+                    spec,
+                    members=(replace(first, writer_seed=first.writer_seed + 1), second),
+                ),
+            ),
+            (
+                "environment seed derivation",
+                lambda: replace(
+                    spec,
+                    members=(replace(first, environment_seed=first.environment_seed + 1), second),
+                ),
+            ),
+            (
+                "member ID binds ordinal",
+                lambda: replace(spec, members=(replace(first, member_id="grp-other-0"), second)),
+            ),
+        )
+        for label, mutate in group_mutations:
+            with self.subTest(rule=label), self.assertRaises(GroupError):
+                mutate()
+        with patch("writing_agent.task_graph_record_contracts._group_seed", return_value=7):
+            collided_seeds = tuple(
+                replace(member, writer_seed=7, environment_seed=7) for member in spec.members
+            )
+            with self.assertRaises(GroupError):
+                replace(spec, members=collided_seeds)
+
+        context_mutations = (
+            (
+                "compact cannot name a seed",
+                lambda: ContextPolicyV1(
+                    "compact",
+                    seed_name="opening",
+                    summarizer_version="visible-text-v1",
+                    max_summary_chars=0,
+                ),
+                CompactionError,
+            ),
+            (
+                "only compact retains a tail",
+                lambda: ContextPolicyV1("carry", retained_exchanges=1),
+                CompactionError,
+            ),
+            (
+                "seed name contains no whitespace",
+                lambda: ContextPolicyV1(
+                    "seed", seed_name="opening scene", seed_checkpoint_ref="a" * 64
+                ),
+                ValueError,
+            ),
+            (
+                "only seed names a prefix",
+                lambda: ContextPolicyV1("carry", seed_name="opening", seed_checkpoint_ref="a" * 64),
+                CompactionError,
+            ),
+        )
+        for label, mutate, error in context_mutations:
+            with self.subTest(rule=label), self.assertRaises(error):
+                mutate()
+
+    def test_seed_context_policy_requires_its_checkpoint_at_decode(self):
+        body = ContextPolicyV1("carry").to_wire()
+        body.update(operation="seed", seed_name="opening")
+        with self.assertRaises(CompactionError):
+            ContextPolicyV1.from_dict(body)
+
+    def test_unknown_adapter_reference_claims_are_rejected(self):
+        record = next(item for item in record_examples() if isinstance(item, WriterTurnV1))
+        wire = record.to_wire()
+        wire["adapter_trace"]["unregistered_policy_ref"] = H
+        with self.assertRaises(ValueError):
+            WriterTurnV1.from_dict(wire)
 
     def test_legacy_set_excludes_shared_and_registered_record_names(self):
         expected_legacy = set(

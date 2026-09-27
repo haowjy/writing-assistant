@@ -244,6 +244,20 @@ class NextStepTableTests(unittest.TestCase):
                 check_requests=("e" * 64,),
             ),
             case(
+                "no required terminal check halts as no admitted evaluation",
+                "awaiting_checks",
+                Directive("halt", stop_reason="no_admitted_evaluation"),
+                checks={
+                    "optional_terminal": CheckContractV1(
+                        id="optional_terminal",
+                        applicability="node_exit_candidate",
+                        required=False,
+                    )
+                },
+                check_statuses={"optional_terminal": "fail"},
+                evaluation=True,
+            ),
+            case(
                 "settled feedback prerequisites request author",
                 "awaiting_checks",
                 Directive("request_author", source="mandatory_feedback"),

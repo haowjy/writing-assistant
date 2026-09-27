@@ -332,12 +332,13 @@ and fixed `scripted` interaction: `simulated_author` and mandatory feedback fail
 until their role-specific packet, policy, binding, and feedback-rule contracts exist.
 Check admission uses exact evaluator-version-specific program schemas; semantic-v1 is
 not an admitted evaluator. Mapping and store-backed admission share the same typed
-closure and visibility rules. `DeterministicControllerV1`
-returns only `request_author`, `continue_writer`, `propose_edge`, `stop_incomplete`, or
-`wait_checks`; it checks writer exhaustion itself and permits a no-edge continuation
-only when the admitted repair contract, runtime authorization, and remaining writer
-budget all allow it. Author text is audit input and is never inspected for routing. Outcome
-records keep task, execution, stop, reward, and training-eligibility state independent.
+closure and visibility rules. `task_graph_controller.py` exposes pure `next_step` and
+`select_edge` decisions over structured lineage facts; it does not step a writer or execute
+checks. Author text is audit input and is never inspected for routing. A terminal check batch
+with no required `each_turn`/`node_exit_candidate` check halts as `no_admitted_evaluation`,
+matching the legacy terminal refusal rather than treating an empty required set as a pass.
+Outcome records keep task, execution, stop, reward, and training-eligibility state
+independent.
 
 The scripted-author slice admits only a terminal edge guaranteed when required
 completion checks pass: an unconditional guard, a fixed completion predicate, or

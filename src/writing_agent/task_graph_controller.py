@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Any, Literal
 
 from writing_agent.task_graph_accounting import exhausted_stop_reason, tool_error
 from writing_agent.task_graph_admission import AdmissionError, AdmittedNodeV1
 from writing_agent.task_graph_contracts import EdgeContractV1, GuardContractV1
-
-if TYPE_CHECKING:
-    from writing_agent.task_graph_transition import LineageView
 
 DirectiveKind = Literal[
     "sample_writer",
@@ -45,7 +42,7 @@ class Directive:
 
 def evaluate_guard(
     guard: GuardContractV1,
-    view: LineageView,
+    view: Any,
     *,
     task_status: str | None = None,
 ) -> bool:
@@ -74,7 +71,7 @@ def evaluate_guard(
 
 def select_edge(
     node: AdmittedNodeV1,
-    view: LineageView,
+    view: Any,
     *,
     task_status: str | None = None,
 ) -> EdgeContractV1 | None:
@@ -92,7 +89,7 @@ def select_edge(
     return matching[priorities.index(min(priorities))]
 
 
-def next_step(view: LineageView) -> Directive:
+def next_step(view: Any) -> Directive:
     """Derive one routing directive solely from the verified structured lineage view."""
     phase = view.state.position["phase"]
     if phase == "terminal":
@@ -166,8 +163,16 @@ def next_step(view: LineageView) -> Directive:
                 )
             return Directive("request_author", source="mandatory_feedback")
 
-        task_status = _completion_task_status(view)
-        if not _required_checks_pass(view):
+        task_status = (
+            "accepted_partial"
+            if view.node.contract.completion_contract.accepted_partial
+            else "complete"
+        )
+        required_checks = _required_terminal_checks(view)
+        if not required_checks:
+            # §8.1's no-admitted-evaluation row governs an empty terminal set.
+            return Directive("halt", stop_reason="no_admitted_evaluation")
+        if not all(view.check_statuses.get(check.id) == "pass" for check in required_checks):
             return Directive(
                 "seal_outcome", task_status="incomplete", stop_reason="required_check_failed"
             )
@@ -184,11 +189,11 @@ def next_step(view: LineageView) -> Directive:
     raise AssertionError(f"unhandled admitted phase {phase}")
 
 
-def _interaction_complete(view: LineageView) -> bool:
+def _interaction_complete(view: Any) -> bool:
     return view.state.continuation["feedback_cursor"] >= len(view.mode.feedback_rules)
 
 
-def _applicable_checks(view: LineageView, feedback_cursor: int) -> tuple:
+def _applicable_checks(view: Any, feedback_cursor: int) -> tuple:
     feedback = view.mode.feedback_rules
     if feedback_cursor < len(feedback):
         scope = f"before_feedback:{feedback[feedback_cursor]['id']}"
@@ -198,7 +203,7 @@ def _applicable_checks(view: LineageView, feedback_cursor: int) -> tuple:
     return tuple(check for check in view.node.checks.values() if check.applicability in applicable)
 
 
-def _feedback_budgets_allow(view: LineageView) -> bool:
+def _feedback_budgets_allow(view: Any) -> bool:
     consumed = view.budget["consumed"]
     limits = view.budget["limits"]
     return all(
@@ -207,7 +212,7 @@ def _feedback_budgets_allow(view: LineageView) -> bool:
     )
 
 
-def _feedback_budget_reason(view: LineageView) -> str:
+def _feedback_budget_reason(view: Any) -> str:
     consumed = view.budget["consumed"]
     limits = view.budget["limits"]
     if consumed.get("author_calls", 0) >= limits.get("author_calls", 0):
@@ -215,18 +220,12 @@ def _feedback_budget_reason(view: LineageView) -> str:
     return "writer_budget"
 
 
-def _required_checks_pass(view: LineageView) -> bool:
-    return all(
-        view.check_statuses.get(check.id) == "pass"
+def _required_terminal_checks(view: Any) -> tuple:
+    return tuple(
+        check
         for check in view.node.checks.values()
         if check.required and check.applicability in REQUIRED_CHECK_SCOPES
     )
-
-
-def _completion_task_status(view: LineageView) -> str:
-    if view.node.contract.completion_contract.accepted_partial:
-        return "accepted_partial"
-    return "complete"
 
 
 __all__ = ["Directive", "evaluate_guard", "next_step", "select_edge"]

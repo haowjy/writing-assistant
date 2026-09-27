@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Restore schema-bearing group spec wire compatibility; validate seed and group bindings at
+  decode, resolve legacy group edges by pinned semantics, and halt when no required terminal
+  evaluation is admitted.
+
 - Derive context operations from sealed policies and ancestry, derive member starts from
   persisted group specs, and persist each spec at seal time.
 

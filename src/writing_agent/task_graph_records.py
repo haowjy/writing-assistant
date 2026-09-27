@@ -46,7 +46,6 @@ from writing_agent.task_graph_wire import (
     RecordOf,
     Str,
     UnionOf,
-    _edge_values,
     _f,
     _o,
     _validate_codec,
@@ -61,7 +60,6 @@ from writing_agent.task_graph_wire import (
 )
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-SEMANTICS_V1 = "task-graph-derive-v1"
 _TRACE_REF_KEYS = (
     "model_ref behavior_policy_ref tokenizer_ref template_ref adapter_ref decoding_ref "
     "context_policy_ref policy_ref"
@@ -143,6 +141,11 @@ class WriterTurnV1(_WireRecord):
             return
         if {"per_token_logprobs", "native_on_policy_eligible"} & set(self.adapter_trace):
             raise ValueError("adapter trace contains a forbidden field")
+        if any(
+            key.endswith("_ref") and key not in {*_TRACE_REF_KEYS, "per_token_logprobs_ref"}
+            for key in self.adapter_trace
+        ):
+            raise ValueError("unknown adapter reference claim")
         present = _TRACE_LOGPROB_KEYS & set(self.adapter_trace)
         if present and present != _TRACE_LOGPROB_KEYS:
             raise ValueError("logprob reference, codec, and shape must appear together")
@@ -225,7 +228,7 @@ class EnvironmentStepV1(_WireRecord):
                     "seal_outcome": _f(
                         kind=Enum(frozenset({"seal_outcome"})),
                         task_status=Enum(frozenset(TASK_STATUSES)),
-                        stop_reason=Str(optional=True),
+                        stop_reason=Str(nonempty=True, optional=True),
                     ),
                     "stop_exhausted": _f(
                         kind=Enum(frozenset({"stop_exhausted"})),
@@ -237,10 +240,6 @@ class EnvironmentStepV1(_WireRecord):
         ),
     ]
     RECORD_TYPE: ClassVar[str] = "EnvironmentStepV1"
-
-    def check(self) -> None:
-        if self.directive["kind"] == "seal_outcome" and self.directive["stop_reason"] == "":
-            raise ValueError("stop reason must be nonempty when present")
 
 
 @dataclass(frozen=True)
@@ -408,15 +407,14 @@ def record_reference_edges(
     """Validate one registered payload and return its direct declared edges."""
     try:
         codec = ALL_RECORD_CODECS[record_type]
-        schema = codec.FIELD_SPEC if isinstance(codec, type) else codec.fields
     except KeyError as exc:
         raise ValueError(f"unregistered task-graph record: {record_type!r}") from exc
     if isinstance(codec, type):
-        value = codec.from_dict(dict(body)).to_wire()
+        record = codec.from_dict(dict(body))
+        edges = record._wire_edges
     else:
-        _validate_codec(codec, body)
-        value = body
-    return _edge_values(schema, value)
+        edges = _validate_codec(codec, body)
+    return tuple((edge, identity) for _, edge, identity in edges)
 
 
 @dataclass(frozen=True)

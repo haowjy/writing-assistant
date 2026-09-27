@@ -34,6 +34,7 @@ class Str:
     nonempty: bool = False
     logical: bool = False
     optional: bool = False
+    no_whitespace_or_controls: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,8 @@ class Enum:
 class ListOf:
     item: Any
     unique: bool = False
+    min_items: int | None = None
+    max_items: int | None = None
 
 
 @dataclass(frozen=True)
@@ -285,51 +288,86 @@ def _json_value(value: Any) -> Any:
     return value
 
 
-def _normalize_spec(spec: Any, value: Any, label: str) -> Any:
-    """Validate one schema node and normalize only explicitly typed nested records."""
+_NO_VALUE = object()
+
+
+def _child_path(path: str, key: str) -> str:
+    return f"{path}.{key}" if path else key
+
+
+def _walk_spec(
+    spec: Any,
+    value: Any,
+    label: str,
+    path: str = "",
+    edges: list[tuple[str, str, Any]] | None = None,
+) -> Any:
+    """Normalize one schema node and collect its declared edges in the same walk."""
+    if edges is None:
+        edges = []
+    if value is _NO_VALUE and (
+        isinstance(spec, (Str, Int, Bool, Enum, JsonValue, CanonicalIntake, MessageValue))
+        or spec is type(None)
+    ):
+        return value
     if isinstance(spec, Hash):
-        validate_hash(value, optional=spec.optional)
+        if value is not _NO_VALUE:
+            validate_hash(value, optional=spec.optional)
+            if value is not None and spec.edge is not None:
+                edges.append((path, spec.edge, value))
+        elif spec.edge is not None:
+            edges.append((path, spec.edge, _NO_VALUE))
         return value
-    elif isinstance(spec, Str):
-        if value is None and spec.optional:
+    elif isinstance(spec, (Str, Int, Bool, Enum)):
+        if value is None and getattr(spec, "optional", False):
             return None
-        if type(value) is not str:
-            raise TypeError(f"{label} must be a string")
-        _utf8(value, label)
-        if spec.nonempty and not value:
-            raise ValueError(f"{label} must be nonempty")
-        if spec.logical:
-            _logical_id(value, label)
-        return value
-    elif isinstance(spec, Int):
-        if value is None and spec.optional:
-            return None
-        if type(value) is not int:
-            raise TypeError(f"{label} must be an integer")
-        if spec.minimum is not None and value < spec.minimum:
-            raise ValueError(f"{label} is below its minimum")
-        if spec.equals is not None and value != spec.equals:
-            raise ValueError(f"{label} must equal {spec.equals}")
-        return value
-    elif isinstance(spec, Bool):
-        if type(value) is not bool:
-            raise TypeError(f"{label} must be a boolean")
-        return value
-    elif isinstance(spec, Enum):
-        if type(value) is not str or value not in spec.values:
+        if isinstance(spec, Str):
+            if type(value) is not str:
+                raise TypeError(f"{label} must be a string")
+            _utf8(value, label)
+            if spec.nonempty and not value:
+                raise ValueError(f"{label} must be nonempty")
+            if spec.no_whitespace_or_controls and any(
+                char.isspace() or ord(char) < 0x20 for char in value
+            ):
+                raise ValueError(f"{label} cannot contain whitespace or control characters")
+            if spec.logical:
+                _logical_id(value, label)
+        elif isinstance(spec, Int):
+            if type(value) is not int:
+                raise TypeError(f"{label} must be an integer")
+            if spec.minimum is not None and value < spec.minimum:
+                raise ValueError(f"{label} is below its minimum")
+            if spec.equals is not None and value != spec.equals:
+                raise ValueError(f"{label} must equal {spec.equals}")
+        elif isinstance(spec, Bool):
+            if type(value) is not bool:
+                raise TypeError(f"{label} must be a boolean")
+        elif type(value) is not str or value not in spec.values:
             raise ValueError(f"{label} has an unsupported value")
         return value
     elif isinstance(spec, ListOf):
+        if value is _NO_VALUE:
+            _walk_spec(spec.item, _NO_VALUE, label, f"{path}[]", edges)
+            return value
         if not isinstance(value, (tuple, list)):
             raise TypeError(f"{label} must be an array")
-        result = tuple(
-            _normalize_spec(spec.item, item, f"{label}[{index}]")
+        if spec.min_items is not None and len(value) < spec.min_items:
+            raise ValueError(f"{label} has fewer than {spec.min_items} items")
+        if spec.max_items is not None and len(value) > spec.max_items:
+            raise ValueError(f"{label} has more than {spec.max_items} items")
+        result = [
+            _walk_spec(spec.item, item, f"{label}[{index}]", f"{path}[]", edges)
             for index, item in enumerate(value)
-        )
+        ]
+        result = tuple(result)
         if spec.unique and len(result) != len(set(result)):
             raise ValueError(f"{label} must be unique")
         return result
     elif isinstance(spec, DictOf):
+        if value is _NO_VALUE:
+            _walk_spec(spec.value, _NO_VALUE, label, f"{path}{{}}", edges)
+            return value
         if not isinstance(value, Mapping):
             raise TypeError(f"{label} must be an object")
         result = {}
@@ -337,9 +375,15 @@ def _normalize_spec(spec: Any, value: Any, label: str) -> Any:
             if type(key) is not str:
                 raise TypeError(f"{label} keys must be strings")
             _utf8(key, f"{label} key")
-            result[key] = _normalize_spec(spec.value, item, f"{label}.{key}")
+            result[key] = _walk_spec(spec.value, item, f"{label}.{key}", f"{path}{{}}", edges)
         return result
     elif isinstance(spec, Obj):
+        if value is _NO_VALUE:
+            for key, child_spec in (*spec.required.items(), *spec.optional.items()):
+                _walk_spec(child_spec, _NO_VALUE, label, _child_path(path, key), edges)
+            if spec.extra is not None:
+                _walk_spec(spec.extra, _NO_VALUE, label, f"{path}{{}}", edges)
+            return value
         if not isinstance(value, Mapping):
             raise TypeError(f"{label} must be an object")
         if any(type(key) is not str for key in value):
@@ -354,36 +398,48 @@ def _normalize_spec(spec: Any, value: Any, label: str) -> Any:
         if unknown and spec.extra is None:
             raise ValueError(f"{label} has unknown fields: {sorted(unknown)}")
         result = dict(value)
-        for key, item_spec in spec.required.items():
-            result[key] = _normalize_spec(item_spec, value[key], f"{label}.{key}")
-        for key, item_spec in spec.optional.items():
+        for key, item_spec in (*spec.required.items(), *spec.optional.items()):
             if key in value:
-                result[key] = _normalize_spec(item_spec, value[key], f"{label}.{key}")
+                result[key] = _walk_spec(
+                    item_spec, value[key], f"{label}.{key}", _child_path(path, key), edges
+                )
         if unknown:
             for key in unknown:
-                result[key] = _normalize_spec(spec.extra, value[key], f"{label}.{key}")
+                result[key] = _walk_spec(
+                    spec.extra, value[key], f"{label}.{key}", f"{path}{{}}", edges
+                )
         return result
     elif isinstance(spec, JsonValue):
         _canonical_json_value(value)
         return value
     elif isinstance(spec, UnionOf):
+        if value is _NO_VALUE:
+            for option in spec.options:
+                _walk_spec(option, _NO_VALUE, label, path, edges)
+            return value
         failures = []
         for option in spec.options:
+            initial_edge_count = len(edges)
             try:
-                return _normalize_spec(option, value, label)
+                return _walk_spec(option, value, label, path, edges)
             except (TypeError, ValueError) as exc:
+                del edges[initial_edge_count:]
                 failures.append(exc)
         if not failures:
             raise ValueError(f"{label} has no permitted shape")
         raise ValueError(f"{label} does not match a permitted shape") from failures[-1]
     elif isinstance(spec, KindUnion):
+        if value is _NO_VALUE:
+            for option in spec.variants.values():
+                _walk_spec(option, _NO_VALUE, label, path, edges)
+            return value
         if not isinstance(value, Mapping):
             raise TypeError(f"{label} must be a tagged object")
         try:
             variant = spec.variants[value.get(spec.discriminator)]
         except (KeyError, TypeError) as exc:
             raise ValueError(f"{label} has an unknown {spec.discriminator}") from exc
-        return _normalize_spec(variant, value, label)
+        return _walk_spec(variant, value, label, path, edges)
     elif isinstance(spec, CanonicalIntake):
         validate_canonical_value(value)
         return value
@@ -394,11 +450,20 @@ def _normalize_spec(spec: Any, value: Any, label: str) -> Any:
             raise TypeError(f"{label} must be a MessageV1 object")
         return MessageV1.from_dict(dict(value))
     elif isinstance(spec, RecordOf):
-        if isinstance(value, spec.record):
+        if value is _NO_VALUE:
+            for edge_path, edge in spec.record.REFS.items():
+                edges.append((_child_path(path, edge_path), edge, _NO_VALUE))
             return value
-        if not isinstance(value, Mapping):
+        if isinstance(value, spec.record):
+            record = value
+        elif isinstance(value, Mapping):
+            record = spec.record.from_dict(dict(value))
+        else:
             raise TypeError(f"{label} must be a {spec.record.__name__} record")
-        return spec.record.from_dict(dict(value))
+        edges.extend(
+            (_child_path(path, edge_path), edge, ref) for edge_path, edge, ref in record._wire_edges
+        )
+        return record
     elif spec is type(None):
         if value is not None:
             raise TypeError(f"{label} must be null")
@@ -408,80 +473,27 @@ def _normalize_spec(spec: Any, value: Any, label: str) -> Any:
 
 
 def _derived_refs(spec: Obj) -> Mapping[str, str]:
-    edges: dict[str, str] = {}
-
-    def walk(value_spec: Any, path: str) -> None:
-        if isinstance(value_spec, Hash):
-            if value_spec.edge is not None:
-                edges[path] = value_spec.edge
-        elif isinstance(value_spec, ListOf):
-            walk(value_spec.item, f"{path}[]")
-        elif isinstance(value_spec, DictOf):
-            walk(value_spec.value, f"{path}{{}}")
-        elif isinstance(value_spec, Obj):
-            for key, child in (*value_spec.required.items(), *value_spec.optional.items()):
-                walk(child, f"{path}.{key}" if path else key)
-        elif isinstance(value_spec, UnionOf):
-            for option in value_spec.options:
-                walk(option, path)
-        elif isinstance(value_spec, KindUnion):
-            for option in value_spec.variants.values():
-                walk(option, path)
-        elif isinstance(value_spec, RecordOf):
-            edges.update(
-                {
-                    f"{path}.{key}" if path else key: kind
-                    for key, kind in value_spec.record.REFS.items()
-                }
-            )
-
-    walk(spec, "")
-    return MappingProxyType(edges)
+    found: list[tuple[str, str, Any]] = []
+    _walk_spec(spec, _NO_VALUE, "field specification", edges=found)
+    return MappingProxyType({path: edge for path, edge, _ in found})
 
 
-def _validate_codec(codec: PayloadCodec, body: Mapping[str, Any]) -> None:
+def _validate_codec(
+    codec: PayloadCodec, body: Mapping[str, Any]
+) -> tuple[tuple[str, str, Any], ...]:
     if type(body) is not dict:
         raise TypeError("wire record must be a plain object")
     _wire_value(body)
-    required = set(codec.fields.required)
-    optional = set(codec.fields.optional)
     if codec.tagged and body.get("record_type") != codec.record_type:
         raise ValueError("record_type does not match codec")
-    actual = set(body) - ({"record_type"} if codec.tagged else set())
-    if required - actual or actual - required - optional:
-        raise ValueError("record has missing or unknown fields")
-    _normalize_spec(codec.fields, {key: body[key] for key in actual}, codec.record_type)
-
-
-def _edge_values(spec: Any, value: Any) -> tuple[tuple[str, str], ...]:
-    found: list[tuple[str, str]] = []
-    if isinstance(spec, Hash):
-        if value is not None and spec.edge is not None:
-            found.append((spec.edge, value))
-    elif isinstance(spec, ListOf):
-        for item in value:
-            found.extend(_edge_values(spec.item, item))
-    elif isinstance(spec, DictOf):
-        for item in value.values():
-            found.extend(_edge_values(spec.value, item))
-    elif isinstance(spec, Obj):
-        for key, child in (*spec.required.items(), *spec.optional.items()):
-            if key in value:
-                found.extend(_edge_values(child, value[key]))
-    elif isinstance(spec, UnionOf):
-        for option in spec.options:
-            try:
-                _normalize_spec(option, value, "union value")
-            except (TypeError, ValueError):
-                continue
-            found.extend(_edge_values(option, value))
-            break
-    elif isinstance(spec, KindUnion):
-        found.extend(_edge_values(spec.variants[value[spec.discriminator]], value))
-    elif isinstance(spec, RecordOf):
-        body = value.to_wire() if isinstance(value, spec.record) else value
-        found.extend(_edge_values(spec.record.FIELD_SPEC, body))
-    return tuple(found)
+    candidate = (
+        {key: value for key, value in body.items() if key != "record_type"}
+        if codec.tagged
+        else body
+    )
+    edges: list[tuple[str, str, Any]] = []
+    _walk_spec(codec.fields, candidate, codec.record_type, edges=edges)
+    return tuple(edges)
 
 
 class _WireRecord:
@@ -514,18 +526,18 @@ class _WireRecord:
 
     def __post_init__(self) -> None:
         values = {item.name: getattr(self, item.name) for item in fields(self)}
-        values = _normalize_spec(self.FIELD_SPEC, values, type(self).__name__)
+        edges: list[tuple[str, str, Any]] = []
+        values = _walk_spec(self.FIELD_SPEC, values, type(self).__name__, edges=edges)
+        self._finish(values, tuple(edges))
+
+    def _finish(self, values: Mapping[str, Any], edges: tuple[tuple[str, str, Any], ...]) -> None:
         for name, value in values.items():
             object.__setattr__(self, name, value)
         self.check()
         for item in fields(self):
             object.__setattr__(self, item.name, _freeze(getattr(self, item.name)))
+        object.__setattr__(self, "_wire_edges", tuple(edges))
         canonical_bytes(self.to_wire())
-
-    def validate(self) -> None:
-        values = {item.name: getattr(self, item.name) for item in fields(self)}
-        _normalize_spec(self.FIELD_SPEC, values, type(self).__name__)
-        self.check()
 
     def check(self) -> None:
         """Apply record-local cross-field invariants."""
@@ -553,18 +565,16 @@ class _WireRecord:
         if type(value) is not dict:
             raise TypeError("wire record must be a plain object")
         _wire_value(value)
-        expected = {item.name for item in fields(cls)}
+        original = value
         if cls.RECORD_TYPE is not None:
-            expected.add("record_type")
             if value.get("record_type") != cls.RECORD_TYPE:
                 raise ValueError("record_type does not match codec")
-        missing, unknown = expected - set(value), set(value) - expected
-        if missing:
-            raise ValueError(f"record is missing fields: {sorted(missing)}")
-        if unknown:
-            raise ValueError(f"record has unknown fields: {sorted(unknown)}")
-        record = cls(**{item.name: value[item.name] for item in fields(cls)})
-        if canonical_bytes(record.to_wire()) != canonical_bytes(value):
+            value = {key: item for key, item in value.items() if key != "record_type"}
+        edges: list[tuple[str, str, Any]] = []
+        normalized = _walk_spec(cls.FIELD_SPEC, value, cls.__name__, edges=edges)
+        record = object.__new__(cls)
+        record._finish(normalized, tuple(edges))
+        if canonical_bytes(record.to_wire()) != canonical_bytes(original):
             raise ValueError("record did not preserve its canonical wire value")
         return record
 

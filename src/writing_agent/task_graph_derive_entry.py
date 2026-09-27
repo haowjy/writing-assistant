@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from writing_agent.task_graph import (
     EnvironmentStateV1,
@@ -16,6 +16,7 @@ from writing_agent.task_graph import (
     tree_hash,
     validate_hash,
 )
+from writing_agent.task_graph_admission import AdmittedGraphV1, AdmittedNodeV1
 from writing_agent.task_graph_contracts import (
     writer_tool_schemas,
 )
@@ -26,9 +27,6 @@ from writing_agent.task_graph_records import (
     OutcomeV1,
 )
 from writing_agent.task_graph_transition import ArtifactReader, DerivedArtifact
-
-if TYPE_CHECKING:
-    from writing_agent.task_graph_admission import AdmittedGraphV1, AdmittedNodeV1
 
 # Entry prompt is pinned by transition_semantics. Keep it byte-identical to the
 # legacy entry prompt while the old and new runtimes coexist.
@@ -62,17 +60,6 @@ class EntryParamsV1:
             validate_hash(getattr(self, name))
         if not isinstance(self.rendering, Mapping):
             raise TypeError("rendering pins must be an object")
-        required = {
-            "projection_version",
-            "prefix_id",
-            "template_ref",
-            "tokenizer_ref",
-            "tool_schema_ref",
-        }
-        if set(self.rendering) != required:
-            raise ValueError("rendering pins have an invalid field set")
-        for name in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
-            validate_hash(self.rendering[name])
         object.__setattr__(self, "rendering", _freeze(self.rendering))
 
 
