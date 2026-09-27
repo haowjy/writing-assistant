@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add canonical sampled-message intake, declarative tool-call parsing, and pure file-effect
+  contracts for the transition seam.
+
 - Scope closure validation reuse to one re-entrant store operation, return copied artifact
   bodies, reject artifact writes using record domains, and avoid redundant canonical codec
   and frozen-record identity walks.

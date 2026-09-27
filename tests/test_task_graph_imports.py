@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 SOURCE_PACKAGE = Path(__file__).resolve().parents[1] / "src" / "writing_agent"
-NEW_SEAM_MODULES = {"task_graph_errors"}
+NEW_SEAM_MODULES = {"task_graph_errors", "task_graph_calls"}
 
 
 def build_import_graph() -> dict[str, set[str]]:
@@ -104,6 +104,10 @@ class TaskGraphImportTests(unittest.TestCase):
 
         self.assertIn("task_graph_errors", graph)
         self.assertEqual(graph["task_graph_errors"], set())
+        self.assertLessEqual(
+            graph["task_graph_calls"],
+            {"task_graph", "task_graph_accounting", "task_graph_errors"},
+        )
         for module in NEW_SEAM_MODULES:
             with self.subTest(module=module):
                 self.assertIn(module, graph)
