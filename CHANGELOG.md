@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Replace the deterministic controller view with pure lineage-view directives and one guarded edge selector.
+
 - Add immutable task-graph transition views, stable nested diff paths, and pure entry derivation
   with explicit artifact outputs; centralize static tool schemas so derives do not import the
   workspace or a runtime port.

@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from types import MappingProxyType
+from types import SimpleNamespace
 
 from writing_agent.task_graph_controller import (
-    ControllerViewV1,
-    OutcomeStatusV1,
     evaluate_guard,
 )
 from writing_agent.task_graph_errors import ProjectionError, WriterRuntimeError
@@ -72,6 +70,17 @@ def _required_passes(node, statuses):
         statuses.get(check.id) == "pass"
         for check in node.checks.values()
         if check.required and check.applicability in {"each_turn", "node_exit_candidate"}
+    )
+
+
+def _legacy_guard_view(task_status, statuses, remaining):
+    """Adapt the pre-seam terminal path to the controller's structured guard inputs."""
+    return SimpleNamespace(
+        outcome=SimpleNamespace(task_status=task_status, execution_status="valid"),
+        check_statuses=statuses,
+        budget={"consumed": {}, "limits": remaining},
+        state=SimpleNamespace(continuation={"feedback_cursor": 0}),
+        mode=SimpleNamespace(feedback_rules=()),
     )
 
 
@@ -153,14 +162,7 @@ class ScriptedTerminalV1:
         task_status = (
             "accepted_partial" if node.contract.completion_contract.accepted_partial else "complete"
         )
-        view = ControllerViewV1(
-            node_id=node.spec.id,
-            phase="ready_transition",
-            outcome=OutcomeStatusV1(task_status=task_status, execution_status="valid"),
-            check_status=MappingProxyType(statuses),
-            interaction_complete=True,
-            budgets_remaining=MappingProxyType(remaining),
-        )
+        view = _legacy_guard_view(task_status, statuses, remaining)
         matching = [edge for edge in node.edges if evaluate_guard(node.guards[edge.edge_id], view)]
         if not matching:
             raise WriterRuntimeError("no applicable completion edge")
@@ -397,14 +399,7 @@ def validate_terminal_effect(store, before, after, event, effect, entry):
         task_status = (
             "accepted_partial" if node.contract.completion_contract.accepted_partial else "complete"
         )
-        view = ControllerViewV1(
-            node_id=node.spec.id,
-            phase="ready_transition",
-            outcome=OutcomeStatusV1(task_status=task_status, execution_status="valid"),
-            check_status=MappingProxyType(statuses),
-            interaction_complete=True,
-            budgets_remaining=MappingProxyType(remaining),
-        )
+        view = _legacy_guard_view(task_status, statuses, remaining)
         matching = [edge for edge in node.edges if evaluate_guard(node.guards[edge.edge_id], view)]
         matching.sort(key=lambda edge: edge.precedence or 0)
         if not matching or matching[0].effect != "terminate":

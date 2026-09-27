@@ -14,6 +14,7 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_operation",
     "writing_agent.task_graph_transition",
     "writing_agent.task_graph_derive_entry",
+    "writing_agent.task_graph_controller",
 }
 
 
@@ -36,6 +37,34 @@ def _add_edge(graph: dict[str, set[str]], source: str, target: str) -> None:
         graph[source].add(target)
 
 
+class RuntimeImports(ast.NodeVisitor):
+    """Collect imports Python executes, excluding annotations under TYPE_CHECKING."""
+
+    def __init__(self) -> None:
+        self.nodes: list[ast.Import | ast.ImportFrom] = []
+
+    def visit_If(self, node: ast.If) -> None:
+        test = node.test
+        type_checking = isinstance(test, ast.Name) and test.id == "TYPE_CHECKING"
+        type_checking |= (
+            isinstance(test, ast.Attribute)
+            and test.attr == "TYPE_CHECKING"
+            and isinstance(test.value, ast.Name)
+            and test.value.id == "typing"
+        )
+        if type_checking:
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        self.nodes.append(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        self.nodes.append(node)
+
+
 def build_import_graph() -> dict[str, set[str]]:
     """Read every Python module in writing_agent, including nested imports."""
     paths = sorted(SOURCE_PACKAGE.rglob("*.py"))
@@ -47,7 +76,9 @@ def build_import_graph() -> dict[str, set[str]]:
         source = modules_by_path[path]
         package = source if path.name == "__init__.py" else source.rpartition(".")[0]
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
+        imports = RuntimeImports()
+        imports.visit(tree)
+        for node in imports.nodes:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name == "writing_agent" or alias.name.startswith("writing_agent."):
