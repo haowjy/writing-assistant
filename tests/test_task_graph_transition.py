@@ -6,10 +6,9 @@ import unittest
 from dataclasses import FrozenInstanceError, replace
 
 from tests.task_graph_fixtures import make_entry_fixture
-from writing_agent.task_graph import MessageV1
+from writing_agent.task_graph import MessageV1, Phase, canonical_bytes
 from writing_agent.task_graph_records import OutcomeV1
 from writing_agent.task_graph_transition import (
-    DERIVE,
     CheckpointChain,
     ContextView,
     DerivedArtifact,
@@ -51,14 +50,14 @@ class TransitionValueTests(unittest.TestCase):
             outcome=self.outcome,
             check_statuses={"check": "pass"},
             context=self.context,
-            raw_call_ids=frozenset({"raw-call"}),
+            raw_call_ids={"raw-call"},
             call_sources={},
             samples=(),
             ancestry=CheckpointChain("c" * 64, self.context),
             node=self.fixture.graph.node(self.fixture.node_id),
             mode=self.mode,
             tool_spec=ToolSpec(128_000, 4096),
-            group={"policy": {"refs": ["e" * 64]}},
+            group=None,
         )
 
     def test_views_freeze_nested_containers(self) -> None:
@@ -76,11 +75,11 @@ class TransitionValueTests(unittest.TestCase):
             lambda: self.view.raw_call_ids.add("new-call"),
             lambda: self.view.call_sources.__setitem__("new", object()),
             lambda: self.view.samples.append(object()),
-            lambda: self.view.group["policy"]["refs"].append("f" * 64),
         )
         for mutate in mutations:
             with self.subTest(mutation=mutate), self.assertRaises((TypeError, AttributeError)):
                 mutate()
+        self.assertEqual(self.view.raw_call_ids, frozenset({"raw-call"}))
 
         with self.assertRaises(FrozenInstanceError):
             self.context.content_ref = "f" * 64
@@ -88,25 +87,26 @@ class TransitionValueTests(unittest.TestCase):
             self.view.checkpoint_id = "f" * 64
         with self.assertRaises(FrozenInstanceError):
             self.mode.ask_semantics = False
+        self.assertIsNone(self.view.group)
 
-    def test_lineage_mode_and_unimplemented_derive_registry(self) -> None:
+    def test_lineage_mode_reads_typed_node_contract(self) -> None:
         mode = LineageMode.for_node(self.fixture.graph.node(self.fixture.node_id))
         self.assertEqual(mode.interaction, "none")
         self.assertFalse(mode.ask_semantics)
         self.assertFalse(mode.evaluation)
         self.assertIsNone(mode.reward)
-        self.assertEqual(DERIVE, {})
-        with self.assertRaises(TypeError):
-            DERIVE["WriterTurnV1"] = object()
 
-    def test_derived_artifact_freezes_nested_value(self) -> None:
+    def test_derived_artifact_requires_canonical_bytes_or_typed_record(self) -> None:
         artifact = DerivedArtifact(
             ref="a" * 64,
-            value={"nested": [{"value": "safe"}]},
+            value=canonical_bytes({"nested": [{"value": "safe"}]}),
             kind="private",
         )
+        self.assertEqual(artifact.value, b'{"nested":[{"value":"safe"}]}')
         with self.assertRaises(TypeError):
-            artifact.value["nested"][0]["value"] = "changed"
+            DerivedArtifact(ref="b" * 64, value={"raw": "mapping"}, kind="artifact")
+        with self.assertRaises(TypeError):
+            artifact.value[0] = 0
 
     def test_first_difference_handles_mappings_lists_records_and_ref_body(self) -> None:
         self.assertEqual(
@@ -118,6 +118,7 @@ class TransitionValueTests(unittest.TestCase):
         )
         self.assertEqual(first_difference({"items": [1, 2]}, {"items": [1, 3]}), "state.items[1]")
         self.assertIsNone(first_difference(self.fixture.state, self.fixture.state.to_dict()))
+        self.assertIsNone(first_difference(Phase.READY_WRITER, "ready_writer"))
         candidate = dict(self.fixture.state.to_dict())
         candidate["position"] = {**candidate["position"], "phase": "checking"}
         self.assertEqual(

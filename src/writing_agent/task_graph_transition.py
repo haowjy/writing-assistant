@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeAlias
 
 from writing_agent.task_graph import (
@@ -13,6 +12,9 @@ from writing_agent.task_graph import (
     EventV1,
     MessageV1,
     Phase,
+    _freeze,
+    _Record,
+    canonical_bytes,
     validate_hash,
 )
 from writing_agent.task_graph_contracts import RewardContractV1
@@ -21,10 +23,12 @@ from writing_agent.task_graph_records import (
     ContextOperationInputV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
+    MaterializedContextV1,
     MemberStartV1,
     OutcomeV1,
     ToolObservationV1,
     WriterTurnV1,
+    _WireRecord,
 )
 
 if TYPE_CHECKING:
@@ -32,19 +36,6 @@ if TYPE_CHECKING:
     from writing_agent.task_graph_group_contract import GroupSpecV1
 
 Hash: TypeAlias = str
-
-
-def _freeze(value: Any) -> Any:
-    """Recursively freeze containers held by a view."""
-    if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze(item) for item in value)
-    if isinstance(value, (set, frozenset)):
-        return frozenset(_freeze(item) for item in value)
-    if isinstance(value, bytearray):
-        return bytes(value)
-    return value
 
 
 @dataclass(frozen=True)
@@ -69,7 +60,7 @@ class LineageMode:
         """Resolve the runtime capabilities admitted by one node."""
         interaction = node.contract.interaction_contract
         script = node.script
-        feedback = () if script is None else getattr(script, "feedback", ())
+        feedback = () if script is None else script.feedback
         mode = "scripted_author" if interaction.mode == "scripted_author" else "none"
         evaluation = node.evaluator_packet is not None and bool(node.checks)
         return LineageMode(
@@ -91,16 +82,6 @@ class ContextView:
     revision_ref: Hash
 
     def __post_init__(self) -> None:
-        if any(not isinstance(message, MessageV1) for message in self.messages):
-            raise TypeError("context messages must be MessageV1 records")
-        if not isinstance(self.tools, (list, tuple)) or any(
-            not isinstance(tool, Mapping) for tool in self.tools
-        ):
-            raise TypeError("context tools must be an array of objects")
-        if not isinstance(self.rendering, Mapping):
-            raise TypeError("context rendering must be an object")
-        if any(not isinstance(source, str) and source is not None for source in self.sources):
-            raise TypeError("context sources must be event identities or None")
         for source in self.sources:
             validate_hash(source, optional=True)
         object.__setattr__(self, "sources", tuple(self.sources))
@@ -123,18 +104,6 @@ class CheckpointChain:
 
     def __post_init__(self) -> None:
         validate_hash(self.checkpoint_id)
-        if not isinstance(self.context, ContextView):
-            raise TypeError("checkpoint context must be ContextView")
-        if self.parent is not None and not isinstance(self.parent, CheckpointChain):
-            raise TypeError("checkpoint parent must be CheckpointChain or None")
-
-    def __contains__(self, checkpoint_id: object) -> bool:
-        current: CheckpointChain | None = self
-        while current is not None:
-            if current.checkpoint_id == checkpoint_id:
-                return True
-            current = current.parent
-        return False
 
     def context_at(self, checkpoint_id: Hash) -> ContextView:
         current: CheckpointChain | None = self
@@ -206,24 +175,6 @@ class LineageView:
     group: GroupSpecV1 | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.state, EnvironmentStateV1):
-            raise TypeError("lineage state must be EnvironmentStateV1")
-        if not isinstance(self.outcome, OutcomeV1):
-            raise TypeError("lineage outcome must be OutcomeV1")
-        if not isinstance(self.context, ContextView):
-            raise TypeError("lineage context must be ContextView")
-        if not isinstance(self.ancestry, CheckpointChain):
-            raise TypeError("lineage ancestry must be CheckpointChain")
-        if not isinstance(self.mode, LineageMode):
-            raise TypeError("lineage mode must be LineageMode")
-        if not isinstance(self.tool_spec, ToolSpec):
-            raise TypeError("lineage tool_spec must be ToolSpec")
-        if not isinstance(self.budget, Mapping) or not isinstance(self.check_statuses, Mapping):
-            raise TypeError("lineage budget and check statuses must be objects")
-        if not isinstance(self.call_sources, Mapping):
-            raise TypeError("lineage call sources must be an object")
-        if any(not isinstance(sample, SampleRef) for sample in self.samples):
-            raise TypeError("lineage samples must be SampleRef records")
         for identity in (self.root_checkpoint_id, self.checkpoint_id):
             validate_hash(identity)
         validate_hash(self.head_event_id, optional=True)
@@ -245,6 +196,8 @@ class ArtifactReader(Protocol):
 
     def artifact(self, ref: Hash, *, domain: str = "payload", private: bool = False) -> Any: ...
 
+    def context(self, ref: Hash) -> MaterializedContextV1: ...
+
     def bytes_artifact(self, ref: Hash) -> bytes: ...
 
     def checkpoint(self, ref: Hash) -> CheckpointV1: ...
@@ -253,13 +206,14 @@ class ArtifactReader(Protocol):
 @dataclass(frozen=True)
 class DerivedArtifact:
     ref: Hash
-    value: Any
+    value: bytes | _Record | _WireRecord
     kind: str
 
     def __post_init__(self) -> None:
         validate_hash(self.ref)
-        object.__setattr__(self, "value", _freeze(self.value))
-        if self.kind not in {"artifact", "private", "context", "context_content"}:
+        if not isinstance(self.value, (bytes, _Record, _WireRecord)):
+            raise TypeError("derived artifact values must be canonical bytes or typed records")
+        if self.kind not in {"artifact", "private", "context_revision", "context_node"}:
             raise ValueError("unsupported derived artifact kind")
 
 
@@ -298,13 +252,6 @@ class Transition:
         object.__setattr__(self, "state", _freeze(self.state))
         object.__setattr__(self, "artifacts", tuple(self.artifacts))
         object.__setattr__(self, "view", _freeze(self.view))
-
-
-# S2 registers derives. Keeping this registry read-only and empty makes missing
-# routes fail closed until each input type has its derive implementation.
-DERIVE: Mapping[str, Callable[[LineageView, InputRecord, ArtifactReader], Transition]] = (
-    MappingProxyType({})
-)
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any] | None:
@@ -355,7 +302,11 @@ def first_difference(expected: Any, actual: Any, *, path: str = "state") -> str 
             None if len(expected) == len(actual) else f"{path}[{min(len(expected), len(actual))}]"
         )
 
-    if type(expected) is not type(actual) or expected != actual:
+    try:
+        equal = canonical_bytes(expected) == canonical_bytes(actual)
+    except (TypeError, ValueError):
+        equal = type(expected) is type(actual) and expected == actual
+    if not equal:
         return path
     return None
 
@@ -365,7 +316,6 @@ __all__ = [
     "CallSource",
     "CheckpointChain",
     "ContextView",
-    "DERIVE",
     "DerivedArtifact",
     "Hash",
     "InputRecord",

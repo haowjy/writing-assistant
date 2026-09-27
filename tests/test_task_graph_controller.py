@@ -68,7 +68,7 @@ def make_view(fixture, phase: str, **changes) -> LineageView:
         fixture.reader.artifact(state.context_ref, domain="context_revision")
     )
     content = ContextContentV1.from_dict(
-        fixture.reader.artifact(revision.content_ref, domain="context_content")
+        fixture.reader.artifact(revision.content_ref, domain="context_node")
     )
     context = ContextView(
         messages=content.messages,

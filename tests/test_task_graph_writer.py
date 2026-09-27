@@ -130,6 +130,12 @@ class WriterFixture(unittest.TestCase):
                 "provenance",
             )
         }
+        refs["decisions"] = self.store.put_artifact(
+            {"record_type": "DecisionLedgerV1", "schema": 1, "values": {}, "proposals": {}}
+        )
+        refs["disclosures"] = self.store.put_artifact(
+            {"record_type": "DisclosureLedgerV1", "schema": 1, "decisions": []}
+        )
         self.state = EnvironmentStateV1(
             instance_ref=self.bundle.instance.identity(),
             position={
