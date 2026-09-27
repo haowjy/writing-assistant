@@ -7,14 +7,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from writing_agent.legacy_graph import compile_legacy_scenario
-from writing_agent.task_graph import CheckpointV1, domain_hash
+from writing_agent.task_graph import CheckpointV1, domain_hash, load_canonical_json
 from writing_agent.task_graph_admission import AdmittedGraphV1
-from writing_agent.task_graph_derive_entry import (
-    EntryParamsV1,
-    derive_entry,
-    derive_entry_artifacts,
+from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry
+from writing_agent.task_graph_records import (
+    AdmissionPolicyV1,
+    ContextContentV1,
+    ContextRevisionV1,
+    MaterializedContextV1,
+    materialize_context_nodes,
 )
-from writing_agent.task_graph_records import AdmissionPolicyV1
 from writing_agent.task_graph_transition import DerivedArtifact
 
 
@@ -61,7 +63,7 @@ class MemoryArtifactReader:
         self.byte_values: dict[str, bytes] = {}
         self.checkpoints: dict[str, CheckpointV1] = {}
         self.context_revisions: dict[str, Any] = {}
-        self.context_content: dict[str, Any] = {}
+        self.context_nodes: dict[str, Any] = {}
 
     def add(self, value: Any, *, private: bool = False) -> str:
         identity = domain_hash("payload", value)
@@ -73,11 +75,19 @@ class MemoryArtifactReader:
             value = (self.private if private else self.public)[ref]
         elif domain == "context_revision":
             value = self.context_revisions[ref]
-        elif domain == "context_content":
-            value = self.context_content[ref]
+        elif domain == "context_node":
+            value = self.context_nodes[ref]
         else:
             raise KeyError((domain, ref))
         return _copy(value)
+
+    def context(self, ref: str) -> MaterializedContextV1:
+        revision = ContextRevisionV1.from_dict(self.artifact(ref, domain="context_revision"))
+        nodes = {
+            identity: ContextContentV1.from_dict(_copy(value))
+            for identity, value in self.context_nodes.items()
+        }
+        return materialize_context_nodes(revision, nodes)
 
     def bytes_artifact(self, ref: str) -> bytes:
         return self.byte_values[ref]
@@ -92,6 +102,14 @@ def _copy(value: Any) -> Any:
     if isinstance(value, (tuple, list)):
         return [_copy(item) for item in value]
     return value
+
+
+def _artifact_body(value: Any) -> Any:
+    if isinstance(value, bytes):
+        return load_canonical_json(value)
+    if hasattr(value, "to_wire"):
+        return value.to_wire()
+    return _copy(value)
 
 
 @dataclass(frozen=True)
@@ -138,17 +156,17 @@ def make_entry_fixture() -> EntryFixture:
         rng_ref=reader.add({"fixture": "rng", "seed": 7}),
     )
     node_id = graph.instance.entry_node
-    state = derive_entry(graph, node_id, params, reader)
-    artifacts = derive_entry_artifacts(graph, node_id, params, reader)
+    entry = derive_entry(graph, node_id, params, reader)
+    state, artifacts = entry.state, entry.artifacts
     for artifact in artifacts:
         if artifact.kind in {"artifact", "private"}:
-            (reader.private if artifact.kind == "private" else reader.public)[artifact.ref] = _copy(
-                dict(artifact.value)
+            (reader.private if artifact.kind == "private" else reader.public)[artifact.ref] = (
+                _artifact_body(artifact.value)
             )
-        elif artifact.kind == "context":
-            reader.context_revisions[artifact.ref] = _copy(dict(artifact.value))
-        elif artifact.kind == "context_content":
-            reader.context_content[artifact.ref] = _copy(dict(artifact.value))
+        elif artifact.kind == "context_revision":
+            reader.context_revisions[artifact.ref] = _artifact_body(artifact.value)
+        elif artifact.kind == "context_node":
+            reader.context_nodes[artifact.ref] = _artifact_body(artifact.value)
     return EntryFixture(graph, node_id, params, reader, state, artifacts)
 
 

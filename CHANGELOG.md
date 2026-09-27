@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Return entry state and artifacts together, compare materialized contexts, and use typed or
+  canonical-byte values for derived artifacts.
+
 - Replace the deterministic controller view with pure lineage-view directives and one guarded edge selector.
 
 - Add immutable task-graph transition views, stable nested diff paths, and pure entry derivation

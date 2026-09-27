@@ -12,10 +12,9 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from dataclasses import field as dataclass_field
-from types import MappingProxyType
 from typing import Any, ClassVar, Self
 
-from writing_agent.task_graph import canonical_json, domain_hash, validate_hash
+from writing_agent.task_graph import _freeze, canonical_json, domain_hash, validate_hash
 
 FILE_TOOLS = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file"})
 GRAPH_TOOLS = FILE_TOOLS | {"ask_author"}
@@ -133,14 +132,6 @@ def writer_tool_schemas(allowlist: tuple[str, ...], interaction_policy=None) -> 
         item["id"] for item in declared
     ]
     return (*schemas, schema)
-
-
-def _freeze(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze(item) for item in value)
-    return value
 
 
 def _thaw(value: Any) -> Any:

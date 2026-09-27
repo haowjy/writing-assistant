@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from writing_agent.task_graph import (
     EnvironmentStateV1,
     MessageV1,
     Phase,
+    _freeze,
+    canonical_bytes,
     domain_hash,
     tree_hash,
     validate_hash,
@@ -41,14 +42,6 @@ Use relative workspace paths. Return a final answer when the requested work is c
 _READ_TOKENIZER = "whitespace-v1"
 
 
-def _freeze(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze(item) for item in value)
-    return value
-
-
 @dataclass(frozen=True)
 class EntryParamsV1:
     """Free values pinned by the caller at the start of one rollout."""
@@ -58,8 +51,7 @@ class EntryParamsV1:
     versions_ref: str
     provenance_ref: str
     rng_ref: str
-    rendering: Mapping[str, Any] | None = None
-    rendering_ref: str | None = None
+    rendering: Mapping[str, Any]
 
     def __post_init__(self) -> None:
         if not isinstance(self.lineage_id, str) or not self.lineage_id:
@@ -68,19 +60,27 @@ class EntryParamsV1:
             raise ValueError("visit_id must be nonempty")
         for name in ("versions_ref", "provenance_ref", "rng_ref"):
             validate_hash(getattr(self, name))
-        validate_hash(self.rendering_ref, optional=True)
-        if self.rendering is not None:
-            if not isinstance(self.rendering, Mapping):
-                raise TypeError("rendering pins must be an object")
-            object.__setattr__(self, "rendering", _freeze(self.rendering))
+        if not isinstance(self.rendering, Mapping):
+            raise TypeError("rendering pins must be an object")
+        required = {
+            "projection_version",
+            "prefix_id",
+            "template_ref",
+            "tokenizer_ref",
+            "tool_schema_ref",
+        }
+        if set(self.rendering) != required:
+            raise ValueError("rendering pins have an invalid field set")
+        for name in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
+            validate_hash(self.rendering[name])
+        object.__setattr__(self, "rendering", _freeze(self.rendering))
 
 
-def params_of(state: EnvironmentStateV1) -> EntryParamsV1:
+def params_of(state: EnvironmentStateV1, reader: ArtifactReader) -> EntryParamsV1:
     """Extract caller-controlled entry parameters from a state.
 
-    Rendering lives under the content-addressed context record rather than in
-    EnvironmentStateV1. This stores its hash as a locator; derive_entry reads only
-    the rendering pins and reconstructs the root context from the admitted node.
+    Rendering is stored in the materialized root context, so it is read through
+    the same artifact boundary used by the gate.
     """
     if not isinstance(state, EnvironmentStateV1):
         raise TypeError("state must be EnvironmentStateV1")
@@ -90,49 +90,8 @@ def params_of(state: EnvironmentStateV1) -> EntryParamsV1:
         versions_ref=state.versions_ref,
         provenance_ref=state.provenance_ref,
         rng_ref=state.rng_ref,
-        rendering_ref=state.context_ref,
+        rendering=reader.context(state.context_ref).rendering,
     )
-
-
-def _rendering(params: EntryParamsV1, reader: ArtifactReader) -> Mapping[str, Any]:
-    rendering = params.rendering
-    if rendering is None:
-        if params.rendering_ref is None:
-            raise ValueError("entry rendering pins or a context rendering reference are required")
-        revision_body = reader.artifact(params.rendering_ref, domain="context_revision")
-        revision = (
-            revision_body
-            if isinstance(revision_body, ContextRevisionV1)
-            else ContextRevisionV1.from_dict(dict(revision_body))
-        )
-        content_ref = revision.content_ref
-        seen: set[str] = set()
-        while True:
-            if content_ref in seen:
-                raise ValueError("context content chain contains a cycle")
-            seen.add(content_ref)
-            content_body = reader.artifact(content_ref, domain="context_content")
-            content = (
-                content_body
-                if isinstance(content_body, ContextContentV1)
-                else ContextContentV1.from_dict(dict(content_body))
-            )
-            if content.rendering is not None:
-                rendering = content.rendering
-                break
-            if content.parent_ref is None:
-                raise ValueError("context content root is missing its rendering pins")
-            content_ref = content.parent_ref
-    required = {
-        "projection_version",
-        "prefix_id",
-        "template_ref",
-        "tokenizer_ref",
-        "tool_schema_ref",
-    }
-    if set(rendering) != required:
-        raise ValueError("rendering pins have an invalid field set")
-    return rendering
 
 
 def _initial_requirements(node: AdmittedNodeV1, reader: ArtifactReader) -> dict[str, Any]:
@@ -143,19 +102,17 @@ def _initial_requirements(node: AdmittedNodeV1, reader: ArtifactReader) -> dict[
         active: dict[str, str] = {}
         if source_ref is not None:
             source = reader.artifact(source_ref, private=True)
-            if isinstance(source, Mapping):
-                if "requirements" not in source and "active" not in source:
-                    raise ValueError("initial requirement version has no text map")
-                requirements = source.get("requirements", source.get("active"))
-                if isinstance(requirements, Mapping) and all(
-                    isinstance(key, str) and isinstance(value, str)
-                    for key, value in requirements.items()
-                ):
-                    active = dict(requirements)
-                else:
-                    raise ValueError("initial requirement version must expose a text map")
-            else:
-                raise ValueError("initial requirement version must be an object")
+            if not isinstance(source, Mapping) or not isinstance(
+                source.get("requirements"), Mapping
+            ):
+                raise ValueError("initial requirement version must contain a requirements map")
+            requirements = source["requirements"]
+            if any(
+                not isinstance(key, str) or not isinstance(value, str)
+                for key, value in requirements.items()
+            ):
+                raise ValueError("initial requirements must map strings to strings")
+            active = dict(requirements)
     return {
         "record_type": "RequirementLedgerV1",
         "schema": 1,
@@ -164,31 +121,45 @@ def _initial_requirements(node: AdmittedNodeV1, reader: ArtifactReader) -> dict[
     }
 
 
-def _entry(
-    graph: AdmittedGraphV1,
-    node_id: str,
-    params: EntryParamsV1,
-    reader: ArtifactReader,
-) -> tuple[EnvironmentStateV1, tuple[DerivedArtifact, ...]]:
-    node = graph.node(node_id)
-    if node.spec.kind != "writer":
-        raise ValueError("entry state requires a writer node")
-    contract = node.contract
-    entry = contract.entry_contract
-    files = reader.artifact(entry.files_ref)
+def _entry_files(reader: ArtifactReader, files_ref: str) -> dict[str, str]:
+    """Unwrap the legacy scenario compiler's visible-files artifact shape."""
+    files = reader.artifact(files_ref)
     if isinstance(files, Mapping) and files.get("kind") == "legacy-visible-files":
         files = files.get("files")
     if not isinstance(files, Mapping) or any(
         not isinstance(path, str) or not isinstance(text, str) for path, text in files.items()
     ):
         raise TypeError("entry files artifact must map paths to text")
-    files = dict(files)
+    return dict(files)
+
+
+@dataclass(frozen=True)
+class EntryV1:
+    state: EnvironmentStateV1
+    artifacts: tuple[DerivedArtifact, ...]
+
+
+def derive_entry(
+    graph: AdmittedGraphV1,
+    node_id: str,
+    params: EntryParamsV1,
+    reader: ArtifactReader,
+) -> EntryV1:
+    """Build a node's initial state and deterministic artifacts without I/O."""
+    if not isinstance(params, EntryParamsV1):
+        raise TypeError("params must be EntryParamsV1")
+    node = graph.node(node_id)
+    if node.spec.kind != "writer":
+        raise ValueError("entry state requires a writer node")
+    contract = node.contract
+    entry = contract.entry_contract
+    files = _entry_files(reader, entry.files_ref)
 
     request = reader.artifact(entry.request_ref)
     if not isinstance(request, Mapping) or not isinstance(request.get("text"), str):
         raise TypeError("entry request artifact must contain text")
     request_text = request["text"]
-    rendering = _rendering(params, reader)
+    rendering = params.rendering
     tools = writer_tool_schemas(entry.tool_allowlist, node.interaction_policy)
     messages = (
         MessageV1(
@@ -304,45 +275,21 @@ def _entry(
         },
     )
     artifacts = (
-        DerivedArtifact(requirements_ref, requirements, "private"),
-        DerivedArtifact(decisions_ref, decisions, "artifact"),
-        DerivedArtifact(disclosures_ref, disclosures, "artifact"),
-        DerivedArtifact(budget_ref, budget, "artifact"),
-        DerivedArtifact(outcome_ref, outcome.to_wire(), "artifact"),
-        DerivedArtifact(external_inputs_ref, external_inputs.to_wire(), "artifact"),
-        DerivedArtifact(context_content.identity(), context_content.to_wire(), "context_content"),
-        DerivedArtifact(context_revision.identity(), context_revision.to_wire(), "context"),
+        DerivedArtifact(requirements_ref, canonical_bytes(requirements), "private"),
+        DerivedArtifact(decisions_ref, canonical_bytes(decisions), "artifact"),
+        DerivedArtifact(disclosures_ref, canonical_bytes(disclosures), "artifact"),
+        DerivedArtifact(budget_ref, canonical_bytes(budget), "artifact"),
+        DerivedArtifact(outcome_ref, outcome, "artifact"),
+        DerivedArtifact(external_inputs_ref, external_inputs, "artifact"),
+        DerivedArtifact(context_content.identity(), context_content, "context_node"),
+        DerivedArtifact(context_revision.identity(), context_revision, "context_revision"),
     )
-    return state, artifacts
-
-
-def derive_entry(
-    graph: AdmittedGraphV1,
-    node_id: str,
-    params: EntryParamsV1,
-    reader: ArtifactReader,
-) -> EnvironmentStateV1:
-    """Build a node's initial checkpoint state without storage or port access."""
-    if not isinstance(params, EntryParamsV1):
-        raise TypeError("params must be EntryParamsV1")
-    state, _ = _entry(graph, node_id, params, reader)
-    return state
-
-
-def derive_entry_artifacts(
-    graph: AdmittedGraphV1,
-    node_id: str,
-    params: EntryParamsV1,
-    reader: ArtifactReader,
-) -> tuple[DerivedArtifact, ...]:
-    """Return the deterministic entry artifacts that accompany ``derive_entry``."""
-    _, artifacts = _entry(graph, node_id, params, reader)
-    return artifacts
+    return EntryV1(state, artifacts)
 
 
 __all__ = [
     "EntryParamsV1",
+    "EntryV1",
     "derive_entry",
-    "derive_entry_artifacts",
     "params_of",
 ]
