@@ -32,6 +32,8 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_controller.py](../writing_agent/task_graph_controller.py) is the pure,
   deterministic directive boundary. It does not step a writer, execute checks, accept
   author transition/completion claims, or mutate runtime state.
+  The derive modules delegate event, state, checkpoint, artifact, and context-append
+  construction to [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
 - [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
   handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)

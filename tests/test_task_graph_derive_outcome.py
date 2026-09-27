@@ -22,7 +22,6 @@ from writing_agent.task_graph_derive_entry import derive_entry
 from writing_agent.task_graph_derive_outcome import (
     derive_check_request,
     derive_check_result,
-    derive_environment_step,
     derive_exhausted_stop,
     derive_reward,
     derive_seal,
@@ -139,7 +138,13 @@ def make_view(fixture, phase: str, *, files=None, consumed=None) -> LineageView:
 
 def persist_transition(fixture, previous: LineageView, transition: Transition) -> None:
     for artifact in transition.artifacts:
-        value = artifact.value.to_wire() if hasattr(artifact.value, "to_wire") else artifact.value
+        value = (
+            load_canonical_json(artifact.value)
+            if artifact.value_kind == "canonical_json"
+            else artifact.value.to_wire()
+            if hasattr(artifact.value, "to_wire")
+            else artifact.value
+        )
         target = fixture.reader.private if artifact.kind == "private" else fixture.reader.public
         target[artifact.ref] = value
     checkpoint = CheckpointV1(
@@ -186,7 +191,14 @@ def transition_bytes(transition: Transition) -> bytes:
                 {
                     "ref": item.ref,
                     "kind": item.kind,
-                    "value": item.value.to_wire() if hasattr(item.value, "to_wire") else item.value,
+                    "value_kind": item.value_kind,
+                    "value": (
+                        load_canonical_json(item.value)
+                        if item.value_kind == "canonical_json"
+                        else item.value.to_wire()
+                        if hasattr(item.value, "to_wire")
+                        else item.value.hex()
+                    ),
                 }
                 for item in transition.artifacts
             ],
@@ -442,7 +454,7 @@ class OutcomeLifecycleTests(unittest.TestCase):
 
     def test_decode_fixed_point_covers_every_derived_step(self):
         _, step, requested = self.request()
-        repeated_request = derive_environment_step(
+        repeated_request = derive_check_request(
             make_view(self.fixture, "checking"), round_trip(step), self.fixture.reader
         )
         self.assertEqual(transition_bytes(requested), transition_bytes(repeated_request))
@@ -458,35 +470,31 @@ class OutcomeLifecycleTests(unittest.TestCase):
         transition_step = EnvironmentStepV1(
             directive={"kind": "commit_transition", "edge_id": next_step(checked.view).edge_id}
         )
-        transitioned = derive_environment_step(checked.view, transition_step, self.fixture.reader)
+        transitioned = derive_transition(checked.view, transition_step, self.fixture.reader)
         self.assertEqual(
             transition_bytes(transitioned),
             transition_bytes(
-                derive_environment_step(
-                    checked.view, round_trip(transition_step), self.fixture.reader
-                )
+                derive_transition(checked.view, round_trip(transition_step), self.fixture.reader)
             ),
         )
         persist_transition(self.fixture, checked.view, transitioned)
         seal_step = EnvironmentStepV1(
             directive={"kind": "seal_outcome", "task_status": "complete", "stop_reason": None}
         )
-        sealed = derive_environment_step(transitioned.view, seal_step, self.fixture.reader)
+        sealed = derive_seal(transitioned.view, seal_step, self.fixture.reader)
         self.assertEqual(
             transition_bytes(sealed),
             transition_bytes(
-                derive_environment_step(
-                    transitioned.view, round_trip(seal_step), self.fixture.reader
-                )
+                derive_seal(transitioned.view, round_trip(seal_step), self.fixture.reader)
             ),
         )
         persist_transition(self.fixture, transitioned.view, sealed)
         reward_step = EnvironmentStepV1(directive={"kind": "publish_reward"})
-        reward = derive_environment_step(sealed.view, reward_step, self.fixture.reader)
+        reward = derive_reward(sealed.view, reward_step, self.fixture.reader)
         self.assertEqual(
             transition_bytes(reward),
             transition_bytes(
-                derive_environment_step(sealed.view, round_trip(reward_step), self.fixture.reader)
+                derive_reward(sealed.view, round_trip(reward_step), self.fixture.reader)
             ),
         )
 

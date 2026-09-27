@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
-from typing import Annotated, Any, ClassVar
+from dataclasses import replace
+from typing import Any
 
-from writing_agent.task_graph import CheckpointV1, EventV1, domain_hash
 from writing_agent.task_graph_accounting import exhausted_stop_reason
+from writing_agent.task_graph_checks import applicable_checks
 from writing_agent.task_graph_contracts import CheckContractV1
 from writing_agent.task_graph_controller import Directive, next_step, select_edge
+from writing_agent.task_graph_derive_common import (
+    DeriveKey,
+    build_transition,
+    evidence_reader,
+    payload_artifact,
+)
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_evaluation import (
     FAMILIES,
@@ -17,56 +23,22 @@ from writing_agent.task_graph_evaluation import (
     verify_evaluation_evidence,
 )
 from writing_agent.task_graph_records import (
-    RECORD_TYPES,
     EnvironmentStepV1,
     EvaluatorResultV1,
     OutcomeV1,
-    _WireRecord,
 )
 from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY
 from writing_agent.task_graph_transition import (
     ArtifactReader,
-    CheckpointChain,
     DerivedArtifact,
     LineageView,
     Transition,
 )
-from writing_agent.task_graph_wire import DictOf, JsonValue
-
-
-@dataclass(frozen=True)
-class _PayloadArtifact(_WireRecord):
-    body: Annotated[Mapping[str, Any], DictOf(JsonValue())]
-    RECORD_TYPE: ClassVar[str | None] = None
-
-    def to_wire(self) -> dict[str, Any]:
-        return dict(self.body)
-
-
-@dataclass(frozen=True)
-class _ReaderEvidenceResolver:
-    reader: ArtifactReader
-    packet_ref: str
-
-    def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]:
-        if ref != self.packet_ref:
-            raise ProjectionError("evaluator requested an unauthorized packet")
-        return self.reader.artifact(ref, private=True)
-
-
-def _artifact(value: _WireRecord | Mapping[str, Any], kind: str) -> DerivedArtifact:
-    typed = isinstance(value, _WireRecord)
-    body = value.to_wire() if typed else dict(value)
-    record_type = body.get("record_type")
-    if not typed and record_type in RECORD_TYPES:
-        RECORD_TYPES[record_type].from_dict(body)
-    ref = value.identity() if typed and value.RECORD_TYPE else domain_hash("payload", body)
-    return DerivedArtifact(ref, value if typed else _PayloadArtifact(body), kind)
 
 
 def _build_outcome(view: LineageView, **changes: Any) -> tuple[OutcomeV1, DerivedArtifact]:
     outcome = replace(view.outcome, **changes)
-    return outcome, _artifact(outcome, "artifact")
+    return outcome, payload_artifact(outcome)
 
 
 def _step(view: LineageView, step: EnvironmentStepV1, kind: str) -> Directive:
@@ -83,15 +55,6 @@ def _step(view: LineageView, step: EnvironmentStepV1, kind: str) -> Directive:
     if directive.kind != kind or step.directive != expected:
         raise ProjectionError("environment step differs from the current directive")
     return directive
-
-
-def _applicable_checks(view: LineageView) -> tuple[CheckContractV1, ...]:
-    cursor = view.state.continuation["feedback_cursor"]
-    if cursor < len(view.mode.feedback_rules):
-        applicable = {"each_turn", f"before_feedback:{view.mode.feedback_rules[cursor]['id']}"}
-    else:
-        applicable = {"each_turn", "node_exit_candidate"}
-    return tuple(check for check in view.node.checks.values() if check.applicability in applicable)
 
 
 def _check_request(
@@ -123,66 +86,18 @@ def _result_statuses(view: LineageView) -> tuple[dict[str, str], list[str]]:
     return statuses, refs
 
 
-def _transition(
-    view: LineageView,
-    input_record: EnvironmentStepV1 | EvaluatorResultV1,
-    outcome: OutcomeV1,
-    outcome_artifact: DerivedArtifact,
-    *,
-    kind: str,
-    actor: str,
-    phase: str,
-    continuation: Mapping[str, Any] | None = None,
-    check_statuses: Mapping[str, str | None] | None = None,
-    extra_artifacts: tuple[DerivedArtifact, ...] = (),
-) -> Transition:
-    state = view.state
-    input_artifact = _artifact(input_record, "artifact")
-    event = EventV1(
-        previous=state.history["head"],
-        seq=state.history["seq"] + 1,
-        lineage_id=state.position["lineage_id"],
-        node_visit_id=state.position["visit_id"],
-        kind=kind,
-        actor=actor,
-        audience=("controller", "evaluator", "trainer"),
-        payload_ref=input_artifact.ref,
-        versions_ref=state.versions_ref,
-        provenance_ref=state.provenance_ref,
-    )
-    next_state = replace(
-        state,
-        position={**state.position, "phase": phase},
-        history={**state.history, "head": event.id, "seq": event.seq},
-        outcome_ref=outcome_artifact.ref,
-        continuation=state.continuation if continuation is None else continuation,
-    )
-    checkpoint = CheckpointV1(
-        parents=(view.checkpoint_id,), state=next_state, event_head=event.id, artifact_refs=()
-    )
-    next_view = replace(
-        view,
-        checkpoint_id=checkpoint.identity(),
-        head_event_id=event.id,
-        state=next_state,
-        outcome=outcome,
-        check_statuses=view.check_statuses if check_statuses is None else check_statuses,
-        ancestry=CheckpointChain(checkpoint.identity(), view.context, view.ancestry),
-    )
-    return Transition(
-        event,
-        input_record,
-        next_state,
-        (input_artifact, *extra_artifacts, outcome_artifact),
-        next_view,
-    )
-
-
 def derive_check_request(
     view: LineageView, step: EnvironmentStepV1, reader: ArtifactReader
 ) -> Transition:
     _step(view, step, "request_checks")
-    checks = _applicable_checks(view)
+    if view.node.interaction_policy is None:
+        checks = tuple(
+            check
+            for check in view.node.checks.values()
+            if check.applicability in {"each_turn", "node_exit_candidate"}
+        )
+    else:
+        checks = applicable_checks(view.node, view.state.continuation["feedback_cursor"])
     packet_ref = view.node.contract.completion_contract.evaluation_packet_ref
     if not checks or packet_ref is None:
         raise ProjectionError("no admitted checks are applicable")
@@ -194,7 +109,7 @@ def derive_check_request(
     )
     request_prefix = f"{view.state.position['lineage_id']}:check:{view.state.history['seq']}:"
     request_artifacts = tuple(
-        _artifact(
+        payload_artifact(
             {
                 "record_type": "CheckRequestV1",
                 "schema": 1,
@@ -222,17 +137,20 @@ def derive_check_request(
     continuation["check_requests"] = list(check_refs)
     check_statuses = dict(view.check_statuses)
     check_statuses.update({check.id: None for check in checks})
-    return _transition(
+    return build_transition(
         view,
         step,
-        outcome,
-        outcome_artifact,
         kind="external_requested",
         actor="environment",
-        phase="awaiting_checks",
-        continuation=continuation,
+        audience=("controller", "evaluator", "trainer"),
+        state_changes={
+            "position": {"phase": "awaiting_checks"},
+            "continuation": continuation,
+            "outcome_ref": outcome_artifact.ref,
+        },
+        artifacts=(*request_artifacts, outcome_artifact),
+        outcome=outcome,
         check_statuses=check_statuses,
-        extra_artifacts=request_artifacts,
     )
 
 
@@ -264,9 +182,7 @@ def derive_check_result(
     )
     evidence = reader.artifact(result.evidence_ref)
     verified = verify_evaluation_evidence(
-        evaluation_request,
-        evidence,
-        _ReaderEvidenceResolver(reader, packet_ref),
+        evaluation_request, evidence, evidence_reader(reader, packet_ref=packet_ref)
     )
     if verified.family != family.name or verified.status != result.status:
         raise ProjectionError("evaluator result contradicts admitted evidence")
@@ -278,7 +194,7 @@ def derive_check_result(
     )
     if index is None or checks[index]["result_ref"] is not None:
         raise ProjectionError("check result does not fill one pending outcome row")
-    result_artifact = _artifact(result, "artifact")
+    result_artifact = payload_artifact(result)
     checks[index]["result_ref"] = result_artifact.ref
     outcome, outcome_artifact = _build_outcome(view, checks=checks)
     continuation = view.state.to_dict()["continuation"]
@@ -289,15 +205,19 @@ def derive_check_result(
     ]
     check_statuses = dict(view.check_statuses)
     check_statuses[check.id] = result.status
-    return _transition(
+    return build_transition(
         view,
         result,
-        outcome,
-        outcome_artifact,
         kind="check_recorded",
         actor="evaluator",
-        phase="awaiting_checks",
-        continuation=continuation,
+        audience=("controller", "evaluator", "trainer"),
+        state_changes={
+            "position": {"phase": "awaiting_checks"},
+            "continuation": continuation,
+            "outcome_ref": outcome_artifact.ref,
+        },
+        artifacts=(outcome_artifact,),
+        outcome=outcome,
         check_statuses=check_statuses,
     )
 
@@ -314,14 +234,18 @@ def derive_transition(
         task_status=directive.task_status,
         transition_edge_id=edge.edge_id,
     )
-    return _transition(
+    return build_transition(
         view,
         step,
-        outcome,
-        outcome_artifact,
         kind="transition_committed",
         actor="environment",
-        phase="ready_transition",
+        audience=("controller", "evaluator", "trainer"),
+        state_changes={
+            "position": {"phase": "ready_transition"},
+            "outcome_ref": outcome_artifact.ref,
+        },
+        artifacts=(outcome_artifact,),
+        outcome=outcome,
     )
 
 
@@ -337,14 +261,18 @@ def derive_seal(view: LineageView, step: EnvironmentStepV1, reader: ArtifactRead
         reward_status="pending",
         training_eligibility="pending",
     )
-    return _transition(
+    return build_transition(
         view,
         step,
-        outcome,
-        outcome_artifact,
         kind="termination_recorded",
         actor="environment",
-        phase="terminal",
+        audience=("controller", "evaluator", "trainer"),
+        state_changes={
+            "position": {"phase": "terminal"},
+            "outcome_ref": outcome_artifact.ref,
+        },
+        artifacts=(outcome_artifact,),
+        outcome=outcome,
     )
 
 
@@ -367,14 +295,18 @@ def derive_exhausted_stop(
         reward_status="pending",
         training_eligibility="pending",
     )
-    return _transition(
+    return build_transition(
         view,
         step,
-        outcome,
-        outcome_artifact,
         kind="termination_recorded",
         actor="writer_runtime",
-        phase="terminal",
+        audience=("controller", "evaluator", "trainer"),
+        state_changes={
+            "position": {"phase": "terminal"},
+            "outcome_ref": outcome_artifact.ref,
+        },
+        artifacts=(outcome_artifact,),
+        outcome=outcome,
         check_statuses={},
     )
 
@@ -402,7 +334,7 @@ def derive_reward(view: LineageView, step: EnvironmentStepV1, reader: ArtifactRe
         else contract.incomplete_score
     )
     eligibility = CURRENT_ELIGIBILITY.training_wire(view.state.outcome_ref)
-    eligibility_artifact = _artifact(eligibility, "artifact")
+    eligibility_artifact = payload_artifact(eligibility)
     reward = {
         "record_type": "RewardV1",
         "schema": 1,
@@ -416,7 +348,7 @@ def derive_reward(view: LineageView, step: EnvironmentStepV1, reader: ArtifactRe
         "availability": "available",
         "eligibility_ref": eligibility_artifact.ref,
     }
-    reward_artifact = _artifact(reward, "artifact")
+    reward_artifact = payload_artifact(reward)
     outcome, outcome_artifact = _build_outcome(
         view,
         reward_status="available",
@@ -424,39 +356,27 @@ def derive_reward(view: LineageView, step: EnvironmentStepV1, reader: ArtifactRe
         reward_ref=reward_artifact.ref,
         eligibility_ref=eligibility_artifact.ref,
     )
-    return _transition(
+    return build_transition(
         view,
         step,
-        outcome,
-        outcome_artifact,
         kind="reward_recorded",
         actor="evaluator",
-        phase="terminal",
-        extra_artifacts=(eligibility_artifact, reward_artifact),
+        audience=("controller", "evaluator", "trainer"),
+        state_changes={
+            "position": {"phase": "terminal"},
+            "outcome_ref": outcome_artifact.ref,
+        },
+        artifacts=(eligibility_artifact, reward_artifact, outcome_artifact),
+        outcome=outcome,
     )
 
 
-def derive_environment_step(
-    view: LineageView, step: EnvironmentStepV1, reader: ArtifactReader
-) -> Transition:
-    if not isinstance(step, EnvironmentStepV1):
-        raise ProjectionError("outcome derive requires an environment step")
-    derives = {
-        "request_checks": derive_check_request,
-        "commit_transition": derive_transition,
-        "seal_outcome": derive_seal,
-        "stop_exhausted": derive_exhausted_stop,
-        "publish_reward": derive_reward,
-    }
-    try:
-        derive = derives[step.directive["kind"]]
-    except KeyError as exc:
-        raise ProjectionError("unsupported environment step") from exc
-    return derive(view, step, reader)
-
-
-DERIVES: dict[str, Callable] = {
-    "EnvironmentStepV1": derive_environment_step,
+DERIVES: dict[DeriveKey, Callable] = {
+    ("EnvironmentStepV1", "request_checks"): derive_check_request,
+    ("EnvironmentStepV1", "commit_transition"): derive_transition,
+    ("EnvironmentStepV1", "seal_outcome"): derive_seal,
+    ("EnvironmentStepV1", "stop_exhausted"): derive_exhausted_stop,
+    ("EnvironmentStepV1", "publish_reward"): derive_reward,
     "EvaluatorResultV1": derive_check_result,
 }
 
@@ -469,5 +389,4 @@ __all__ = [
     "derive_seal",
     "derive_exhausted_stop",
     "derive_reward",
-    "derive_environment_step",
 ]

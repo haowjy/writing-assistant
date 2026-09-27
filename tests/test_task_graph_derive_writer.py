@@ -361,6 +361,10 @@ class WriterDeriveTests(unittest.TestCase):
         )
         self.assertNotIn("invalid_call", canonical_bytes(message).decode())
         self.assertEqual(result.state.continuation["tool_queue"][0]["name"], "invalid_call")
+        self.assertEqual(
+            result.state.continuation["tool_queue"][0]["rejection"],
+            "Invalid tool call envelope",
+        )
 
     def test_missing_sampling_context_and_eligibility_claims_fail_closed(self):
         with self.assertRaises(ProjectionError):
