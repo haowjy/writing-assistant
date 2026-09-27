@@ -64,8 +64,9 @@ from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_records import (
     LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_TYPES,
+    SEMANTICS_V1,
+    ExecutionVersionsV1,
     MaterializedContextV1,
-    context_reference_edges,
     materialize_context_nodes,
     record_reference_edges,
 )
@@ -1125,13 +1126,13 @@ class _ClosureValidator:
         self.resolved: dict[tuple[str, str], tuple[str, str]] = {}
         self.active: set[tuple[str, str]] = set()
         self.completed: set[tuple[str, str]] = set()
-        self.byte_references: set[str] = set()
-        self.payload_references: set[str] = set()
+        self.required_domain: dict[str, frozenset[str]] = {}
         if parent is not None:
             # Only completed (closure-validated, disk-backed) results are shared.
             self.completed = set(parent.completed)
             self.loaded = {key: parent.loaded[key] for key in parent.completed}
             self.resolved = dict(parent.resolved)
+            self.required_domain = dict(parent.required_domain)
 
     def discard(self, keys: set[tuple[str, str]]) -> None:
         """Remove candidate and cache state associated with rejected keys."""
@@ -1140,6 +1141,7 @@ class _ClosureValidator:
             self.loaded.pop(key, None)
             self.completed.discard(key)
             self.active.discard(key)
+            self.required_domain.pop(key[1], None)
         for requested, resolved in tuple(self.resolved.items()):
             if requested in keys or resolved in keys:
                 self.resolved.pop(requested, None)
@@ -1153,6 +1155,7 @@ class _ClosureValidator:
                 parent.loaded[key] = self.loaded[key]
         parent.completed |= self.completed
         parent.resolved.update(self.resolved)
+        parent.required_domain.update(self.required_domain)
 
     def add_virtual(self, kind: str, identity: str, value: Any) -> None:
         # Candidate objects must see fresh location resolution for their identity.
@@ -1166,6 +1169,7 @@ class _ClosureValidator:
 
     def validate(self, requested: tuple[str, str]) -> Any:
         original_resolved = set(self.resolved)
+        original_required_domain = dict(self.required_domain)
         try:
             root = self._resolve_key(requested)
             stack: list[tuple[tuple[str, str], bool]] = [(root, False)]
@@ -1197,6 +1201,14 @@ class _ClosureValidator:
             for key, resolved in tuple(self.resolved.items()):
                 if key not in original_resolved and resolved not in self.completed:
                     self.resolved.pop(key, None)
+            self.required_domain = {
+                **original_required_domain,
+                **{
+                    identity: required
+                    for identity, required in self.required_domain.items()
+                    if ("artifact", identity) in self.completed
+                },
+            }
             self.active.clear()
             self._merge_into_parent()
             raise
@@ -1247,12 +1259,7 @@ class _ClosureValidator:
 
     def _resolve_key(self, requested: tuple[str, str]) -> tuple[str, str]:
         if requested in self.resolved:
-            if requested[0] == "bytes":
-                self.byte_references.add(requested[1])
-                self._check_resolved_payload_kind(requested[0], requested[1])
-            elif requested[0] == "artifact|bytes":
-                self.payload_references.add(requested[1])
-                self._check_resolved_payload_kind(requested[0], requested[1])
+            self._require_domain(requested[0], requested[1])
             return self.resolved[requested]
         if requested in self.loaded:
             return requested
@@ -1260,6 +1267,18 @@ class _ClosureValidator:
         validate_hash(identity)
         virtual_kinds = {candidate for candidate, item in self.virtual if item == identity}
         locations = self._path_locations(identity)
+        if kind == "artifact|private":
+            domains = set(virtual_kinds) | (set(locations) & {"artifacts", "private"})
+            if not domains:
+                raise MissingReferenceError(f"missing public or private artifact: {identity}")
+            if len(domains) != 1:
+                raise WrongRecordDomainError(
+                    f"reference {identity} exists in ambiguous public/private locations"
+                )
+            resolved = next(iter(domains))
+            resolved = {"artifacts": "artifact"}.get(resolved, resolved)
+            self.resolved[requested] = (resolved, identity)
+            return resolved, identity
         if kind in {"bytes", "artifact|bytes"}:
             if "artifacts" not in locations:
                 if locations or "private" in locations or virtual_kinds:
@@ -1273,12 +1292,8 @@ class _ClosureValidator:
                 raise WrongRecordDomainError(
                     f"reference {identity} exists in ambiguous locations: {found_locations}"
                 )
-            if kind == "bytes":
-                self.byte_references.add(identity)
-            else:
-                self.payload_references.add(identity)
+            self._require_domain(kind, identity)
             self.resolved[requested] = ("artifact", identity)
-            self._check_resolved_payload_kind(kind, identity)
             return ("artifact", identity)
         disk_kinds: set[str] = set()
         for location in locations:
@@ -1330,17 +1345,20 @@ class _ClosureValidator:
         self.resolved[requested] = requested
         return requested
 
-    def _check_resolved_payload_kind(self, edge_kind: str, identity: str) -> None:
-        target = ("artifact", identity)
-        if target not in self.completed:
+    def _require_domain(self, edge_kind: str, identity: str) -> None:
+        allowed = {
+            "bytes": frozenset({"payload:bytes"}),
+            "artifact|bytes": frozenset({"payload", "payload:bytes"}),
+        }.get(edge_kind)
+        if allowed is None:
             return
-        artifact = self.loaded[target]
-        if edge_kind == "bytes" and artifact.domain != "payload:bytes":
-            raise WrongRecordDomainError(
-                f"byte edge {identity} targets non-binary payload {artifact.domain!r}"
-            )
-        if edge_kind == "artifact|bytes" and artifact.domain not in {"payload", "payload:bytes"}:
-            raise WrongRecordDomainError(f"payload edge {identity} targets {artifact.domain!r}")
+        previous = self.required_domain.get(identity)
+        required = allowed if previous is None else previous & allowed
+        if not required:
+            raise WrongRecordDomainError(f"conflicting payload domain requirements for {identity}")
+        if required != previous:
+            self.required_domain[identity] = required
+            self.completed.discard(("artifact", identity))
 
     @staticmethod
     def _expected_location(kind: str) -> str:
@@ -1437,7 +1455,7 @@ class _ClosureValidator:
                 for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
             ]
         if kind in {"context_node", "context_revision"}:
-            return list(context_reference_edges(value))
+            return list(record_reference_edges(kind, value.to_wire()))
         if kind in {"artifact", "private"}:
             if value.domain == "payload" and isinstance(value.value, Mapping):
                 if value.value.get("artifact_type") == _REPLAY_EFFECT:
@@ -1455,7 +1473,15 @@ class _ClosureValidator:
                             f"unregistered task-graph record_type: {record_type!r}"
                         )
                     try:
-                        return list(record_reference_edges(record_type, value.value))
+                        edges = list(record_reference_edges(record_type, value.value))
+                        if record_type == "CheckRequestV1":
+                            if self._checkpoint_semantics(value.value["target_checkpoint"]) is None:
+                                requirement = value.value["requirement_version"]
+                                for index, edge in enumerate(edges):
+                                    if edge == ("private", requirement):
+                                        edges[index] = ("artifact|private", requirement)
+                                        break
+                        return edges
                     except (TypeError, ValueError) as exc:
                         raise CorruptRecordError(
                             f"invalid task-graph payload record: {record_type}"
@@ -1465,19 +1491,7 @@ class _ClosureValidator:
             return []
         if kind == "checkpoint":
             edges = [("checkpoint", identity) for identity in value.parents]
-            versions_key = self._resolve_key(("artifact", value.state.versions_ref))
-            versions = self._load(versions_key)
-            transition_semantics = (
-                versions.value.get("transition_semantics")
-                if versions.domain == "payload" and isinstance(versions.value, Mapping)
-                else None
-            )
-            edges.extend(
-                self._state_edges(
-                    value.state,
-                    chained_context=transition_semantics == "task-graph-derive-v1",
-                )
-            )
+            edges.extend(self._state_edges(value.state))
             edges.extend(("any", identity) for identity in value.artifact_refs)
             return edges
         if kind == "commit":
@@ -1488,43 +1502,71 @@ class _ClosureValidator:
             return edges
         return []
 
-    @staticmethod
-    def _state_edges(
-        state: EnvironmentStateV1, *, chained_context: bool = False
-    ) -> list[tuple[str, str]]:
-        edges = [
-            ("instance", state.instance_ref),
-            ("context_revision" if chained_context else "context", state.context_ref),
+    def _versions_semantics(self, versions_ref: str) -> tuple[str | None, Mapping[str, Any] | None]:
+        key = self._resolve_key(("artifact", versions_ref))
+        versions = self._load(key)
+        body = (
+            versions.value
+            if versions.domain == "payload" and isinstance(versions.value, Mapping)
+            else None
+        )
+        if body is None or "transition_semantics" not in body:
+            return None, body
+        if body["transition_semantics"] != SEMANTICS_V1:
+            raise WrongRecordDomainError("unsupported transition semantics")
+        try:
+            ExecutionVersionsV1.from_dict(dict(body))
+        except (TypeError, ValueError) as exc:
+            raise WrongRecordDomainError("invalid execution versions") from exc
+        return SEMANTICS_V1, body
+
+    def _checkpoint_semantics(self, checkpoint_id: str) -> str | None:
+        key = self._resolve_key(("checkpoint", checkpoint_id))
+        checkpoint = self._load(key)
+        semantics, _ = self._versions_semantics(checkpoint.state.versions_ref)
+        return semantics
+
+    def _state_edges(self, state: EnvironmentStateV1) -> list[tuple[str, str]]:
+        semantics, versions_body = self._versions_semantics(state.versions_ref)
+
+        chained = semantics == SEMANTICS_V1
+        refs: list[tuple[str, str, str]] = [
+            ("instance", state.instance_ref, "public"),
+            ("context_revision" if chained else "context", state.context_ref, "public"),
+            ("artifact", state.position["entry_contract"], "public"),
+            ("artifact", state.requirements_ref, "private" if chained else "public"),
+            ("artifact", state.decisions_ref, "public"),
+            ("artifact", state.disclosures_ref, "public"),
+            ("artifact", state.versions_ref, "public"),
+            ("artifact", state.budgets_ref, "public"),
+            ("artifact", state.rng_ref, "public"),
+            ("artifact", state.external_inputs_ref, "public"),
+            ("artifact", state.outcome_ref, "public"),
+            ("artifact", state.provenance_ref, "public"),
         ]
-        for index, identity in enumerate(
-            (
-                state.position["entry_contract"],
-                state.requirements_ref,
-                state.decisions_ref,
-                state.disclosures_ref,
-                state.versions_ref,
-                state.budgets_ref,
-                state.rng_ref,
-                state.external_inputs_ref,
-                state.outcome_ref,
-                state.provenance_ref,
-            )
-        ):
-            kind = "private" if chained_context and index == 1 else "artifact"
-            edges.append((kind, identity))
-        edges.extend(("any", identity) for identity in state.history["imported_refs"])
+        refs.extend(("any", identity, "either") for identity in state.history["imported_refs"])
         if state.author_packet_ref is not None:
-            edges.append(("private", state.author_packet_ref))
+            refs.append(("private", state.author_packet_ref, "private"))
         if state.continuation["author_request"] is not None:
-            edges.append(("private", state.continuation["author_request"]))
-        edges.extend(("private", identity) for identity in state.continuation["check_requests"])
+            refs.append(("private", state.continuation["author_request"], "private"))
+        refs.extend(
+            ("private", identity, "private") for identity in state.continuation["check_requests"]
+        )
         if state.history["branch_base"] is not None:
-            edges.append(("event", state.history["branch_base"]))
+            refs.append(("event", state.history["branch_base"], "public"))
         if state.position["start_checkpoint"] is not None:
-            edges.append(("checkpoint", state.position["start_checkpoint"]))
+            refs.append(("checkpoint", state.position["start_checkpoint"], "public"))
         if state.history["head"] is not None:
-            edges.append(("event", state.history["head"]))
-        return edges
+            refs.append(("event", state.history["head"], "public"))
+        if chained:
+            refs.extend(
+                (kind, identity, "private" if kind == "private" else "public")
+                for kind, identity in record_reference_edges("ExecutionVersionsV1", versions_body)
+            )
+        return [
+            ("private" if visibility == "private" else kind, identity)
+            for kind, identity, visibility in refs
+        ]
 
     @staticmethod
     def _recorded_effect_edges(body: Mapping[str, Any]) -> list[tuple[str, str]]:
@@ -1633,16 +1675,11 @@ class _ClosureValidator:
         kind, identity = key
         if kind == "artifact" or kind == "private":
             self._validate_artifact(value, identity)
-            if kind == "artifact" and identity in self.byte_references:
-                if value.domain != "payload:bytes":
-                    raise WrongRecordDomainError(
-                        f"byte edge {identity} targets non-binary payload {value.domain!r}"
-                    )
-            if kind == "artifact" and identity in self.payload_references:
-                if value.domain not in {"payload", "payload:bytes"}:
-                    raise WrongRecordDomainError(
-                        f"payload edge {identity} targets {value.domain!r}"
-                    )
+            required = self.required_domain.get(identity)
+            if kind == "artifact" and required is not None and value.domain not in required:
+                raise WrongRecordDomainError(
+                    f"payload edge {identity} targets {value.domain!r}, expected {sorted(required)}"
+                )
         elif kind == "event":
             payload = self.loaded[("artifact", value.payload_ref)]
             if payload.domain != "payload":

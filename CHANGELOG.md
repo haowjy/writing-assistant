@@ -5,6 +5,10 @@
 - Return entry state and artifacts together, compare materialized contexts, and use typed or
   canonical-byte values for derived artifacts.
 
+- Unify task-graph record validation and reference edges under declarative field specs;
+  make sampled-message intake typed, and validate shared payload and execution-version
+  records through store closure.
+
 - Replace the deterministic controller view with pure lineage-view directives and one guarded edge selector.
 
 - Add immutable task-graph transition views, stable nested diff paths, and pure entry derivation

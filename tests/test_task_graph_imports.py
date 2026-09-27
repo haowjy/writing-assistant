@@ -184,6 +184,7 @@ class TaskGraphImportTests(unittest.TestCase):
                 "writing_agent.task_graph",
                 "writing_agent.task_graph_accounting",
                 "writing_agent.task_graph_errors",
+                "writing_agent.task_graph_records",
             },
         )
         self.assertLessEqual(
@@ -192,6 +193,7 @@ class TaskGraphImportTests(unittest.TestCase):
                 "writing_agent",
                 "writing_agent.task_graph",
                 "writing_agent.task_graph_contracts",
+                "writing_agent.task_graph_errors",
             },
         )
         self.assertLessEqual(

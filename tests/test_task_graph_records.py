@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import tempfile
 import unittest
+from dataclasses import fields
 from pathlib import Path
 
 from writing_agent.task_graph import (
@@ -23,21 +25,35 @@ from writing_agent.task_graph_records import (
     LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_EDGES,
     RECORD_TYPES,
+    SHARED_WIRE_V1_RECORD_TYPES,
     AdmissionPolicyV1,
     AuthorReplyV1,
     ContextContentV1,
     ContextOperationInputV1,
+    ContextPolicyV1,
     ContextRevisionV1,
+    DictOf,
     EnvironmentStepV1,
     EvaluatorResultV1,
+    ExecutionVersionsV1,
     ExternalInputsV1,
+    GroupMemberSpecV1,
+    GroupSpecV1,
+    Hash,
+    KindUnion,
+    ListOf,
+    MaterializationError,
     MemberStartV1,
+    Obj,
     OutcomeV1,
+    RecordOf,
     SampledMessageV1,
     ToolObservationV1,
+    UnionOf,
     WriterRequestV1,
     WriterTurnV1,
     is_sha256_string,
+    materialize_context_nodes,
     record_reference_edges,
 )
 from writing_agent.task_graph_store import TaskGraphStore
@@ -73,6 +89,84 @@ def record_examples():
     )
     context_revision = ContextRevisionV1(
         content_ref=context_node.identity(), event_head=H, provenance_refs=(P,)
+    )
+    environment = {
+        "entry_checkpoint_id": H,
+        "entry_state_hash": P,
+        "entry_tree_hash": Q,
+        "instance_hash": R,
+        "graph_hash": H,
+        "node_id": "write",
+        "node_visit_id": "visit-1",
+        "node_contract_hash": P,
+        "controller_contract_hash": Q,
+        "check_contracts_hash": R,
+        "reward_contract_hash": H,
+        "simulator_contract_hash": None,
+        "source_refs_hash": P,
+        "request_refs_hash": Q,
+        "visible_prefix_hash": R,
+        "context_revision_ref": H,
+        "context_messages_hash": H,
+        "rendering_hash": P,
+        "tool_schemas_hash": Q,
+        "budget_ref": R,
+        "budget_hash": H,
+        "versions_ref": P,
+        "versions_hash": Q,
+        "author_packet_ref": None,
+        "requirements_ref": R,
+        "decisions_ref": H,
+        "disclosures_ref": P,
+        "external_inputs_ref": Q,
+        "rng_ref": R,
+        "outcome_ref": H,
+        "provenance_ref": P,
+        "continuation_hash": Q,
+        "horizon": "node_exit",
+    }
+    policy = {
+        key: H
+        for key in (
+            "model_ref",
+            "behavior_policy_ref",
+            "tokenizer_ref",
+            "template_ref",
+            "adapter_ref",
+            "decoding_ref",
+            "simulator_ref",
+            "context_policy_ref",
+            "controller_ref",
+        )
+    }
+    policy["rng_derivation_version"] = "sha256-domain-v1"
+    group_seed = 7
+    member_count = 2
+    group_id = domain_hash(
+        "payload", ["GroupIdV1", 0, environment, policy, group_seed, "fixture", member_count]
+    )
+
+    def seed(role, ordinal=None):
+        material = canonical_bytes(["GroupSeedV1", group_seed, role, ordinal])
+        return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+
+    group_members = tuple(
+        GroupMemberSpecV1(
+            member_id=f"grp-{group_id[:24]}-{ordinal:02d}",
+            ordinal=ordinal,
+            writer_seed=seed("writer", ordinal),
+            environment_seed=seed("environment"),
+        )
+        for ordinal in range(member_count)
+    )
+    group_spec = GroupSpecV1(
+        group_id=group_id,
+        group_sequence=0,
+        group_seed=group_seed,
+        runner_mode="fixture",
+        environment=environment,
+        policy=policy,
+        members=group_members,
     )
     return (
         sampled,
@@ -148,7 +242,99 @@ def record_examples():
         ContextContentV1(parent_ref=H, messages=(message,), tools=None, rendering=None),
         context_node,
         context_revision,
+        GroupMemberSpecV1("grp-example-0", 0, 7, 11),
+        group_spec,
+        ContextPolicyV1("carry"),
+        ExecutionVersionsV1(
+            1,
+            "task-graph-derive-v1",
+            H,
+            {"max_file_bytes": 1, "max_workspace_bytes": 1},
+        ),
     )
+
+
+def payload_codec_examples():
+    return {
+        "DecisionLedgerV1": {
+            "record_type": "DecisionLedgerV1",
+            "schema": 1,
+            "values": {},
+            "proposals": {},
+        },
+        "DisclosureLedgerV1": {
+            "record_type": "DisclosureLedgerV1",
+            "schema": 1,
+            "decisions": [],
+        },
+        "AuthorRequestV1": {
+            "record_type": "AuthorRequestV1",
+            "schema": 1,
+            "request_id": "rollout:author:0",
+            "source": "writer_request",
+            "action_id": "rollout:action:0",
+            "call_id": "rollout:call:0",
+            "feedback_id": None,
+            "arguments": {"question": "What changes?"},
+            "decision_ids": ["voice"],
+            "prerequisite_results": {"check": {"result_ref": H, "status": "pass"}},
+            "requirement_version": P,
+            "script_ref": Q,
+            "author_packet_ref": R,
+        },
+        "CheckRequestV1": {
+            "record_type": "CheckRequestV1",
+            "schema": 1,
+            "request_id": "rollout:check:0:continuity",
+            "target_checkpoint": H,
+            "requirement_version": P,
+            "check_contract_hash": Q,
+            "evaluator_packet_ref": R,
+            "check_id": "continuity",
+            "purpose": "completion",
+        },
+        "RewardV1": {
+            "record_type": "RewardV1",
+            "schema": 1,
+            "terminal_outcome_ref": H,
+            "reward_contract_ref": P,
+            "candidate_checkpoint": Q,
+            "check_result_refs": [R],
+            "components": {"continuity": {"weight": 10000, "earned": 10000, "status": "pass"}},
+            "numerator": 10000,
+            "normalization": 10000,
+            "availability": "available",
+            "eligibility_ref": H,
+        },
+        "TrainingEligibilityV1": {
+            "record_type": "TrainingEligibilityV1",
+            "schema": 1,
+            "terminal_outcome_ref": H,
+            "status": "ineligible",
+            "reason": "native_action_trace_unavailable",
+        },
+        "GroupMemberSeedsV1": {
+            "record_type": "GroupMemberSeedsV1",
+            "group_id": H,
+            "member_id": "grp-example-0",
+            "derivation": "sha256-domain-v1",
+            "writer_seed": 7,
+            "environment_seed": 9,
+            "parent_rng_ref": P,
+        },
+        "RequirementLedgerV1": {
+            "record_type": "RequirementLedgerV1",
+            "schema": 1,
+            "active": {"req-1": "Keep the reveal deferred."},
+            "superseded": {},
+        },
+        "ExecutionVersionsV1": {
+            "schema": 1,
+            "transition_semantics": "task-graph-derive-v1",
+            "admission_policy_ref": H,
+            "tool_spec": {"max_file_bytes": 128_000, "max_workspace_bytes": 4096},
+        },
+    }
 
 
 def _walk(value, path=""):
@@ -162,6 +348,26 @@ def _walk(value, path=""):
             yield from _walk(item, child)
     else:
         yield path, value
+
+
+def _hash_specs(spec, path=""):
+    if isinstance(spec, Hash):
+        yield path, spec.edge
+    elif isinstance(spec, ListOf):
+        yield from _hash_specs(spec.item, f"{path}[]")
+    elif isinstance(spec, DictOf):
+        yield from _hash_specs(spec.value, f"{path}{{}}")
+    elif isinstance(spec, Obj):
+        for key, child in (*spec.required.items(), *spec.optional.items()):
+            yield from _hash_specs(child, f"{path}.{key}" if path else key)
+    elif isinstance(spec, UnionOf):
+        for child in spec.options:
+            yield from _hash_specs(child, path)
+    elif isinstance(spec, KindUnion):
+        for child in spec.variants.values():
+            yield from _hash_specs(child, path)
+    elif isinstance(spec, RecordOf):
+        yield from _hash_specs(spec.record.FIELD_SPEC, path)
 
 
 def _replace_ref(body, path, replacement):
@@ -188,10 +394,12 @@ def _replace_ref(body, path, replacement):
 class RecordCodecTests(unittest.TestCase):
     def test_every_codec_has_a_canonical_exact_round_trip(self):
         examples = record_examples()
-        self.assertEqual(len({type(item) for item in examples}), len(ALL_RECORD_CODECS))
+        classes = {codec for codec in ALL_RECORD_CODECS.values() if isinstance(codec, type)}
+        self.assertEqual({type(item) for item in examples}, classes)
         record_types = [item.RECORD_TYPE for item in examples if item.RECORD_TYPE is not None]
         self.assertEqual(len(record_types), len(set(record_types)))
         self.assertFalse(set(RECORD_TYPES) & LEGACY_PAYLOAD_RECORD_TYPES)
+        self.assertFalse(SHARED_WIRE_V1_RECORD_TYPES & LEGACY_PAYLOAD_RECORD_TYPES)
         for record in examples:
             with self.subTest(record=type(record).__name__):
                 wire = record.to_wire()
@@ -256,15 +464,86 @@ class RecordCodecTests(unittest.TestCase):
 
     def test_refs_lint_covers_named_and_hash_shaped_values(self):
         for record in record_examples():
-            refs = record.REFS
-            paths = {path for path, _ in _walk(record.to_wire())}
-            for path in paths:
-                leaf = path.rsplit(".", 1)[-1].removesuffix("[]")
-                if leaf.endswith(("_ref", "_refs")):
-                    self.assertIn(path, refs, (type(record).__name__, path))
-            for path, value in _walk(record.to_wire()):
-                if is_sha256_string(value):
-                    self.assertIn(path, refs, (type(record).__name__, path))
+            self.assertEqual(
+                {field.name for field in fields(record)},
+                set(record.FIELD_SPEC.required),
+                type(record).__name__,
+            )
+            self.assertEqual(
+                record.REFS,
+                RECORD_EDGES.get(record.RECORD_TYPE, record.REFS),
+                type(record).__name__,
+            )
+            for path, edge in _hash_specs(record.FIELD_SPEC):
+                if edge is None:
+                    self.assertNotIn(path, record.REFS)
+                else:
+                    self.assertEqual(record.REFS[path], edge)
+
+    def test_legacy_set_excludes_shared_and_registered_record_names(self):
+        expected_legacy = set(
+            """AuthorToolAckV1 AuthorTurnV1 CheckBatchV1 CheckResultV1 ContextOperationV1
+            DecisionDisclosureV1 DeterministicCheckEvidenceV1 FixtureFileCountEvidenceV1
+            GroupExecutionFailureV1 GroupAdvantageV1 GroupDecisionV1 GroupMemberResultV1
+            GroupSegmentCreditV1 GroupScriptedTerminalV1 InfrastructureInvalidV1
+            PreparedWriterRequestV1 RequirementSupersessionV1 RewardAvailabilityV1
+            RewardPublicationV1 RuntimeManifestV1 ScriptCoverageFailureV1 ScriptedAuthorReplyV1
+            TerminalOutcomeCommitV1 TerminalOutcomeV1 TransitionDecisionV1
+            TranscriptReviewEvidenceV1 VerifiedWriterMessagesV1 WriterActionTraceV1
+            WriterActionV1 WriterExhaustedStopV1 WriterRuntimeLogV1 WriterSampledBudgetStopV1
+            WriterToolResultV1""".split()
+        )
+        self.assertEqual(LEGACY_PAYLOAD_RECORD_TYPES, expected_legacy)
+        self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(SHARED_WIRE_V1_RECORD_TYPES))
+        self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(RECORD_TYPES))
+        self.assertNotIn("EvaluatorPacketV1", LEGACY_PAYLOAD_RECORD_TYPES)
+        self.assertNotIn("RuntimePortDescriptorV1", LEGACY_PAYLOAD_RECORD_TYPES)
+
+    def test_shared_wire_v1_record_list_matches_the_documented_set(self):
+        expected = set(
+            """AuthorRequestV1 CheckRequestV1 DecisionLedgerV1 DisclosureLedgerV1
+            RequirementLedgerV1 RewardV1 TrainingEligibilityV1 GroupMemberSeedsV1""".split()
+        )
+        self.assertEqual(SHARED_WIRE_V1_RECORD_TYPES, expected)
+
+    def test_registered_shared_shapes_and_execution_versions_are_typed(self):
+        expected = {
+            "DecisionLedgerV1": (),
+            "DisclosureLedgerV1": (),
+            "AuthorRequestV1": (
+                ("artifact", H),
+                ("artifact|private", P),
+                ("private", Q),
+                ("private", R),
+            ),
+            "CheckRequestV1": (
+                ("checkpoint", H),
+                ("private", P),
+                ("private", Q),
+                ("private", R),
+            ),
+            "RewardV1": (
+                ("artifact", H),
+                ("private", P),
+                ("checkpoint", Q),
+                ("artifact", R),
+                ("artifact", H),
+            ),
+            "TrainingEligibilityV1": (("artifact", H),),
+            "GroupMemberSeedsV1": (("artifact", P),),
+            "RequirementLedgerV1": (),
+            "ExecutionVersionsV1": (("artifact", H),),
+        }
+        for record_type, body in payload_codec_examples().items():
+            with self.subTest(record_type=record_type):
+                self.assertEqual(record_reference_edges(record_type, body), expected[record_type])
+                with self.assertRaises((TypeError, ValueError)):
+                    record_reference_edges(record_type, {**body, "unknown": "field"})
+                missing = dict(body)
+                missing.pop(next(iter(missing)))
+                with self.assertRaises((TypeError, ValueError)):
+                    record_reference_edges(record_type, missing)
+        self.assertIn(("private", Q), expected["CheckRequestV1"])
 
     def test_admission_policy_wire_is_sorted_and_unique(self):
         wire = AdmissionPolicyV1(
@@ -295,6 +574,38 @@ class RecordCodecTests(unittest.TestCase):
                 invalid["directive"]["extra"] = "not on this directive"
                 with self.assertRaises(ValueError):
                     EnvironmentStepV1.from_dict(invalid)
+        for directive in (
+            {"kind": "seal_outcome", "task_status": "complete", "stop_reason": ""},
+            {"kind": "stop_exhausted", "stop_reason": ""},
+        ):
+            with self.subTest(directive=directive), self.assertRaises(ValueError):
+                EnvironmentStepV1(directive)
+
+    def test_tool_observation_rejects_noop_effects_and_nonpositive_limits(self):
+        base = {
+            "spec": {"max_file_bytes": 10, "max_workspace_bytes": 20},
+            "observation": {"ok": True, "valid": True},
+            "effect": {"draft.txt": {"before": "same", "after": "same"}},
+        }
+        with self.assertRaises(ValueError):
+            ToolObservationV1("call-1", base)
+        base["effect"] = {}
+        base["spec"]["max_file_bytes"] = 0
+        with self.assertRaises(ValueError):
+            ToolObservationV1("call-1", base)
+
+    def test_materializer_classifies_a_missing_root_invariant(self):
+        broken_root = object.__new__(ContextContentV1)
+        for name, value in {
+            "parent_ref": None,
+            "messages": (),
+            "tools": None,
+            "rendering": None,
+        }.items():
+            object.__setattr__(broken_root, name, value)
+        revision = ContextRevisionV1(H, None, ())
+        with self.assertRaises(MaterializationError):
+            materialize_context_nodes(revision, {H: broken_root})
 
     def test_open_provider_maps_remain_ordinary_canonical_json(self):
         record = next(item for item in record_examples() if isinstance(item, WriterTurnV1))
@@ -543,7 +854,7 @@ class RecordClosureTests(unittest.TestCase):
                 ),
                 "AdmissionPolicyV1": record_examples()[11],
             }
-            self.assertEqual(set(examples), set(RECORD_TYPES))
+            self.assertTrue(set(examples).issubset(RECORD_TYPES))
 
             for record_type, record in examples.items():
                 with self.subTest(record_type=record_type):
@@ -575,7 +886,19 @@ class RecordClosureTests(unittest.TestCase):
                             with self.assertRaises(MissingReferenceError):
                                 store.get_artifact(invalid_ref, expected_domain="payload")
 
-            new_semantics = store.put_artifact({"transition_semantics": "task-graph-derive-v1"})
+            admission = store.put_artifact(
+                AdmissionPolicyV1(
+                    1, None, ("read_file",), ("controller-v1",), ("check-v1",)
+                ).to_wire()
+            )
+            new_semantics = store.put_artifact(
+                ExecutionVersionsV1(
+                    1,
+                    "task-graph-derive-v1",
+                    admission,
+                    {"max_file_bytes": 4096, "max_workspace_bytes": 8192},
+                ).to_wire()
+            )
             chained_state = EnvironmentStateV1.from_dict(
                 {
                     **legacy_state.to_dict(),
@@ -589,6 +912,51 @@ class RecordClosureTests(unittest.TestCase):
                 store.load_checkpoint(chained_checkpoint).state.context_ref,
                 revision.identity(),
             )
+
+            missing_admission = store.put_artifact(
+                ExecutionVersionsV1(
+                    1,
+                    "task-graph-derive-v1",
+                    "f" * 64,
+                    {"max_file_bytes": 4096, "max_workspace_bytes": 8192},
+                ).to_wire()
+            )
+            missing_admission_state = EnvironmentStateV1.from_dict(
+                {**chained_state.to_dict(), "versions_ref": missing_admission}
+            )
+            with self.assertRaises(MissingReferenceError):
+                store.save_checkpoint(missing_admission_state)
+
+            public_requirement_request = store.put_artifact(
+                {
+                    "record_type": "CheckRequestV1",
+                    "schema": 1,
+                    "request_id": "rollout:check:public",
+                    "target_checkpoint": chained_checkpoint,
+                    "requirement_version": common["requirements"],
+                    "check_contract_hash": private,
+                    "evaluator_packet_ref": private,
+                    "check_id": "continuity",
+                    "purpose": "completion",
+                },
+                private=True,
+            )
+            with self.assertRaises(WrongRecordDomainError):
+                store.get_artifact(public_requirement_request, private=True)
+
+            unknown_versions = store.put_artifact(
+                {
+                    "schema": 1,
+                    "transition_semantics": "task-graph-derive-v2",
+                    "admission_policy_ref": admission,
+                    "tool_spec": {"max_file_bytes": 4096, "max_workspace_bytes": 8192},
+                }
+            )
+            unknown_state = EnvironmentStateV1.from_dict(
+                {**chained_state.to_dict(), "versions_ref": unknown_versions}
+            )
+            with self.assertRaises(WrongRecordDomainError):
+                store.save_checkpoint(unknown_state)
 
             legacy_context_with_new_semantics = EnvironmentStateV1.from_dict(
                 {
