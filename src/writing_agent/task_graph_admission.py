@@ -181,6 +181,31 @@ class AdmittedGraphV1:
             raise AdmissionError("unknown_target", f"unknown admitted node {node_id}") from exc
 
 
+def initial_requirements(
+    node: AdmittedNodeV1 | NodeContractV1,
+    reader: Any,
+    *,
+    author_packet: AuthorPacketV1 | None = None,
+) -> dict[str, str]:
+    """Resolve one node's initial requirements for admission and entry derivation."""
+    contract = node.contract if isinstance(node, AdmittedNodeV1) else node
+    packet = node.author_packet if isinstance(node, AdmittedNodeV1) else author_packet
+    packet_requirements = {} if packet is None else dict(packet.requirements)
+    source_ref = contract.entry_contract.requirement_version
+    if source_ref is None:
+        requirements = packet_requirements
+    else:
+        source = (getattr(reader, "resolve", None) or reader.artifact)(source_ref, private=True)
+        if not isinstance(source, Mapping) or not isinstance(source.get("requirements"), Mapping):
+            raise ValueError("initial requirement version must contain a requirements map")
+        requirements = dict(source["requirements"])
+        if packet_requirements and requirements != packet_requirements:
+            raise ValueError("author packet and requirement version requirements disagree")
+    if not all(isinstance(item, str) and item for pair in requirements.items() for item in pair):
+        raise ValueError("initial requirements must map nonempty strings to nonempty strings")
+    return requirements
+
+
 def _contract(
     resolver: ArtifactResolver,
     identity: str,
@@ -251,8 +276,6 @@ def admit_graph(
                 f"node {spec.id} files_ref is not declared by the graph instance",
             )
         _resolve_plain(resolver, entry.files_ref, private=False)
-        if entry.requirement_version is not None:
-            _resolve_plain(resolver, entry.requirement_version, private=True)
         if set(entry.tool_allowlist) - policy.allowed_tools:
             raise AdmissionError("invalid_tool", f"node {spec.id} requests a disabled tool")
 
@@ -347,7 +370,7 @@ def admit_graph(
             raise AdmissionError(
                 "guard_coverage", "no terminal edge is guaranteed for passing completion checks"
             )
-        admitted[spec.id] = AdmittedNodeV1(
+        node = AdmittedNodeV1(
             spec=spec,
             contract=contract,
             edges=edges,
@@ -360,6 +383,12 @@ def admit_graph(
             evaluator_packet=evaluator_packet,
             reward_contract=reward_contract,
         )
+        if interaction.mode != "scripted_author":
+            try:
+                initial_requirements(node, resolver)
+            except ValueError as exc:
+                raise AdmissionError("requirement_update", str(exc)) from exc
+        admitted[spec.id] = node
         if interaction.mode == "none" and contract.budget_contract.max_author_calls:
             raise AdmissionError(
                 "interaction_budget", f"node {spec.id} has author budget but no interaction"
@@ -532,7 +561,6 @@ def _validate_scripted_author(
         raise AdmissionError("script_coverage", f"node {spec.id} needs exact decision coverage")
     if set(bindings.bindings.values()) - set(packet.preferences):
         raise AdmissionError("script_coverage", "decision binding names missing author preference")
-    public_values = [value for item in policy.public_decisions for value in item.values()]
     if any(
         re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", item["id"]) is None
         for item in policy.public_decisions
@@ -544,30 +572,6 @@ def _validate_scripted_author(
         for item in policy.public_decisions
     ):
         raise AdmissionError("visibility", "public decision label must be bounded printable text")
-    private_values = [
-        *packet.preferences.keys(),
-        *packet.preferences.values(),
-        *packet.requirements.keys(),
-        *packet.requirements.values(),
-        *(rule["utterance"] for rule in script.answers.values()),
-        *(rule["value"] for rule in script.answers.values()),
-        *(rule["utterance"] for rule in script.feedback),
-    ]
-    source_ref = contract.entry_contract.requirement_version
-    initial_requirements = dict(packet.requirements)
-    if source_ref is not None:
-        source = _resolve_plain(resolver, source_ref, private=True)
-        if not isinstance(source, Mapping) or not isinstance(source.get("requirements"), Mapping):
-            raise AdmissionError(
-                "requirement_update", "initial requirement version must contain a requirements map"
-            )
-        initial_requirements = source["requirements"]
-        if any(
-            not isinstance(key, str) or not key or not isinstance(value, str) or not value
-            for key, value in initial_requirements.items()
-        ):
-            raise AdmissionError("requirement_update", "initial requirements are malformed")
-        private_values.extend((*initial_requirements.keys(), *initial_requirements.values()))
     if tuple(rule["id"] for rule in script.feedback) != policy.mandatory_feedback or (
         policy.mandatory_feedback != interaction.mandatory_feedback
     ):
@@ -582,35 +586,47 @@ def _validate_scripted_author(
             raise AdmissionError("script_coverage", "fixed answer differs from author packet")
         if set(rule["prerequisite_check_ids"]) - set(checks):
             raise AdmissionError("script_coverage", "answer prerequisite names unknown check")
+    try:
+        requirements = initial_requirements(contract, resolver, author_packet=packet)
+    except ValueError as exc:
+        raise AdmissionError("requirement_update", str(exc)) from exc
+    private_values = [
+        *packet.preferences.keys(),
+        *packet.preferences.values(),
+        *requirements.keys(),
+        *requirements.values(),
+        *(rule["utterance"] for rule in script.answers.values()),
+        *(rule["value"] for rule in script.answers.values()),
+        *(rule["utterance"] for rule in script.feedback),
+    ]
     superseded_ids: set[str] = set()
     replacement_ids: set[str] = set()
     for feedback in script.feedback:
         available = {
             check.id
             for check in checks.values()
-            if check.applicability in {"each_turn", f"before_feedback:{feedback['id']}"}
+            if check.applicability == "each_turn"
+            or check.applicability == f"before_feedback:{feedback['id']}"
         }
         if set(feedback["prerequisite_check_ids"]) - available:
             raise AdmissionError("script_coverage", "feedback prerequisite names unknown check")
         update_ref = feedback["requirement_update_ref"]
-        if update_ref is not None:
-            update = _contract(resolver, update_ref, RequirementUpdateV1, private=True)
-            private_values.append(update.id)
-            private_values.append(update.replacement)
-            if (
-                update.supersedes not in initial_requirements
-                or update.supersedes in superseded_ids
-                or update.id in initial_requirements
-                or update.id in replacement_ids
-            ):
-                raise AdmissionError("requirement_update", "unauthorized superseded requirement")
-            superseded_ids.add(update.supersedes)
-            replacement_ids.add(update.id)
-    if any(
-        private_text and private_text in public
-        for public in public_values
-        for private_text in private_values
-    ):
+        if update_ref is None:
+            continue
+        update = _contract(resolver, update_ref, RequirementUpdateV1, private=True)
+        private_values.extend((update.id, update.replacement))
+        if (
+            update.supersedes not in requirements
+            or update.supersedes in superseded_ids
+            or update.id in requirements
+            or update.id in replacement_ids
+        ):
+            raise AdmissionError("requirement_update", "unauthorized superseded requirement")
+        superseded_ids.add(update.supersedes)
+        replacement_ids.add(update.id)
+
+    public_values = [value for item in policy.public_decisions for value in item.values()]
+    if any(text and text in public for text in private_values for public in public_values):
         raise AdmissionError(
             "visibility", "public decision vocabulary contains private author text"
         )

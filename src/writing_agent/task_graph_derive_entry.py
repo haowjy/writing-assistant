@@ -17,7 +17,10 @@ from writing_agent.task_graph import (
     tree_hash,
     validate_hash,
 )
-from writing_agent.task_graph_admission import AdmittedGraphV1, AdmittedNodeV1
+from writing_agent.task_graph_admission import (
+    AdmittedGraphV1,
+    initial_requirements,
+)
 from writing_agent.task_graph_contracts import (
     writer_tool_schemas,
 )
@@ -88,29 +91,6 @@ def params_of(state: EnvironmentStateV1, reader: ArtifactReader) -> EntryParamsV
         rng_ref=state.rng_ref,
         rendering=reader.context(state.context_ref).rendering,
     )
-
-
-def _initial_requirements(node: AdmittedNodeV1, reader: ArtifactReader) -> dict[str, Any]:
-    source_ref = node.contract.entry_contract.requirement_version
-    if source_ref is not None:
-        source = reader.artifact(source_ref, private=True)
-        if not isinstance(source, Mapping) or not isinstance(source.get("requirements"), Mapping):
-            raise ValueError("initial requirement version must contain a requirements map")
-        requirements = source["requirements"]
-        if any(
-            not isinstance(key, str) or not isinstance(value, str)
-            for key, value in requirements.items()
-        ):
-            raise ValueError("initial requirements must map strings to strings")
-        active = dict(requirements)
-    else:
-        active = {} if node.author_packet is None else dict(node.author_packet.requirements)
-    return {
-        "record_type": "RequirementLedgerV1",
-        "schema": 1,
-        "active": active,
-        "superseded": {},
-    }
 
 
 def _entry_files(reader: ArtifactReader, files_ref: str) -> dict[str, str]:
@@ -192,7 +172,12 @@ def derive_entry(
         eligibility_ref=None,
     )
 
-    requirements = _initial_requirements(node, reader)
+    requirements = {
+        "record_type": "RequirementLedgerV1",
+        "schema": 1,
+        "active": initial_requirements(node, reader),
+        "superseded": {},
+    }
     decisions = {
         "record_type": "DecisionLedgerV1",
         "schema": 1,

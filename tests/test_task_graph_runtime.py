@@ -302,6 +302,44 @@ class GraphAdmissionTest(unittest.TestCase):
         with self.assertRaisesRegex(AdmissionError, "artifact_routing"):
             self.admit(public, private, instance)
 
+    def test_requirement_version_rejects_empty_keys_and_values(self):
+        for requirements in ({"": "private text"}, {"r1": ""}):
+            with self.subTest(requirements=requirements):
+                bundle = compile_legacy_scenario(scenario())
+                public, private, instance = mutable_bundle(bundle)
+                body = {"requirements": requirements}
+                requirement_ref = domain_hash("payload", body)
+                private[requirement_ref] = body
+                instance = replace_node_contract(
+                    public,
+                    instance,
+                    lambda contract, ref=requirement_ref: contract["entry"].update(
+                        requirement_version=ref
+                    ),
+                )
+
+                with self.assertRaises(AdmissionError) as rejected:
+                    self.admit(public, private, instance)
+                self.assertEqual(rejected.exception.code, "requirement_update")
+
+    def test_requirement_version_is_admitted_when_packet_requirements_are_absent(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        body = {"requirements": {"r2": "Keep the ending quiet."}}
+        requirement_ref = domain_hash("payload", body)
+        private[requirement_ref] = body
+        instance = replace_node_contract(
+            public,
+            instance,
+            lambda contract: contract["entry"].update(requirement_version=requirement_ref),
+        )
+
+        admitted = self.admit(public, private, instance)
+
+        node = admitted.node(instance.entry_node)
+        self.assertIsNone(node.author_packet)
+        self.assertEqual(node.contract.entry_contract.requirement_version, requirement_ref)
+
     def test_author_packet_cannot_be_routed_through_public_artifacts(self):
         bundle = compile_legacy_scenario(scenario())
         public, private, instance = mutable_bundle(bundle)

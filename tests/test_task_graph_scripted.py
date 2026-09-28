@@ -1032,6 +1032,147 @@ class ScriptedFixture(WriterFixture):
         with self.assertRaises(AdmissionError):
             admit_graph(instance, StoreArtifactResolver(self.store))
 
+    def test_requirement_version_must_match_packet_before_supersession(self):
+        node = self.writer.graph.node("legacy-writer")
+        update = RequirementUpdateV1(
+            id="r2", supersedes="r1", replacement="The blue door is now binding"
+        )
+        self.store.put_artifact(update.to_dict(), private=True)
+        script = ScriptedAuthorV1(
+            answers=node.script.answers,
+            feedback=(
+                {
+                    "id": "f1",
+                    "utterance": "Please revise for the blue door.",
+                    "prerequisite_check_ids": [],
+                    "requirement_update_ref": update.identity(),
+                },
+            ),
+        )
+        self.store.put_artifact(script.to_dict(), private=True)
+        policy = replace(node.interaction_policy, mandatory_feedback=("f1",))
+        self.store.put_artifact(policy.to_dict())
+        interaction = replace(
+            node.contract.interaction_contract,
+            script_ref=script.identity(),
+            interaction_policy_ref=policy.identity(),
+            mandatory_feedback=("f1",),
+        )
+        entry = replace(
+            node.contract.entry_contract,
+            requirement_version=self.store.put_artifact(
+                {"requirements": {"r2": "only in this version"}}, private=True
+            ),
+        )
+        contract = replace(
+            node.contract,
+            entry=entry,
+            interaction=interaction,
+            budgets=replace(node.contract.budget_contract, max_steps=7),
+        )
+        self.store.put_artifact(contract.to_dict())
+        instance = replace(
+            self.writer.graph.instance,
+            nodes=(replace(node.spec, entry_contract=contract.identity()),),
+        )
+        self.store.persist(instance)
+
+        with self.assertRaises(AdmissionError) as rejected:
+            admit_graph(instance, StoreArtifactResolver(self.store))
+        self.assertEqual(rejected.exception.code, "requirement_update")
+        self.assertIn("disagree", rejected.exception.detail)
+
+    def test_requirement_version_can_authorize_an_update_when_packet_requirements_are_absent(self):
+        node = self.writer.graph.node("legacy-writer")
+        packet = replace(node.author_packet, requirements={})
+        self.store.put_artifact(packet.to_dict(), private=True)
+        requirement_version_ref = self.store.put_artifact(
+            {"requirements": {"version-only": "A version-only requirement."}}, private=True
+        )
+        update = RequirementUpdateV1(
+            id="replacement", supersedes="version-only", replacement="A revised requirement."
+        )
+        self.store.put_artifact(update.to_dict(), private=True)
+        script = ScriptedAuthorV1(
+            answers=node.script.answers,
+            feedback=(
+                {
+                    "id": "f1",
+                    "utterance": "Please revise the draft.",
+                    "prerequisite_check_ids": [],
+                    "requirement_update_ref": update.identity(),
+                },
+            ),
+        )
+        self.store.put_artifact(script.to_dict(), private=True)
+        policy = replace(node.interaction_policy, mandatory_feedback=("f1",))
+        self.store.put_artifact(policy.to_dict())
+        interaction = replace(
+            node.contract.interaction_contract,
+            script_ref=script.identity(),
+            author_packet_ref=packet.identity(),
+            interaction_policy_ref=policy.identity(),
+            mandatory_feedback=("f1",),
+        )
+        contract = replace(
+            node.contract,
+            entry=replace(
+                node.contract.entry_contract,
+                requirement_version=requirement_version_ref,
+            ),
+            interaction=interaction,
+            budgets=replace(node.contract.budget_contract, max_steps=7),
+        )
+        self.store.put_artifact(contract.to_dict())
+        instance = replace(
+            self.writer.graph.instance,
+            nodes=(replace(node.spec, entry_contract=contract.identity()),),
+        )
+        self.store.persist(instance)
+
+        graph = admit_graph(instance, StoreArtifactResolver(self.store))
+
+        self.assertEqual(
+            graph.node(node.spec.id).contract.entry_contract.requirement_version,
+            requirement_version_ref,
+        )
+
+    def test_requirement_version_text_is_private_for_scripted_admission(self):
+        node = self.writer.graph.node("legacy-writer")
+        packet = replace(node.author_packet, requirements={})
+        self.store.put_artifact(packet.to_dict(), private=True)
+        requirement_version_ref = self.store.put_artifact(
+            {"requirements": {"r1": "ReqCanary77"}}, private=True
+        )
+        policy = replace(
+            node.interaction_policy,
+            public_decisions=({"id": "door", "label": "ReqCanary77"},),
+        )
+        self.store.put_artifact(policy.to_dict())
+        interaction = replace(
+            node.contract.interaction_contract,
+            author_packet_ref=packet.identity(),
+            interaction_policy_ref=policy.identity(),
+        )
+        contract = replace(
+            node.contract,
+            entry=replace(
+                node.contract.entry_contract,
+                requirement_version=requirement_version_ref,
+            ),
+            interaction=interaction,
+        )
+        self.store.put_artifact(contract.to_dict())
+        instance = replace(
+            self.writer.graph.instance,
+            nodes=(replace(node.spec, entry_contract=contract.identity()),),
+        )
+        self.store.persist(instance)
+
+        with self.assertRaises(AdmissionError) as rejected:
+            admit_graph(instance, StoreArtifactResolver(self.store))
+        self.assertEqual(rejected.exception.code, "visibility")
+
     def test_frozen_check_does_not_edit_candidate(self):
         ask = self.call(
             "ask_author",
@@ -1218,8 +1359,16 @@ class ScriptedFixture(WriterFixture):
             interaction_policy_ref=policy.identity(),
             mandatory_feedback=("f1",),
         )
+        requirement_version_ref = self.store.put_artifact(
+            {"requirements": dict(node.author_packet.requirements)}, private=True
+        )
+        entry = replace(
+            node.contract.entry_contract,
+            requirement_version=requirement_version_ref,
+        )
         contract = replace(
             node.contract,
+            entry=entry,
             interaction=interaction,
             budgets=replace(node.contract.budget_contract, max_steps=7),
         )

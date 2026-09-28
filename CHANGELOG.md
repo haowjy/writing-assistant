@@ -7,6 +7,9 @@
 - Close the seam acceptance findings: X3 is documented as a trusted-adapter limit, hash-correct
   payload forgeries are projection errors, and stale-request and root-ref checks are pinned.
 
+- Share initial requirement resolution across admission and entry derivation, reject conflicting
+  packet/version baselines and empty requirement strings, and remove the unused legacy budget API.
+
 - Classify a runtime adapter-manifest change after binding as an adapter contract failure.
 
 - Classify hash-correct malformed registered payloads as projection forgeries, not disk corruption.

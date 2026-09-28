@@ -320,16 +320,6 @@ class BudgetContractV1(_Contract):
         if self.max_generated_tokens is not None:
             _nonnegative(self.max_generated_tokens, "max_generated_tokens")
 
-    def legacy_agent_budgets(self) -> dict[str, int]:
-        values = {
-            "max_steps": self.max_steps,
-            "max_tool_calls": self.max_tool_calls,
-            "max_read_tokens": self.max_read_tokens,
-        }
-        if self.max_generated_tokens is not None:
-            values["max_generated_tokens"] = self.max_generated_tokens
-        return values
-
 
 @dataclass(frozen=True)
 class CompletionContractV1(_Contract):
