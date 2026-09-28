@@ -241,7 +241,9 @@ class LineageGate:
         except CorruptRecordError:
             raise
         except StoreError as exc:
-            raise ProjectionError(f"commit.id: published candidate cannot be loaded: {exc}") from exc
+            raise ProjectionError(
+                f"commit.id: published candidate cannot be loaded: {exc}"
+            ) from exc
         if checkpoint.state.identity() != view.state.identity():
             raise ProjectionError("checkpoint.state: published state differs from candidate")
         candidate = getattr(self._pending, "candidate", None)
