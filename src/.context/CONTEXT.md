@@ -34,6 +34,11 @@ retains its smoke-evaluation and training-format workflows.
   author transition/completion claims, or mutate runtime state.
   The derive modules delegate event, state, checkpoint, artifact, and context-append
   construction to [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
+  [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles those derive registries,
+  re-admits from the versions-pinned policy, and folds typed events through the store's
+  optional verifier port. Its checkpoint-keyed view cache skips derives only; store closure
+  still re-reads and hashes persisted bytes on every operation. Stores without a verifier
+  retain the legacy patch reducer and semantic hook during coexistence.
 - [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
   handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)

@@ -11,6 +11,7 @@ from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.agent import SYSTEM_PROMPT as AGENT_SYSTEM_PROMPT
 from writing_agent.task_graph import MessageV1, canonical_bytes, load_canonical_json
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry, params_of
+from writing_agent.task_graph_gate import StoreArtifactReader as StoreReader
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1,
     ContextContentV1,
@@ -18,23 +19,6 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import LineageMode, first_difference
-
-
-class StoreReader:
-    def __init__(self, store) -> None:
-        self.store = store
-
-    def artifact(self, ref, *, domain="payload", private=False):
-        return self.store.get_artifact(ref, expected_domain=domain, private=private)
-
-    def context(self, ref):
-        return self.store.materialize_context(ref)
-
-    def bytes_artifact(self, ref):
-        return self.store.get_bytes(ref)
-
-    def checkpoint(self, ref):
-        return self.store.load_checkpoint(ref)
 
 
 class DeriveEntryTests(unittest.TestCase):
@@ -145,15 +129,26 @@ class DeriveEntryTests(unittest.TestCase):
                 store.put_artifact(body)
             for body in fixture.reader.private.values():
                 store.put_artifact(body, private=True)
+            store.persist(fixture.graph.instance)
             for artifact in fixture.artifacts:
                 if artifact.kind in {"context_node", "context_revision"}:
                     store.persist(artifact.value)
 
             reader = StoreReader(store)
+            bytes_ref = store.put_bytes_artifact(b"fixture-bytes")
             params = params_of(fixture.state, reader)
             entry = derive_entry(fixture.graph, fixture.node_id, params, reader)
             self.assertIsNone(first_difference(fixture.state, entry.state))
             self.assertEqual(reader.context(fixture.state.context_ref).rendering, params.rendering)
+            self.assertEqual(reader.bytes_artifact(bytes_ref), b"fixture-bytes")
+            self.assertEqual(
+                reader.artifact(fixture.state.requirements_ref, private=True),
+                {"record_type": "RequirementLedgerV1", "schema": 1, "active": {}, "superseded": {}},
+            )
+            checkpoint = store.save_checkpoint(fixture.state)
+            self.assertEqual(
+                reader.checkpoint(checkpoint).state.identity(), fixture.state.identity()
+            )
 
     def test_old_hand_built_entries_expose_only_explicit_wire_differences(self) -> None:
         from tests.test_task_graph_writer import WriterFixture

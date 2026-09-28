@@ -26,7 +26,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from writing_agent.task_graph import (
     CheckpointV1,
@@ -57,6 +57,7 @@ from writing_agent.task_graph_errors import (
     CorruptRecordError,
     MaterializationError,
     MissingReferenceError,
+    ProjectionError,
     ReplayError,
     StoreError,
     WrongRecordDomainError,
@@ -118,6 +119,20 @@ _RECORDED_DIRECT_REF_KINDS = {
     "outcome_ref": "artifact",
     "provenance_ref": "artifact",
 }
+
+
+class CommitVerifier(Protocol):
+    """Semantic authority injected at the store's publish and restore seams."""
+
+    def verify_commit(
+        self,
+        store: TaskGraphStore,
+        base_checkpoint_id: str,
+        events: Sequence[EventV1],
+        next_state: EnvironmentStateV1,
+    ) -> None: ...
+
+    def verify_checkpoint(self, store: TaskGraphStore, checkpoint_id: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -184,6 +199,7 @@ class TaskGraphStore:
         self,
         root: Path | str,
         *,
+        verifier: CommitVerifier | None = None,
         max_workspace_bytes: int = DEFAULT_MAX_WORKSPACE_BYTES,
         max_file_bytes: int | None = None,
         max_record_bytes: int = 16_000_000,
@@ -200,6 +216,7 @@ class TaskGraphStore:
         self.max_workspace_bytes = max_workspace_bytes
         self.max_file_bytes = max_file_bytes
         self.max_record_bytes = max_record_bytes
+        self._verifier = verifier
         self._thread_locks: dict[str, threading.Lock] = {}
         self._thread_locks_guard = threading.Lock()
         self._session = threading.local()
@@ -406,6 +423,8 @@ class TaskGraphStore:
             raise TypeError("events must contain EventV1 records")
         if not batch:
             raise ValueError("a published commit requires at least one event")
+        if self._verifier is not None and artifact_refs:
+            raise ProjectionError("runtime checkpoints cannot carry supplemental artifact refs")
 
         hook = fault or _noop_fault
         validator = _validation or self._validator()
@@ -451,22 +470,28 @@ class TaskGraphStore:
                     validator.add_virtual("event", event.identity(), event)
                 validator.add_virtual("checkpoint", checkpoint.identity(), checkpoint)
                 validator.add_virtual("commit", commit.identity(), commit)
-                # Commit validation is the publication reducer seam. It starts from
-                # the actual parent state, rejects unsupported recorded transitions,
-                # and requires exact full-state equality before any new immutable is
-                # written.
-                validator.validate(("commit", commit.identity()))
-                semantic_base = self._writer_semantic_base_checkpoint(base_checkpoint)
-                if semantic_base is not None:
-                    from writing_agent.task_graph_projection import project_writer_context
+                # Structural closure runs before semantic verification. The legacy
+                # patch reducer remains the fallback until the old runtime is removed.
+                try:
+                    validator.validate(("commit", commit.identity()))
+                except WrongRecordDomainError as exc:
+                    if self._verifier is None:
+                        raise
+                    raise ProjectionError("candidate reference has the wrong visibility") from exc
+                if self._verifier is not None:
+                    self._verifier.verify_commit(self, base_checkpoint, batch, next_state)
+                else:
+                    semantic_base = self._writer_semantic_base_checkpoint(base_checkpoint)
+                    if semantic_base is not None:
+                        from writing_agent.task_graph_projection import project_writer_context
 
-                    project_writer_context(
-                        self,
-                        semantic_base,
-                        base_checkpoint,
-                        candidate_events=batch,
-                        candidate_state=next_state,
-                    )
+                        project_writer_context(
+                            self,
+                            semantic_base,
+                            base_checkpoint,
+                            candidate_events=batch,
+                            candidate_state=next_state,
+                        )
                 for event in batch:
                     self.persist(event)
                 self.persist(checkpoint)
@@ -594,7 +619,10 @@ class TaskGraphStore:
         fault: FaultHook | None = None,
     ) -> RuntimeHandle:
         checkpoint = self.load_checkpoint(checkpoint_id)
-        self._validate_writer_history(checkpoint_id)
+        if self._verifier is None:
+            self._validate_writer_history(checkpoint_id)
+        else:
+            self._verifier.verify_checkpoint(self, checkpoint_id)
         workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
         try:
             context = self.load_context(checkpoint.state.context_ref)
@@ -1797,21 +1825,22 @@ class _ClosureValidator:
                 raise CorruptRecordError("commit events are not an ordered predecessor suffix")
             if event.lineage_id != lineage:
                 raise CorruptRecordError("commit event lineage does not match checkpoint state")
-            payload = self.loaded[("artifact", event.payload_ref)]
-            try:
-                state = self.store._apply_recorded_effect_body(state, event, payload.value)
-            except ReplayError:
-                raise
-            # Validate each reduced state immediately. A later effect may replace
-            # a reference, but cannot hide that a committed intermediate state
-            # was not closed at its own event boundary.
-            for edge in self._state_edges(state):
-                self.validate(edge)
+            if self.store._verifier is None:
+                payload = self.loaded[("artifact", event.payload_ref)]
+                try:
+                    state = self.store._apply_recorded_effect_body(state, event, payload.value)
+                except ReplayError:
+                    raise
+                # Validate each reduced state immediately. A later effect may replace
+                # a reference, but cannot hide that a committed intermediate state
+                # was not closed at its own event boundary.
+                for edge in self._state_edges(state):
+                    self.validate(edge)
             previous = event_id
             sequence = event.seq
         if previous != checkpoint.event_head or sequence != checkpoint.state.history["seq"]:
             raise CorruptRecordError("commit events do not end at the checkpoint event cursor")
-        if state != checkpoint.state:
+        if self.store._verifier is None and state != checkpoint.state:
             raise ReplayError("recorded effects do not reproduce the committed post-state")
 
 
@@ -1857,6 +1886,7 @@ class _LineageLock:
 
 __all__ = [
     "DEFAULT_MAX_WORKSPACE_BYTES",
+    "CommitVerifier",
     "CheckpointDifference",
     "ConcurrentUpdateError",
     "CorruptRecordError",

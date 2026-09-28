@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Verify typed lineage folds through `LineageGate`, with a checkpoint-keyed view LRU and an
+  optional store verifier port for publication and restore.
+
 - Publish the strict wire-record API, derive registries from declarations, and require
   explicit value kinds for derived artifacts.
 

@@ -23,6 +23,7 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_derive_author",
     "writing_agent.task_graph_derive_writer",
     "writing_agent.task_graph_controller",
+    "writing_agent.task_graph_gate",
 }
 LAYER_RANKS = {
     **{
@@ -49,6 +50,7 @@ LAYER_RANKS = {
         )
     },
     "writing_agent.task_graph_group_contract": 4,
+    "writing_agent.task_graph_gate": 4,
 }
 
 
