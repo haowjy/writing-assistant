@@ -522,26 +522,32 @@ def _decode_writer_turn_sampling(
     turn: WriterTurnV1, context: Any, reader: Any
 ) -> BoundWriterTurnSamplingV1:
     if not isinstance(turn, WriterTurnV1):
-        raise ProjectionError("sampling input is not a WriterTurnV1")
+        raise ProjectionError("input.record_type: sampling input is not a WriterTurnV1")
     if turn.context_revision_ref != context.revision_ref:
-        raise ProjectionError("writer turn context revision differs from the active context")
+        raise ProjectionError(
+            "input.context_revision_ref: writer turn differs from the active context"
+        )
 
     adapter = turn.adapter_trace
     if adapter is not None:
         if not isinstance(adapter, Mapping) or "native_on_policy_eligible" in adapter:
-            raise ProjectionError("adapter trace may not claim native eligibility")
+            raise ProjectionError("input.adapter_trace: adapter may not claim native eligibility")
         tokens_present = "generated_token_ids" in adapter
         tokens = adapter.get("generated_token_ids")
         if tokens_present and (
             not isinstance(tokens, (tuple, list))
             or any(type(token) is not int or token < 0 for token in tokens)
         ):
-            raise ProjectionError("generated token IDs must be nonnegative integers")
+            raise ProjectionError(
+                "input.adapter_trace.generated_token_ids: expected nonnegative integers"
+            )
         if tokens_present and (
             type(turn.usage.get("completion_tokens")) is not int
             or turn.usage["completion_tokens"] != len(tokens)
         ):
-            raise ProjectionError("completion usage differs from generated token count")
+            raise ProjectionError(
+                "input.usage.completion_tokens: differs from generated token count"
+            )
 
         logprob_fields = {
             "per_token_logprobs_ref",
@@ -550,7 +556,9 @@ def _decode_writer_turn_sampling(
         }
         present = logprob_fields & set(adapter)
         if present and present != logprob_fields:
-            raise ProjectionError("logprobs require a reference, codec and shape")
+            raise ProjectionError(
+                "input.adapter_trace.per_token_logprobs_ref: reference, codec and shape required"
+            )
         if present:
             shape = adapter["per_token_logprobs_shape"]
             if (
@@ -561,17 +569,25 @@ def _decode_writer_turn_sampling(
                 or type(shape[0]) is not int
                 or shape[0] != len(tokens)
             ):
-                raise ProjectionError("logprob shape is not aligned with generated tokens")
+                raise ProjectionError(
+                    "input.adapter_trace.per_token_logprobs_shape: not aligned with token IDs"
+                )
             try:
                 logprobs = reader.bytes_artifact(adapter["per_token_logprobs_ref"])
             except (KeyError, TypeError, ValueError) as exc:
-                raise ProjectionError("logprob byte artifact is unavailable") from exc
+                raise ProjectionError(
+                    "input.adapter_trace.per_token_logprobs_ref: byte artifact unavailable"
+                ) from exc
             if not isinstance(logprobs, bytes) or len(logprobs) != 4 * len(tokens):
-                raise ProjectionError("logprob byte artifact has the wrong shape")
+                raise ProjectionError(
+                    "input.adapter_trace.per_token_logprobs_ref: byte shape differs"
+                )
         elif "per_token_logprobs_ref" in adapter:
             # The wire codec also rejects this partial triplet; keep the decoder strict
             # for direct callers that provide an intentionally forged instance.
-            raise ProjectionError("ref-only logprobs are not typed evidence")
+            raise ProjectionError(
+                "input.adapter_trace.per_token_logprobs_ref: typed metadata is incomplete"
+            )
 
     prepared = None
     if turn.prepared_request_ref is not None:
@@ -581,23 +597,27 @@ def _decode_writer_turn_sampling(
                 body if isinstance(body, WriterRequestV1) else WriterRequestV1.from_dict(body)
             )
         except (KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("prepared writer request cannot be decoded") from exc
+            raise ProjectionError("input.prepared_request_ref: request cannot be decoded") from exc
         if (
             prepared.context_revision_ref != context.revision_ref
             or prepared.context_revision_ref != turn.context_revision_ref
             or prepared.payload_ref != turn.request_ref
         ):
-            raise ProjectionError("prepared writer request is not bound to the sampled turn")
+            raise ProjectionError("input.prepared_request_ref: not bound to the sampled turn")
         if prepared.verified_messages:
             try:
                 payload = reader.artifact(prepared.payload_ref)
             except (KeyError, TypeError, ValueError) as exc:
-                raise ProjectionError("verified request payload is unavailable") from exc
+                raise ProjectionError(
+                    "input.request_ref: verified request payload unavailable"
+                ) from exc
             messages = [message.to_dict() for message in context.messages]
             if not isinstance(payload, Mapping) or canonical_bytes(
                 payload.get("messages")
             ) != canonical_bytes(messages):
-                raise ProjectionError("verified request messages differ from the active context")
+                raise ProjectionError(
+                    "input.request_ref: verified messages differ from the active context"
+                )
 
     return BoundWriterTurnSamplingV1(turn, prepared)
 

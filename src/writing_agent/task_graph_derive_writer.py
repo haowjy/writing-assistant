@@ -155,7 +155,9 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         and "total_tokens" not in usage
         and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
     ):
-        raise AdapterContractProjectionError("token-limited writer turn lacks usage evidence")
+        raise AdapterContractProjectionError(
+            "input.usage.completion_tokens: token-limited writer turn lacks evidence"
+        )
 
     assistant = _build_assistant_message(turn, action_id, content, queue)
     event = new_event(
@@ -238,8 +240,12 @@ def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, s
 def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> None:
     try:
         decode_and_bind_sampling(WriterTurnSamplingBindingV1(turn, view.context, reader))
+    except ProjectionError as exc:
+        raise AdapterContractProjectionError(str(exc)) from exc
     except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
-        raise AdapterContractProjectionError("writer sampling evidence is invalid") from exc
+        raise AdapterContractProjectionError(
+            "input.adapter_trace: writer sampling evidence is invalid"
+        ) from exc
 
     member = group_member(view)
     if member is None:
@@ -264,7 +270,9 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
             rendering=view.context.rendering,
         )
     except (ProjectionError, KeyError, TypeError, ValueError) as exc:
-        raise AdapterContractProjectionError("writer sampling pins differ from the group") from exc
+        raise AdapterContractProjectionError(
+            "input.adapter_trace: sampling pins differ from the sealed group"
+        ) from exc
 
 
 def _build_tool_queue(
@@ -384,7 +392,7 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
             )
         except (AdapterContractError, TypeError, ValueError) as exc:
             raise AdapterContractProjectionError(
-                "tool dispatch violates the pinned effect contract"
+                "input.dispatch.effect: violates the pinned tool effect contract"
             ) from exc
         remaining_reads = view.budget["limits"].get("read_tokens", 0) - view.budget["consumed"].get(
             "read_tokens", 0

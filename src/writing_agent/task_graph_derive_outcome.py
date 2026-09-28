@@ -42,10 +42,10 @@ def _build_outcome(view: LineageView, **changes: Any) -> tuple[OutcomeV1, Derive
 
 def _step(view: LineageView, step: EnvironmentStepV1, kind: str) -> Directive:
     if not isinstance(step, EnvironmentStepV1):
-        raise ProjectionError("outcome derive requires an environment step")
+        raise ProjectionError("input.record_type: outcome derive requires an environment step")
     directive = next_step(view)
     if directive.kind != kind or step != EnvironmentStepV1.of(directive):
-        raise ProjectionError("environment step differs from the current directive")
+        raise ProjectionError("input.directive: differs from the current directive")
     return directive
 
 
@@ -166,11 +166,18 @@ def derive_check_result(
         evaluator_packet=packet,
     )
     evidence = reader.artifact(result.evidence_ref)
-    verified = verify_evaluation_evidence(
-        evaluation_request, evidence, evidence_reader(reader, packet_ref=packet_ref)
-    )
-    if verified.family != family.name or verified.status != result.status:
-        raise ProjectionError("evaluator result contradicts admitted evidence")
+    try:
+        verified = verify_evaluation_evidence(
+            evaluation_request, evidence, evidence_reader(reader, packet_ref=packet_ref)
+        )
+    except ProjectionError as exc:
+        raise ProjectionError("input.evidence_ref: does not match the admitted evaluation") from exc
+    if verified.family != family.name:
+        raise ProjectionError(
+            "input.evidence_ref: evaluator family differs from the admitted check"
+        )
+    if verified.status != result.status:
+        raise ProjectionError("input.status: contradicts the verified evaluator evidence")
 
     checks = [dict(row) for row in view.outcome.checks]
     index = next(

@@ -370,7 +370,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.assertIsInstance(environment.port_input(view, next_step(view)), SamplerInput)
 
         backend.descriptor = PortDescriptorV1("sampling", "altered-backend", "1")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(AdapterContractError):
             environment.verify(runtime)
 
     def _alternate_policy_entry(self, lineage: str):

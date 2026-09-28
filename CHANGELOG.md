@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Classify a runtime adapter-manifest change after binding as an adapter contract failure.
+
+- Classify hash-correct malformed registered payloads as projection forgeries, not disk corruption.
+
 - Document the driver, gatherer, replay, and cross-lane fixture extension contracts.
 
 - Expose shared rollout fixture hooks for ports, alternatives, feedback, sessions, checkpoint

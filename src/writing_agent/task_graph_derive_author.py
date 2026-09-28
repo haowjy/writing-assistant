@@ -200,7 +200,7 @@ def derive_author_reply(
     except (KeyError, TypeError, ValueError, ScriptCoverageError) as exc:
         raise ProjectionError("author request is not covered by the admitted script") from exc
     if canonical_bytes(reply.to_wire()) != canonical_bytes(expected.to_wire()):
-        raise ProjectionError("author reply differs from the admitted script")
+        raise ProjectionError("input.utterance: author reply differs from the admitted script")
     if request["source"] == "mandatory_feedback":
         cursor = view.state.continuation["feedback_cursor"]
         if cursor >= len(view.mode.feedback_rules):

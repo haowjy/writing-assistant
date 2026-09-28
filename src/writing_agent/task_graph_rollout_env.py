@@ -349,7 +349,12 @@ class RolloutEnvironment:
             return
         sealed_ref = self.session.sealed_adapter_ref
         if sealed_ref is not None:
-            self.session.require_seal(sealed_ref)
+            try:
+                self.session.require_seal(sealed_ref)
+            except ValueError as exc:
+                raise AdapterContractError(
+                    "runtime adapter manifest changed after binding"
+                ) from exc
         self.session.require_member_seal(self.store, state)
 
     def _require_admission_policy(
