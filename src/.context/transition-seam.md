@@ -1,21 +1,18 @@
-# Transition seam: runtime contracts
+# Task-graph runtime: records and derives
 
-The task-graph runtime stores each step's typed **input** record as the event payload. One
-pure **derive** per input kind computes the event, next state and new artifacts. The producer
-and the gate use that same derive. The typed derive runtime is the only runtime; the legacy
-writer, patch reducer and multi-event environment batch have been removed.
+Each task-graph commit contains one typed input event. One pure derive per input kind
+computes the event, next state and new artifacts; the producer and verifier use the same
+derive. Context content is stored as a hash chain with typed context revisions, and terminal
+status, reward and eligibility are represented by the `OutcomeV1` record.
 
-This checkout contains the wire records, calls, transition types, `derive_entry`, the
-controller, four derive modules, `LineageGate`, `RolloutEnvironment`, the gatherers,
-`RolloutDriver` and group coordination. `store.publish` and `store.restore` require the
-gate verifier. Runtime lineages must pin `task-graph-derive-v1`; lineages without the pin
-are rejected. The parity harness and old-runtime test modules were removed with the legacy
-runtime. The reviewed S7.1 p253 outcome-shape difference is an accepted difference, not a
-remaining parity gate.
+The store requires its semantic verifier for publication and restore. Runtime lineages pin
+`task-graph-derive-v1`; missing or unsupported pins are refused. Runtime stepping is owned by
+`RolloutEnvironment`, and `RolloutDriver` obtains each verified directive and typed port
+input through `step_input`. The runtime does not materialize workspaces.
 
-This file covers records, derives and the layer order. How the gate, the environment, the
-driver and the gatherers run a lineage (error classes, publication, rule owners, resume,
-the acceptance suite) is in [gate-and-rollout.md](gate-and-rollout.md). Groups are in
+This file covers records, derives and layer order. Gate and environment rules are in
+[gate-and-rollout.md](gate-and-rollout.md); the driver, gatherer, resume and acceptance-test
+contracts are in [rollout-execution.md](rollout-execution.md). Groups are in
 [group-coordination.md](group-coordination.md).
 
 The design numbers these invariants, and code, tests and reviews cite them:
@@ -222,8 +219,9 @@ fixed-point check (I3). A mid-run state is never a fixed point.
 `derive_entry` does not import `agent`. A node's initial requirements come from
 `task_graph_admission.initial_requirements`, which admission and `derive_entry` share. It
 takes the `requirement_version` artifact when the entry names one and the author packet
-otherwise, and it rejects a packet and version that disagree. The old runtime reads the
-packet, so S7.1 lists this as an expected difference.
+otherwise, and it rejects a packet and version that disagree. The entry state prefers the
+pinned requirement version when present, falling back to the packet only when no version is
+selected.
 
 The controller (`next_step`, `select_edge`, `applicable_checks`, `Directive`,
 `evaluate_guard`) reads only structured view fields. `select_edge` raises on any tie in
@@ -258,19 +256,16 @@ An empty required set never counts as a pass.
   generated- or total-token limits seed no corresponding counters. `derive_writer_turn`
   requires usage evidence under a token limit (missing usage is
   `AdapterContractProjectionError`) and binds usage to token IDs only when IDs are present,
-  matching the old runtime.
+  matching the persisted sampling evidence contract.
   - **The contract can declare a token limit.** `BudgetContractV1.max_generated_tokens` is
     optional. It is listed in `_Contract.OMIT_NONE_FIELDS`, so it is left out of the
     canonical form when `None`, and every existing contract keeps its identity. This field
     departs from the design package. It exists so that the `token_limited` rollout fixture
     carries a real limit, which makes missing usage and `budget_charged` reachable.
   - **Why a hook and not a new contract version.** A `BudgetContractV2` would force
-    version dispatch in admission, `derive_entry` and the old writer, for one optional
-    field. A token-limits sub-contract becomes the right shape once `total_tokens` limits
-    arrive.
-  - **The old runtime ignores the field**, so S7.1 lists `token_limited` nodes as an
-    expected difference.
-  - **Still open, before Phase 8 native training:** admission accepts a token-limited node
+    version dispatch in admission and `derive_entry` for one optional field. A token-limits
+    sub-contract becomes the right shape once `total_tokens` limits arrive.
+  - **Open before native training:** admission accepts a token-limited node
     whatever adapter later runs it, and the only guard is the derive's
     `AdapterContractError`, raised after the port call. In a group, that becomes a member
     failure mid-rollout. The follow-up adds a usage-reporting capability to
@@ -302,6 +297,7 @@ An empty required set never counts as a pass.
   to an unchanged shape's bytes as a decision, not a side effect.
 - **Limits apply to total `task_graph*` source, never to one file.** A per-file cap on the
   S2 derive consolidation was met by moving about 315 lines of derive logic into
-  `task_graph_scripted` and `task_graph_sampling`, the old-runtime modules S7 strips. The
-  lines were relocated, not removed. Before that, records declared every field twice (a
-  class field plus a side table), which is why the spec now lives in the annotation.
+  `task_graph_scripted` and `task_graph_sampling` by concern. The layer order keeps these
+  shared helpers below the derive modules. Before records moved to typed annotations, each
+  field was declared in both a class and a side table; the current codec spec lives with
+  the record annotation.

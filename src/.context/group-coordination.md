@@ -14,7 +14,7 @@ from the shared entry checkpoint with a `MemberStartV1`. The gate verifies every
 a member's history, including `view.group`, and binds every policy pin as it derives each
 step. The coordinator adds only group bookkeeping: which result fills which slot, rewards,
 advantages and segment credit. It reads verified views and the typed records they
-reference, never raw events or runtime logs.
+reference, never raw event payloads.
 
 ## Start
 

@@ -12,8 +12,9 @@ retains its smoke-evaluation and training-format workflows.
   [workspace.py](../writing_agent/workspace.py) owns file operations and storage limits.
 - [task_graph.py](../writing_agent/task_graph.py) owns immutable task-graph value records,
   including context records, and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
-  owns private content-addressed persistence, typed reference closure, checkpoint
-  materialization/restore/diff, and the atomic mutable lineage head. Runtime lineages must
+  owns private content-addressed persistence, typed reference closure, explicit checkpoint
+  materialization, verified restore/diff, and the atomic mutable lineage head. Runtime stepping
+  does not materialize a workspace. Runtime lineages must
   pin `task-graph-derive-v1`; a lineage without that pin is refused at the versions
   reference, and the store has no patch-effect fallback.
   [task_graph_contracts.py](../writing_agent/task_graph_contracts.py) adds detailed
@@ -53,15 +54,17 @@ retains its smoke-evaluation and training-format workflows.
   driver loop, and [task_graph_gatherers.py](../writing_agent/task_graph_gatherers.py)
   holds the thin port adapters that turn a typed port input into a recorded input. See
   [transition-seam.md](transition-seam.md) for how to add a record or a derive and for the
-  layer order. See [gate-and-rollout.md](gate-and-rollout.md) for the gate, environment,
-  driver and gatherer contracts, error classes, rule owners, resume path, sampling requests
-  and the acceptance suite, and [group-coordination.md](group-coordination.md) for groups.
-- **Single task-graph runtime.** The transition-seam modules are the only runtime. Each
-  commit contains one typed input and is checked by the same derive during publication and
-  restore. The parity harness and old-runtime behavior-oracle tests were removed with the
-  old implementation; the reviewed p253 outcome-shape difference is intentional. See
-  [transition-seam.md](transition-seam.md) and [gate-and-rollout.md](gate-and-rollout.md)
-  for current module and runtime contracts.
+  layer order; [gate-and-rollout.md](gate-and-rollout.md) for gate, store and environment
+  contracts; [rollout-execution.md](rollout-execution.md) for driver, gatherer, resume and
+  acceptance-test contracts; and [group-coordination.md](group-coordination.md) for groups.
+- **Task-graph runtime.** The transition-seam modules are the runtime. Each commit contains
+  one typed input event; the same derive computes the producer transition and verifies it
+  during publication and restore. Context records carry the content chain and revisions;
+  `OutcomeV1` carries outcome, reward and eligibility. `RolloutDriver` gets the verified
+  directive and typed port input through `step_input`; there is no runtime log or workspace
+  materialization. See [transition-seam.md](transition-seam.md),
+  [gate-and-rollout.md](gate-and-rollout.md), and
+  [rollout-execution.md](rollout-execution.md) for the contracts.
 - [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
   writer-turn decoder and sampling-binding checks, plus the current evaluation-only
   eligibility decision. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
@@ -142,8 +145,11 @@ Task-graph immutable objects can exist before publication, but only canonical
 only `head_commit`; expected-head is a compare-and-swap request. A transaction writes
 and flushes immutable events, a full checkpoint, and its commit before atomically
 replacing the head under the lineage lock. Unreachable files are harmless orphans.
-Restore always creates a new private directory and returns a trusted runtime handle; it
-never rewinds an event log.
+`TaskGraphStore.restore(checkpoint_id, fresh_root)` is an explicitly invoked, verified
+materializing helper that returns the store-level workspace handle; `TaskGraphStore.materialize`
+can materialize files separately. The rollout runtime instead resumes with
+`RolloutEnvironment.open` or `open_head`, whose `RuntimeHandle` has no workspace. Neither
+runtime resume path rewinds an event log.
 
 Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
 and loaded, active, and completed sets. Closure-validated immutable objects are reused
@@ -190,7 +196,11 @@ parent total a second time.
 
 ## Task-graph runtime
 
-The typed derive runtime is the sole task-graph runtime. The previous patch-effect reducer, multi-event writer and semantic replay path are removed; checkpoints with no `task-graph-derive-v1` semantics pin are refused.
+Each runtime commit stores one typed input event and its pure derive produces the successor
+state and artifacts. The same derive verifies the commit during publication and restore. The
+mandatory store verifier refuses publication and restore without a configured verifier; runtime
+lineages also pin `task-graph-derive-v1`. See the rollout and transition-seam context above for
+context-record, outcome, driver, resume, and group contracts.
 
 ## Scoring contracts
 
