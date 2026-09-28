@@ -60,8 +60,8 @@ def resolve_group_environment(
     context_revision_ref = context.revision_ref
     if (
         state.position["phase"] != "ready_writer"
-        or state.history["action_ids"]
-        or state.history["tool_result_ids"]
+        or state.history["action_count"]
+        or state.history["tool_result_count"]
     ):
         raise GroupError("entry must be an unsampled writer checkpoint")
     require_quiescent(state)

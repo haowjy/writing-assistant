@@ -7,6 +7,9 @@
   on-disk records as corruption.
 - Restore direct tests for admission, scripted-author, budget, intake, quiescence, gate,
   identity, and on-disk transition-semantics guards; pin context and commit identities.
+- Flatten rollout storage: writer turns bind messages through the context revision instead
+  of copied request artifacts, checkpoints store history counts instead of repeated ID
+  arrays, and persisted tool-queue entries require an explicit rejection field.
 - Unify task-graph writer, scripted-author, check, context, and group execution behind one
   verified rollout core. The driver gathers typed, allowlisted inputs; one pure derive per
   input produces one event and complete successor state for both publication and replay.

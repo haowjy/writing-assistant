@@ -54,8 +54,6 @@ class PortDescriptorV1:
 
 @dataclass(frozen=True)
 class PreparedSamplingInput:
-    request_ref: str
-    prepared_request_ref: str
     context_content_hash: str
     context_revision_ref: str
     writer_seed: int | None
@@ -67,18 +65,8 @@ class PreparedSamplingInput:
     messages_json: str
     tools_json: str
     rendering_json: str
-    request_json: str
 
     def __post_init__(self) -> None:
-        request = json.loads(self.request_json)
-        if (
-            not isinstance(request, dict)
-            or canonical_json(request) != self.request_json
-            or canonical_json(request.get("messages")) != self.messages_json
-            or domain_hash("payload", request) != self.request_ref
-        ):
-            raise ValueError("prepared sampling input differs from its persisted request")
-        validate_hash(self.prepared_request_ref)
         validate_hash(self.context_content_hash)
         validate_hash(self.context_revision_ref)
         if self.writer_seed is not None and (
@@ -94,9 +82,6 @@ class PreparedSamplingInput:
         ):
             if reference is not None:
                 validate_hash(reference)
-
-    def request(self) -> dict[str, Any]:
-        return json.loads(self.request_json)
 
 
 @dataclass(frozen=True)

@@ -40,8 +40,7 @@ from writing_agent.task_graph_transition import (
     ToolSpec,
 )
 
-# Entry prompt is pinned by transition_semantics. Keep it byte-identical to the
-# legacy entry prompt while the old and new runtimes coexist.
+# Entry prompt bytes are part of the task-graph-derive-v1 semantics pin.
 SYSTEM_PROMPT = """You are a conversational creative-writing collaborator.
 Use project files when needed. Follow the latest explicit user decision over stale notes.
 Distinguish proposals, drafts, accepted prose, and committed canon. New draft prose does
@@ -230,8 +229,8 @@ def derive_entry(
             "seq": 0,
             "branch_base": None,
             "imported_refs": (),
-            "action_ids": (),
-            "tool_result_ids": (),
+            "action_count": 0,
+            "tool_result_count": 0,
         },
         context_ref=context_revision.identity(),
         requirements_ref=requirements_ref,

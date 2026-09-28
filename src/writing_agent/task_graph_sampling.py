@@ -8,7 +8,7 @@ from typing import Any, Protocol
 
 from writing_agent.task_graph import canonical_bytes
 from writing_agent.task_graph_errors import ProjectionError
-from writing_agent.task_graph_records import WriterRequestV1, WriterTurnV1
+from writing_agent.task_graph_records import WriterTurnV1
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 
@@ -85,7 +85,7 @@ def bind_group_sampling_claims(
 
 
 def decode_writer_turn_sampling(turn: WriterTurnV1, context: Any, reader: Any) -> None:
-    """Bind a typed writer turn and its prepared request to the active context."""
+    """Bind a typed writer turn and its trace claims to the active context."""
     if not isinstance(turn, WriterTurnV1):
         raise ProjectionError("input.record_type: sampling input is not a WriterTurnV1")
     if turn.context_revision_ref != context.revision_ref:
@@ -141,28 +141,3 @@ def decode_writer_turn_sampling(turn: WriterTurnV1, context: Any, reader: Any) -
                 raise ProjectionError(
                     "input.adapter_trace.per_token_logprobs_ref: byte shape differs"
                 )
-
-    if turn.prepared_request_ref is None:
-        return
-    try:
-        body = reader.artifact(turn.prepared_request_ref)
-        prepared = body if isinstance(body, WriterRequestV1) else WriterRequestV1.from_dict(body)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ProjectionError("input.prepared_request_ref: request cannot be decoded") from exc
-    if (
-        prepared.context_revision_ref != context.revision_ref
-        or prepared.context_revision_ref != turn.context_revision_ref
-        or prepared.payload_ref != turn.request_ref
-    ):
-        raise ProjectionError("input.prepared_request_ref: not bound to the sampled turn")
-    if not prepared.verified_messages:
-        return
-    try:
-        payload = reader.artifact(prepared.payload_ref)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ProjectionError("input.request_ref: verified payload unavailable") from exc
-    messages = [message.to_dict() for message in context.messages]
-    if not isinstance(payload, Mapping) or canonical_bytes(
-        payload.get("messages")
-    ) != canonical_bytes(messages):
-        raise ProjectionError("input.request_ref: verified messages differ")

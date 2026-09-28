@@ -137,32 +137,47 @@ class NextStepTableTests(unittest.TestCase):
                 "eligible sampled ask",
                 "ready_writer",
                 Directive("request_author", source="writer_request"),
-                queue=({"call_id": "call-1", "name": "ask_author", "arguments": {}},),
+                queue=(
+                    {"call_id": "call-1", "name": "ask_author", "arguments": {}, "rejection": None},
+                ),
                 ask_semantics=True,
             ),
             case(
                 "sampled tool names its queue index",
                 "ready_writer",
                 Directive("execute_tool", call_index=0),
-                queue=({"call_id": "call-1", "name": "read_file", "arguments": {}},),
+                queue=(
+                    {"call_id": "call-1", "name": "read_file", "arguments": {}, "rejection": None},
+                ),
             ),
             case(
                 "rejected normalized call still executes",
                 "ready_writer",
                 Directive("execute_tool", call_index=0),
-                queue=({"call_id": "call-1", "name": "invalid_call", "arguments": {}},),
+                queue=(
+                    {
+                        "call_id": "call-1",
+                        "name": "invalid_call",
+                        "arguments": {},
+                        "rejection": "invalid tool call",
+                    },
+                ),
             ),
             case(
                 "ask without admitted semantics",
                 "ready_writer",
                 Directive("execute_tool", call_index=0),
-                queue=({"call_id": "call-1", "name": "ask_author", "arguments": {}},),
+                queue=(
+                    {"call_id": "call-1", "name": "ask_author", "arguments": {}, "rejection": None},
+                ),
             ),
             case(
                 "ask with tool pre-dispatch error",
                 "ready_writer",
                 Directive("execute_tool", call_index=0),
-                queue=({"call_id": "call-1", "name": "ask_author", "arguments": {}},),
+                queue=(
+                    {"call_id": "call-1", "name": "ask_author", "arguments": {}, "rejection": None},
+                ),
                 ask_semantics=True,
                 limits={"tool_calls": 1},
                 consumed={"tool_calls": 1},
@@ -171,7 +186,9 @@ class NextStepTableTests(unittest.TestCase):
                 "ask with author pre-dispatch error",
                 "ready_writer",
                 Directive("execute_tool", call_index=0),
-                queue=({"call_id": "call-1", "name": "ask_author", "arguments": {}},),
+                queue=(
+                    {"call_id": "call-1", "name": "ask_author", "arguments": {}, "rejection": None},
+                ),
                 ask_semantics=True,
                 consumed={"author_calls": 2},
             ),

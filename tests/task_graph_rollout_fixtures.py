@@ -219,7 +219,7 @@ class RolloutFixture:
         return _gatherers(
             self.store if store is None else store,
             self.entry,
-            self.sample_results[len(runtime.state.history["action_ids"]) :],
+            self.sample_results[runtime.state.history["action_count"] :],
             counter or PortCallCounter(raising=raising),
         )
 

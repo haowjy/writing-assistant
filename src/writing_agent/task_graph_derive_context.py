@@ -150,8 +150,8 @@ def derive_member_start(
             or view.state.history["seq"] != 0
             or view.head_event_id is not None
             or view.samples
-            or view.state.history["action_ids"]
-            or view.state.history["tool_result_ids"]
+            or view.state.history["action_count"]
+            or view.state.history["tool_result_count"]
         ):
             raise ValueError("view is not the sealed unsampled entry checkpoint")
         require_quiescent(view.state)

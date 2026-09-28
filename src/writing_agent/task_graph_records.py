@@ -115,8 +115,6 @@ class SampledMessageV1(WireRecord):
 class WriterTurnV1(WireRecord):
     action_id: Annotated[str, Str(nonempty=True, logical=True)]
     context_revision_ref: Annotated[str, Hash("context_revision")]
-    request_ref: Annotated[str | None, Hash("artifact|bytes", optional=True)]
-    prepared_request_ref: Annotated[str | None, Hash("artifact", optional=True)]
     raw_output_ref: Annotated[str | None, Hash("artifact|bytes", optional=True)]
     usage: Annotated[Mapping[str, Any], _USAGE_SCHEMA]
     adapter_trace: Annotated[Mapping[str, Any] | None, UnionOf((_TRACE_SCHEMA, type(None)))]
@@ -137,14 +135,6 @@ class WriterTurnV1(WireRecord):
         present = _TRACE_LOGPROB_KEYS & set(self.adapter_trace)
         if present and present != _TRACE_LOGPROB_KEYS:
             raise ValueError("logprob reference, codec, and shape must appear together")
-
-
-@dataclass(frozen=True)
-class WriterRequestV1(WireRecord):
-    context_revision_ref: Annotated[str, Hash("context_revision")]
-    payload_ref: Annotated[str, Hash("artifact|bytes")]
-    verified_messages: Annotated[bool, Bool()]
-    RECORD_TYPE: ClassVar[str] = "WriterRequestV1"
 
 
 @dataclass(frozen=True)

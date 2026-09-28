@@ -198,9 +198,8 @@ class RolloutDriverTests(unittest.TestCase):
             fixture.driver().run(fixture.runtime, max_steps=40)
 
         self.assertEqual(len(committed), 1)
-        # Two adapter artifact writes also open scopes; step_input and commit are the
-        # only environment scopes on this one-step dispatch.
-        self.assertEqual(scopes, 4)
+        # step_input and commit each open one environment scope.
+        self.assertEqual(scopes, 2)
         self.assertEqual(view_calls, 3)
         self.assertEqual(producer_derive.call_count, 1)
         self.assertEqual(verifier_derive.call_count, 1)
@@ -518,8 +517,6 @@ class GathererContractTests(unittest.TestCase):
         turn = WriterTurnV1(
             action_id=port.action_id,
             context_revision_ref=port.context_revision_ref,
-            request_ref=None,
-            prepared_request_ref=None,
             raw_output_ref=None,
             usage={},
             adapter_trace=None,

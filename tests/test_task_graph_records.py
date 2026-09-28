@@ -51,7 +51,6 @@ from writing_agent.task_graph_records import (
     OutcomeV1,
     SampledMessageV1,
     ToolObservationV1,
-    WriterRequestV1,
     WriterTurnV1,
     materialize_context_nodes,
     record_reference_edges,
@@ -182,10 +181,6 @@ EXPECTED_REFS = {
     "SampledMessageV1": (),
     "ToolObservationV1": (),
     "TrainingEligibilityV1": (("terminal_outcome_ref", "artifact"),),
-    "WriterRequestV1": (
-        ("context_revision_ref", "context_revision"),
-        ("payload_ref", "artifact|bytes"),
-    ),
     "WriterTurnV1": (
         ("adapter_trace.adapter_ref", "artifact"),
         ("adapter_trace.behavior_policy_ref", "artifact"),
@@ -198,9 +193,7 @@ EXPECTED_REFS = {
         ("adapter_trace.template_ref", "artifact"),
         ("adapter_trace.tokenizer_ref", "artifact"),
         ("context_revision_ref", "context_revision"),
-        ("prepared_request_ref", "artifact"),
         ("raw_output_ref", "artifact|bytes"),
-        ("request_ref", "artifact|bytes"),
     ),
     "context_node": (
         ("parent_ref", "context_node"),
@@ -351,8 +344,6 @@ def record_examples():
         WriterTurnV1(
             action_id="rollout-1:action:0",
             context_revision_ref=context_revision.identity(),
-            request_ref=H,
-            prepared_request_ref=P,
             raw_output_ref=Q,
             usage={"prompt_tokens": 4, "completion_tokens": 2, "backend_detail": {"x": 1}},
             adapter_trace={
@@ -375,7 +366,6 @@ def record_examples():
             },
             message=sampled,
         ),
-        WriterRequestV1(context_revision.identity(), H, True),
         ToolObservationV1(
             call_id="call-1",
             dispatch={
@@ -768,11 +758,6 @@ class RecordCodecTests(unittest.TestCase):
             if isinstance(record, SampledMessageV1):
                 wire["tool_calls_was_list"] = 1
                 with self.subTest(record=codec.__name__, field="tool_calls_was_list"):
-                    with self.assertRaises((TypeError, ValueError)):
-                        codec.from_dict(wire)
-            elif isinstance(record, WriterRequestV1):
-                wire["verified_messages"] = 1
-                with self.subTest(record=codec.__name__, field="verified_messages"):
                     with self.assertRaises((TypeError, ValueError)):
                         codec.from_dict(wire)
             elif isinstance(record, ToolObservationV1):
@@ -1226,8 +1211,8 @@ class RecordClosureTests(unittest.TestCase):
                 "seq": 0,
                 "branch_base": None,
                 "imported_refs": (),
-                "action_ids": (),
-                "tool_result_ids": (),
+                "action_count": 0,
+                "tool_result_count": 0,
             },
             context_ref=context.identity(),
             requirements_ref=common["requirements"],
@@ -1290,13 +1275,12 @@ class RecordClosureTests(unittest.TestCase):
             binary = store.put_bytes_artifact(b"raw model bytes")
             _, revision, _ = self._new_context_revision(store, common)
             sample = SampledMessageV1("turn", True, [])
+            records = {type(record).__name__: record for record in record_examples()}
             examples = {
                 "WriterTurnV1": WriterTurnV1(
                     "line:action:0",
                     revision.identity(),
                     binary,
-                    common["entry"],
-                    common["entry"],
                     {"prompt_tokens": 1},
                     {
                         "per_token_logprobs_ref": binary,
@@ -1306,8 +1290,7 @@ class RecordClosureTests(unittest.TestCase):
                     },
                     sample,
                 ),
-                "WriterRequestV1": WriterRequestV1(revision.identity(), binary, True),
-                "ToolObservationV1": record_examples()[3],
+                "ToolObservationV1": records["ToolObservationV1"],
                 "AuthorReplyV1": AuthorReplyV1(private, "answered", "Keep it brief.", (), {}),
                 "EvaluatorResultV1": EvaluatorResultV1(private, "pass", common["entry"]),
                 "ContextOperationInputV1": ContextOperationInputV1(common["entry"]),
@@ -1329,7 +1312,7 @@ class RecordClosureTests(unittest.TestCase):
                     common["entry"],
                     common["entry"],
                 ),
-                "AdmissionPolicyV1": record_examples()[11],
+                "AdmissionPolicyV1": records["AdmissionPolicyV1"],
             }
             self.assertTrue(set(examples).issubset(RECORD_TYPES))
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -50,7 +51,7 @@ class IndependentBackend:
     def sample(self, prepared):
         self.calls += 1
         self.prepared = prepared
-        assert prepared.messages_json and prepared.prepared_request_ref
+        assert prepared.messages_json and prepared.context_revision_ref
         return SampleResult({"role": "assistant", "content": self.text}, raw_output=self.text)
 
 
@@ -203,7 +204,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         prepared = backend.prepared
         self.assertEqual(prepared.decoding_ref, decoding_ref)
         self.assertEqual(fixture.store.get_artifact(prepared.decoding_ref), decoding)
-        self.assertEqual(set(prepared.request()), {"messages"})
+        self.assertIsInstance(json.loads(prepared.messages_json), list)
 
     def test_binary_logprobs_persist_and_gate_replay_without_sampling(self):
         class NativeShaped(IndependentBackend):

@@ -343,16 +343,11 @@ class ContextPipelineTests(unittest.TestCase):
         self.assertEqual(event.kind, "context_changed")
         self.assertTrue(any(":context:" in message.origin for message in after.context.messages))
         summary = repr(after.context.messages)
-        writer_event = next(event for event in _events(fixture) if event.kind == "writer_action")
-        writer_turn = fixture.store.get_artifact(writer_event.payload_ref)
-        self.assertIsNotNone(writer_turn["prepared_request_ref"])
         for canary in CANARIES.values():
             self.assertNotIn(canary, summary)
         for evidence in (
             "RAW_OUTPUT_OUTSIDE_WRITER_CONTEXT",
             "MODEL_TRACE_OUTSIDE_WRITER_CONTEXT",
-            writer_turn["prepared_request_ref"],
-            writer_turn["raw_output_ref"],
         ):
             self.assertNotIn(evidence, summary)
 
@@ -497,8 +492,8 @@ class ContextPipelineTests(unittest.TestCase):
         self.assertEqual(outcome["task_status"], "incomplete")
         self.assertEqual(outcome["reward_status"], "available")
         self.assertEqual(
-            flow.runtime.state.history["action_ids"],
-            ("rollout-fixture:action:0", "rollout-fixture:action:1"),
+            flow.runtime.state.history["action_count"],
+            2,
         )
 
 
