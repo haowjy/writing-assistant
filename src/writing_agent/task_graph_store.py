@@ -1,24 +1,20 @@
-"""Private content-addressed persistence for task-graph checkpoints.
+"""Private content-addressed persistence for task-graph records and artifacts.
 
 The immutable files in this store are not authority by themselves.  A lineage's
 canonical ``refs`` file is the only mutable authority, and replacing that file is
-the publication linearization point.  Writer workspaces are disposable, private
-materializations and never contain store metadata or private artifacts.
+the publication linearization point.
 
 Lexical parent traversal and static symlink ancestry are rejected before one absolute
-path is used for checks and creation; store/workspace trees may not overlap. This
-trusted-harness boundary does not attempt to defeat a process that races path
-replacement after validation.
+path is used for checks and creation. This trusted-harness boundary does not attempt to
+defeat a process that races path replacement after validation.
 """
 
 from __future__ import annotations
 
 import base64
-import difflib
 import fcntl
 import os
 import re
-import shutil
 import stat
 import tempfile
 import threading
@@ -42,10 +38,8 @@ from writing_agent.task_graph import (
     canonical_bytes,
     domain_hash,
     domain_hash_bytes,
-    file_hash,
     load_canonical_json,
     thaw,
-    validate_file_tree,
     validate_hash,
 )
 from writing_agent.task_graph_artifacts import (
@@ -71,12 +65,11 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_wire import WireRecord
 
-DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class CommitVerifier(Protocol):
-    """Semantic authority injected at the store's publish and restore seams."""
+    """Semantic authority injected at publication and explicit view verification."""
 
     def view(self, store: TaskGraphStore, checkpoint_id: str) -> Any: ...
 
@@ -96,38 +89,6 @@ class _Artifact:
     private: bool
 
 
-@dataclass(frozen=True)
-class RuntimeHandle:
-    """Materialized workspace paired with the store's verified checkpoint."""
-
-    checkpoint_id: str
-    state: EnvironmentStateV1
-    context: MaterializedContextV1
-    workspace: Path
-
-
-@dataclass(frozen=True)
-class FileDifference:
-    path: str
-    status: str
-    before_hash: str | None
-    after_hash: str | None
-    text_diff: str | None
-
-
-@dataclass(frozen=True)
-class StateDifference:
-    field: str
-    before: Any
-    after: Any
-
-
-@dataclass(frozen=True)
-class CheckpointDifference:
-    files: tuple[FileDifference, ...]
-    state: tuple[StateDifference, ...]
-
-
 FaultHook = Callable[[str], None]
 
 
@@ -136,7 +97,7 @@ def _noop_fault(stage: str) -> None:
 
 
 class TaskGraphStore:
-    """Deep, standard-library store for immutable task-graph state.
+    """Private content-addressed storage for task-graph records and artifacts.
 
     ``expected_head`` exists only as a method argument.  It is never serialized
     into the authoritative ref, whose exact schema is ``{"head_commit": ...}``.
@@ -155,22 +116,14 @@ class TaskGraphStore:
         self,
         root: Path | str,
         *,
-        verifier: CommitVerifier | None = None,
-        max_workspace_bytes: int = DEFAULT_MAX_WORKSPACE_BYTES,
-        max_file_bytes: int | None = None,
+        verifier: CommitVerifier,
         max_record_bytes: int = 16_000_000,
     ) -> None:
-        if type(max_workspace_bytes) is not int or max_workspace_bytes < 0:
-            raise ValueError("max_workspace_bytes must be a nonnegative integer")
-        if max_file_bytes is None:
-            max_file_bytes = max_workspace_bytes
-        if type(max_file_bytes) is not int or max_file_bytes < 0:
-            raise ValueError("max_file_bytes must be a nonnegative integer")
+        if verifier is None:
+            raise TypeError("verifier is required")
         if type(max_record_bytes) is not int or max_record_bytes <= 0:
             raise ValueError("max_record_bytes must be a positive integer")
         self.root = self._verified_absolute_path(Path(root), MaterializationError)
-        self.max_workspace_bytes = max_workspace_bytes
-        self.max_file_bytes = max_file_bytes
         self.max_record_bytes = max_record_bytes
         self._verifier = verifier
         self._thread_locks: dict[str, threading.Lock] = {}
@@ -179,14 +132,8 @@ class TaskGraphStore:
         self._prepare_store()
 
     @property
-    def verifier(self) -> CommitVerifier | None:
+    def verifier(self) -> CommitVerifier:
         """Return the configured semantic verifier without exposing store internals."""
-        return self._verifier
-
-    def _require_verifier(self) -> CommitVerifier:
-        """Return the sole semantic authority, refusing runtime work without one."""
-        if self._verifier is None:
-            raise ProjectionError("store.verifier: a lineage verifier is required")
         return self._verifier
 
     # -- immutable object codecs -------------------------------------------------
@@ -332,7 +279,11 @@ class TaskGraphStore:
         parent: str | None = None,
         artifact_refs: Sequence[str] = (),
     ) -> str:
-        """Save a validated immutable checkpoint without changing any lineage head."""
+        """Save a structurally validated checkpoint without publishing a lineage.
+
+        Semantic verification belongs to publication and gate views. Checkpoint storage
+        remains useful for unpublished roots and candidates.
+        """
         if not isinstance(state, EnvironmentStateV1):
             raise TypeError("state must be EnvironmentStateV1")
         parents = () if parent is None else (parent,)
@@ -420,7 +371,7 @@ class TaskGraphStore:
         base = validator.validate(("checkpoint", base_checkpoint))
         if expected_head is None and base.parents:
             raise ProjectionError("checkpoint.parents: initial lineage commit must start at root")
-        verifier = self._require_verifier()
+        verifier = self.verifier
         if artifact_refs:
             raise ProjectionError("checkpoint.artifact_refs: runtime checkpoints cannot add refs")
         checkpoint = CheckpointV1(
@@ -480,136 +431,6 @@ class TaskGraphStore:
             except BaseException:
                 validator.discard(candidate_keys)
                 raise
-
-    @operation_scoped
-    def materialize(
-        self,
-        checkpoint_id: str,
-        fresh_root: Path | str,
-        *,
-        fault: FaultHook | None = None,
-    ) -> Path:
-        checkpoint = self.load_checkpoint(checkpoint_id)
-        return self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
-
-    def _materialize_checkpoint(
-        self,
-        checkpoint: CheckpointV1,
-        fresh_root: Path | str,
-        *,
-        fault: FaultHook | None = None,
-    ) -> Path:
-        files = validate_file_tree(checkpoint.state.files)
-        encoded = {path: text.encode("utf-8", "strict") for path, text in files.items()}
-        total = sum(len(value) for value in encoded.values())
-        if total > self.max_workspace_bytes:
-            raise MaterializationError("workspace exceeds total UTF-8 byte limit")
-        if any(len(value) > self.max_file_bytes for value in encoded.values()):
-            raise MaterializationError("workspace file exceeds UTF-8 byte limit")
-
-        destination = self._verified_absolute_path(Path(fresh_root), MaterializationError)
-        store = self.root
-        workspace = destination
-        if workspace == store or workspace.is_relative_to(store) or store.is_relative_to(workspace):
-            raise MaterializationError("workspace and canonical store trees must not overlap")
-        hook = fault or _noop_fault
-        created = False
-        try:
-            destination.mkdir(mode=0o700, parents=False, exist_ok=False)
-            created = True
-            self._require_private_directory(destination)
-            hook("after_workspace_created")
-            directories = sorted(
-                {parent for path in files for parent in self._path_parents(path)},
-                key=lambda value: (value.count("/"), value),
-            )
-            for directory in directories:
-                target = destination.joinpath(*directory.split("/"))
-                target.mkdir(mode=0o700)
-                self._require_private_directory(target)
-            for relative in sorted(files):
-                target = destination.joinpath(*relative.split("/"))
-                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                flags |= getattr(os, "O_NOFOLLOW", 0)
-                descriptor = os.open(target, flags, 0o600)
-                try:
-                    with os.fdopen(descriptor, "wb", closefd=True) as stream:
-                        stream.write(encoded[relative])
-                        stream.flush()
-                        os.fsync(stream.fileno())
-                except Exception:
-                    try:
-                        os.close(descriptor)
-                    except OSError:
-                        pass
-                    raise
-                hook(f"after_file:{relative}")
-            self._fsync_directory(destination)
-            return destination
-        except Exception as exc:
-            if created:
-                shutil.rmtree(destination, ignore_errors=True)
-            if isinstance(exc, (StoreError, OSError)):
-                raise
-            raise MaterializationError("workspace materialization failed") from exc
-
-    @operation_scoped
-    def restore(
-        self,
-        checkpoint_id: str,
-        fresh_root: Path | str,
-        *,
-        fault: FaultHook | None = None,
-    ) -> RuntimeHandle:
-        checkpoint = self.load_checkpoint(checkpoint_id)
-        self._require_verifier().view(self, checkpoint_id)
-        workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
-        try:
-            context = self.materialize_context(checkpoint.state.context_ref)
-            return RuntimeHandle(checkpoint_id, checkpoint.state, context, workspace)
-        except Exception:
-            shutil.rmtree(workspace, ignore_errors=True)
-            raise
-
-    @operation_scoped
-    def diff(self, before_id: str, after_id: str, *, text: bool = False) -> CheckpointDifference:
-        before = self.load_checkpoint(before_id).state
-        after = self.load_checkpoint(after_id).state
-        paths = sorted(set(before.files) | set(after.files))
-        file_changes: list[FileDifference] = []
-        for path in paths:
-            old = before.files.get(path)
-            new = after.files.get(path)
-            if old == new:
-                continue
-            status = "added" if old is None else "deleted" if new is None else "changed"
-            rendered = None
-            if text and old is not None and new is not None:
-                rendered = "".join(
-                    difflib.unified_diff(
-                        old.splitlines(keepends=True),
-                        new.splitlines(keepends=True),
-                        fromfile=f"a/{path}",
-                        tofile=f"b/{path}",
-                    )
-                )
-            file_changes.append(
-                FileDifference(
-                    path,
-                    status,
-                    None if old is None else file_hash(old),
-                    None if new is None else file_hash(new),
-                    rendered,
-                )
-            )
-        old_state = before.to_dict()
-        new_state = after.to_dict()
-        state_changes = tuple(
-            StateDifference(field, old_state[field], new_state[field])
-            for field in sorted(old_state)
-            if field not in {"files", "tree_hash"} and old_state[field] != new_state[field]
-        )
-        return CheckpointDifference(tuple(file_changes), state_changes)
 
     # -- operation-scoped closure validation ------------------------------------
 
@@ -709,11 +530,6 @@ class TaskGraphStore:
                 raise error_type(f"symlink ancestry is not allowed: {component}")
             if component != path and not stat.S_ISDIR(info.st_mode):
                 raise error_type(f"path ancestor is not a directory: {component}")
-
-    @staticmethod
-    def _path_parents(path: str) -> tuple[str, ...]:
-        pieces = path.split("/")[:-1]
-        return tuple("/".join(pieces[:index]) for index in range(1, len(pieces) + 1))
 
     def _record_path(self, directory: str, identity: str) -> Path:
         validate_hash(identity)
@@ -1555,16 +1371,11 @@ class _LineageLock:
 
 
 __all__ = [
-    "DEFAULT_MAX_WORKSPACE_BYTES",
     "CommitVerifier",
-    "CheckpointDifference",
     "ConcurrentUpdateError",
     "CorruptRecordError",
-    "FileDifference",
     "MaterializationError",
     "MissingReferenceError",
-    "RuntimeHandle",
-    "StateDifference",
     "StoreError",
     "TaskGraphStore",
     "WrongRecordDomainError",

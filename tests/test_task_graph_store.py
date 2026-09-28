@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
+from tests.task_graph_store_fixtures import PatchVerifier
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
@@ -38,20 +39,10 @@ from writing_agent.task_graph_store import (
 )
 
 
-class PatchVerifier:
-    """Test-only verifier for storage/CAS tests unrelated to transition derives."""
-
-    def view(self, store, checkpoint_id):
-        return store.load_checkpoint(checkpoint_id)
-
-    def verify_commit(self, store, base_checkpoint_id, events, next_state):
-        del store, base_checkpoint_id, events, next_state
-
-
 class StoreFixture:
-    def __init__(self, root: Path, **limits):
+    def __init__(self, root: Path):
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.store = TaskGraphStore(root / "store", verifier=PatchVerifier(), **limits)
+        self.store = TaskGraphStore(root / "store", verifier=PatchVerifier())
         self.common = {}
         for name in (
             "entry",
@@ -226,15 +217,14 @@ class TaskGraphStoreTest(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
-    def test_publish_and_restore_refuse_a_missing_verifier(self):
-        root, state = self.fixture.root()
-        store = TaskGraphStore(self.store.root)
-        event, next_state, _ = self.fixture.event_state(state, lineage="seed")
-
-        with self.assertRaisesRegex(ProjectionError, "store.verifier"):
-            store.publish("seed", None, (event,), next_state, parent_checkpoint=root)
-        with self.assertRaisesRegex(ProjectionError, "store.verifier"):
-            store.restore(root, self.root / "unverified")
+    def test_store_requires_a_verifier_at_construction(self):
+        root = self.root / "missing-verifier"
+        with self.assertRaises(TypeError):
+            TaskGraphStore(root)
+        self.assertFalse(root.exists())
+        with self.assertRaises(TypeError):
+            TaskGraphStore(root, verifier=None)
+        self.assertFalse(root.exists())
 
     def test_runtime_lineage_requires_transition_semantics_pin(self):
         state = self.fixture.state()
@@ -325,98 +315,11 @@ class TaskGraphStoreTest(unittest.TestCase):
         )
         return commit, self.store.load_commit(commit).checkpoint, after, event, effect
 
-    def test_round_trip_restore_preserves_complete_state_context_and_files(self):
-        files = {"empty.txt": "", "unicode/雪.txt": "café\n", "draft.txt": "alpha"}
-        root, state = self.fixture.root(files=files)
-        runtime = self.store.restore(root, self.root / "worker")
-
-        self.assertEqual(runtime.state, state)
-        self.assertEqual(runtime.context, self.fixture.materialized_context)
-        self.assertEqual(runtime.checkpoint_id, root)
-        self.assertEqual((runtime.workspace / "empty.txt").read_bytes(), b"")
-        self.assertEqual((runtime.workspace / "unicode" / "雪.txt").read_text(), "café\n")
-        self.assertEqual(
-            sorted(
-                path.relative_to(runtime.workspace).as_posix()
-                for path in runtime.workspace.rglob("*")
-            ),
-            ["draft.txt", "empty.txt", "unicode", "unicode/雪.txt"],
-        )
-        self.assertEqual(stat.S_IMODE(runtime.workspace.stat().st_mode), 0o700)
-        self.assertEqual(stat.S_IMODE((runtime.workspace / "draft.txt").stat().st_mode), 0o600)
-
-    def test_deletion_diff_and_non_file_diff(self):
-        root, before = self.fixture.root(files={"gone.txt": "x", "same": "", "z": "old"})
-        event, after, effect = self.fixture.event_state(
-            before,
-            lineage="main",
-            file_delta={
-                "gone.txt": {"before": "x", "after": None},
-                "new/é.txt": {"before": None, "after": "雪"},
-                "z": {"before": "old", "after": "new"},
-            },
-            set_values={"position": {**before.position, "lineage_id": "main", "phase": "checking"}},
-        )
-        commit = self.store.publish("main", None, (event,), after, parent_checkpoint=root)
-        target = self.store.load_commit(commit).checkpoint
-        difference = self.store.diff(root, target, text=True)
-        self.assertEqual(
-            [(item.path, item.status) for item in difference.files],
-            [("gone.txt", "deleted"), ("new/é.txt", "added"), ("z", "changed")],
-        )
-        self.assertIn("-old", difference.files[-1].text_diff)
-        self.assertEqual([item.field for item in difference.state], ["history", "position"])
-        restored = self.store.restore(target, self.root / "after")
-        self.assertFalse((restored.workspace / "gone.txt").exists())
-        self.assertEqual((restored.workspace / "new" / "é.txt").read_text(), "雪")
-
-    def test_workspace_limits_freshness_symlinks_and_cleanup(self):
-        small = StoreFixture(self.root / "small", max_workspace_bytes=4, max_file_bytes=3)
-        too_large, _ = small.root(files={"a": "éé"})
-        with self.assertRaises(MaterializationError):
-            small.store.materialize(too_large, self.root / "too-large")
-        self.assertFalse((self.root / "too-large").exists())
-
-        checkpoint, _ = self.fixture.root(files={"a/b": "x"})
-        existing = self.root / "existing"
-        existing.mkdir()
-        with self.assertRaises(FileExistsError):
-            self.store.materialize(checkpoint, existing)
-        link = self.root / "link"
-        link.symlink_to(self.root / "elsewhere")
-        with self.assertRaises(MaterializationError):
-            self.store.materialize(checkpoint, link)
-
-        with self.assertRaises(MaterializationError):
-            self.store.materialize(checkpoint, self.store.root / "worker")
-        self.assertFalse((self.store.root / "worker").exists())
-        with self.assertRaises(MaterializationError):
-            self.store.materialize(checkpoint, self.root)
-
-        real = self.root / "real"
-        real.mkdir()
-        alias = self.root / "alias"
-        alias.symlink_to(real, target_is_directory=True)
-        with self.assertRaises(MaterializationError):
-            self.store.materialize(checkpoint, alias / "workspace")
-        self.assertFalse((real / "workspace").exists())
-
-        destination = self.root / "faulted"
-
-        def fail(stage):
-            if stage == "after_file:a/b":
-                raise RuntimeError("induced")
-
-        with self.assertRaises(MaterializationError):
-            self.store.materialize(checkpoint, destination, fault=fail)
-        self.assertFalse(destination.exists())
-
     def test_missing_private_artifact_corrupt_bytes_and_wrong_domain_fail_closed(self):
         checkpoint, state = self.fixture.root()
         (self.store.root / "private" / state.author_packet_ref).unlink()
         with self.assertRaises(MissingReferenceError):
-            self.store.restore(checkpoint, self.root / "missing-private")
-        self.assertFalse((self.root / "missing-private").exists())
+            self.store.load_checkpoint(checkpoint)
 
         wrong_payload = self.store.put_artifact(
             MessageV1(content=("x",), origin="a").to_dict(), domain="message"
@@ -738,8 +641,6 @@ class TaskGraphStoreTest(unittest.TestCase):
             return TaskGraphStore(
                 store.root,
                 verifier=PatchVerifier(),
-                max_workspace_bytes=store.max_workspace_bytes,
-                max_file_bytes=store.max_file_bytes,
                 max_record_bytes=store.max_record_bytes,
             )
 
@@ -945,14 +846,14 @@ class TaskGraphStoreTest(unittest.TestCase):
         with self.assertRaises(CorruptRecordError):
             self.store.load_commit(foreign_commit.identity())
 
-    def test_store_root_ancestry_and_restore_cleanup(self):
+    def test_store_root_ancestry_and_durability(self):
         durable_root = self.root / "durable-store"
         with mock.patch.object(
             TaskGraphStore,
             "_fsync_directory",
             wraps=TaskGraphStore._fsync_directory,
         ) as barrier:
-            TaskGraphStore(durable_root)
+            TaskGraphStore(durable_root, verifier=PatchVerifier())
         synced = {call.args[0] for call in barrier.call_args_list}
         self.assertIn(durable_root.parent, synced)
         self.assertIn(durable_root, synced)
@@ -962,22 +863,24 @@ class TaskGraphStoreTest(unittest.TestCase):
         alias = self.root / "store-alias"
         alias.symlink_to(real, target_is_directory=True)
         with self.assertRaises(MaterializationError):
-            TaskGraphStore(alias / "store")
+            TaskGraphStore(alias / "store", verifier=PatchVerifier())
         self.assertFalse((real / "store").exists())
 
         with self.assertRaises(MaterializationError):
-            TaskGraphStore(self.root / "missing" / "parent" / "store")
+            TaskGraphStore(self.root / "missing" / "parent" / "store", verifier=PatchVerifier())
         self.assertFalse((self.root / "missing").exists())
 
         public_parent = self.root / "public-parent"
         public_parent.mkdir(mode=0o700)
         public_parent.chmod(0o755)
         with self.assertRaises(MaterializationError):
-            TaskGraphStore(public_parent / "store")
+            TaskGraphStore(public_parent / "store", verifier=PatchVerifier())
         self.assertFalse((public_parent / "store").exists())
 
         with self.assertRaises(MaterializationError):
-            TaskGraphStore(self.root / "component" / ".." / "lexical-store")
+            TaskGraphStore(
+                self.root / "component" / ".." / "lexical-store", verifier=PatchVerifier()
+            )
         self.assertFalse((self.root / "lexical-store").exists())
 
         retry_parent = self.root / "retry-parent"
@@ -995,30 +898,11 @@ class TaskGraphStoreTest(unittest.TestCase):
 
         with mock.patch.object(TaskGraphStore, "_fsync_directory", side_effect=fail_parent_once):
             with self.assertRaises(OSError):
-                TaskGraphStore(retry_root)
+                TaskGraphStore(retry_root, verifier=PatchVerifier())
         self.assertTrue(retry_root.is_dir())
         with mock.patch.object(TaskGraphStore, "_fsync_directory", wraps=real_barrier) as barrier:
-            TaskGraphStore(retry_root)
+            TaskGraphStore(retry_root, verifier=PatchVerifier())
         self.assertIn(retry_parent, (call.args[0] for call in barrier.call_args_list))
-
-        checkpoint, _ = self.fixture.root()
-        inside = self.store.root / "inside"
-        inside.mkdir(mode=0o700)
-        jump = self.root / "jump"
-        jump.symlink_to(inside, target_is_directory=True)
-        with self.assertRaises(MaterializationError):
-            self.store.materialize(checkpoint, jump / ".." / "worker")
-        self.assertFalse((self.store.root / "worker").exists())
-
-        workspace = self.root / "restore-cleanup"
-        with mock.patch.object(
-            self.store,
-            "materialize_context",
-            side_effect=CorruptRecordError("induced late context corruption"),
-        ):
-            with self.assertRaises(CorruptRecordError):
-                self.store.restore(checkpoint, workspace)
-        self.assertFalse(workspace.exists())
 
 
 if __name__ == "__main__":

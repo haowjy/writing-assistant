@@ -8,6 +8,7 @@ from dataclasses import fields, replace
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.task_graph_store_fixtures import PatchVerifier
 from writing_agent.task_graph import (
     ContextContentV1,
     ContextRevisionV1,
@@ -1074,7 +1075,7 @@ class ChainedContextTests(unittest.TestCase):
     def test_merkle_identity_root_child_invariant_and_materialization(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "store"
-            store = TaskGraphStore(root)
+            store = TaskGraphStore(root, verifier=PatchVerifier())
             refs = [
                 store.put_artifact({"pin": name}) for name in ("template", "tokenizer", "tools")
             ]
@@ -1274,7 +1275,7 @@ class RecordClosureTests(unittest.TestCase):
 
     def test_registry_edges_are_followed_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
-            store = TaskGraphStore(Path(temporary) / "store")
+            store = TaskGraphStore(Path(temporary) / "store", verifier=PatchVerifier())
             common, private, checkpoint, legacy_state = self._fixture(store)
             binary = store.put_bytes_artifact(b"raw model bytes")
             _, revision, _ = self._new_context_revision(store, common)
@@ -1447,7 +1448,7 @@ class RecordClosureTests(unittest.TestCase):
 
     def test_forged_typed_artifact_reports_its_own_codec_path(self):
         with tempfile.TemporaryDirectory() as temporary:
-            store = TaskGraphStore(Path(temporary) / "store")
+            store = TaskGraphStore(Path(temporary) / "store", verifier=PatchVerifier())
             outcome = OutcomeV1(
                 1,
                 "unknown",

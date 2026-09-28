@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture
+from tests.task_graph_store_fixtures import PatchVerifier
 from writing_agent.legacy_graph import compile_legacy_scenario
 from writing_agent.suite import compile_legacy_graph, run_selected
 from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash
@@ -134,7 +135,7 @@ def replace_edges(instance, exits, *, families=None, kind=None):
 
 def persist_artifacts(public, private, instance, root):
     root.chmod(0o700)
-    store = TaskGraphStore(root / "store")
+    store = TaskGraphStore(root / "store", verifier=PatchVerifier())
     for identity, body in public.items():
         assert store.put_artifact(body) == identity
     for identity, body in private.items():
@@ -624,7 +625,7 @@ class LegacyGraphAdapterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             root.chmod(0o700)
-            store = TaskGraphStore(root / "store")
+            store = TaskGraphStore(root / "store", verifier=PatchVerifier())
             identity = bundle.persist(store)
             self.assertEqual(store.load_instance(identity), bundle.instance)
             admitted = admit_graph(bundle.instance, StoreArtifactResolver(store))

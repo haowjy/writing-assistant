@@ -451,29 +451,6 @@ class LineageGateTests(unittest.TestCase):
                 )
             self.assertIsInstance(rejected.exception.__cause__, type(failure))
 
-    def test_publish_and_restore_refuse_verifierless_store(self) -> None:
-        fixture = GateStoreFixture(self)
-        legacy_store = TaskGraphStore(fixture.root)
-        transition = fixture.first_transition()
-        fixture.persist_artifacts(transition)
-        forged = replace(
-            transition.state,
-            position={**transition.state.position, "phase": "terminal"},
-        )
-
-        with self.assertRaises(ProjectionError):
-            legacy_store.publish(
-                "rollout-fixture",
-                None,
-                (transition.event,),
-                forged,
-                parent_checkpoint=fixture.root_id,
-            )
-        self.assertIsNone(legacy_store.read_head("rollout-fixture"))
-        with self.assertRaises(ProjectionError):
-            legacy_store.restore(fixture.root_id, fixture.root.parent / "no-verifier-workspace")
-        self.assertIsNone(legacy_store.read_head("rollout-fixture"))
-
     def test_initial_commit_cannot_start_from_midlineage(self) -> None:
         fixture = GateStoreFixture(self)
         first = fixture.first_transition()
@@ -693,7 +670,7 @@ class LineageGateTests(unittest.TestCase):
         with other_store.operation(), self.assertRaises(MissingReferenceError):
             fixture.gate._admitted_graph(other_store, state.instance_ref, state.versions_ref)
 
-    def test_narrow_pinned_admission_rejects_a_forged_tool_execution_on_cold_restore(
+    def test_narrow_pinned_admission_rejects_a_forged_tool_execution_on_cold_view(
         self,
     ) -> None:
         fixture = GateStoreFixture(self, narrow_tool_entry_fixture())
@@ -723,12 +700,10 @@ class LineageGateTests(unittest.TestCase):
             )
         )
 
-        cold_store = TaskGraphStore(fixture.root, verifier=LineageGate())
-        with (
-            tempfile.TemporaryDirectory() as workspace,
-            self.assertRaises(ProjectionError) as rejected,
-        ):
-            cold_store.restore(checkpoint_id, Path(workspace) / "runtime")
+        cold_gate = LineageGate()
+        cold_store = TaskGraphStore(fixture.root, verifier=cold_gate)
+        with self.assertRaises(ProjectionError) as rejected:
+            cold_gate.view(cold_store, checkpoint_id)
         self.assertIn("state.continuation.tool_queue[0].arguments", str(rejected.exception))
 
     def test_cached_prefix_does_not_authorize_a_forged_suffix(self) -> None:
@@ -787,7 +762,7 @@ class LineageGateTests(unittest.TestCase):
             )
         self.assertIsNone(fixture.store.read_head("rollout-fixture"))
 
-    def test_on_disk_tamper_fails_cached_operation_and_cold_restore(self) -> None:
+    def test_on_disk_tamper_fails_cached_operation_and_cold_view(self) -> None:
         fixture = GateStoreFixture(self)
         transition = fixture.first_transition()
         _, checkpoint_id = fixture.publish(transition)
@@ -799,8 +774,8 @@ class LineageGateTests(unittest.TestCase):
 
         cold_gate = LineageGate()
         cold_store = TaskGraphStore(fixture.root, verifier=cold_gate)
-        with tempfile.TemporaryDirectory() as workspace, self.assertRaises(CorruptRecordError):
-            cold_store.restore(checkpoint_id, Path(workspace) / "runtime")
+        with self.assertRaises(CorruptRecordError):
+            cold_gate.view(cold_store, checkpoint_id)
 
     def test_record_published_falls_back_to_a_verified_fold_for_an_honest_retry(self) -> None:
         fixture = GateStoreFixture(self)
