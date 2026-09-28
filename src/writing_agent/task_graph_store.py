@@ -130,7 +130,7 @@ class CommitVerifier(Protocol):
         base_checkpoint_id: str,
         events: Sequence[EventV1],
         next_state: EnvironmentStateV1,
-    ) -> None: ...
+    ) -> Any: ...
 
     def verify_checkpoint(self, store: TaskGraphStore, checkpoint_id: str) -> None: ...
 
@@ -222,12 +222,38 @@ class TaskGraphStore:
         self._session = threading.local()
         self._prepare_store()
 
+    @property
+    def verifier(self) -> CommitVerifier | None:
+        """Return the configured semantic verifier without exposing store internals."""
+        return self._verifier
+
+    def _verifier_for_checkpoint(
+        self, checkpoint_id: str, validator: _ClosureValidator | None = None
+    ) -> CommitVerifier | None:
+        """Select semantics from the lineage's pinned checkpoint, not store setup."""
+        if (validator or self._validator())._checkpoint_semantics(checkpoint_id) != SEMANTICS_V1:
+            return None
+        if self._verifier is None:
+            raise ProjectionError(
+                "state.versions_ref: task-graph-derive-v1 requires a configured lineage verifier"
+            )
+        return self._verifier
+
     # -- immutable object codecs -------------------------------------------------
 
     @operation_scoped
     def put_artifact(self, value: Any, *, domain: str = "payload", private: bool = False) -> str:
         if domain not in {"payload", "message"} or (domain == "message" and private):
             raise ValueError("artifacts may use only payload or message domains")
+        if domain == "payload" and isinstance(value, Mapping) and "record_type" in value:
+            record_type = value["record_type"]
+            if not isinstance(record_type, str):
+                raise ValueError("record_type must be a string")
+            if record_type not in LEGACY_PAYLOAD_RECORD_TYPES and record_type in RECORD_TYPES:
+                try:
+                    record_reference_edges(record_type, value)
+                except Exception as exc:
+                    raise ValueError(f"invalid task-graph payload record: {record_type}") from exc
         identity = domain_hash(domain, value)
         envelope = {
             "schema": 1,
@@ -357,6 +383,7 @@ class TaskGraphStore:
         )
         validator = self._validator()
         validator.add_virtual("checkpoint", checkpoint.identity(), checkpoint)
+        self._verifier_for_checkpoint(checkpoint.identity(), validator)
         validator.validate(("checkpoint", checkpoint.identity()))
         return self.persist(checkpoint)
 
@@ -402,6 +429,7 @@ class TaskGraphStore:
         parent_checkpoint: str | None = None,
         fault: FaultHook | None = None,
         _validation: _ClosureValidator | None = None,
+        _allow_branch_parent: bool = False,
     ) -> str:
         """Atomically publish an event batch, checkpoint, commit, and lineage head.
 
@@ -423,9 +451,6 @@ class TaskGraphStore:
             raise TypeError("events must contain EventV1 records")
         if not batch:
             raise ValueError("a published commit requires at least one event")
-        if self._verifier is not None and artifact_refs:
-            raise ProjectionError("runtime checkpoints cannot carry supplemental artifact refs")
-
         hook = fault or _noop_fault
         validator = _validation or self._validator()
         base_checkpoint = parent_checkpoint
@@ -434,6 +459,15 @@ class TaskGraphStore:
         if base_checkpoint is None:
             raise ReplayError("publication requires an actual parent checkpoint")
         validator.validate(("checkpoint", base_checkpoint))
+        verifier = self._verifier_for_checkpoint(base_checkpoint, validator)
+        if expected_head is None and not _allow_branch_parent:
+            parent = validator.validate(("checkpoint", base_checkpoint))
+            if parent.parents:
+                raise ProjectionError(
+                    "checkpoint.parents: an initial lineage commit requires a parentless entry"
+                )
+        if verifier is not None and artifact_refs:
+            raise ProjectionError("checkpoint.artifact_refs: runtime checkpoints cannot add refs")
         checkpoint = CheckpointV1(
             parents=(base_checkpoint,),
             state=next_state,
@@ -470,16 +504,20 @@ class TaskGraphStore:
                     validator.add_virtual("event", event.identity(), event)
                 validator.add_virtual("checkpoint", checkpoint.identity(), checkpoint)
                 validator.add_virtual("commit", commit.identity(), commit)
+                if verifier is not None:
+                    validator.gated_candidates.update(candidate_keys)
                 # Structural closure runs before semantic verification. The legacy
                 # patch reducer remains the fallback until the old runtime is removed.
                 try:
                     validator.validate(("commit", commit.identity()))
                 except WrongRecordDomainError as exc:
-                    if self._verifier is None:
+                    if verifier is None:
                         raise
-                    raise ProjectionError("candidate reference has the wrong visibility") from exc
-                if self._verifier is not None:
-                    self._verifier.verify_commit(self, base_checkpoint, batch, next_state)
+                    raise ProjectionError(
+                        "artifact.visibility: candidate reference has the wrong visibility"
+                    ) from exc
+                if verifier is not None:
+                    verifier.verify_commit(self, base_checkpoint, batch, next_state)
                 else:
                     semantic_base = self._writer_semantic_base_checkpoint(base_checkpoint)
                     if semantic_base is not None:
@@ -517,6 +555,8 @@ class TaskGraphStore:
         fault: FaultHook | None = None,
     ) -> str:
         """Publish the first commit of a new lineage from an immutable parent."""
+        if self._verifier is not None:
+            raise ProjectionError("checkpoint.parents: branching is unsupported with a verifier")
         validator = self._validator()
         parent = validator.validate(("checkpoint", parent_checkpoint))
         if dict(next_state.files) != dict(parent.state.files):
@@ -534,6 +574,7 @@ class TaskGraphStore:
             parent_checkpoint=parent_checkpoint,
             fault=fault,
             _validation=validator,
+            _allow_branch_parent=True,
         )
 
     # -- materialization, restore, and inspection -------------------------------
@@ -619,10 +660,11 @@ class TaskGraphStore:
         fault: FaultHook | None = None,
     ) -> RuntimeHandle:
         checkpoint = self.load_checkpoint(checkpoint_id)
-        if self._verifier is None:
+        verifier = self._verifier_for_checkpoint(checkpoint_id)
+        if verifier is None:
             self._validate_writer_history(checkpoint_id)
         else:
-            self._verifier.verify_checkpoint(self, checkpoint_id)
+            verifier.verify_checkpoint(self, checkpoint_id)
         workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
         try:
             context = self.load_context(checkpoint.state.context_ref)
@@ -1148,6 +1190,7 @@ class _ClosureValidator:
         self.active: set[tuple[str, str]] = set()
         self.completed: set[tuple[str, str]] = set()
         self.required_domain: dict[str, frozenset[str]] = {}
+        self.gated_candidates: set[tuple[str, str]] = set()
         if parent is not None:
             # Only completed (closure-validated, disk-backed) results are shared.
             self.completed = set(parent.completed)
@@ -1163,6 +1206,7 @@ class _ClosureValidator:
             self.completed.discard(key)
             self.active.discard(key)
             self.required_domain.pop(key[1], None)
+            self.gated_candidates.discard(key)
         for requested, resolved in tuple(self.resolved.items()):
             if requested in keys or resolved in keys:
                 self.resolved.pop(requested, None)
@@ -1198,7 +1242,19 @@ class _ClosureValidator:
                 raw_key, exiting = stack.pop()
                 key = self._resolve_key(raw_key)
                 if exiting:
-                    self._validate_after(key, self.loaded[key])
+                    try:
+                        self._validate_after(key, self.loaded[key])
+                    except StoreError as exc:
+                        if key in self.gated_candidates:
+                            path = {
+                                "event": "event",
+                                "checkpoint": "checkpoint",
+                                "commit": "commit",
+                            }[key[0]]
+                            raise ProjectionError(
+                                f"{path}: candidate closure failed: {exc}"
+                            ) from exc
+                        raise
                     self.active.remove(key)
                     self.completed.add(key)
                     continue
@@ -1815,6 +1871,7 @@ class _ClosureValidator:
         else:
             raise ReplayError("a recorded transition commit requires a parent checkpoint")
         parent = self.loaded[("checkpoint", parent_id)]
+        verifier = self.store._verifier_for_checkpoint(parent_id, self)
         previous = parent.event_head
         sequence = parent.state.history["seq"]
         lineage = checkpoint.state.position["lineage_id"]
@@ -1825,7 +1882,7 @@ class _ClosureValidator:
                 raise CorruptRecordError("commit events are not an ordered predecessor suffix")
             if event.lineage_id != lineage:
                 raise CorruptRecordError("commit event lineage does not match checkpoint state")
-            if self.store._verifier is None:
+            if verifier is None:
                 payload = self.loaded[("artifact", event.payload_ref)]
                 try:
                     state = self.store._apply_recorded_effect_body(state, event, payload.value)
@@ -1840,7 +1897,7 @@ class _ClosureValidator:
             sequence = event.seq
         if previous != checkpoint.event_head or sequence != checkpoint.state.history["seq"]:
             raise CorruptRecordError("commit events do not end at the checkpoint event cursor")
-        if self.store._verifier is None and state != checkpoint.state:
+        if verifier is None and state != checkpoint.state:
             raise ReplayError("recorded effects do not reproduce the committed post-state")
 
 

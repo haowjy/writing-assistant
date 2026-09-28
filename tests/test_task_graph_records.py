@@ -26,6 +26,7 @@ from writing_agent.task_graph_errors import (
     MissingReferenceError,
     WrongRecordDomainError,
 )
+from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_record_contracts import (
     CompactionError,
     ContextPolicyV1,
@@ -1184,7 +1185,8 @@ class RecordClosureTests(unittest.TestCase):
                     "versions_ref": new_semantics,
                 }
             )
-            chained_checkpoint = store.save_checkpoint(chained_state)
+            gated_store = TaskGraphStore(store.root, verifier=LineageGate())
+            chained_checkpoint = gated_store.save_checkpoint(chained_state)
             self.assertEqual(
                 store.load_checkpoint(chained_checkpoint).state.context_ref,
                 revision.identity(),
@@ -1202,7 +1204,7 @@ class RecordClosureTests(unittest.TestCase):
                 {**chained_state.to_dict(), "versions_ref": missing_admission}
             )
             with self.assertRaises(MissingReferenceError):
-                store.save_checkpoint(missing_admission_state)
+                gated_store.save_checkpoint(missing_admission_state)
 
             public_requirement_request = store.put_artifact(
                 {
@@ -1243,7 +1245,7 @@ class RecordClosureTests(unittest.TestCase):
                 }
             )
             with self.assertRaises(WrongRecordDomainError):
-                store.save_checkpoint(legacy_context_with_new_semantics)
+                gated_store.save_checkpoint(legacy_context_with_new_semantics)
 
             chained_context_without_semantics = EnvironmentStateV1.from_dict(
                 {**legacy_state.to_dict(), "context_ref": revision.identity()}

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Dispatch store semantics from the lineage's pinned transition version; only cache gate-owned
+  views after publication, reject malformed typed payloads at write time, and pin each rollout's
+  admission policy.
+
 - Add the single-step rollout environment for verified commits, typed port inputs, and
   post-publication view caching.
 

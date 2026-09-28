@@ -11,12 +11,22 @@ from unittest.mock import patch
 from tests.task_graph_fixtures import EntryFixture, make_entry_fixture
 from tests.test_task_graph_derive_writer import call, make_turn
 from writing_agent import task_graph_gate
-from writing_agent.task_graph import CheckpointV1, MessageV1, domain_hash, load_canonical_json
+from writing_agent.task_graph import (
+    CheckpointV1,
+    CommitV1,
+    MessageV1,
+    domain_hash,
+    load_canonical_json,
+)
 from writing_agent.task_graph_admission import AdmissionPolicyV1 as RuntimeAdmissionPolicy
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_contracts import NodeContractV1
 from writing_agent.task_graph_derive_entry import derive_entry
-from writing_agent.task_graph_errors import CorruptRecordError, ProjectionError
+from writing_agent.task_graph_errors import (
+    CorruptRecordError,
+    MissingReferenceError,
+    ProjectionError,
+)
 from writing_agent.task_graph_gate import DERIVE, LineageGate, StoreArtifactReader, ViewCache
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1,
@@ -28,12 +38,12 @@ from writing_agent.task_graph_store import TaskGraphStore
 
 
 class GateStoreFixture:
-    def __init__(self, test: unittest.TestCase, fixture=None) -> None:
+    def __init__(self, test: unittest.TestCase, fixture=None, *, cache=None) -> None:
         self.fixture = make_entry_fixture() if fixture is None else fixture
         self.directory = tempfile.TemporaryDirectory()
         test.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name) / "store"
-        self.gate = LineageGate()
+        self.gate = LineageGate(cache=cache)
         self.store = TaskGraphStore(self.root, verifier=self.gate)
         for body in self.fixture.reader.public.values():
             self.store.put_artifact(body)
@@ -99,7 +109,8 @@ class GateStoreFixture:
             parent_checkpoint=(self.root_id if expected_head is None else None),
             fault=fault,
         )
-        return commit_id, transition.view.checkpoint_id
+        published_view = self.gate.record_published(self.store, commit_id, transition.view)
+        return commit_id, published_view.checkpoint_id
 
 
 def narrow_tool_entry_fixture() -> EntryFixture:
@@ -196,17 +207,22 @@ class LineageGateTests(unittest.TestCase):
                 task_graph_gate._assemble_derives()
 
     def test_view_cache_is_a_64_entry_lru(self) -> None:
-        fixture = GateStoreFixture(self)
-        root_view = fixture.verified_view(fixture.root_id)
         cache = ViewCache(capacity=2)
-        first = replace(root_view, checkpoint_id="1" * 64)
-        second = replace(root_view, checkpoint_id="2" * 64)
-        third = replace(root_view, checkpoint_id="3" * 64)
-        cache.insert(first)
-        cache.insert(second)
-        self.assertIs(cache.get(first.root_checkpoint_id, first.checkpoint_id), first)
-        cache.insert(third)
-        self.assertIsNone(cache.get(second.root_checkpoint_id, second.checkpoint_id))
+        fixture = GateStoreFixture(self, cache=cache)
+        first = fixture.first_transition()
+        first_commit, first_id = fixture.publish(first)
+        second = fixture.next_tool_transition(first.view)
+        second_commit, second_id = fixture.publish(second, expected_head=first_commit)
+        third_view = second.view
+        third = DERIVE["WriterTurnV1"](
+            third_view, make_turn(third_view, content="done"), fixture.reader
+        )
+        _, third_id = fixture.publish(third, expected_head=second_commit)
+
+        self.assertIsNone(cache.get(fixture.root_id, first_id))
+        self.assertIsNotNone(cache.get(fixture.root_id, second_id))
+        self.assertEqual(cache.get(fixture.root_id, third_id).checkpoint_id, third_id)
+        self.assertEqual(len(cache._views), 2)
         self.assertEqual(ViewCache().capacity, 64)
 
     def test_entry_is_fixed_point_and_parentless_midrun_root_is_rejected(self) -> None:
@@ -342,11 +358,171 @@ class LineageGateTests(unittest.TestCase):
                 self.assertIsNone(fixture.gate.cache.get(fixture.root_id, candidate_id))
                 self.assertIsNone(fixture.store.read_head(state.position["lineage_id"]))
 
+    def test_candidate_closure_forgeries_are_projection_errors(self) -> None:
+        fixture = GateStoreFixture(self)
+        honest = fixture.first_transition()
+        fixture.persist_artifacts(honest)
+
+        other_params = replace(fixture.fixture.params, lineage_id="rollout-other", visit_id="other")
+        other_entry = derive_entry(
+            fixture.fixture.graph,
+            fixture.fixture.node_id,
+            other_params,
+            fixture.fixture.reader,
+        )
+        for artifact in other_entry.artifacts:
+            if artifact.kind in {"context_node", "context_revision"}:
+                fixture.store.persist(artifact.value)
+                continue
+            value = (
+                load_canonical_json(artifact.value)
+                if artifact.value_kind == "canonical_json"
+                else artifact.value.to_wire()
+            )
+            fixture.store.put_artifact(value, private=artifact.kind == "private")
+        other_root = fixture.store.save_checkpoint(other_entry.state)
+        other_view = fixture.gate.view(fixture.store, other_root)
+        other_transition = DERIVE["WriterTurnV1"](
+            other_view,
+            make_turn(
+                other_view,
+                content="",
+                calls=(call("read_file", {"path": "draft.txt"}),),
+            ),
+            fixture.reader,
+        )
+        fixture.persist_artifacts(other_transition)
+
+        versions = fixture.store.get_artifact(honest.state.versions_ref)
+        versions["tool_spec"] = {"max_file_bytes": 64_000, "max_workspace_bytes": 2048}
+        changed_versions_ref = fixture.store.put_artifact(versions)
+        changed_event = replace(honest.event, versions_ref=changed_versions_ref, id=None)
+        cases = (
+            (
+                "C2",
+                lambda: fixture.store.publish(
+                    "rollout-fixture",
+                    None,
+                    (other_transition.event,),
+                    honest.state,
+                    parent_checkpoint=fixture.root_id,
+                ),
+            ),
+            (
+                "C3",
+                lambda: fixture.store.publish(
+                    "rollout-other",
+                    None,
+                    (honest.event,),
+                    other_transition.state,
+                    parent_checkpoint=other_root,
+                ),
+            ),
+            (
+                "E3",
+                lambda: fixture.store.publish(
+                    "rollout-fixture",
+                    None,
+                    (changed_event,),
+                    honest.state,
+                    parent_checkpoint=fixture.root_id,
+                ),
+            ),
+        )
+        for case, action in cases:
+            with self.subTest(case=case), self.assertRaises(ProjectionError):
+                action()
+            self.assertIsNone(fixture.store.read_head("rollout-fixture"))
+            self.assertIsNone(fixture.store.read_head("rollout-other"))
+
+    def test_malformed_record_payloads_fail_at_write_and_derive_errors_keep_causes(self) -> None:
+        fixture = GateStoreFixture(self)
+        with self.assertRaises(ValueError):
+            fixture.store.put_artifact(
+                {"record_type": "ToolObservationV1", "call_id": "call-1", "dispatch": {}}
+            )
+
+        transition = fixture.first_transition()
+        fixture.persist_artifacts(transition)
+        for failure in (IndexError("missing list item"), AttributeError("missing field")):
+
+            def broken_derive(*_args, error=failure):
+                raise error
+
+            with (
+                patch.dict(DERIVE, {"WriterTurnV1": broken_derive}),
+                fixture.store.operation(),
+                self.assertRaises(ProjectionError) as rejected,
+            ):
+                fixture.gate._derive(
+                    fixture.store,
+                    fixture.gate.view(fixture.store, fixture.root_id),
+                    transition.event,
+                    StoreArtifactReader(fixture.store),
+                )
+            self.assertIsInstance(rejected.exception.__cause__, type(failure))
+
+    def test_v1_semantics_refuse_verifierless_store_including_terminal_root(self) -> None:
+        fixture = GateStoreFixture(self)
+        legacy_store = TaskGraphStore(fixture.root)
+        transition = fixture.first_transition()
+        fixture.persist_artifacts(transition)
+        forged = replace(
+            transition.state,
+            position={**transition.state.position, "phase": "terminal"},
+        )
+
+        with self.assertRaises(ProjectionError):
+            legacy_store.publish(
+                "rollout-fixture",
+                None,
+                (transition.event,),
+                forged,
+                parent_checkpoint=fixture.root_id,
+            )
+        self.assertIsNone(legacy_store.read_head("rollout-fixture"))
+        with self.assertRaises(ProjectionError):
+            legacy_store.save_checkpoint(forged)
+        with self.assertRaises(ProjectionError):
+            legacy_store.restore(fixture.root_id, fixture.root.parent / "no-verifier-workspace")
+
+        terminal_root = replace(
+            fixture.fixture.state,
+            position={**fixture.fixture.state.position, "phase": "terminal"},
+        )
+        with self.assertRaises(ProjectionError):
+            legacy_store.save_checkpoint(terminal_root)
+        self.assertIsNone(legacy_store.read_head("rollout-fixture"))
+
+    def test_initial_commit_cannot_start_from_midlineage_and_branch_is_refused_under_gate(
+        self,
+    ) -> None:
+        fixture = GateStoreFixture(self)
+        midlineage = fixture.store.save_checkpoint(fixture.fixture.state, parent=fixture.root_id)
+        transition = fixture.first_transition()
+        fixture.persist_artifacts(transition)
+        with self.assertRaises(ProjectionError):
+            fixture.store.publish(
+                "rollout-fixture",
+                None,
+                (transition.event,),
+                transition.state,
+                parent_checkpoint=midlineage,
+            )
+        with self.assertRaises(ProjectionError):
+            fixture.store.branch(
+                fixture.root_id,
+                "rollout-branch",
+                (transition.event,),
+                transition.state,
+            )
+        self.assertIsNone(fixture.store.read_head("rollout-fixture"))
+        self.assertIsNone(fixture.store.read_head("rollout-branch"))
+
     def test_cached_view_is_not_a_validation_memo_and_warm_view_uses_checkpoint_id(self) -> None:
         fixture = GateStoreFixture(self)
         honest = fixture.first_transition()
         _, honest_id = fixture.publish(honest)
-        fixture.gate.cache.insert(honest.view)
 
         derive = DERIVE["WriterTurnV1"]
         calls = 0
@@ -425,7 +601,6 @@ class LineageGateTests(unittest.TestCase):
         fixture = GateStoreFixture(self)
         first = fixture.first_transition()
         first_commit, _ = fixture.publish(first)
-        fixture.gate.cache.insert(first.view)
         second = fixture.next_tool_transition(first.view)
         fixture.persist_artifacts(second)
         derive = DERIVE["ToolObservationV1"]
@@ -437,7 +612,7 @@ class LineageGateTests(unittest.TestCase):
             return derive(*args)
 
         with patch.dict(DERIVE, {"ToolObservationV1": counted}):
-            fixture.store.publish(
+            commit_id = fixture.store.publish(
                 "rollout-fixture",
                 first_commit,
                 (second.event,),
@@ -446,16 +621,14 @@ class LineageGateTests(unittest.TestCase):
 
         self.assertEqual(calls, 1)
         self.assertIsNone(fixture.gate.cache.get(fixture.root_id, second.view.checkpoint_id))
-        fixture.gate.cache.insert(second.view)
-        self.assertIs(
-            fixture.gate.cache.get(fixture.root_id, second.view.checkpoint_id), second.view
-        )
+        # The store's returned candidate is the only object the gate will cache.
+        gate_view = fixture.gate.record_published(fixture.store, commit_id, second.view)
+        self.assertIs(fixture.gate.cache.get(fixture.root_id, gate_view.checkpoint_id), gate_view)
 
     def test_warm_gate_rejects_forged_outcome_sibling_too(self) -> None:
         fixture = GateStoreFixture(self)
         honest = fixture.first_transition()
         _, honest_id = fixture.publish(honest)
-        fixture.gate.cache.insert(honest.view)
         forged_outcome = fixture.store.get_artifact(honest.state.outcome_ref)
         forged_outcome["stop_reason"] = "forged"
         forged_state = replace(
@@ -534,6 +707,19 @@ class LineageGateTests(unittest.TestCase):
                 versions_ref,
             )
 
+    def test_admission_cache_does_not_reuse_a_graph_across_store_roots(self) -> None:
+        fixture = GateStoreFixture(self)
+        state = fixture.fixture.state
+        with fixture.store.operation():
+            fixture.gate._admitted_graph(fixture.store, state.instance_ref, state.versions_ref)
+
+        other_store = TaskGraphStore(fixture.root.parent / "other-store", verifier=fixture.gate)
+        versions = fixture.store.get_artifact(state.versions_ref)
+        other_store.put_artifact(fixture.store.get_artifact(versions["admission_policy_ref"]))
+        other_store.put_artifact(versions)
+        with other_store.operation(), self.assertRaises(MissingReferenceError):
+            fixture.gate._admitted_graph(other_store, state.instance_ref, state.versions_ref)
+
     def test_narrow_pinned_admission_rejects_a_forged_tool_execution_on_cold_restore(
         self,
     ) -> None:
@@ -576,7 +762,6 @@ class LineageGateTests(unittest.TestCase):
         fixture = GateStoreFixture(self)
         first = fixture.first_transition()
         first_commit, first_id = fixture.publish(first)
-        fixture.gate.cache.insert(first.view)
         second = fixture.next_tool_transition(first.view)
         fixture.persist_artifacts(second)
         forged_payload = replace(
@@ -633,7 +818,6 @@ class LineageGateTests(unittest.TestCase):
         fixture = GateStoreFixture(self)
         transition = fixture.first_transition()
         _, checkpoint_id = fixture.publish(transition)
-        fixture.gate.cache.insert(transition.view)
         path = fixture.store._artifact_path(transition.state.budgets_ref, False)
         path.write_bytes(b"tampered")
 
@@ -644,6 +828,47 @@ class LineageGateTests(unittest.TestCase):
         cold_store = TaskGraphStore(fixture.root, verifier=cold_gate)
         with tempfile.TemporaryDirectory() as workspace, self.assertRaises(CorruptRecordError):
             cold_store.restore(checkpoint_id, Path(workspace) / "runtime")
+
+    def test_record_published_rejects_untrusted_views_and_phantom_checkpoints(self) -> None:
+        fixture = GateStoreFixture(self)
+        self.assertFalse(hasattr(fixture.gate.cache, "insert"))
+        transition = fixture.first_transition()
+        commit_id, checkpoint_id = fixture.publish(transition)
+        published_view = fixture.gate.view(fixture.store, checkpoint_id)
+        lying = replace(
+            published_view,
+            budget={**dict(published_view.budget), "limits": {"writer_turns": 10**9}},
+        )
+        phantom = replace(published_view, checkpoint_id="f" * 64)
+
+        for untrusted in (lying, phantom):
+            with (
+                self.subTest(checkpoint=untrusted.checkpoint_id),
+                self.assertRaises(ProjectionError),
+            ):
+                fixture.gate.record_published(fixture.store, commit_id, untrusted)
+        self.assertEqual(fixture.store.read_head("rollout-fixture"), commit_id)
+        self.assertIs(fixture.gate.cache.get(fixture.root_id, checkpoint_id), published_view)
+
+    def test_record_published_does_not_cache_a_candidate_without_a_published_head(self) -> None:
+        fixture = GateStoreFixture(self)
+        transition = fixture.first_transition()
+        fixture.persist_artifacts(transition)
+        with fixture.store.operation():
+            fixture.gate.verify_commit(
+                fixture.store, fixture.root_id, (transition.event,), transition.state
+            )
+        checkpoint = CheckpointV1(
+            parents=(fixture.root_id,), state=transition.state, event_head=transition.event.id
+        )
+        commit = CommitV1(events=(transition.event.id,), checkpoint=checkpoint.identity())
+        fixture.store.persist(checkpoint)
+        fixture.store.persist(commit)
+
+        with self.assertRaises(ProjectionError):
+            fixture.gate.record_published(fixture.store, commit.identity(), transition.view)
+        self.assertIsNone(fixture.store.read_head("rollout-fixture"))
+        self.assertIsNone(fixture.gate.cache.get(fixture.root_id, checkpoint.identity()))
 
 
 if __name__ == "__main__":

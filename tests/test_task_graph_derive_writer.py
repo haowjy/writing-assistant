@@ -19,9 +19,6 @@ from writing_agent.task_graph_record_contracts import (
     _group_seed,
 )
 from writing_agent.task_graph_records import (
-    ContextContentV1,
-    ContextRevisionV1,
-    OutcomeV1,
     ToolObservationV1,
     WriterRequestV1,
     WriterTurnV1,
@@ -35,8 +32,6 @@ from writing_agent.task_graph_sampling import (
 from writing_agent.task_graph_transition import (
     CallSource,
     CheckpointChain,
-    ContextView,
-    LineageMode,
     LineageView,
     ToolSpec,
 )
@@ -44,41 +39,11 @@ from writing_agent.task_graph_transition import (
 
 def make_view(fixture=None) -> tuple[Any, LineageView]:
     fixture = make_entry_fixture() if fixture is None else fixture
-    reader = fixture.reader
-    revision = ContextRevisionV1.from_dict(
-        reader.artifact(fixture.state.context_ref, domain="context_revision")
-    )
-    content = ContextContentV1.from_dict(
-        reader.artifact(revision.content_ref, domain="context_node")
-    )
-    context = ContextView(
-        messages=content.messages,
-        sources=tuple(None for _ in content.messages),
-        tools=content.tools,
-        rendering=content.rendering,
-        content_ref=revision.content_ref,
-        revision_ref=fixture.state.context_ref,
-    )
-    checkpoint_id = CheckpointV1(state=fixture.state, event_head=None).identity()
-    node = fixture.graph.node(fixture.node_id)
-    view = LineageView(
-        root_checkpoint_id=checkpoint_id,
-        checkpoint_id=checkpoint_id,
-        head_event_id=None,
-        state=fixture.state,
-        budget=reader.artifact(fixture.state.budgets_ref),
-        outcome=OutcomeV1.from_dict(reader.artifact(fixture.state.outcome_ref)),
-        check_statuses={},
-        context=context,
-        raw_call_ids=frozenset(),
-        call_sources={},
-        samples=(),
-        ancestry=CheckpointChain(checkpoint_id, context),
-        node=node,
-        mode=LineageMode.for_node(node),
-        tool_spec=ToolSpec(128_000, 4_096),
-    )
-    return fixture, view
+    from writing_agent.task_graph_derive_entry import derive_entry
+
+    return fixture, derive_entry(
+        fixture.graph, fixture.node_id, fixture.params, fixture.reader
+    ).view
 
 
 def make_turn(

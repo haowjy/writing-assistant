@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
-from threading import RLock
+from threading import RLock, local
 from typing import Any
 
 from writing_agent.task_graph import CheckpointV1, EventV1
@@ -22,7 +22,7 @@ from writing_agent.task_graph_derive_context import DERIVES as CONTEXT_DERIVES
 from writing_agent.task_graph_derive_entry import derive_entry, params_of
 from writing_agent.task_graph_derive_outcome import DERIVES as OUTCOME_DERIVES
 from writing_agent.task_graph_derive_writer import DERIVES as WRITER_DERIVES
-from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_errors import CorruptRecordError, ProjectionError, StoreError
 from writing_agent.task_graph_record_contracts import (
     SEMANTICS_V1,
     ExecutionVersionsV1,
@@ -30,17 +30,12 @@ from writing_agent.task_graph_record_contracts import (
 from writing_agent.task_graph_records import (
     RECORD_TYPES,
     AdmissionPolicyV1,
-    ContextRevisionV1,
+    EnvironmentStepV1,
     MaterializedContextV1,
-    OutcomeV1,
 )
 from writing_agent.task_graph_transition import (
     ArtifactReader,
-    CheckpointChain,
-    ContextView,
-    LineageMode,
     LineageView,
-    ToolSpec,
     Transition,
     first_difference,
 )
@@ -60,6 +55,28 @@ def _assemble_derives() -> dict[DeriveKey, Derive]:
 
 
 DERIVE = _assemble_derives()
+
+
+def derive_input(view: LineageView, input_record: Any, reader: ArtifactReader) -> Transition:
+    """Dispatch one typed transition input through the shared derive registry."""
+    try:
+        record_type = getattr(input_record, "RECORD_TYPE", None)
+        codec = RECORD_TYPES.get(record_type) if isinstance(record_type, str) else None
+        if not isinstance(codec, type) or not isinstance(input_record, codec):
+            raise ProjectionError("input.record_type: input is not a registered transition record")
+        key: DeriveKey = record_type
+        if isinstance(input_record, EnvironmentStepV1):
+            key = (record_type, input_record.directive["kind"])
+        derive = DERIVE.get(key)
+        if derive is None:
+            raise ProjectionError(f"input.record_type: no derive route for {key!r}")
+        return derive(view, input_record, reader)
+    except ProjectionError:
+        raise
+    except Exception as exc:
+        raise ProjectionError(
+            f"input.record_type: recorded input cannot be derived: {exc}"
+        ) from exc
 
 
 class StoreArtifactReader:
@@ -116,13 +133,15 @@ class ViewCache:
                 self._views.move_to_end(key)
             return view
 
-    def insert(self, view: LineageView) -> None:
-        """Insert only after the caller has confirmed checkpoint publication."""
+    def _insert(self, view: LineageView) -> None:
+        """Insert a view after LineageGate has verified its publication."""
         key = (view.root_checkpoint_id, view.checkpoint_id)
         with self._lock:
             existing = self._views.get(key)
             if existing is not None and existing != view:
-                raise ProjectionError("published checkpoint produced conflicting cached views")
+                raise ProjectionError(
+                    "checkpoint.identity: published checkpoint produced conflicting views"
+                )
             self._views[key] = view
             self._views.move_to_end(key)
             while len(self._views) > self.capacity:
@@ -134,8 +153,9 @@ class LineageGate:
 
     def __init__(self, *, cache: ViewCache | None = None) -> None:
         self.cache = cache or ViewCache()
-        self._admitted: dict[tuple[str, str], AdmittedGraphV1] = {}
+        self._admitted: dict[tuple[str, str, str], AdmittedGraphV1] = {}
         self._admission_lock = RLock()
+        self._pending = local()
 
     def view(self, store: Any, checkpoint_id: str, *, root: str | None = None) -> LineageView:
         """Verify a checkpoint from its admitted entry and return its immutable view."""
@@ -147,7 +167,7 @@ class LineageGate:
         chain.reverse()
         root_id, root_checkpoint = chain[0]
         if root is not None and root != root_id:
-            raise ProjectionError("checkpoint does not descend from the requested root")
+            raise ProjectionError("checkpoint.parents: checkpoint does not descend from root")
 
         cached_index = None
         view = None
@@ -157,11 +177,40 @@ class LineageGate:
                 cached_index, view = index, cached
                 break
         if view is None:
-            view = self._entry_view(store, root_id, root_checkpoint)
+            reader = StoreArtifactReader(store)
+            try:
+                graph, _ = self._admitted_graph(
+                    store,
+                    root_checkpoint.state.instance_ref,
+                    root_checkpoint.state.versions_ref,
+                    reader=reader,
+                )
+                entry = derive_entry(
+                    graph,
+                    root_checkpoint.state.position["node_id"],
+                    params_of(root_checkpoint.state, reader),
+                    reader,
+                )
+            except ProjectionError:
+                raise
+            except Exception as exc:
+                raise ProjectionError(
+                    f"state.versions_ref: lineage root cannot be derived: {exc}"
+                ) from exc
+            if root_checkpoint.artifact_refs:
+                raise ProjectionError(
+                    "checkpoint.artifact_refs: lineage root has supplemental refs"
+                )
+            if entry.state.identity() != root_checkpoint.state.identity():
+                path = first_difference(entry.state, root_checkpoint.state, path="state") or "state"
+                raise ProjectionError(f"lineage root is not an admitted entry: {path}")
+            view = entry.view
             cached_index = 0
 
-        for checkpoint_id, checkpoint in chain[cached_index + 1 :]:
-            view = self._fold_checkpoint(store, view, checkpoint_id, checkpoint)
+        for index in range(cached_index + 1, len(chain)):
+            checkpoint_id, checkpoint = chain[index]
+            parent = chain[index - 1][1]
+            view = self._fold_checkpoint(store, view, parent, checkpoint_id, checkpoint)
         return view
 
     def verify_commit(
@@ -170,122 +219,89 @@ class LineageGate:
         base_checkpoint_id: str,
         events: Sequence[EventV1],
         next_state: Any,
-    ) -> None:
-        """Verify one candidate event against a verified base; never cache it."""
+    ) -> LineageView:
+        """Verify one candidate event against a verified base; return its gate view."""
         if len(events) != 1:
-            raise ProjectionError("runtime commits must contain exactly one event")
+            raise ProjectionError("commit.events: runtime commits must contain one event")
         base = store.load_checkpoint(base_checkpoint_id)
         before = self.view(store, base_checkpoint_id)
-        event = events[0]
-        if event.previous != base.event_head or event.seq != base.state.history["seq"] + 1:
-            raise ProjectionError("candidate event is not the next event after its base")
-        transition = self._derive(store, before, event)
-        self._compare_event(transition.event, event)
-        self._compare_state(transition.state, next_state)
+        candidate = self._step(store, before, base, events[0], next_state).view
+        self._pending.candidate = candidate
+        return candidate
+
+    def record_published(self, store: Any, commit_id: str, view: LineageView) -> LineageView:
+        """Cache this thread's gate candidate after matching its published identities."""
+        try:
+            commit = store.load_commit(commit_id)
+            if commit.checkpoint != view.checkpoint_id:
+                raise ProjectionError("commit.checkpoint: differs from candidate view")
+            checkpoint = store.load_checkpoint(commit.checkpoint)
+            if store.read_head(checkpoint.state.position["lineage_id"]) != commit_id:
+                raise ProjectionError("commit.head: candidate is not the published lineage head")
+        except CorruptRecordError:
+            raise
+        except StoreError as exc:
+            raise ProjectionError(f"commit.id: published candidate cannot be loaded: {exc}") from exc
+        if checkpoint.state.identity() != view.state.identity():
+            raise ProjectionError("checkpoint.state: published state differs from candidate")
+        candidate = getattr(self._pending, "candidate", None)
+        if candidate is None or candidate.checkpoint_id != commit.checkpoint:
+            raise ProjectionError("view.checkpoint_id: no gate-verified candidate")
+        if candidate.state.identity() != checkpoint.state.identity():
+            raise ProjectionError("checkpoint.state: gate candidate differs from published state")
+        del self._pending.candidate
+        self.cache._insert(candidate)
+        return candidate
 
     def verify_checkpoint(self, store: Any, checkpoint_id: str) -> None:
         """Verify the checkpoint's full lineage before the store materializes it."""
         self.view(store, checkpoint_id)
 
-    def _entry_view(self, store: Any, root_id: str, root: CheckpointV1) -> LineageView:
-        reader = StoreArtifactReader(store)
-        state = root.state
-        if root.artifact_refs:
-            raise ProjectionError("lineage root differs at checkpoint.artifact_refs")
-        try:
-            graph, versions = self._admitted_graph(store, state.instance_ref, state.versions_ref)
-            entry = derive_entry(
-                graph,
-                state.position["node_id"],
-                params_of(state, reader),
-                reader,
-            )
-        except ProjectionError:
-            raise
-        except (AdmissionError, KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("lineage root is not an admitted entry") from exc
-        if entry.state.identity() != state.identity():
-            path = first_difference(entry.state, state, path="state") or "state"
-            raise ProjectionError(f"lineage root is not an admitted entry: {path}")
-
-        node = graph.node(state.position["node_id"])
-        materialized = reader.context(state.context_ref)
-        revision = ContextRevisionV1.from_dict(
-            reader.artifact(state.context_ref, domain="context_revision")
-        )
-        context = ContextView(
-            messages=materialized.messages,
-            sources=tuple(None for _ in materialized.messages),
-            tools=materialized.tools,
-            rendering=materialized.rendering,
-            content_ref=revision.content_ref,
-            revision_ref=state.context_ref,
-        )
-        return LineageView(
-            root_checkpoint_id=root_id,
-            checkpoint_id=root_id,
-            head_event_id=None,
-            state=state,
-            budget=reader.artifact(state.budgets_ref),
-            outcome=OutcomeV1.from_dict(reader.artifact(state.outcome_ref)),
-            check_statuses={},
-            context=context,
-            raw_call_ids=frozenset(),
-            call_sources={},
-            samples=(),
-            ancestry=CheckpointChain(root_id, context),
-            node=node,
-            mode=LineageMode.for_node(node),
-            tool_spec=ToolSpec(**dict(versions.tool_spec)),
-        )
-
     def _admitted_graph(
-        self, store: Any, instance_ref: str, versions_ref: str
+        self,
+        store: Any,
+        instance_ref: str,
+        versions_ref: str,
+        *,
+        reader: StoreArtifactReader | None = None,
     ) -> tuple[AdmittedGraphV1, ExecutionVersionsV1]:
-        reader = StoreArtifactReader(store)
+        reader = reader or StoreArtifactReader(store)
         raw_versions = reader.artifact(versions_ref)
         try:
             versions = ExecutionVersionsV1.from_dict(raw_versions)
             if versions.transition_semantics != SEMANTICS_V1:
                 raise ValueError("unsupported transition semantics")
-            key = (instance_ref, versions.admission_policy_ref)
+            key = (str(store.root), instance_ref, versions.admission_policy_ref)
             with self._admission_lock:
                 graph = self._admitted.get(key)
             if graph is None:
                 instance = store.load_instance(instance_ref)
                 wire = AdmissionPolicyV1.from_dict(reader.artifact(versions.admission_policy_ref))
-                policy = RuntimeAdmissionPolicy(
-                    writer_family=wire.writer_family,
-                    allowed_tools=frozenset(wire.allowed_tools),
-                    controller_versions=frozenset(wire.controller_versions),
-                    check_versions=frozenset(wire.check_versions),
-                )
+                policy = wire.to_admission_policy(RuntimeAdmissionPolicy)
                 graph = admit_graph(instance, StoreArtifactResolver(store), policy=policy)
                 with self._admission_lock:
                     graph = self._admitted.setdefault(key, graph)
             return graph, versions
         except (AdmissionError, KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("lineage admission or transition semantics is invalid") from exc
+            raise ProjectionError(
+                f"state.versions_ref: lineage admission or transition semantics is invalid: {exc}"
+            ) from exc
 
     def _fold_checkpoint(
         self,
         store: Any,
         before: LineageView,
+        parent: CheckpointV1,
         checkpoint_id: str,
         checkpoint: CheckpointV1,
     ) -> LineageView:
         parent_id = before.checkpoint_id
-        parent = store.load_checkpoint(parent_id)
         if checkpoint.parents != (parent_id,):
-            raise ProjectionError("checkpoint ancestry is not contiguous")
+            raise ProjectionError("checkpoint.parents: checkpoint ancestry is not contiguous")
         if checkpoint.state.history["seq"] != parent.state.history["seq"] + 1:
-            raise ProjectionError("runtime checkpoint must advance exactly one event")
+            raise ProjectionError("state.history.seq: checkpoint must advance one event")
         event = store.load_event(checkpoint.event_head)
-        if event.previous != parent.event_head or event.seq != parent.state.history["seq"] + 1:
-            raise ProjectionError("checkpoint event is not the next event after its parent")
-        transition = self._derive(store, before, event)
-        self._compare_event(transition.event, event)
-        self._compare_state(transition.state, checkpoint.state)
+        transition = self._step(store, before, parent, event, checkpoint.state)
         if transition.view.checkpoint_id != checkpoint_id:
             path = (
                 first_difference(
@@ -300,8 +316,26 @@ class LineageGate:
             raise ProjectionError(f"derived checkpoint differs at {path}")
         return transition.view
 
-    def _derive(self, store: Any, view: LineageView, event: EventV1) -> Transition:
-        reader = StoreArtifactReader(store)
+    def _step(
+        self,
+        store: Any,
+        before: LineageView,
+        parent: CheckpointV1,
+        event: EventV1,
+        state: Any,
+    ) -> Transition:
+        if event.previous != parent.event_head:
+            raise ProjectionError("event.previous: candidate is not the parent's successor")
+        if event.seq != parent.state.history["seq"] + 1:
+            raise ProjectionError("event.seq: candidate is not the parent's successor")
+        transition = self._derive(store, before, event, StoreArtifactReader(store))
+        self._compare_event(transition.event, event)
+        self._compare_state(transition.state, state)
+        return transition
+
+    def _derive(
+        self, store: Any, view: LineageView, event: EventV1, reader: StoreArtifactReader
+    ) -> Transition:
         try:
             payload = reader.artifact(event.payload_ref)
             if not isinstance(payload, Mapping):
@@ -311,17 +345,13 @@ class LineageGate:
             if not isinstance(codec, type):
                 raise ValueError("unknown input record type")
             input_record = codec.from_dict(dict(payload))
-            key: DeriveKey = record_type
-            if record_type == "EnvironmentStepV1":
-                key = (record_type, input_record.directive["kind"])
-            derive = DERIVE.get(key)
-            if derive is None:
-                raise ValueError("input record has no derive route")
-            return derive(view, input_record, reader)
+            return derive_input(view, input_record, reader)
         except ProjectionError:
             raise
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("recorded input cannot be derived") from exc
+        except Exception as exc:
+            raise ProjectionError(
+                f"event.payload_ref: recorded input cannot be derived: {exc}"
+            ) from exc
 
     @staticmethod
     def _compare_event(expected: EventV1, actual: EventV1) -> None:
@@ -340,4 +370,4 @@ class LineageGate:
             raise ProjectionError(f"derived state differs at {path}")
 
 
-__all__ = ["DERIVE", "LineageGate", "StoreArtifactReader", "ViewCache"]
+__all__ = ["DERIVE", "LineageGate", "StoreArtifactReader", "ViewCache", "derive_input"]

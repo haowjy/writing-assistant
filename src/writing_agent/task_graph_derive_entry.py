@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from writing_agent.task_graph import (
+    CheckpointV1,
     EnvironmentStateV1,
     MessageV1,
     Phase,
@@ -26,7 +27,15 @@ from writing_agent.task_graph_records import (
     ExternalInputsV1,
     OutcomeV1,
 )
-from writing_agent.task_graph_transition import ArtifactReader, DerivedArtifact
+from writing_agent.task_graph_transition import (
+    ArtifactReader,
+    CheckpointChain,
+    ContextView,
+    DerivedArtifact,
+    LineageMode,
+    LineageView,
+    ToolSpec,
+)
 
 # Entry prompt is pinned by transition_semantics. Keep it byte-identical to the
 # legacy entry prompt while the old and new runtimes coexist.
@@ -124,6 +133,7 @@ def _entry_files(reader: ArtifactReader, files_ref: str) -> dict[str, str]:
 class EntryV1:
     state: EnvironmentStateV1
     artifacts: tuple[DerivedArtifact, ...]
+    view: LineageView
 
 
 def derive_entry(
@@ -277,7 +287,36 @@ def derive_entry(
             context_revision.identity(), context_revision, "context_revision", "record"
         ),
     )
-    return EntryV1(state, artifacts)
+    checkpoint_id = CheckpointV1(state=state, event_head=None).identity()
+    context = ContextView(
+        messages=messages,
+        sources=tuple(None for _ in messages),
+        tools=tools,
+        rendering=rendering,
+        content_ref=context_content.identity(),
+        revision_ref=context_revision.identity(),
+    )
+    versions = reader.artifact(params.versions_ref)
+    if not isinstance(versions, Mapping) or not isinstance(versions.get("tool_spec"), Mapping):
+        raise TypeError("entry execution versions must contain a tool_spec object")
+    view = LineageView(
+        root_checkpoint_id=checkpoint_id,
+        checkpoint_id=checkpoint_id,
+        head_event_id=None,
+        state=state,
+        budget=budget,
+        outcome=outcome,
+        check_statuses={},
+        context=context,
+        raw_call_ids=frozenset(),
+        call_sources={},
+        samples=(),
+        ancestry=CheckpointChain(checkpoint_id, context),
+        node=node,
+        mode=LineageMode.for_node(node),
+        tool_spec=ToolSpec(**dict(versions["tool_spec"])),
+    )
+    return EntryV1(state, artifacts, view)
 
 
 __all__ = [

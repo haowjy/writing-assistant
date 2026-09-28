@@ -185,6 +185,10 @@ lineage head, session seals and gate; a root entry with no head is accepted only
 I3 fixed-point check. A port view must still be that verified published head (or the
 verified root), never a merely derived candidate.
 
+The environment receives its operator admission policy at construction. `enter` requires the
+entry parameters' pinned policy ref to equal that policy's wire-record identity; `open` and
+`verify` reject lineages pinned to another policy.
+
 `commit` derives from one view, then persists the input and non-context artifacts, event,
 context revision, and finally calls `store.publish` with no `artifact_refs`. The gate
 re-derives under the store lock. The candidate view enters `ViewCache` only after publish

@@ -11,6 +11,7 @@ from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.agent import SYSTEM_PROMPT as AGENT_SYSTEM_PROMPT
 from writing_agent.task_graph import MessageV1, canonical_bytes, load_canonical_json
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry, params_of
+from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_gate import StoreArtifactReader as StoreReader
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1,
@@ -124,7 +125,7 @@ class DeriveEntryTests(unittest.TestCase):
     def test_params_of_and_entry_fixed_point_use_real_store_context_reader(self) -> None:
         fixture = make_entry_fixture()
         with TemporaryDirectory() as directory:
-            store = TaskGraphStore(Path(directory) / "store")
+            store = TaskGraphStore(Path(directory) / "store", verifier=LineageGate())
             for body in fixture.reader.public.values():
                 store.put_artifact(body)
             for body in fixture.reader.private.values():

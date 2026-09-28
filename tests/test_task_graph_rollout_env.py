@@ -35,6 +35,9 @@ from writing_agent.task_graph_gate import DERIVE, LineageGate
 from writing_agent.task_graph_group import POLICY_FIELDS, derive_group_seed
 from writing_agent.task_graph_record_contracts import GroupMemberSpecV1, GroupSpecV1
 from writing_agent.task_graph_records import (
+    AdmissionPolicyV1 as AdmissionPolicyRecord,
+)
+from writing_agent.task_graph_records import (
     ContextOperationInputV1,
     EnvironmentStepV1,
     MemberStartV1,
@@ -241,7 +244,9 @@ def _assert_fault_matrix(
             shutil.copytree(environment.store.root, clone_root / "store")
             gate = LineageGate()
             store = TaskGraphStore(clone_root / "store", verifier=gate)
-            env = RolloutEnvironment(store, environment.graph, None, gate)
+            env = RolloutEnvironment(
+                store, environment.graph, None, gate, environment.admission_policy
+            )
             cloned_runtime = type(runtime)(
                 runtime.checkpoint_id, runtime.state, runtime.context, runtime.workspace
             )
@@ -289,7 +294,8 @@ def _assert_fault_matrix(
                 args = captured["args"]
                 retry_kwargs = captured["kwargs"]
                 if stage == "after_head_publication":
-                    commit_id = publish(*args, **retry_kwargs)
+                    published = publish(*args, **retry_kwargs)
+                    commit_id = published[0] if isinstance(published, tuple) else published
                     test.assertEqual(commit_id, head)
                 elif entry_checkpoint is None:
                     commit_id = env.commit(cloned_runtime, input_record).commit_id
@@ -322,8 +328,67 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.gate = LineageGate()
         self.store = TaskGraphStore(self.root / "store", verifier=self.gate)
         self.entry = _persist_fixture(self.store, self.fixture)
-        self.environment = RolloutEnvironment(self.store, self.fixture.graph, None, self.gate)
+        self.environment = RolloutEnvironment(
+            self.store, self.fixture.graph, None, self.gate, self.fixture.graph.policy
+        )
         self.runtime = self.environment.open(self.entry, self.root / "entry-workspace")
+
+    def _alternate_policy_entry(self, lineage: str):
+        policy = replace(
+            self.fixture.graph.policy,
+            allowed_tools=self.fixture.graph.policy.allowed_tools - {"ask_author"},
+        )
+        graph = admit_graph(
+            self.fixture.graph.instance,
+            MappingArtifactResolver(self.fixture.reader.public, self.fixture.reader.private),
+            policy=policy,
+        )
+        policy_ref = self.store.put_artifact(
+            AdmissionPolicyRecord.from_admission_policy(policy).to_wire()
+        )
+        versions = self.store.get_artifact(self.fixture.state.versions_ref)
+        versions["admission_policy_ref"] = policy_ref
+        versions_ref = self.store.put_artifact(versions)
+        params = replace(
+            self.fixture.params,
+            lineage_id=lineage,
+            visit_id=lineage,
+            versions_ref=versions_ref,
+        )
+        return graph, policy, params
+
+    def _enter_alternate_policy(self, lineage: str):
+        graph, policy, params = self._alternate_policy_entry(lineage)
+        environment = RolloutEnvironment(self.store, graph, None, self.gate, policy)
+        runtime = environment.enter(
+            self.fixture.node_id,
+            params,
+            self.root / f"{lineage}-workspace",
+        )
+        return environment, runtime
+
+    def test_enter_rejects_entry_params_with_a_different_admission_policy(self):
+        _, _, params = self._alternate_policy_entry("policy-enter")
+        with self.assertRaises(ProjectionError):
+            self.environment.enter(
+                self.fixture.node_id,
+                params,
+                self.root / "mismatched-entry-workspace",
+            )
+        self.assertIsNone(self.store.read_head("policy-enter"))
+
+    def test_open_rejects_a_lineage_pinned_to_a_different_admission_policy(self):
+        _, runtime = self._enter_alternate_policy("policy-open")
+        with self.assertRaises(ProjectionError):
+            self.environment.open(
+                runtime.checkpoint_id,
+                self.root / "mismatched-open-workspace",
+            )
+
+    def test_verify_rejects_a_lineage_pinned_to_a_different_admission_policy(self):
+        _, runtime = self._enter_alternate_policy("policy-verify")
+        with self.assertRaises(ProjectionError):
+            self.environment.verify(runtime)
 
     def test_writer_and_tool_commits_close_without_artifact_refs_and_fold_once(self):
         view = self.environment.verify(self.runtime)
@@ -431,7 +496,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         gate = LineageGate()
         store = TaskGraphStore(root / "store", verifier=gate)
         entry = _persist_fixture(store, fixture)
-        env = RolloutEnvironment(store, fixture.graph, None, gate)
+        env = RolloutEnvironment(store, fixture.graph, None, gate, fixture.graph.policy)
         runtime = env.open(entry, root / "workspace")
 
         ask = call(
@@ -576,7 +641,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         gate = LineageGate()
         store = TaskGraphStore(root / "store", verifier=gate)
         entry = _persist_fixture(store, fixture)
-        env = RolloutEnvironment(store, fixture.graph, None, gate)
+        env = RolloutEnvironment(store, fixture.graph, None, gate, fixture.graph.policy)
         runtime = env.open(entry, root / "workspace")
 
         node = fixture.graph.node(fixture.node_id)
@@ -660,7 +725,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         gate = LineageGate()
         store = TaskGraphStore(root / "store", verifier=gate)
         _persist_fixture(store, fixture, checkpoint=False)
-        env = RolloutEnvironment(store, fixture.graph, None, gate)
+        env = RolloutEnvironment(store, fixture.graph, None, gate, fixture.graph.policy)
         runtime = env.enter(fixture.node_id, fixture.params, root / "workspace")
         self.assertIsNone(store.read_head(fixture.params.lineage_id))
         self.assertEqual(runtime.state, fixture.state)

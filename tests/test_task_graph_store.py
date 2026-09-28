@@ -5,6 +5,7 @@ import stat
 import tempfile
 import threading
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -22,6 +23,8 @@ from writing_agent.task_graph import (
     domain_hash,
     tree_hash,
 )
+from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_store import (
     ConcurrentUpdateError,
     CorruptRecordError,
@@ -651,6 +654,41 @@ class TaskGraphStoreTest(unittest.TestCase):
         with self.assertRaises(ReplayError):
             self.store.publish("main", commit2, (bad_event,), bad_state, artifact_refs=(bad_ref,))
         self.assertEqual(self.store.read_head("main"), commit2)
+
+    def test_verifier_store_keeps_the_legacy_reducer_and_post_state_check(self):
+        root, before = self.fixture.root(lineage="legacy-gated")
+        event, correct_state, _ = self.fixture.effect_event_state(
+            before,
+            lineage="legacy-gated",
+            kind="external_requested",
+        )
+        outcome = self.store.get_artifact(before.outcome_ref)
+        outcome["stop_reason"] = "forged"
+        forged_state = replace(
+            correct_state,
+            outcome_ref=self.store.put_artifact(outcome),
+        )
+        checkpoint = CheckpointV1(
+            parents=(root,),
+            state=forged_state,
+            event_head=event.id,
+        )
+        commit = CommitV1(events=(event.id,), checkpoint=checkpoint.identity())
+        self.store.persist(event)
+        self.store.persist(checkpoint)
+        self.store.persist(commit)
+
+        with self.assertRaises(ReplayError):
+            self.store.load_commit(commit.identity())
+        verifier_store = TaskGraphStore(self.store.root, verifier=LineageGate())
+        with self.assertRaises(ReplayError):
+            verifier_store.load_commit(commit.identity())
+        self.assertIsNone(self.store.read_head("legacy-gated"))
+
+    def test_branch_is_refused_before_any_gate_verification(self):
+        gate_store = TaskGraphStore(self.root / "gated", verifier=LineageGate())
+        with self.assertRaises(ProjectionError):
+            gate_store.branch("0" * 64, "branch", (), None)
 
     def test_binary_artifact_and_missing_public_reference_validation(self):
         binary = self.store.put_bytes_artifact(b"\x00\xff", domain="payload")

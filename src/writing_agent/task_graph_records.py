@@ -259,6 +259,14 @@ class AdmissionPolicyV1(WireRecord):
             check_versions=sorted(policy.check_versions),
         )
 
+    def to_admission_policy(self, policy_type: Any) -> Any:
+        return policy_type(
+            writer_family=self.writer_family,
+            allowed_tools=frozenset(self.allowed_tools),
+            controller_versions=frozenset(self.controller_versions),
+            check_versions=frozenset(self.check_versions),
+        )
+
     def check(self) -> None:
         for name in ("allowed_tools", "controller_versions", "check_versions"):
             values = getattr(self, name)
