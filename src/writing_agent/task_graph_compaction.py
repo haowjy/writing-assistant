@@ -1,122 +1,15 @@
-"""Deterministic, writer-visible context selection and its immutable evidence.
-
-This module never reads a file, private packet, or model.  The caller supplies the
-already validated writer projection; replay checks the recorded selection against
-that projection without invoking a summarizer.
-"""
+"""Deterministic, writer-visible context selection and byte accounting."""
 
 from __future__ import annotations
-
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-from typing import Any
 
 from writing_agent.task_graph import (
     EnvironmentStateV1,
     MaterializedContextV1,
     MessageV1,
-    Record,
     canonical_bytes,
     canonical_json,
-    domain_hash_bytes,
-    validate_hash,
 )
 from writing_agent.task_graph_record_contracts import CompactionError, ContextPolicyV1
-
-
-@dataclass(frozen=True)
-class ContextOperationV1(Record):
-    """Content-addressed immutable witness for one active-context replacement."""
-
-    record_type: str = "ContextOperationV1"
-    policy_ref: str = ""
-    operation: str = ""
-    old_context_ref: str = ""
-    old_content_hash: str = ""
-    old_messages: tuple[Mapping[str, Any], ...] = ()
-    source_event_ids: tuple[str, ...] = ()
-    source_range: Mapping[str, int] | None = None
-    summary_ref: str | None = None
-    summary_text: str | None = None
-    summarizer_version: str | None = None
-    summarizer_config: Mapping[str, Any] | None = None
-    retained_tail: tuple[Mapping[str, Any], ...] = ()
-    seed_name: str | None = None
-    seed_checkpoint_ref: str | None = None
-    new_context_ref: str = ""
-    new_content_hash: str = ""
-    new_messages: tuple[Mapping[str, Any], ...] = ()
-    dropped_messages: tuple[Mapping[str, Any], ...] = ()
-    charges: Mapping[str, Any] = field(default_factory=dict)
-    DOMAIN = "payload"
-
-    def validate(self) -> None:
-        if self.record_type != "ContextOperationV1" or self.operation not in {
-            "carry",
-            "seed",
-            "drop",
-            "compact",
-        }:
-            raise CompactionError("invalid context operation type")
-        for identity in (
-            self.policy_ref,
-            self.old_context_ref,
-            self.old_content_hash,
-            self.new_context_ref,
-            self.new_content_hash,
-        ):
-            validate_hash(identity)
-        validate_hash(self.summary_ref, optional=True)
-        validate_hash(self.seed_checkpoint_ref, optional=True)
-        for identity in self.source_event_ids:
-            validate_hash(identity)
-        if self.source_range is not None and (
-            not isinstance(self.source_range, Mapping)
-            or set(self.source_range) != {"first_seq", "last_seq"}
-            or any(type(value) is not int or value < 1 for value in self.source_range.values())
-        ):
-            raise CompactionError("invalid source event range")
-        if self.summary_text is not None and not isinstance(self.summary_text, str):
-            raise CompactionError("summary bytes must be UTF-8 text")
-        if self.summary_text is not None and self.operation != "compact":
-            raise CompactionError("noncompact operation includes summary bytes")
-        if self.operation == "compact" and self.summary_text is None:
-            raise CompactionError("compact lacks exact summary bytes")
-        for name in ("old_messages", "new_messages", "dropped_messages", "retained_tail"):
-            for item in getattr(self, name):
-                if not isinstance(item, Mapping) or set(item) != {
-                    "index",
-                    "message_ref",
-                    "origin",
-                    "source_event_id",
-                }:
-                    raise CompactionError(f"invalid {name} evidence")
-                if type(item["index"]) is not int or item["index"] < 0:
-                    raise CompactionError(f"invalid {name} index")
-                validate_hash(item["message_ref"])
-                validate_hash(item["source_event_id"], optional=True)
-                if not isinstance(item["origin"], str):
-                    raise CompactionError(f"invalid {name} origin")
-        if self.summarizer_config is not None and (
-            not isinstance(self.summarizer_config, Mapping)
-            or set(self.summarizer_config) != {"max_chars"}
-            or type(self.summarizer_config["max_chars"]) is not int
-            or self.summarizer_config["max_chars"] < 0
-        ):
-            raise CompactionError("invalid summarizer configuration")
-        charge_fields = {
-            "context_operations",
-            "context_bytes_before",
-            "context_bytes_after",
-            "context_storage_bytes",
-            "summary_bytes",
-        }
-        if (
-            not isinstance(self.charges, Mapping)
-            or set(self.charges) != charge_fields
-            or any(type(value) is not int or value < 0 for value in self.charges.values())
-        ):
-            raise CompactionError("invalid context operation charges")
 
 
 def completed_exchanges(messages: tuple[MessageV1, ...]) -> tuple[tuple[int, int], ...]:
@@ -173,20 +66,6 @@ def fixed_summary(messages: tuple[MessageV1, ...], max_chars: int) -> str:
     return "\n".join(_summary_lines(messages))[:max_chars]
 
 
-def verify_fixed_summary(messages: tuple[MessageV1, ...], max_chars: int, recorded: str) -> None:
-    """Check recorded bytes without asking a summarizer to regenerate them."""
-    cursor = 0
-    for index, line in enumerate(_summary_lines(messages)):
-        chunk = ("\n" if index else "") + line
-        available = max(0, max_chars - cursor)
-        expected = chunk[:available]
-        if recorded[cursor : cursor + len(expected)] != expected:
-            raise CompactionError("recorded summary differs from visible source messages")
-        cursor += len(expected)
-    if cursor != len(recorded):
-        raise CompactionError("recorded summary has extra or missing text")
-
-
 def select_context(
     old: MaterializedContextV1,
     sources: tuple[str | None, ...],
@@ -234,11 +113,9 @@ def select_context(
         keep = min(policy.retained_exchanges, len(groups))
         split = groups[-keep][0] if keep else len(old.messages)
         selected = old.messages[2:split]
-        if recorded_summary is None:
-            summary = fixed_summary(selected, policy.max_summary_chars)
-        else:
-            verify_fixed_summary(selected, policy.max_summary_chars, recorded_summary)
-            summary = recorded_summary
+        summary = fixed_summary(selected, policy.max_summary_chars)
+        if recorded_summary is not None and summary != recorded_summary:
+            raise CompactionError("recorded summary differs from visible source messages")
         summary_message = MessageV1(
             role="user",
             content=(summary,),
@@ -262,31 +139,6 @@ def context_bytes(messages: tuple[MessageV1, ...], old: MaterializedContextV1) -
             }
         )
     )
-
-
-def message_evidence(
-    messages: tuple[MessageV1, ...], sources: tuple[str | None, ...]
-) -> list[dict]:
-    return [
-        {
-            "index": index,
-            "message_ref": message.identity(),
-            "origin": message.origin,
-            "source_event_id": sources[index],
-        }
-        for index, message in enumerate(messages)
-    ]
-
-
-def source_range(store, source_ids: list[str]) -> dict[str, int] | None:
-    if not source_ids:
-        return None
-    sequences = [store.load_event(identity).seq for identity in source_ids]
-    return {"first_seq": min(sequences), "last_seq": max(sequences)}
-
-
-def summary_hash(summary: str | None) -> str | None:
-    return None if summary is None else domain_hash_bytes("payload", summary.encode("utf-8"))
 
 
 def require_quiescent(state: EnvironmentStateV1, *, pending: tuple[str, ...] = ()) -> None:
@@ -348,92 +200,3 @@ def charge_budget(
     if any(consumed[key] > limits[key] for key in configured):
         raise CompactionError("context operation would exhaust its declared budget")
     return budget, charges
-
-
-def make_record(
-    store,
-    before: EnvironmentStateV1,
-    old: MaterializedContextV1,
-    sources: tuple[str | None, ...],
-    policy: ContextPolicyV1,
-    policy_ref: str,
-    new: MaterializedContextV1,
-    summary_ref: str | None,
-    old_budget: dict,
-    *,
-    old_content_hash: str,
-    new_content_hash: str,
-    new_context_ref: str,
-    event_head: str | None,
-    provenance_refs: tuple[str, ...],
-    seed: MaterializedContextV1 | None = None,
-    seed_sources: tuple[str | None, ...] = (),
-    recorded_summary: str | None = None,
-) -> tuple[dict, dict, tuple[str | None, ...]]:
-    """Recompute all claims from the authorized active projection."""
-    require_quiescent(before)
-    origin = f"{before.position['lineage_id']}:context:{before.history['seq'] + 1}"
-    messages, selected_sources, summary, removed = select_context(
-        old,
-        sources,
-        policy,
-        seed=seed,
-        seed_sources=seed_sources,
-        summary_origin=origin,
-        recorded_summary=recorded_summary,
-    )
-    if messages != new.messages or old.tools != new.tools or old.rendering != new.rendering:
-        raise CompactionError("new context differs from the deterministic selection")
-    if event_head != before.history["head"] or provenance_refs != (
-        (before.history["head"],) if before.history["head"] is not None else ()
-    ):
-        raise CompactionError("new context has false revision provenance")
-    budget, charges = charge_budget(old_budget, policy, old, new, summary)
-    if summary_ref != summary_hash(summary):
-        raise CompactionError("recorded summary bytes do not match fixed summary")
-    if summary_ref is not None and store.get_artifact(
-        summary_ref, expected_domain="payload:bytes"
-    ) != summary.encode("utf-8"):
-        raise CompactionError("summary artifact has different exact bytes")
-    dropped = message_evidence(old.messages, sources)
-    dropped = [dropped[index] for index in removed]
-    if policy.operation == "carry":
-        source_values = sources
-    elif policy.operation == "seed":
-        source_values = seed_sources[2:]
-    else:
-        source_values = tuple(sources[index] for index in removed)
-    source_ids = list(dict.fromkeys(value for value in source_values if value is not None))
-    groups = completed_exchanges(old.messages)
-    keep = min(policy.retained_exchanges, len(groups))
-    retained_tail = (
-        message_evidence(old.messages, sources)[groups[-keep][0] :]
-        if policy.operation == "compact" and keep
-        else []
-    )
-    record = {
-        "record_type": "ContextOperationV1",
-        "schema": 1,
-        "policy_ref": policy_ref,
-        "operation": policy.operation,
-        "old_context_ref": before.context_ref,
-        "old_content_hash": old_content_hash,
-        "old_messages": message_evidence(old.messages, sources),
-        "source_event_ids": source_ids,
-        "source_range": source_range(store, source_ids),
-        "summary_ref": summary_ref,
-        "summary_text": summary,
-        "summarizer_version": policy.summarizer_version,
-        "summarizer_config": (
-            {"max_chars": policy.max_summary_chars} if policy.operation == "compact" else None
-        ),
-        "retained_tail": retained_tail,
-        "seed_name": policy.seed_name,
-        "seed_checkpoint_ref": policy.seed_checkpoint_ref,
-        "new_context_ref": new_context_ref,
-        "new_content_hash": new_content_hash,
-        "new_messages": message_evidence(new.messages, selected_sources),
-        "dropped_messages": dropped,
-        "charges": charges,
-    }
-    return ContextOperationV1.from_dict(record).to_dict(), budget, selected_sources

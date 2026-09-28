@@ -74,13 +74,10 @@ def validate_group_policy(policy: dict[str, str], rendering: dict[str, str]) -> 
 
 def resolve_group_environment(
     store: TaskGraphStore,
-    checkpoint_id: str,
     *,
     view: Any,
 ) -> dict[str, Any]:
     """Resolve the equality-critical entry contract from a verified new-core view."""
-    if view.checkpoint_id != checkpoint_id:
-        raise GroupError("verified entry view differs from requested checkpoint")
     state, node, context = view.state, view.node, view.context
     instance = store.load_instance(state.instance_ref)
     visible_prefix_hash = context.content_ref
@@ -105,7 +102,7 @@ def resolve_group_environment(
         raise GroupError("entry budget is not complete")
     contract = node.contract
     return {
-        "entry_checkpoint_id": checkpoint_id,
+        "entry_checkpoint_id": view.checkpoint_id,
         "entry_state_hash": state.identity(),
         "entry_tree_hash": state.tree_hash,
         "instance_hash": instance.identity(),

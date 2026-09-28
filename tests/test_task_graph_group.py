@@ -17,7 +17,6 @@ from tests.task_graph_rollout_fixtures import (
 )
 from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json
 from writing_agent.task_graph_calls import intake_message
-from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_writer_turn
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
@@ -45,7 +44,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         self.store = self.fixture.store
         self.env = self.fixture.env
         self.entry_id = self.fixture.runtime.checkpoint_id
-        self.coordinator = GroupCoordinatorV1(self.env, self.root / "workers")
+        self.coordinator = GroupCoordinatorV1(self.env)
         self.policy = self.policy_for(self.fixture)
 
     def policy_for(self, fixture):
@@ -383,7 +382,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             offline_gate,
             self.fixture.entry.graph.policy,
         )
-        offline = GroupCoordinatorV1(offline_env, self.root / "offline-workers")
+        offline = GroupCoordinatorV1(offline_env)
         with ports_disabled():
             replayed = offline.finalize(spec)
         self.assertEqual(replayed.identity(), decision.identity())
@@ -450,7 +449,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
     def test_sampled_budget_stop_remains_a_valid_group_result(self):
         fixture = build_rollout_fixture(self.root / "token-limited", mode="token_limited")
         policy = self.policy_for(fixture)
-        coordinator = GroupCoordinatorV1(fixture.env, self.root / "token-limited-workers")
+        coordinator = GroupCoordinatorV1(fixture.env)
         spec = coordinator.seal(
             fixture.runtime.checkpoint_id,
             policy=policy,
@@ -497,7 +496,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         spec = self.group()
         runtime = self.coordinator.start(spec, 0, policy=self.policy)
         view = self.env.verify(runtime)
-        port = self.env.port_input(view, next_step(view))
+        port = self.env.step_input(runtime)[2]
         self.assertIsNotNone(port)
         other_ref = self.store.put_artifact({"other": "policy"})
         drift_rows = (
@@ -566,7 +565,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             spec = self.group(sequence=sequence)
             runtime = self.coordinator.start(spec, 0, policy=self.policy)
             view = self.env.verify(runtime)
-            port = self.env.port_input(view, next_step(view))
+            port = self.env.step_input(runtime)[2]
             self.assertIsNotNone(port)
             turn = WriterTurnV1(
                 action_id=port.action_id,
@@ -608,7 +607,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
                 gate,
                 self.fixture.entry.graph.policy,
             )
-            offline = GroupCoordinatorV1(offline_env, self.root / f"drift-{field}")
+            offline = GroupCoordinatorV1(offline_env)
             published = self.store.read_head(spec.members[0].member_id)
             with self.subTest(field=field), self.assertRaises(ProjectionError):
                 offline.collect(spec, result)
@@ -737,7 +736,7 @@ class GroupCoordinatorTests:
         self.store = fixture.store
         self.start = fixture.runtime.checkpoint_id
         self.runtime = fixture.runtime
-        self.coordinator = GroupCoordinatorV1(fixture.env, self.root / "group-workers")
+        self.coordinator = GroupCoordinatorV1(fixture.env)
         rendering = self.runtime.context.rendering
         self.policy = {
             field: self.store.put_artifact({"pin": field})

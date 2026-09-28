@@ -9,7 +9,9 @@
   `task-graph-derive-v1`, and resume published runs through verified heads.
 - Store context as immutable content chains and source-linked revisions. Ordinary message
   appends belong to their source event; explicit carry, seed, drop, and compact operations
-  carry typed evidence and budget charges.
+  derive directly from the active view and account for context budgets.
+- Remove the discarded compaction evidence path and unused group worker-root surface; resolve
+  group entry contracts from the verified view alone.
 - Keep check batches, transitions, terminal status, reward, and training eligibility in one
   evolving `OutcomeV1`; groups start from verified views, derive receipts from ancestry, and
   collect without a redundant policy walk.

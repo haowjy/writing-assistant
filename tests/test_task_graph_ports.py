@@ -187,7 +187,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         decoding = {"seed": 13, "temperature": "0.37"}
         decoding_ref = fixture.store.put_artifact(decoding)
         policy = self.group_policy(fixture, session, decoding_ref=decoding_ref)
-        coordinator = GroupCoordinatorV1(fixture.env, fixture.root / "workers", session=session)
+        coordinator = GroupCoordinatorV1(fixture.env, session=session)
         spec = coordinator.seal(
             fixture.runtime.checkpoint_id,
             policy=policy,
@@ -378,7 +378,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         session_b = self.session(fixture, backend_b)
         fixture.env.session = session_a
         policy = self.group_policy(fixture, session_a)
-        coordinator = GroupCoordinatorV1(fixture.env, fixture.root / "group-a", session=session_a)
+        coordinator = GroupCoordinatorV1(fixture.env, session=session_a)
         spec = coordinator.seal(
             fixture.runtime.checkpoint_id,
             policy=policy,
@@ -387,7 +387,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
             member_count=2,
         )
 
-        wrong = GroupCoordinatorV1(fixture.env, fixture.root / "group-b", session=session_b)
+        wrong = GroupCoordinatorV1(fixture.env, session=session_b)
         with self.assertRaisesRegex(ValueError, "manifest differs"):
             wrong.start(spec, 0, policy=policy)
         self.assertIsNone(fixture.store.read_head(spec.members[0].member_id))

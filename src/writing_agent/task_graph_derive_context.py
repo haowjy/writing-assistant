@@ -12,16 +12,14 @@ from writing_agent.task_graph import (
     thaw,
 )
 from writing_agent.task_graph_compaction import (
-    make_record,
+    charge_budget,
     require_quiescent,
     select_context,
-    summary_hash,
 )
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_common import (
     DeriveKey,
     build_transition,
-    evidence_reader,
     payload_artifact,
 )
 from writing_agent.task_graph_errors import ProjectionError
@@ -81,8 +79,8 @@ def derive_context_operation(
             seed_sources=seed_sources,
             summary_origin=origin,
         )
-        summary_ref = summary_hash(summary)
         new_materialized = _materialized_context(view.context, messages)
+        budget, _charges = charge_budget(thaw(view.budget), policy, old, new_materialized, summary)
         content = ContextContentV1(
             parent_ref=None,
             messages=messages,
@@ -93,28 +91,6 @@ def derive_context_operation(
             content_ref=content.identity(),
             event_head=view.head_event_id,
             provenance_refs=(view.head_event_id,) if view.head_event_id else (),
-        )
-        # Recompute the non-persisted evidence record through the same helper used by
-        # legacy replay. Its summary bytes are deterministic derived evidence, not an
-        # artifact written by this transition.
-        compaction_reader = evidence_reader(reader, summary_ref=summary_ref, summary=summary)
-        _record, budget, selected_sources = make_record(
-            compaction_reader,
-            view.state,
-            old,
-            view.context.sources,
-            policy,
-            operation.policy_ref,
-            new_materialized,
-            summary_ref,
-            thaw(view.budget),
-            old_content_hash=view.context.content_ref,
-            new_content_hash=content.identity(),
-            new_context_ref=revision.identity(),
-            event_head=revision.event_head,
-            provenance_refs=revision.provenance_refs,
-            seed=seed,
-            seed_sources=seed_sources,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ProjectionError("context operation violates the view or policy") from exc
