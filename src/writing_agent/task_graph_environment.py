@@ -220,18 +220,6 @@ class RolloutEnvironment:
         directive = next_step(view)
         return view, directive, self._build_port_input(view, directive)
 
-    @operation_scoped
-    def port_input(self, view: LineageView, directive: Directive) -> PortInput | None:
-        checkpoint = self._published_checkpoint(view.checkpoint_id)
-        if view.state != checkpoint.state:
-            raise WriterRuntimeError("port view state differs from its checkpoint")
-        if self.gate.view(self.store, view.checkpoint_id) != view:
-            raise WriterRuntimeError("port view differs from the verified published checkpoint")
-        self._check_session_seals(view)
-        if next_step(view) != directive:
-            raise ProjectionError("port directive differs from the verified view")
-        return self._build_port_input(view, directive)
-
     def _build_port_input(self, view: LineageView, directive: Directive) -> PortInput | None:
         if directive.kind == "sample_writer":
             member = group_member(view)

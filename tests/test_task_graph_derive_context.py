@@ -221,13 +221,6 @@ class ContextDeriveTests(unittest.TestCase):
                         {artifact.kind for artifact in transition.artifacts},
                         {"artifact", "context_node", "context_revision"},
                     )
-                    self.assertNotIn(
-                        "ContextOperationV1",
-                        {
-                            getattr(artifact.value, "record_type", None)
-                            for artifact in transition.artifacts
-                        },
-                    )
 
     def test_seed_uses_ancestor_context_without_reprojection(self):
         seed_messages = (

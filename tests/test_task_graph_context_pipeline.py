@@ -138,7 +138,7 @@ class ContextPipelineTests(unittest.TestCase):
             template_ref=rendering["template_ref"],
             rng_derivation_version="sha256-domain-v1",
         )
-        coordinator = GroupCoordinatorV1(fixture.env, self.root / f"{name}-workers")
+        coordinator = GroupCoordinatorV1(fixture.env)
         spec = coordinator.seal(
             fixture.runtime.checkpoint_id,
             policy=policy,

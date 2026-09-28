@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
 from writing_agent.task_graph import CheckpointV1
-from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import DriverBudgetError, ProjectionError
 from writing_agent.task_graph_gate import LineageGate, derive_input
 
@@ -75,7 +74,7 @@ class CacheAcceptanceTests(unittest.TestCase):
     def test_unpublished_candidate_never_enters_the_view_cache(self) -> None:
         fixture = build_rollout_fixture(self.root / "candidate")
         view = fixture.env.verify(fixture.runtime)
-        turn = fixture.gatherers.sampler.turn(fixture.env.port_input(view, next_step(view)))
+        turn = fixture.gatherers.sampler.turn(fixture.env.step_input(fixture.runtime)[2])
         candidate = derive_input(view, turn, fixture.env.reader)
         candidate_id = candidate.view.checkpoint_id
         original_publish = fixture.store.publish

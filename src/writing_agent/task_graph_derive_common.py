@@ -198,31 +198,15 @@ def payload_artifact(value: Any, kind: str = "artifact") -> DerivedArtifact:
     raise TypeError("payload artifacts require a typed record or mapping")
 
 
-def evidence_reader(
-    reader: ArtifactReader,
-    *,
-    summary_ref: str | None = None,
-    summary: str | None = None,
-    packet_ref: str | None = None,
-) -> _EvidenceReader:
-    """Adapt both legacy compaction evidence reads and bounded evaluator packet reads."""
-    return _EvidenceReader(reader, summary_ref, summary, packet_ref)
+def packet_reader(reader: ArtifactReader, *, packet_ref: str) -> _PacketReader:
+    """Bind evaluator packet reads to the packet authorized by this request."""
+    return _PacketReader(reader, packet_ref)
 
 
-class _EvidenceReader:
-    def __init__(self, reader, summary_ref, summary, packet_ref):
+class _PacketReader:
+    def __init__(self, reader: ArtifactReader, packet_ref: str):
         self.reader = reader
-        self.summary_ref = summary_ref
-        self.summary = summary
         self.packet_ref = packet_ref
-
-    def get_artifact(self, identity, **_):
-        if identity == self.summary_ref and self.summary is not None:
-            return self.summary.encode("utf-8")
-        return self.reader.bytes_artifact(identity)
-
-    def load_event(self, identity: str) -> EventV1:
-        return EventV1.from_dict(self.reader.artifact(identity, domain="event"))
 
     def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]:
         if ref != self.packet_ref:

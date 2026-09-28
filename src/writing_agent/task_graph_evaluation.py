@@ -71,17 +71,6 @@ class EvidenceResolver(Protocol):
     def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]: ...
 
 
-class StoreEvidenceResolver:
-    def __init__(self, store, authorized_packet_ref: str):
-        self._store = store
-        self._authorized_packet_ref = authorized_packet_ref
-
-    def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]:
-        if ref != self._authorized_packet_ref:
-            raise ProjectionError("evaluator requested an unauthorized packet")
-        return self._store.get_artifact(ref, expected_domain="payload", private=True)
-
-
 @dataclass(frozen=True)
 class EvaluationEvidenceV1:
     family: str

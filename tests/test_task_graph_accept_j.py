@@ -9,7 +9,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, make_gatherers
-from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_records import WriterTurnV1
 
@@ -40,8 +39,7 @@ def _valid_writer_candidate(root: Path):
     donor = build_rollout_fixture(root / "donor")
     target = build_rollout_fixture(root / "target")
     parent_id = donor.runtime.checkpoint_id
-    view = donor.env.verify(donor.runtime)
-    port = donor.env.port_input(view, next_step(view))
+    port = donor.env.step_input(donor.runtime)[2]
     turn: WriterTurnV1 = make_gatherers(donor).sampler.turn(port)
     result = donor.env.commit(donor.runtime, turn)
     event = donor.store.load_event(result.event_id)

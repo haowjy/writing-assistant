@@ -49,15 +49,12 @@ class GroupCoordinatorV1:
     def __init__(
         self,
         environment: RolloutEnvironment,
-        workers_root: Path | str,
         *,
         session=None,
     ):
         self.environment = environment
         self.store = environment.store
         self.session = session or environment.session
-        self.workers_root = Path(workers_root).resolve()
-        self.workers_root.mkdir(parents=True, exist_ok=True)
         self.groups_root = self.store.root / "groups"
         self.groups_root.mkdir(mode=0o700, exist_ok=True)
 
@@ -157,7 +154,6 @@ class GroupCoordinatorV1:
         return (
             resolve_group_environment(
                 self.store,
-                checkpoint_id,
                 view=view,
             ),
             thaw(view.context.rendering),

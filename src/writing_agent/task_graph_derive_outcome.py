@@ -12,7 +12,7 @@ from writing_agent.task_graph_controller import Directive, applicable_checks, ne
 from writing_agent.task_graph_derive_common import (
     DeriveKey,
     build_transition,
-    evidence_reader,
+    packet_reader,
     payload_artifact,
 )
 from writing_agent.task_graph_errors import AdapterContractProjectionError, ProjectionError
@@ -168,7 +168,7 @@ def derive_check_result(
     evidence = reader.artifact(result.evidence_ref)
     try:
         verified = verify_evaluation_evidence(
-            evaluation_request, evidence, evidence_reader(reader, packet_ref=packet_ref)
+            evaluation_request, evidence, packet_reader(reader, packet_ref=packet_ref)
         )
     except ProjectionError as exc:
         raise AdapterContractProjectionError("input.evidence_ref: evaluation mismatch") from exc

@@ -11,7 +11,6 @@ from tests.task_graph_rollout_fixtures import build_rollout_fixture
 from tests.test_task_graph_rollout_env import _group_spec
 from writing_agent.task_graph import canonical_bytes, domain_hash
 from writing_agent.task_graph_composition import RuntimeSession
-from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
 from writing_agent.task_graph_gate import derive_input
@@ -116,7 +115,7 @@ class SamplingAcceptanceTests(unittest.TestCase):
             with self.subTest(forgery=name):
                 fixture = build_rollout_fixture(self.root / f"persisted-{name}", mode=mode)
                 view = fixture.env.verify(fixture.runtime)
-                port = fixture.env.port_input(view, next_step(view))
+                port = fixture.env.step_input(fixture.runtime)[2]
                 sampled = fixture.gatherers.sampler.turn(port)
                 # Build the event/state template from a valid sample on this exact
                 # view, then replace only the hash-addressed input payload.
@@ -164,16 +163,13 @@ class SamplingAcceptanceTests(unittest.TestCase):
 
     def test_stale_verified_request_is_rejected_before_an_event_is_recorded(self) -> None:
         fixture = build_rollout_fixture(self.root / "stale-request")
-        first_view = fixture.env.verify(fixture.runtime)
-        first_port = fixture.env.port_input(first_view, next_step(first_view))
+        first_port = fixture.env.step_input(fixture.runtime)[2]
         stale = fixture.gatherers.sampler.turn(first_port)
         first = fixture.env.commit(fixture.runtime, stale)
-        tool_view = fixture.env.verify(first.runtime)
-        tool_port = fixture.env.port_input(tool_view, next_step(tool_view))
+        tool_port = fixture.env.step_input(first.runtime)[2]
         observation = fixture.gatherers.tools.observe(tool_port)
         second = fixture.env.commit(first.runtime, observation)
-        current = fixture.env.verify(second.runtime)
-        current_port = fixture.env.port_input(current, next_step(current))
+        current_port = fixture.env.step_input(second.runtime)[2]
         stale_verified_request = replace(
             stale,
             action_id=current_port.action_id,
@@ -188,17 +184,13 @@ class SamplingAcceptanceTests(unittest.TestCase):
 
     def test_stale_request_replay_is_a_gate_projection_error(self) -> None:
         fixture = build_rollout_fixture(self.root / "stale-request-gate")
-        first_view = fixture.env.verify(fixture.runtime)
-        old_port = fixture.env.port_input(first_view, next_step(first_view))
+        old_port = fixture.env.step_input(fixture.runtime)[2]
         stale = fixture.gatherers.sampler.turn(old_port)
         first = fixture.env.commit(fixture.runtime, stale)
-        tool_view = fixture.env.verify(first.runtime)
-        observation = fixture.gatherers.tools.observe(
-            fixture.env.port_input(tool_view, next_step(tool_view))
-        )
+        observation = fixture.gatherers.tools.observe(fixture.env.step_input(first.runtime)[2])
         second = fixture.env.commit(first.runtime, observation)
         view = fixture.env.verify(second.runtime)
-        current_port = fixture.env.port_input(view, next_step(view))
+        current_port = fixture.env.step_input(second.runtime)[2]
         honest_current = fixture.gatherers.sampler.turn(current_port)
         forged = replace(
             stale,
@@ -224,18 +216,14 @@ class SamplingAcceptanceTests(unittest.TestCase):
 
     def test_fresh_verified_request_cannot_relabel_an_old_payload(self) -> None:
         fixture = build_rollout_fixture(self.root / "fresh-stale-request-gate")
-        first_view = fixture.env.verify(fixture.runtime)
-        old_port = fixture.env.port_input(first_view, next_step(first_view))
+        old_port = fixture.env.step_input(fixture.runtime)[2]
         old_turn = fixture.gatherers.sampler.turn(old_port)
         first = fixture.env.commit(fixture.runtime, old_turn)
-        tool_view = fixture.env.verify(first.runtime)
-        observation = fixture.gatherers.tools.observe(
-            fixture.env.port_input(tool_view, next_step(tool_view))
-        )
+        observation = fixture.gatherers.tools.observe(fixture.env.step_input(first.runtime)[2])
         second = fixture.env.commit(first.runtime, observation)
 
         view = fixture.env.verify(second.runtime)
-        current_port = fixture.env.port_input(view, next_step(view))
+        current_port = fixture.env.step_input(second.runtime)[2]
         fresh_request = WriterRequestV1(
             context_revision_ref=current_port.context_revision_ref,
             payload_ref=old_turn.request_ref,
@@ -363,7 +351,7 @@ class SamplingAcceptanceTests(unittest.TestCase):
             fixture.entry.graph.policy,
         )
         view = replay_env.verify(replay_env.open_head(member_runtime.state.position["lineage_id"]))
-        port = replay_env.port_input(view, next_step(view))
+        port = replay_env.step_input(member_runtime)[2]
         sampled = fixture.gatherers.sampler.turn(port)
         changed_manifest = dict(fixture.store.get_artifact(session.manifest_ref))
         changed_manifest["ports"] = [dict(port) for port in changed_manifest["ports"]]
