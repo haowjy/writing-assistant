@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Decode context-operation source events through the evidence reader's event codec and preserve
+  context-storage accounting after the rollout view freezes nested budget mappings.
+
 - Move group member starts and result/credit collection onto verified rollout views.
 
 - Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;

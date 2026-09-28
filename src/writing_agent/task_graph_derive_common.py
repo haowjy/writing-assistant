@@ -108,7 +108,7 @@ def append_context(
         revision_ref=revision.identity(),
     )
     charged = charge_context_append(
-        dict(view.budget),
+        thaw(view.budget),
         BudgetContextRevisionV1(
             messages=context.messages,
             tools=context.tools,
@@ -229,8 +229,8 @@ class _EvidenceReader:
             return self.summary.encode("utf-8")
         return self.reader.bytes_artifact(identity)
 
-    def load_event(self, identity):
-        return self.reader.artifact(identity, domain="event")
+    def load_event(self, identity: str) -> EventV1:
+        return EventV1.from_dict(self.reader.artifact(identity, domain="event"))
 
     def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]:
         if ref != self.packet_ref:
