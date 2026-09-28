@@ -50,10 +50,14 @@ retains its smoke-evaluation and training-format workflows.
   checkpoint-keyed view cache holds only published views and skips derives only; store
   closure still re-reads and hashes persisted bytes on every operation.
   [task_graph_rollout_env.py](../writing_agent/task_graph_rollout_env.py) is the producer:
-  entry, cold open, per-step verification, derive-persist-publish commits, member starts,
-  and the typed port inputs that are the privacy boundary. See
-  [transition-seam.md](transition-seam.md) for how to add a record or a derive, the gate
-  and environment contracts, the layer order, and the rationale.
+  entry, cold open, head resume, per-step verification, derive-persist-publish commits,
+  member starts, and the typed port inputs that are the privacy boundary.
+  [task_graph_rollout.py](../writing_agent/task_graph_rollout.py) is the synchronous
+  driver loop, and [task_graph_gatherers.py](../writing_agent/task_graph_gatherers.py)
+  holds the thin port adapters that turn a typed port input into a recorded input. See
+  [transition-seam.md](transition-seam.md) for how to add a record or a derive and for the
+  layer order. See [gate-and-rollout.md](gate-and-rollout.md) for the gate, environment,
+  driver and gatherer contracts, error classes, rule owners and resume path.
 - **Legacy runtime (until S7).** The modules in this bullet are the old runtime. They stay
   the behavior oracle until the S7 parity probe, which deletes the writer, the scripted
   runtime classes, checks, terminal, author validation, projection, and the old replay
