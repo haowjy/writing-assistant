@@ -16,7 +16,7 @@ from tests.task_graph_rollout_fixtures import (
     ports_disabled,
     run_slice,
 )
-from writing_agent.task_graph import canonical_bytes, domain_hash
+from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_compaction import ContextPolicyV1 as LegacyContextPolicyV1
 from writing_agent.task_graph_controller import next_step
@@ -32,7 +32,7 @@ from writing_agent.task_graph_group import (
 )
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
-from writing_agent.task_graph_records import WriterTurnV1
+from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
 from writing_agent.task_graph_rollout_env import RolloutEnvironment
 from writing_agent.task_graph_store import TaskGraphStore
 
@@ -211,6 +211,35 @@ class TestGroupCoordinatorCore(unittest.TestCase):
                 resumed.checkpoint_id,
             )
             self.assertEqual(self.store.read_head(member_id), resumed_head)
+
+    def test_start_retry_after_member_advanced_keeps_receipt_and_allows_collect(self):
+        spec = self.group(sequence=77)
+        member = spec.members[0]
+        runtime = self.env.start_member(
+            spec.environment["entry_checkpoint_id"], MemberStartV1(spec.identity(), 0)
+        )
+        start_checkpoint_id = runtime.checkpoint_id
+        self.fixture.gatherers = make_gatherers(self.fixture)
+        advanced = run_slice(
+            self.fixture,
+            runtime=runtime,
+            until=lambda directive: directive.kind == "execute_tool",
+        )
+        self.assertNotEqual(advanced.checkpoint_id, start_checkpoint_id)
+
+        resumed = self.coordinator.start(spec, 0, policy=self.policy)
+        body = load_canonical_json(
+            (self.coordinator.groups_root / spec.group_id / "start-0.json").read_bytes()
+        )
+        self.assertEqual(body["start_checkpoint_id"], start_checkpoint_id)
+        self.assertEqual(resumed.checkpoint_id, advanced.checkpoint_id)
+        result = GroupMemberResultV1(
+            group_id=spec.group_id,
+            member_id=member.member_id,
+            start_checkpoint_id=start_checkpoint_id,
+        )
+        result_ref = self.coordinator.collect(spec, result)
+        self.assertEqual(self.store.get_artifact(result_ref), result.to_dict())
 
     def test_scripted_pending_tie_invalid_and_exact_advantage_paths(self):
         spec = self.group(mode="fixture")

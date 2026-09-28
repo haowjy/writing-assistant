@@ -219,35 +219,15 @@ class GroupCoordinatorV1:
         self.assert_start_contract(spec, spec.environment["entry_checkpoint_id"], policy)
         parent_id = spec.environment["entry_checkpoint_id"]
         head = self.store.read_head(member.member_id)
-        receipt_path = self.groups_root / spec.group_id / f"start-{ordinal}.json"
-        if head is not None and receipt_path.exists():
-            receipt = self._start_receipt(spec, ordinal)
-            child_id, commit = receipt["start_checkpoint_id"], receipt["commit_id"]
-            runtime = self.environment.open_head(member.member_id)
-        elif head is None:
+        if head is None:
             runtime = self.environment.start_member(
                 parent_id, MemberStartV1(spec.identity(), ordinal)
             )
-            child_id = runtime.checkpoint_id
-            commit = self.store.read_head(member.member_id)
         else:
             runtime = self.environment.open_head(member.member_id)
-            child_id = runtime.checkpoint_id
-            commit = head
         view = self.environment.verify(runtime)
         self._assert_member_view(spec, member, view)
-        if commit is None:
-            raise GroupError("member start was not published")
-        with self._locked(spec.group_id) as directory:
-            self._receipt(
-                directory / f"start-{ordinal}.json",
-                {
-                    "member_id": member.member_id,
-                    "parent_checkpoint_id": parent_id,
-                    "start_checkpoint_id": child_id,
-                    "commit_id": commit,
-                },
-            )
+        self._start_receipt(spec, ordinal, view=view)
         return runtime
 
     def _start_legacy(
@@ -320,36 +300,28 @@ class GroupCoordinatorV1:
         if view.state.position["lineage_id"] != member.member_id or view.group != spec:
             raise GroupError("verified member view differs from its sealed start")
 
-    def _start_receipt(self, spec: GroupSpecV1, ordinal: int) -> dict:
+    def _start_receipt(self, spec: GroupSpecV1, ordinal: int, *, view=None) -> dict:
         if self.environment is None:
             raise GroupError("member receipt verification requires a RolloutEnvironment")
-        body = load_canonical_json(
-            (self.groups_root / spec.group_id / f"start-{ordinal}.json").read_bytes()
-        )
-        if (
-            not isinstance(body, dict)
-            or set(body)
-            != {"member_id", "parent_checkpoint_id", "start_checkpoint_id", "commit_id"}
-            or not all(isinstance(body[key], str) for key in body)
-            or body["member_id"] != spec.members[ordinal].member_id
-            or body["parent_checkpoint_id"] != spec.environment["entry_checkpoint_id"]
-        ):
-            raise GroupError("member start receipt is misbound")
-        child = self.store.load_checkpoint(body["start_checkpoint_id"])
-        if child.parents != (body["parent_checkpoint_id"],):
-            raise GroupError("member start is not a child of sealed entry")
-        commit = self.store.load_commit(body["commit_id"])
-        if commit.checkpoint != body["start_checkpoint_id"] or commit.parent_commit is not None:
-            raise GroupError("member start receipt misbinds branch commit")
         member = spec.members[ordinal]
-        runtime = self.environment.open_head(member.member_id)
-        view = self.environment.verify(runtime)
+        if view is None:
+            view = self._verified_member_view(spec, ordinal)
         self._assert_member_view(spec, member, view)
         chain = view.ancestry
-        while chain is not None and chain.checkpoint_id != body["start_checkpoint_id"]:
+        parent_id = spec.environment["entry_checkpoint_id"]
+        while chain is not None and (
+            chain.parent is None or chain.parent.checkpoint_id != parent_id
+        ):
             chain = chain.parent
         if chain is None:
-            raise GroupError("member start receipt differs from verified lineage")
+            raise GroupError("verified member ancestry has no start below the sealed entry")
+        body = {
+            "member_id": member.member_id,
+            "parent_checkpoint_id": parent_id,
+            "start_checkpoint_id": chain.checkpoint_id,
+        }
+        with self._locked(spec.group_id) as directory:
+            self._receipt(directory / f"start-{ordinal}.json", body)
         return body
 
     @operation_scoped
