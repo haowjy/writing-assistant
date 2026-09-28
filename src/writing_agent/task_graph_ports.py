@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from writing_agent.task_graph import canonical_json, domain_hash, validate_hash
+from writing_agent.task_graph import canonical_json, validate_hash
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
 from writing_agent.task_graph_records import RuntimeManifestV1, RuntimePortDescriptorV1
