@@ -9,6 +9,10 @@ class ProjectionError(ValueError):
     """A causal event chain cannot be safely rendered as writer context."""
 
 
+class AdapterContractProjectionError(ProjectionError):
+    """A recorded input violates a contract that the producer must satisfy."""
+
+
 class VerifiedMessagesStaleError(ProjectionError):
     """A verified request no longer describes the active visible messages."""
 
@@ -51,6 +55,7 @@ class AdapterContractError(RuntimeError):
 
 __all__ = [
     "AdapterContractError",
+    "AdapterContractProjectionError",
     "ConcurrentUpdateError",
     "CorruptRecordError",
     "MaterializationError",

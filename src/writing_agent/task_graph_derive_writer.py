@@ -30,6 +30,7 @@ from writing_agent.task_graph_derive_common import (
 )
 from writing_agent.task_graph_errors import (
     AdapterContractError,
+    AdapterContractProjectionError,
     ProjectionError,
     WriterRuntimeError,
 )
@@ -70,9 +71,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     try:
         decode_and_bind_sampling(WriterTurnSamplingBindingV1(turn, view.context, reader))
     except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
-        if isinstance(exc, ProjectionError):
-            raise
-        raise ProjectionError("writer sampling evidence is invalid") from exc
+        raise AdapterContractProjectionError("writer sampling evidence is invalid") from exc
 
     if view.group is not None:
         spec = view.group
@@ -191,7 +190,9 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
                 ask_semantics=ask,
             )
         except WriterRuntimeError as exc:
-            raise ProjectionError("sampled calls violate the canonical call envelope") from exc
+            raise AdapterContractProjectionError(
+                "sampled calls violate the canonical call envelope"
+            ) from exc
 
     limits = next_budget["limits"]
     if ("generated_tokens" in limits and "completion_tokens" not in usage) or (
@@ -199,7 +200,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         and "total_tokens" not in usage
         and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
     ):
-        raise ProjectionError("token-limited writer turn lacks usage evidence")
+        raise AdapterContractProjectionError("token-limited writer turn lacks usage evidence")
 
     parts: list[dict[str, Any]] = []
     if content:
@@ -339,7 +340,9 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
                 observation, call_name, view.budget["read_tokenizer"]
             )
         except (AdapterContractError, TypeError, ValueError) as exc:
-            raise ProjectionError("tool dispatch violates the pinned effect contract") from exc
+            raise AdapterContractProjectionError(
+                "tool dispatch violates the pinned effect contract"
+            ) from exc
         remaining_reads = view.budget["limits"].get("read_tokens", 0) - view.budget["consumed"].get(
             "read_tokens", 0
         )

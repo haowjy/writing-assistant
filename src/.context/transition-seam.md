@@ -8,9 +8,10 @@ author validation, projection, the old replay and environment batch) stays impor
 tested as the behavior oracle until the S7 parity check, which deletes it. Do not extend it.
 
 This checkout contains the wire records, calls, transition types, `derive_entry`, the
-controller and four derive modules. There is no gate, `DERIVE` registry, environment,
-driver or gatherer yet. Nothing assembles or dispatches the derives outside tests, and
-`store.publish` does not run them.
+controller and four derive modules. S3.1 added `LineageGate` and the `DERIVE` registry;
+S3.2 adds `RolloutEnvironment` as the producer, persistence and port-input boundary.
+`store.publish` runs the gate under its lineage lock. The driver and gatherers are still
+future work (S4), and callers remain on the old runtime until S7.2.
 
 Code and tests cite these invariants by number:
 
@@ -33,6 +34,7 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 | 1 | `task_graph_calls`, `task_graph_controller`; they also use the pure policy modules `accounting`, `contracts`, `admission` |
 | 3 | `task_graph_transition` (shared types only), `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
 | 4 | `task_graph_group_contract` (imports store, projection and admission) |
+| 5 | `task_graph_rollout_env` (producer, store, gate and port boundary) |
 
 - **`TYPE_CHECKING` imports count for layer order, not for cycles.** The layer test walks
   type-only imports; the SCC test ignores them. A type-only import is not a way around the
@@ -41,8 +43,8 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 - No lazy imports to dodge a cycle. No `from` import of an underscore name across task-graph
   modules.
 - A new seam module goes into both `NEW_SEAM_MODULES` (not in any runtime SCC) and
-  `LAYER_RANKS`. `task_graph_derive_common` is currently in the first and missing from the
-  second, so its rank is unchecked.
+  `LAYER_RANKS`. The import test also reserves a module-name-pattern rule forbidding
+  `task_graph_gatherers` from importing `task_graph_transition`.
 - `derive_entry` may not import the store, ports, local, writer, environment, replay or any
   filesystem module. Derives in general read only the view, the input and the
   `ArtifactReader` (I7).
@@ -173,6 +175,31 @@ structured view fields. `select_edge` raises on any tie in precedence. `next_ste
 - `awaiting_checks` with no required `each_turn`/`node_exit_candidate` check.
 
 An empty required set never counts as a pass.
+
+## Rollout environment (S3.2)
+
+[`task_graph_rollout_env.py`](../writing_agent/task_graph_rollout_env.py) owns `enter`,
+`open`, `verify`, `commit`, `start_member` and `port_input`. Each public operation has one
+outer `store.operation()` scope and never yields from it. `verify` checks the current
+lineage head, session seals and gate; a root entry with no head is accepted only after the
+I3 fixed-point check. A port view must still be that verified published head (or the
+verified root), never a merely derived candidate.
+
+`commit` derives from one view, then persists the input and non-context artifacts, event,
+context revision, and finally calls `store.publish` with no `artifact_refs`. The gate
+re-derives under the store lock. The candidate view enters `ViewCache` only after publish
+returns, and the result handle is built from the verified transition rather than a
+restore-after-publish pass. Adapter-contract rejections remain `ProjectionError` during
+replay; the producer boundary maps their tagged subclass to `AdapterContractError`. Orphan
+immutable artifacts after a failed publication are harmless; the authoritative head is
+old or new, never partial, and the same input yields the same commit identity on retry.
+
+Port projections are the privacy boundary: `SamplerInput` contains visible context,
+action identity and only sealed group sampling pins; `ToolInput` contains files, one queued
+call and the pinned tool spec; `AuthorInput` contains its private request, authorized
+script and disclosed ledgers; `CheckInput` contains its private request, candidate files
+and evaluator packet. No full `LineageView` is passed to gatherers. The old runtime stays
+unchanged as the behavior oracle until S7.2.
 
 ## Rationale and rejected alternatives
 

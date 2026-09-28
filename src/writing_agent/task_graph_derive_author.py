@@ -174,7 +174,6 @@ def derive_author_request(
             "budgets_ref": budget_ref,
         },
         artifacts=(request_artifact, payload_artifact(budget)),
-        include_input=False,
         budget=budget,
     )
 
@@ -286,7 +285,8 @@ def _derive_answered_reply(
     position = thaw(view.state.position)
     position["phase"] = "ready_writer"
     changes: dict[str, Any] = {"continuation": continuation, "position": position}
-    artifacts: list[DerivedArtifact] = []
+    reply_artifact = payload_artifact(reply)
+    artifacts: list[DerivedArtifact] = [reply_artifact]
     budget = dict(view.budget)
 
     if source == "writer_request":
@@ -363,7 +363,7 @@ def _derive_answered_reply(
 
     event = new_event(
         view,
-        payload_artifact(reply).ref,
+        reply_artifact.ref,
         kind="author_turn",
         actor="author",
         audience=("controller", "trainer", "writer"),
@@ -443,7 +443,6 @@ def _derive_coverage_failure(
             "outcome_ref": outcome_artifact.ref,
         },
         artifacts=(outcome_artifact,),
-        include_input=False,
         outcome=outcome,
     )
 

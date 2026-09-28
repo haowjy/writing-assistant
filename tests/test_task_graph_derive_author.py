@@ -304,7 +304,8 @@ class AuthorDeriveTests(unittest.TestCase):
             _canonical_transition(transition),
             _canonical_transition(derive_author_request(view, decoded, fixture.reader)),
         )
-        request = load_canonical_json(transition.artifacts[0].value)
+        request_artifact = next(item for item in transition.artifacts if item.kind == "private")
+        request = load_canonical_json(request_artifact.value)
         self.assertEqual(request["source"], "writer_request")
         self.assertEqual(request["arguments"]["question"], "Which door?")
         self.assertEqual(transition.view.budget["consumed"]["author_calls"], 1)

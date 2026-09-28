@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 
@@ -24,6 +25,12 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_derive_writer",
     "writing_agent.task_graph_controller",
     "writing_agent.task_graph_gate",
+    "writing_agent.task_graph_rollout_env",
+}
+FORBIDDEN_IMPORT_PATTERNS = {
+    re.compile(r"^writing_agent\.task_graph_gatherers(?:\..+)?$"): frozenset(
+        {"writing_agent.task_graph_transition"}
+    )
 }
 LAYER_RANKS = {
     **{
@@ -42,6 +49,7 @@ LAYER_RANKS = {
         f"writing_agent.{name}": 3
         for name in (
             "task_graph_transition",
+            "task_graph_derive_common",
             "task_graph_derive_entry",
             "task_graph_derive_context",
             "task_graph_derive_outcome",
@@ -51,6 +59,7 @@ LAYER_RANKS = {
     },
     "writing_agent.task_graph_group_contract": 4,
     "writing_agent.task_graph_gate": 4,
+    "writing_agent.task_graph_rollout_env": 5,
 }
 
 
@@ -193,6 +202,18 @@ def strongly_connected_components(graph: dict[str, set[str]]) -> list[tuple[str,
 
 
 class TaskGraphImportTests(unittest.TestCase):
+    def test_future_gatherers_cannot_import_transition_views(self) -> None:
+        graph = build_import_graph()
+        pattern = next(iter(FORBIDDEN_IMPORT_PATTERNS))
+        self.assertEqual(pattern.pattern, r"^writing_agent\.task_graph_gatherers(?:\..+)?$")
+        self.assertIn("writing_agent.task_graph_transition", FORBIDDEN_IMPORT_PATTERNS[pattern])
+        for module in graph:
+            if pattern.fullmatch(module):
+                self.assertFalse(
+                    graph[module] & FORBIDDEN_IMPORT_PATTERNS[pattern],
+                    f"gatherer {module} imports a transition view",
+                )
+
     def test_legacy_runtime_modules_do_not_reference_lineage_views(self) -> None:
         for filename in ("task_graph_scripted.py", "task_graph_sampling.py"):
             path = SOURCE_PACKAGE / filename
