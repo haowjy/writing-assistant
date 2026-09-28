@@ -10,7 +10,7 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Any
+from typing import Annotated, Any, ClassVar
 
 from writing_agent.task_graph import (
     Record,
@@ -26,6 +26,7 @@ from writing_agent.task_graph_record_contracts import (
     GroupError,
 )
 from writing_agent.task_graph_store import TaskGraphStore
+from writing_agent.task_graph_wire import Bool, Enum, Hash, Int, Str, UnionOf, WireRecord, obj
 
 
 def payload_hash(value: Any) -> str:
@@ -151,6 +152,53 @@ def resolve_group_environment(
         "continuation_hash": payload_hash(state.continuation),
         "horizon": "node_exit",
     }
+
+
+@dataclass(frozen=True)
+class GroupScriptedTerminalV1(WireRecord):
+    schema: Annotated[int, Int(equals=1)]
+    group_id: Annotated[str, Hash(None)]
+    member_id: Annotated[str, Str(nonempty=True, logical=True)]
+    start_checkpoint_id: Annotated[str, Hash("checkpoint")]
+    execution_status: Annotated[str, Enum(frozenset({"valid", "infrastructure_invalid"}))]
+    reward_status: Annotated[str, Enum(frozenset({"available", "pending", "unavailable"}))]
+    reward: Annotated[
+        Mapping[str, int] | None,
+        UnionOf(
+            (
+                obj(numerator=Int(minimum=None), denominator=Int(minimum=1)),
+                type(None),
+            )
+        ),
+    ]
+    native_optimizer_eligible: Annotated[bool, Bool()]
+    RECORD_TYPE: ClassVar[str] = "GroupScriptedTerminalV1"
+
+    def check(self) -> None:
+        if self.native_optimizer_eligible:
+            raise GroupError("scripted result cannot be native optimizer eligible")
+        if self.reward_status == "available":
+            if self.execution_status != "valid" or self.reward is None:
+                raise GroupError("available scripted reward needs a valid exact reward")
+            _read_fraction(self.reward)
+        elif self.reward is not None:
+            raise GroupError("unavailable scripted reward includes a number")
+        if (
+            self.execution_status == "infrastructure_invalid"
+            and self.reward_status != "unavailable"
+        ):
+            raise GroupError("infrastructure failure cannot carry a reward")
+
+
+@dataclass(frozen=True)
+class GroupExecutionFailureV1(WireRecord):
+    schema: Annotated[int, Int(equals=1)]
+    group_id: Annotated[str, Hash(None)]
+    member_id: Annotated[str, Str(nonempty=True, logical=True)]
+    start_checkpoint_id: Annotated[str, Hash("checkpoint")]
+    reason: Annotated[str, Str(nonempty=True)]
+    evidence_ref: Annotated[str | None, Hash("artifact", optional=True)]
+    RECORD_TYPE: ClassVar[str] = "GroupExecutionFailureV1"
 
 
 @dataclass(frozen=True)

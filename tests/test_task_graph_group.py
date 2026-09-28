@@ -27,7 +27,9 @@ from writing_agent.task_graph_group import (
     POLICY_FIELDS,
     GroupCoordinatorV1,
     GroupError,
+    GroupExecutionFailureV1,
     GroupMemberResultV1,
+    GroupScriptedTerminalV1,
     GroupSpecV1,
 )
 from writing_agent.task_graph_ports import SampleResult
@@ -78,6 +80,39 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             member_count=2,
             runner_mode=mode,
         )
+
+    def test_group_terminal_records_roundtrip_with_unchanged_payload_identity(self):
+        fixture = GroupScriptedTerminalV1(
+            schema=1,
+            group_id="a" * 64,
+            member_id="grp-example-00",
+            start_checkpoint_id="b" * 64,
+            execution_status="valid",
+            reward_status="available",
+            reward={"numerator": -3, "denominator": 2},
+            native_optimizer_eligible=False,
+        )
+        failure = GroupExecutionFailureV1(
+            schema=1,
+            group_id="a" * 64,
+            member_id="grp-example-00",
+            start_checkpoint_id="b" * 64,
+            reason="worker_crash",
+            evidence_ref=None,
+        )
+        for record in (fixture, failure):
+            with self.subTest(record=record.RECORD_TYPE):
+                self.assertEqual(type(record).from_dict(record.to_wire()), record)
+                self.assertEqual(record.identity(), self.store.put_artifact(record.to_wire()))
+
+        with self.assertRaises(ValueError):
+            GroupScriptedTerminalV1.from_dict({**fixture.to_wire(), "schema": 2})
+        with self.assertRaises(ValueError):
+            GroupScriptedTerminalV1.from_dict(
+                {**fixture.to_wire(), "reward": {"numerator": -3, "denominator": 0}}
+            )
+        with self.assertRaises(ValueError):
+            GroupExecutionFailureV1.from_dict({**failure.to_wire(), "reason": ""})
 
     def start_members(self, spec):
         return tuple(

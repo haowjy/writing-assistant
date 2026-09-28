@@ -6,6 +6,8 @@
 
 - Derive idempotent member-start receipts from verified ancestry so retries survive progress.
 
+- Remove redundant collect-time policy walks and decode scripted group results through wire schemas.
+
 - Move group member starts and result/credit collection onto verified rollout views.
 
 - Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;
