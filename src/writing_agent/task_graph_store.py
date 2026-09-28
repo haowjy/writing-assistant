@@ -24,7 +24,7 @@ import tempfile
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -36,6 +36,7 @@ from writing_agent.task_graph import (
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
+    MaterializedContextV1,
     MessageV1,
     Record,
     canonical_bytes,
@@ -43,9 +44,7 @@ from writing_agent.task_graph import (
     domain_hash_bytes,
     file_hash,
     load_canonical_json,
-    safe_path,
     thaw,
-    tree_hash,
     validate_file_tree,
     validate_hash,
 )
@@ -59,68 +58,21 @@ from writing_agent.task_graph_errors import (
     MaterializationError,
     MissingReferenceError,
     ProjectionError,
-    ReplayError,
     StoreError,
     WrongRecordDomainError,
 )
 from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_records import (
-    LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_TYPES,
-    MaterializedContextV1,
     materialize_context_nodes,
     record_reference_edges,
-)
-from writing_agent.task_graph_records import (
-    ContextContentV1 as ChainedContextContentV1,
-)
-from writing_agent.task_graph_records import (
-    ContextRevisionV1 as ChainedContextRevisionV1,
+    record_reference_paths,
 )
 from writing_agent.task_graph_wire import WireRecord
 
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_REPLAY_EFFECT = "Phase2RecordedEffectV1"
-_CONTEXT_LOCATION_ALIASES = {"context": "context_revisions", "context_revision": "contexts"}
-_LEGACY_GROUP_EDGE_KINDS = {"context_revision": "context", "private": "artifact|private"}
-_RECORDED_SET_FIELDS = frozenset(
-    {
-        "instance_ref",
-        "position",
-        "context_ref",
-        "requirements_ref",
-        "decisions_ref",
-        "disclosures_ref",
-        "author_packet_ref",
-        "versions_ref",
-        "budgets_ref",
-        "rng_ref",
-        "external_inputs_ref",
-        "outcome_ref",
-        "provenance_ref",
-        "continuation",
-        "in_flight_effects",
-    }
-)
-_RECORDED_HISTORY_SET_FIELDS = frozenset(
-    {"branch_base", "imported_refs", "action_ids", "tool_result_ids"}
-)
-_RECORDED_DIRECT_REF_KINDS = {
-    "instance_ref": "instance",
-    "context_ref": "context",
-    "requirements_ref": "artifact",
-    "decisions_ref": "artifact",
-    "disclosures_ref": "artifact",
-    "author_packet_ref": "private",
-    "versions_ref": "artifact",
-    "budgets_ref": "artifact",
-    "rng_ref": "artifact",
-    "external_inputs_ref": "artifact",
-    "outcome_ref": "artifact",
-    "provenance_ref": "artifact",
-}
 
 
 class CommitVerifier(Protocol):
@@ -146,11 +98,11 @@ class _Artifact:
 
 @dataclass(frozen=True)
 class RuntimeHandle:
-    """Trusted restored state; it is never passed to a writer or model."""
+    """Materialized workspace paired with the store's verified checkpoint."""
 
     checkpoint_id: str
     state: EnvironmentStateV1
-    context: ContextRevisionV1
+    context: MaterializedContextV1
     workspace: Path
 
 
@@ -193,6 +145,8 @@ class TaskGraphStore:
     _RECORD_DIRS = {
         GraphInstanceV1: "instances",
         EventV1: "events",
+        ContextContentV1: "context_content",
+        ContextRevisionV1: "context_revisions",
         CheckpointV1: "checkpoints",
         CommitV1: "commits",
     }
@@ -229,16 +183,10 @@ class TaskGraphStore:
         """Return the configured semantic verifier without exposing store internals."""
         return self._verifier
 
-    def _verifier_for_checkpoint(
-        self, checkpoint_id: str, validator: _ClosureValidator | None = None
-    ) -> CommitVerifier | None:
-        """Select semantics from the lineage's pinned checkpoint, not store setup."""
-        if (validator or self._validator())._checkpoint_semantics(checkpoint_id) != SEMANTICS_V1:
-            return None
+    def _require_verifier(self) -> CommitVerifier:
+        """Return the sole semantic authority, refusing runtime work without one."""
         if self._verifier is None:
-            raise ProjectionError(
-                "state.versions_ref: task-graph-derive-v1 requires a configured lineage verifier"
-            )
+            raise ProjectionError("store.verifier: a lineage verifier is required")
         return self._verifier
 
     # -- immutable object codecs -------------------------------------------------
@@ -251,7 +199,7 @@ class TaskGraphStore:
             record_type = value["record_type"]
             if not isinstance(record_type, str):
                 raise ValueError("record_type must be a string")
-            if record_type not in LEGACY_PAYLOAD_RECORD_TYPES and record_type in RECORD_TYPES:
+            if record_type in RECORD_TYPES:
                 try:
                     body = load_canonical_json(canonical_bytes(value))
                     record_reference_edges(record_type, body)
@@ -332,16 +280,10 @@ class TaskGraphStore:
     @operation_scoped
     def persist(self, record: Any) -> str:
         """Persist one typed immutable record, plus context content when needed."""
-        if isinstance(record, ChainedContextContentV1):
-            return self._write_record(record, "context_content")
-        if isinstance(record, ChainedContextRevisionV1):
-            return self._write_record(record, "context_revisions")
-        if isinstance(record, ContextRevisionV1):
-            content = ContextContentV1.from_revision(record)
-            self._write_record(content, "contexts")
-            return self._write_record(record, "contexts")
         if isinstance(record, ContextContentV1):
-            return self._write_record(record, "contexts")
+            return self._write_record(record, "context_content")
+        if isinstance(record, ContextRevisionV1):
+            return self._write_record(record, "context_revisions")
         if isinstance(record, MessageV1):
             return self.put_artifact(record.to_dict(), domain="message")
         for record_type, directory in self._RECORD_DIRS.items():
@@ -358,11 +300,7 @@ class TaskGraphStore:
         return self._validator().validate(("event", identity))
 
     @operation_scoped
-    def load_context(self, identity: str) -> ContextRevisionV1:
-        return self._validator().validate(("context", identity))
-
-    @operation_scoped
-    def load_context_revision(self, identity: str) -> ChainedContextRevisionV1:
+    def load_context_revision(self, identity: str) -> ContextRevisionV1:
         """Load a chained transition-seam context revision."""
         return self._validator().validate(("context_revision", identity))
 
@@ -406,7 +344,6 @@ class TaskGraphStore:
         )
         validator = self._validator()
         validator.add_virtual("checkpoint", checkpoint.identity(), checkpoint)
-        self._verifier_for_checkpoint(checkpoint.identity(), validator)
         validator.validate(("checkpoint", checkpoint.identity()))
         return self.persist(checkpoint)
 
@@ -452,12 +389,11 @@ class TaskGraphStore:
         parent_checkpoint: str | None = None,
         fault: FaultHook | None = None,
         _validation: _ClosureValidator | None = None,
-        _allow_branch_parent: bool = False,
     ) -> str:
         """Atomically publish an event batch, checkpoint, commit, and lineage head.
 
-        ``parent_checkpoint`` is only valid for a lineage's first commit (including
-        a branch rooted at an immutable checkpoint). Repeating the identical CAS
+        ``parent_checkpoint`` is only valid for a lineage's first commit. Repeating
+        the identical CAS
         request after publication is idempotent and returns the existing commit.
         """
         self._lineage_name(lineage_id)
@@ -480,16 +416,12 @@ class TaskGraphStore:
         if expected_head is not None:
             base_checkpoint = validator.validate(("commit", expected_head)).checkpoint
         if base_checkpoint is None:
-            raise ReplayError("publication requires an actual parent checkpoint")
-        validator.validate(("checkpoint", base_checkpoint))
-        verifier = self._verifier_for_checkpoint(base_checkpoint, validator)
-        if expected_head is None and not _allow_branch_parent:
-            parent = validator.validate(("checkpoint", base_checkpoint))
-            if parent.parents:
-                raise ProjectionError(
-                    "checkpoint.parents: an initial lineage commit requires a parentless entry"
-                )
-        if verifier is not None and artifact_refs:
+            raise StoreError("publication requires an actual parent checkpoint")
+        base = validator.validate(("checkpoint", base_checkpoint))
+        if expected_head is None and base.parents:
+            raise ProjectionError("checkpoint.parents: initial lineage commit must start at root")
+        verifier = self._require_verifier()
+        if artifact_refs:
             raise ProjectionError("checkpoint.artifact_refs: runtime checkpoints cannot add refs")
         checkpoint = CheckpointV1(
             parents=(base_checkpoint,),
@@ -527,32 +459,15 @@ class TaskGraphStore:
                     validator.add_virtual("event", event.identity(), event)
                 validator.add_virtual("checkpoint", checkpoint.identity(), checkpoint)
                 validator.add_virtual("commit", commit.identity(), commit)
-                if verifier is not None:
-                    validator.gated_candidates.update(candidate_keys)
-                # Structural closure runs before semantic verification. The legacy
-                # patch reducer remains the fallback until the old runtime is removed.
+                validator.gated_candidates.update(candidate_keys)
+                # Structural closure runs before the one semantic verifier.
                 try:
                     validator.validate(("commit", commit.identity()))
                 except WrongRecordDomainError as exc:
-                    if verifier is None:
-                        raise
                     raise ProjectionError(
                         "artifact.visibility: candidate reference has the wrong visibility"
                     ) from exc
-                if verifier is not None:
-                    verifier.verify_commit(self, base_checkpoint, batch, next_state)
-                else:
-                    semantic_base = self._writer_semantic_base_checkpoint(base_checkpoint)
-                    if semantic_base is not None:
-                        from writing_agent.task_graph_projection import project_writer_context
-
-                        project_writer_context(
-                            self,
-                            semantic_base,
-                            base_checkpoint,
-                            candidate_events=batch,
-                            candidate_state=next_state,
-                        )
+                verifier.verify_commit(self, base_checkpoint, batch, next_state)
                 for event in batch:
                     self.persist(event)
                 self.persist(checkpoint)
@@ -565,42 +480,6 @@ class TaskGraphStore:
             except BaseException:
                 validator.discard(candidate_keys)
                 raise
-
-    @operation_scoped
-    def branch(
-        self,
-        parent_checkpoint: str,
-        lineage_id: str,
-        events: Sequence[EventV1],
-        next_state: EnvironmentStateV1,
-        *,
-        artifact_refs: Sequence[str] = (),
-        fault: FaultHook | None = None,
-    ) -> str:
-        """Publish the first commit of a new lineage from an immutable parent."""
-        validator = self._validator()
-        if self._verifier_for_checkpoint(parent_checkpoint, validator) is not None:
-            raise ProjectionError("checkpoint.parents: branching is unsupported with a verifier")
-        parent = validator.validate(("checkpoint", parent_checkpoint))
-        if dict(next_state.files) != dict(parent.state.files):
-            raise ValueError("branch initialization must start with the parent's full file state")
-        if next_state.position["start_checkpoint"] != parent_checkpoint:
-            raise ValueError("branch state must name its immutable start checkpoint")
-        if next_state.history["branch_base"] != parent.event_head:
-            raise ValueError("branch state must name the parent event head as branch_base")
-        return self.publish(
-            lineage_id,
-            None,
-            events,
-            next_state,
-            artifact_refs=artifact_refs,
-            parent_checkpoint=parent_checkpoint,
-            fault=fault,
-            _validation=validator,
-            _allow_branch_parent=True,
-        )
-
-    # -- materialization, restore, and inspection -------------------------------
 
     @operation_scoped
     def materialize(
@@ -683,14 +562,10 @@ class TaskGraphStore:
         fault: FaultHook | None = None,
     ) -> RuntimeHandle:
         checkpoint = self.load_checkpoint(checkpoint_id)
-        verifier = self._verifier_for_checkpoint(checkpoint_id)
-        if verifier is None:
-            self._validate_writer_history(checkpoint_id)
-        else:
-            verifier.view(self, checkpoint_id)
+        self._require_verifier().view(self, checkpoint_id)
         workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
         try:
-            context = self.load_context(checkpoint.state.context_ref)
+            context = self.materialize_context(checkpoint.state.context_ref)
             return RuntimeHandle(checkpoint_id, checkpoint.state, context, workspace)
         except Exception:
             shutil.rmtree(workspace, ignore_errors=True)
@@ -736,99 +611,7 @@ class TaskGraphStore:
         )
         return CheckpointDifference(tuple(file_changes), state_changes)
 
-    # -- recorded replay ---------------------------------------------------------
-
-    @operation_scoped
-    def replay(
-        self,
-        lineage_id: str,
-        start_checkpoint: str,
-        committed_suffix: Sequence[str],
-    ) -> str:
-        """Reduce a published suffix using recorded Phase 2 fixture effects only."""
-        validator = self._validator()
-        current_id = start_checkpoint
-        current = validator.validate(("checkpoint", current_id))
-        suffix = tuple(committed_suffix)
-        if not suffix:
-            self._validate_writer_history(current_id)
-            return current_id
-        if self._read_head(lineage_id, validator) != suffix[-1]:
-            raise ReplayError("the supplied suffix is not the published lineage head")
-        prior_commit: str | None = None
-        for index, commit_id in enumerate(suffix):
-            commit = validator.validate(("commit", commit_id))
-            if index == 0:
-                if commit.parent_commit is not None:
-                    parent = validator.validate(("commit", commit.parent_commit))
-                    if parent.checkpoint != current_id:
-                        raise ReplayError("suffix does not start at the supplied checkpoint")
-                elif tuple(validator.validate(("checkpoint", commit.checkpoint)).parents) != (
-                    current_id,
-                ):
-                    raise ReplayError("root commit is not based on the supplied checkpoint")
-            elif commit.parent_commit != prior_commit:
-                raise ReplayError("commit suffix is not contiguous")
-            target = validator.validate(("checkpoint", commit.checkpoint))
-            if target.parents != (current_id,):
-                raise ReplayError("checkpoint suffix is not contiguous")
-            state = current.state
-            for event_id in commit.events:
-                event = validator.validate(("event", event_id))
-                payload = validator.validate(("artifact", event.payload_ref))
-                state = self._apply_recorded_effect_body(state, event, payload.value)
-            if state != target.state:
-                raise ReplayError("recorded effects do not reproduce the committed post-state")
-            current_id = commit.checkpoint
-            current = target
-            prior_commit = commit_id
-        self._validate_writer_history(current_id)
-        return current_id
-
-    def _writer_semantic_base_checkpoint(self, checkpoint_id: str) -> str | None:
-        """Find an admitted writer entry capability in immutable ancestry.
-
-        Generic Phase 2 fixtures have no typed node-entry contract. A candidate
-        event, runtime log, or child reference cannot grant or remove capability.
-        """
-        from writing_agent.task_graph_contracts import NodeContractV1
-
-        semantic_base = None
-        ancestor = self.load_checkpoint(checkpoint_id)
-        while True:
-            instance = self.load_instance(ancestor.state.instance_ref)
-            spec = next(
-                (node for node in instance.nodes if node.id == ancestor.state.position["node_id"]),
-                None,
-            )
-            if (
-                spec is not None
-                and spec.entry_contract == ancestor.state.position["entry_contract"]
-            ):
-                body = self.get_artifact(spec.entry_contract)
-                if isinstance(body, dict) and body.get("artifact_type") == "NodeContractV1":
-                    contract = NodeContractV1.from_dict(body)
-                    if (
-                        contract.node_kind == "writer"
-                        and ancestor.state.position["phase"] == "ready_writer"
-                        and not ancestor.state.history["action_ids"]
-                        and not ancestor.state.history["tool_result_ids"]
-                    ):
-                        semantic_base = ancestor.identity()
-            if not ancestor.parents:
-                break
-            ancestor = self.load_checkpoint(ancestor.parents[0])
-        return semantic_base
-
-    def _validate_writer_history(self, checkpoint_id: str) -> None:
-        """Apply admitted writer semantics on recovery."""
-        semantic_base = self._writer_semantic_base_checkpoint(checkpoint_id)
-        if semantic_base is not None:
-            from writing_agent.task_graph_projection import project_writer_context
-
-            project_writer_context(self, semantic_base, checkpoint_id)
-
-    # -- validation --------------------------------------------------------------
+    # -- operation-scoped closure validation ------------------------------------
 
     @contextmanager
     def operation(self):
@@ -858,75 +641,6 @@ class TaskGraphStore:
         """Return a fresh validator seeded from the open operation session, if any."""
         return _ClosureValidator(self, parent=getattr(self._session, "validator", None))
 
-    def _apply_recorded_effect_body(
-        self, state: EnvironmentStateV1, event: EventV1, body: Any
-    ) -> EnvironmentStateV1:
-        """Future reducers register here; unknown transition envelopes fail closed."""
-        if not isinstance(body, dict) or set(body) != {
-            "artifact_type",
-            "before_state_ref",
-            "file_delta",
-            "set",
-            "history_set",
-        }:
-            raise ReplayError("event payload is not a Phase 2 recorded effect")
-        if body["artifact_type"] != _REPLAY_EFFECT:
-            raise ReplayError("event payload is outside the Phase 2 replay reducer")
-        if body["before_state_ref"] != state.identity():
-            raise ReplayError("recorded effect pre-state does not match replay state")
-        changes = body["set"]
-        history_changes = body["history_set"]
-        deltas = body["file_delta"]
-        if not isinstance(changes, dict) or not isinstance(history_changes, dict):
-            raise ReplayError("recorded state changes must be objects")
-        allowed = set(state.to_dict()) - {"schema", "files", "tree_hash", "history"}
-        if not set(changes) <= allowed:
-            raise ReplayError("recorded effect changes protected state fields")
-        history_allowed = set(state.history) - {"head", "seq"}
-        if not set(history_changes) <= history_allowed:
-            raise ReplayError("recorded effect changes protected history fields")
-        if not isinstance(deltas, dict):
-            raise ReplayError("file_delta must be an object")
-        files = dict(state.files)
-        for path, delta in deltas.items():
-            safe_path(path)
-            if not isinstance(delta, dict) or set(delta) != {"before", "after"}:
-                raise ReplayError("invalid recorded file delta")
-            before = delta["before"]
-            after = delta["after"]
-            if before is not None and not isinstance(before, str):
-                raise ReplayError("file delta before value must be text or null")
-            if after is not None and not isinstance(after, str):
-                raise ReplayError("file delta after value must be text or null")
-            actual = files.get(path)
-            if actual != before or (before is None and path in files):
-                raise ReplayError("recorded file delta precondition failed")
-            if after is None:
-                files.pop(path, None)
-            else:
-                files[path] = after
-        validate_file_tree(files)
-        value = state.to_dict()
-        value.update(changes)
-        value["files"] = files
-        value["tree_hash"] = tree_hash(files)
-        history = state.to_dict()["history"]
-        history.update(history_changes)
-        if event.previous != history["head"] or event.seq != history["seq"] + 1:
-            raise ReplayError("recorded event does not extend the replay cursor")
-        history["head"] = event.identity()
-        history["seq"] = event.seq
-        value["history"] = history
-        try:
-            result = EnvironmentStateV1.from_dict(value)
-        except (TypeError, ValueError) as exc:
-            raise ReplayError("recorded effect produces an invalid state") from exc
-        if event.lineage_id != result.position["lineage_id"]:
-            raise ReplayError("recorded event and resulting state lineages differ")
-        return result
-
-    # -- filesystem internals ----------------------------------------------------
-
     def _prepare_store(self) -> None:
         # The caller supplies one already-established durable parent.  We create
         # only the configured root and its fixed children, so every possible
@@ -944,7 +658,6 @@ class TaskGraphStore:
             "instances",
             "checkpoints",
             "events",
-            "contexts",
             "context_content",
             "context_revisions",
             "artifacts",
@@ -1023,7 +736,7 @@ class TaskGraphStore:
         identity = record.identity()
         wire = (
             record.to_wire()
-            if isinstance(record, (ChainedContextContentV1, ChainedContextRevisionV1))
+            if isinstance(record, (WireRecord, ContextContentV1, ContextRevisionV1))
             else record
         )
         self._write_immutable(self._record_path(directory, identity), canonical_bytes(wire))
@@ -1168,12 +881,6 @@ class TaskGraphStore:
             raise CorruptRecordError(f"store directory is not private: {path}")
 
 
-_FIELD_NAMES = {
-    record_type: frozenset(field.name for field in fields(record_type))
-    for record_type in (ContextRevisionV1, ContextContentV1)
-}
-
-
 class _ClosureValidator:
     """One linear, typed closure traversal for a public store operation.
 
@@ -1186,10 +893,8 @@ class _ClosureValidator:
     _RECORDS: dict[str, tuple[type[Any], str]] = {
         "instance": (GraphInstanceV1, "instances"),
         "event": (EventV1, "events"),
-        "context": (ContextRevisionV1, "contexts"),
-        "context_content": (ContextContentV1, "contexts"),
-        "context_node": (ChainedContextContentV1, "context_content"),
-        "context_revision": (ChainedContextRevisionV1, "context_revisions"),
+        "context_node": (ContextContentV1, "context_content"),
+        "context_revision": (ContextRevisionV1, "context_revisions"),
         "checkpoint": (CheckpointV1, "checkpoints"),
         "commit": (CommitV1, "commits"),
     }
@@ -1214,6 +919,7 @@ class _ClosureValidator:
         self.completed: set[tuple[str, str]] = set()
         self.required_domain: dict[str, frozenset[str]] = {}
         self.gated_candidates: set[tuple[str, str]] = set()
+        self.paths: dict[tuple[str, str], str] = {}
         if parent is not None:
             # Only completed (closure-validated, disk-backed) results are shared.
             self.completed = set(parent.completed)
@@ -1336,7 +1042,6 @@ class _ClosureValidator:
         for directory in (
             "instances",
             "events",
-            "contexts",
             "context_content",
             "context_revisions",
             "checkpoints",
@@ -1394,38 +1099,24 @@ class _ClosureValidator:
             self._require_domain(kind, identity)
             self.resolved[requested] = ("artifact", identity)
             return ("artifact", identity)
-        disk_kinds: set[str] = set()
-        for location in locations:
-            if location == "contexts":
-                disk_kinds.add("contexts")
-            else:
-                disk_kinds.add(self._LOCATION_KINDS[location])
+        disk_kinds = {self._LOCATION_KINDS[location] for location in locations}
 
         if kind == "any":
             candidates = set(virtual_kinds)
             candidates.update(disk_kinds)
             if not candidates:
                 raise MissingReferenceError(f"missing immutable reference: {identity}")
-            # A virtual value and its same typed persisted location are one
-            # candidate; distinct domains/locations are always ambiguous.
-            normalized = {
-                "contexts" if value in {"context", "context_content", "contexts"} else value
-                for value in candidates
-            }
-            if len(normalized) != 1:
+            if len(candidates) != 1:
                 raise WrongRecordDomainError(
-                    f"reference {identity} exists in ambiguous domains: {sorted(normalized)}"
+                    f"reference {identity} exists in ambiguous domains: {sorted(candidates)}"
                 )
-            resolved = next(iter(normalized))
-            if resolved == "contexts":
-                resolved = self._infer_context_kind(identity)
+            resolved = next(iter(candidates))
             result = (resolved, identity)
             self.resolved[requested] = result
             return result
 
         expected_location = self._expected_location(kind)
         other_locations = {location for location in locations if location != expected_location}
-        other_locations.discard(_CONTEXT_LOCATION_ALIASES.get(kind))
         if other_locations:
             raise WrongRecordDomainError(
                 f"reference {identity} exists in ambiguous locations: "
@@ -1438,10 +1129,6 @@ class _ClosureValidator:
             if locations or virtual_kinds:
                 raise WrongRecordDomainError(f"reference {identity} is not stored as {kind}")
             raise MissingReferenceError(f"missing {kind} reference: {identity}")
-        if expected_location == "contexts":
-            actual = self._infer_context_kind(identity)
-            if actual != kind:
-                raise WrongRecordDomainError(f"reference {identity} is {actual}, expected {kind}")
         self.resolved[requested] = requested
         return requested
 
@@ -1469,38 +1156,6 @@ class _ClosureValidator:
         except KeyError as exc:
             raise AssertionError(f"unknown closure node kind: {kind}") from exc
 
-    def _infer_context_kind(self, identity: str) -> str:
-        for kind in ("context", "context_content"):
-            virtual = self.virtual.get((kind, identity))
-            if virtual is not None:
-                return kind
-        raw = self.store._read_bytes(self.store._record_path("contexts", identity))
-        # The two record types have disjoint required field sets and from_dict
-        # rejects missing/unknown fields, so at most one type can ever decode.
-        # Pick it from the exact top-level key set and decode once.
-        try:
-            body = load_canonical_json(raw)
-        except (TypeError, ValueError) as exc:
-            raise WrongRecordDomainError(
-                f"ambiguous or invalid context record: {identity}"
-            ) from exc
-        keys = set(body) if isinstance(body, dict) else set()
-        for kind in ("context", "context_content"):
-            record_type = self._RECORDS[kind][0]
-            if keys != _FIELD_NAMES[record_type]:
-                continue
-            try:
-                value = record_type.from_dict(body)
-                if canonical_bytes(value.to_dict()) != raw:
-                    raise ValueError("decoded record did not preserve canonical bytes")
-            except (TypeError, ValueError):
-                break
-            if value.identity() == identity:
-                self.loaded[(kind, identity)] = value
-                return kind
-            break
-        raise WrongRecordDomainError(f"ambiguous or invalid context record: {identity}")
-
     def _load(self, key: tuple[str, str]) -> Any:
         if key in self.loaded:
             return self.loaded[key]
@@ -1521,266 +1176,236 @@ class _ClosureValidator:
         self.loaded[key] = value
         return value
 
+    def _remember(self, kind: str, identity: str, path: str) -> tuple[str, str]:
+        key = (kind, identity)
+        self.paths.setdefault(key, path)
+        return key
+
     def _edges(self, key: tuple[str, str], value: Any) -> list[tuple[str, str]]:
-        kind, _ = key
+        kind, _identity = key
         if kind == "instance":
-            refs = [value.template_ref, *value.source_refs, *value.request_refs]
-            if value.requirements_ref is not None:
-                refs.append(value.requirements_ref)
-            refs.extend(node.entry_contract for node in value.nodes)
-            return [("artifact", identity) for identity in refs]
-        if kind == "event":
-            edges = [
-                ("artifact", value.payload_ref),
-                ("artifact", value.versions_ref),
-                ("artifact", value.provenance_ref),
-            ]
-            if value.previous is not None:
-                edges.append(("event", value.previous))
-            edges.extend(("event", identity) for identity in value.caused_by)
-            return edges
-        if kind == "context":
-            edges = [("context_content", value.content_hash)]
-            if value.event_head is not None:
-                edges.append(("event", value.event_head))
-            edges.extend(("event", identity) for identity in value.provenance_refs)
+            edges = [self._remember("artifact", value.template_ref, "instance.template_ref")]
             edges.extend(
-                ("artifact", value.rendering[name])
-                for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
+                self._remember("artifact", identity, f"instance.source_refs[{index}]")
+                for index, identity in enumerate(value.source_refs)
+            )
+            edges.extend(
+                self._remember("artifact", identity, f"instance.request_refs[{index}]")
+                for index, identity in enumerate(value.request_refs)
+            )
+            if value.requirements_ref is not None:
+                edges.append(
+                    self._remember("artifact", value.requirements_ref, "instance.requirements_ref")
+                )
+            edges.extend(
+                self._remember(
+                    "artifact", node.entry_contract, f"instance.nodes[{index}].entry_contract"
+                )
+                for index, node in enumerate(value.nodes)
             )
             return edges
-        if kind == "context_content":
-            return [
-                ("artifact", getattr(value, name))
-                for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
+        if kind == "event":
+            edges = [
+                self._remember("artifact", value.payload_ref, "event.payload_ref"),
+                self._remember("artifact", value.versions_ref, "event.versions_ref"),
+                self._remember("artifact", value.provenance_ref, "event.provenance_ref"),
             ]
-        if kind in {"context_node", "context_revision"}:
-            return list(record_reference_edges(kind, value.to_wire()))
+            if value.previous is not None:
+                edges.append(self._remember("event", value.previous, "event.previous"))
+            edges.extend(
+                self._remember("event", identity, f"event.caused_by[{index}]")
+                for index, identity in enumerate(value.caused_by)
+            )
+            return edges
+        if kind == "context_revision":
+            return [
+                self._remember("context_node", value.content_ref, "context_revision.content_ref"),
+                *(
+                    [self._remember("event", value.event_head, "context_revision.event_head")]
+                    if value.event_head is not None
+                    else []
+                ),
+                *(
+                    self._remember("event", identity, f"context_revision.provenance_refs[{index}]")
+                    for index, identity in enumerate(value.provenance_refs)
+                ),
+            ]
+        if kind == "context_node":
+            edges = []
+            if value.parent_ref is not None:
+                edges.append(
+                    self._remember("context_node", value.parent_ref, "context_node.parent_ref")
+                )
+            if value.rendering is not None:
+                edges.extend(
+                    self._remember(
+                        "artifact", value.rendering[name], f"context_node.rendering.{name}"
+                    )
+                    for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
+                )
+            return edges
         if kind in {"artifact", "private"}:
             if value.domain == "payload" and isinstance(value.value, Mapping):
-                if value.value.get("artifact_type") == _REPLAY_EFFECT:
-                    return self._recorded_effect_edges(value.value)
                 if "record_type" in value.value:
                     record_type = value.value["record_type"]
+                    base_path = self.paths.get(key, "artifact")
                     if not isinstance(record_type, str):
                         raise ProjectionError(
-                            "event.payload_ref.record_type: task-graph record type must be a string"
+                            f"{base_path}.record_type: task-graph record type must be a string"
                         )
-                    if record_type in LEGACY_PAYLOAD_RECORD_TYPES:
-                        return []
                     if record_type not in RECORD_TYPES:
                         raise ProjectionError(
-                            "event.payload_ref.record_type: unregistered task-graph record "
-                            f"type {record_type!r}"
+                            f"{base_path}.record_type: unregistered task-graph record type "
+                            f"{record_type!r}"
                         )
                     try:
-                        edges = list(record_reference_edges(record_type, value.value))
-                        if (
-                            record_type == "GroupSpecV1"
-                            and self._checkpoint_semantics(
-                                value.value["environment"]["entry_checkpoint_id"]
-                            )
-                            is None
-                        ):
-                            edges = [
-                                (_LEGACY_GROUP_EDGE_KINDS.get(kind, kind), ref)
-                                for kind, ref in edges
-                            ]
-                        if record_type == "CheckRequestV1":
-                            if self._checkpoint_semantics(value.value["target_checkpoint"]) is None:
-                                requirement = value.value["requirement_version"]
-                                for index, edge in enumerate(edges):
-                                    if edge == ("private", requirement):
-                                        edges[index] = ("artifact|private", requirement)
-                                        break
-                        return edges
+                        refs = record_reference_paths(record_type, value.value)
                     except (TypeError, ValueError) as exc:
+                        field_path = self._codec_field_path(record_type, str(exc))
+                        suffix = f".{field_path}" if field_path else ""
                         raise ProjectionError(
-                            "event.payload_ref: invalid task-graph payload record "
+                            f"{base_path}{suffix}: invalid task-graph payload record "
                             f"{record_type}: {exc}"
                         ) from exc
+                    return [
+                        self._remember(edge, identity, f"{base_path}.{field_path}")
+                        for field_path, edge, identity in refs
+                    ]
                 if "artifact_type" in value.value:
-                    return self._phase3_contract_edges(value.value, private=value.private)
+                    return self._phase3_contract_edges(
+                        value.value,
+                        private=value.private,
+                        path=self.paths.get(key, "artifact"),
+                    )
             return []
         if kind == "checkpoint":
-            edges = [("checkpoint", identity) for identity in value.parents]
+            edges = [
+                self._remember("checkpoint", identity, f"checkpoint.parents[{index}]")
+                for index, identity in enumerate(value.parents)
+            ]
             edges.extend(self._state_edges(value.state))
-            edges.extend(("any", identity) for identity in value.artifact_refs)
+            edges.extend(
+                self._remember("any", identity, f"checkpoint.artifact_refs[{index}]")
+                for index, identity in enumerate(value.artifact_refs)
+            )
             return edges
         if kind == "commit":
-            edges = [("checkpoint", value.checkpoint)]
+            edges = [self._remember("checkpoint", value.checkpoint, "commit.checkpoint")]
             if value.parent_commit is not None:
-                edges.append(("commit", value.parent_commit))
-            edges.extend(("event", identity) for identity in value.events)
+                edges.append(self._remember("commit", value.parent_commit, "commit.parent_commit"))
+            edges.extend(
+                self._remember("event", identity, f"commit.events[{index}]")
+                for index, identity in enumerate(value.events)
+            )
             return edges
         return []
 
-    def _versions_semantics(self, versions_ref: str) -> tuple[str | None, Mapping[str, Any] | None]:
+    @staticmethod
+    def _codec_field_path(record_type: str, detail: str) -> str:
+        prefix = f"{record_type}."
+        if prefix in detail:
+            field = detail.split(prefix, 1)[1].split(":", 1)[0].split(" ", 1)[0]
+            return field.rstrip(".,)")
+        marker = "unknown fields: "
+        if marker in detail:
+            import ast
+
+            try:
+                fields = ast.literal_eval(detail.split(marker, 1)[1])
+            except (SyntaxError, ValueError):
+                return ""
+            if isinstance(fields, list) and fields and isinstance(fields[0], str):
+                return fields[0]
+        return ""
+
+    def _versions_semantics(
+        self, versions_ref: str
+    ) -> tuple[ExecutionVersionsV1, Mapping[str, Any]]:
         key = self._resolve_key(("artifact", versions_ref))
-        versions = self._load(key)
+        artifact = self._load(key)
         body = (
-            versions.value
-            if versions.domain == "payload" and isinstance(versions.value, Mapping)
+            artifact.value
+            if artifact.domain == "payload" and isinstance(artifact.value, Mapping)
             else None
         )
-        if body is None or "transition_semantics" not in body:
-            return None, body
-        if body["transition_semantics"] != SEMANTICS_V1:
-            raise WrongRecordDomainError("unsupported transition semantics")
+        if body is None:
+            raise ProjectionError("state.versions_ref: runtime lineage requires execution versions")
+        if body.get("transition_semantics") != SEMANTICS_V1:
+            raise ProjectionError(
+                f"state.versions_ref.transition_semantics: runtime lineages require {SEMANTICS_V1}"
+            )
         try:
-            ExecutionVersionsV1.from_dict(dict(body))
+            versions = ExecutionVersionsV1.from_dict(dict(body))
         except (TypeError, ValueError) as exc:
-            raise WrongRecordDomainError("invalid execution versions") from exc
-        return SEMANTICS_V1, body
-
-    def _checkpoint_semantics(self, checkpoint_id: str) -> str | None:
-        key = self._resolve_key(("checkpoint", checkpoint_id))
-        checkpoint = self._load(key)
-        semantics, _ = self._versions_semantics(checkpoint.state.versions_ref)
-        return semantics
+            raise ProjectionError(f"state.versions_ref: invalid execution versions: {exc}") from exc
+        return versions, body
 
     def _state_edges(self, state: EnvironmentStateV1) -> list[tuple[str, str]]:
-        semantics, versions_body = self._versions_semantics(state.versions_ref)
-
-        chained = semantics == SEMANTICS_V1
+        versions, versions_body = self._versions_semantics(state.versions_ref)
         refs: list[tuple[str, str, str]] = [
-            ("instance", state.instance_ref, "public"),
-            ("context_revision" if chained else "context", state.context_ref, "public"),
-            ("artifact", state.position["entry_contract"], "public"),
-            ("artifact", state.requirements_ref, "private" if chained else "public"),
-            ("artifact", state.decisions_ref, "public"),
-            ("artifact", state.disclosures_ref, "public"),
-            ("artifact", state.versions_ref, "public"),
-            ("artifact", state.budgets_ref, "public"),
-            ("artifact", state.rng_ref, "public"),
-            ("artifact", state.external_inputs_ref, "public"),
-            ("artifact", state.outcome_ref, "public"),
-            ("artifact", state.provenance_ref, "public"),
+            ("instance", state.instance_ref, "state.instance_ref"),
+            ("context_revision", state.context_ref, "state.context_ref"),
+            ("artifact", state.position["entry_contract"], "state.position.entry_contract"),
+            ("private", state.requirements_ref, "state.requirements_ref"),
+            ("artifact", state.decisions_ref, "state.decisions_ref"),
+            ("artifact", state.disclosures_ref, "state.disclosures_ref"),
+            ("artifact", state.versions_ref, "state.versions_ref"),
+            ("artifact", state.budgets_ref, "state.budgets_ref"),
+            ("artifact", state.rng_ref, "state.rng_ref"),
+            ("artifact", state.external_inputs_ref, "state.external_inputs_ref"),
+            ("artifact", state.outcome_ref, "state.outcome_ref"),
+            ("artifact", state.provenance_ref, "state.provenance_ref"),
         ]
-        refs.extend(("any", identity, "either") for identity in state.history["imported_refs"])
-        if state.author_packet_ref is not None:
-            refs.append(("private", state.author_packet_ref, "private"))
-        if state.continuation["author_request"] is not None:
-            refs.append(("private", state.continuation["author_request"], "private"))
         refs.extend(
-            ("private", identity, "private") for identity in state.continuation["check_requests"]
+            ("any", identity, f"state.history.imported_refs[{index}]")
+            for index, identity in enumerate(state.history["imported_refs"])
+        )
+        if state.author_packet_ref is not None:
+            refs.append(("private", state.author_packet_ref, "state.author_packet_ref"))
+        if state.continuation["author_request"] is not None:
+            refs.append(
+                (
+                    "private",
+                    state.continuation["author_request"],
+                    "state.continuation.author_request",
+                )
+            )
+        refs.extend(
+            ("private", identity, f"state.continuation.check_requests[{index}]")
+            for index, identity in enumerate(state.continuation["check_requests"])
         )
         if state.history["branch_base"] is not None:
-            refs.append(("event", state.history["branch_base"], "public"))
+            refs.append(("event", state.history["branch_base"], "state.history.branch_base"))
         if state.position["start_checkpoint"] is not None:
-            refs.append(("checkpoint", state.position["start_checkpoint"], "public"))
+            refs.append(
+                (
+                    "checkpoint",
+                    state.position["start_checkpoint"],
+                    "state.position.start_checkpoint",
+                )
+            )
         if state.history["head"] is not None:
-            refs.append(("event", state.history["head"], "public"))
-        if chained:
-            refs.extend(
-                (kind, identity, "private" if kind == "private" else "public")
-                for kind, identity in record_reference_edges("ExecutionVersionsV1", versions_body)
-            )
-        return [
-            ("private" if visibility == "private" else kind, identity)
-            for kind, identity, visibility in refs
-        ]
-
-    @staticmethod
-    def _recorded_effect_edges(body: Mapping[str, Any]) -> list[tuple[str, str]]:
-        required = {
-            "artifact_type",
-            "before_state_ref",
-            "file_delta",
-            "set",
-            "history_set",
-        }
-        if body["artifact_type"] != _REPLAY_EFFECT:
-            raise WrongRecordDomainError(
-                f"unsupported typed payload artifact: {body['artifact_type']!r}"
-            )
-        if set(body) != required:
-            raise CorruptRecordError("invalid Phase2RecordedEffectV1 envelope")
-        changes = body["set"]
-        history_changes = body["history_set"]
-        if not all(
-            isinstance(body[name], Mapping) for name in ("file_delta", "set", "history_set")
+            refs.append(("event", state.history["head"], "state.history.head"))
+        for field_path, edge, identity in record_reference_paths(
+            "ExecutionVersionsV1", versions_body
         ):
-            raise CorruptRecordError("invalid recorded-effect object fields")
-        try:
-            validate_hash(body["before_state_ref"])
-        except (TypeError, ValueError) as exc:
-            raise CorruptRecordError("invalid recorded-effect state assertion") from exc
-        if not set(changes) <= _RECORDED_SET_FIELDS:
-            raise CorruptRecordError("recorded effect changes protected state fields")
-        if not set(history_changes) <= _RECORDED_HISTORY_SET_FIELDS:
-            raise CorruptRecordError("recorded effect changes protected history fields")
+            refs.append((edge, identity, f"state.versions_ref.{field_path}"))
+        return [self._remember(kind, identity, path) for kind, identity, path in refs]
 
-        edges: list[tuple[str, str]] = []
-        try:
-            for field, kind in _RECORDED_DIRECT_REF_KINDS.items():
-                if field not in changes:
-                    continue
-                identity = changes[field]
-                validate_hash(identity, optional=field == "author_packet_ref")
-                if identity is not None:
-                    edges.append((kind, identity))
-
-            if "position" in changes:
-                position = changes["position"]
-                if (
-                    not isinstance(position, Mapping)
-                    or set(position) != EnvironmentStateV1.POSITION_FIELDS
-                ):
-                    raise TypeError("position is not a complete object")
-                validate_hash(position["entry_contract"])
-                validate_hash(position["start_checkpoint"], optional=True)
-                edges.append(("artifact", position["entry_contract"]))
-                if position["start_checkpoint"] is not None:
-                    edges.append(("checkpoint", position["start_checkpoint"]))
-
-            if "continuation" in changes:
-                continuation = changes["continuation"]
-                if (
-                    not isinstance(continuation, Mapping)
-                    or set(continuation) != EnvironmentStateV1.CONTINUATION_FIELDS
-                ):
-                    raise TypeError("continuation is not a complete object")
-                validate_hash(continuation["author_request"], optional=True)
-                if continuation["author_request"] is not None:
-                    edges.append(("private", continuation["author_request"]))
-                check_requests = continuation["check_requests"]
-                if not isinstance(check_requests, (list, tuple)):
-                    raise TypeError("check_requests is not an array")
-                for identity in check_requests:
-                    validate_hash(identity)
-                    edges.append(("private", identity))
-
-            if "branch_base" in history_changes:
-                identity = history_changes["branch_base"]
-                validate_hash(identity, optional=True)
-                if identity is not None:
-                    edges.append(("event", identity))
-            if "imported_refs" in history_changes:
-                imported = history_changes["imported_refs"]
-                if not isinstance(imported, (list, tuple)):
-                    raise TypeError("imported_refs is not an array")
-                for identity in imported:
-                    validate_hash(identity)
-                    edges.append(("any", identity))
-        except (KeyError, TypeError, ValueError) as exc:
-            raise CorruptRecordError("invalid recorded-effect reference field") from exc
-        return edges
-
-    @staticmethod
-    def _phase3_contract_edges(body: Mapping[str, Any], *, private: bool) -> list[tuple[str, str]]:
+    def _phase3_contract_edges(
+        self, body: Mapping[str, Any], *, private: bool, path: str
+    ) -> list[tuple[str, str]]:
         """Validate supported Phase 3 envelopes and expose their typed closure."""
         try:
             references = phase3_typed_artifact_references(body, private=private)
         except TypedArtifactError as exc:
-            error = (
-                WrongRecordDomainError
-                if exc.kind in {"unsupported", "visibility"}
-                else CorruptRecordError
-            )
-            raise error(str(exc)) from exc
+            raise ProjectionError(f"{path}: {exc}") from exc
         return [
-            ("private" if reference.private else "artifact", reference.identity)
+            self._remember(
+                "private" if reference.private else "artifact",
+                reference.identity,
+                f"{path}.{reference.path}" if reference.path else path,
+            )
             for reference in references
         ]
 
@@ -1806,10 +1431,6 @@ class _ClosureValidator:
             for caused_by in value.caused_by:
                 if self.loaded[("event", caused_by)].seq >= value.seq:
                     raise CorruptRecordError("an event cause must precede the caused event")
-        elif kind == "context":
-            content = self.loaded[("context_content", value.content_hash)]
-            if content != ContextContentV1.from_revision(value):
-                raise CorruptRecordError("context content does not match its revision")
         elif kind == "context_revision":
             if ("context_node", value.content_ref) not in self.loaded:
                 raise CorruptRecordError("context revision content was not validated")
@@ -1824,24 +1445,6 @@ class _ClosureValidator:
 
     def _validate_artifact(self, artifact: _Artifact, identity: str) -> None:
         if artifact.domain in {"payload", "payload:bytes"}:
-            body = artifact.value
-            if (
-                artifact.domain == "payload"
-                and isinstance(body, Mapping)
-                and "artifact_type" in body
-            ):
-                if body["artifact_type"] == _REPLAY_EFFECT:
-                    self._recorded_effect_edges(body)
-                else:
-                    try:
-                        phase3_typed_artifact_references(body, private=artifact.private)
-                    except TypedArtifactError as exc:
-                        error = (
-                            WrongRecordDomainError
-                            if exc.kind in {"unsupported", "visibility"}
-                            else CorruptRecordError
-                        )
-                        raise error(str(exc)) from exc
             return
         if artifact.domain == "message" and not artifact.private:
             try:
@@ -1894,36 +1497,21 @@ class _ClosureValidator:
         elif checkpoint.parents:
             parent_id = checkpoint.parents[0]
         else:
-            raise ReplayError("a recorded transition commit requires a parent checkpoint")
+            raise CorruptRecordError("a runtime commit requires a parent checkpoint")
         parent = self.loaded[("checkpoint", parent_id)]
-        verifier = self.store._verifier_for_checkpoint(parent_id, self)
         previous = parent.event_head
         sequence = parent.state.history["seq"]
         lineage = checkpoint.state.position["lineage_id"]
-        state = parent.state
         for event_id in commit.events:
             event = self.loaded[("event", event_id)]
             if event.previous != previous or event.seq != sequence + 1:
                 raise CorruptRecordError("commit events are not an ordered predecessor suffix")
             if event.lineage_id != lineage:
                 raise CorruptRecordError("commit event lineage does not match checkpoint state")
-            if verifier is None:
-                payload = self.loaded[("artifact", event.payload_ref)]
-                try:
-                    state = self.store._apply_recorded_effect_body(state, event, payload.value)
-                except ReplayError:
-                    raise
-                # Validate each reduced state immediately. A later effect may replace
-                # a reference, but cannot hide that a committed intermediate state
-                # was not closed at its own event boundary.
-                for edge in self._state_edges(state):
-                    self.validate(edge)
             previous = event_id
             sequence = event.seq
         if previous != checkpoint.event_head or sequence != checkpoint.state.history["seq"]:
             raise CorruptRecordError("commit events do not end at the checkpoint event cursor")
-        if verifier is None and state != checkpoint.state:
-            raise ReplayError("recorded effects do not reproduce the committed post-state")
 
 
 class _LineageLock:
@@ -1975,7 +1563,6 @@ __all__ = [
     "FileDifference",
     "MaterializationError",
     "MissingReferenceError",
-    "ReplayError",
     "RuntimeHandle",
     "StateDifference",
     "StoreError",

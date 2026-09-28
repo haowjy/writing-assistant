@@ -451,7 +451,7 @@ class LineageGateTests(unittest.TestCase):
                 )
             self.assertIsInstance(rejected.exception.__cause__, type(failure))
 
-    def test_v1_semantics_refuse_verifierless_store_including_terminal_root(self) -> None:
+    def test_publish_and_restore_refuse_verifierless_store(self) -> None:
         fixture = GateStoreFixture(self)
         legacy_store = TaskGraphStore(fixture.root)
         transition = fixture.first_transition()
@@ -471,24 +471,16 @@ class LineageGateTests(unittest.TestCase):
             )
         self.assertIsNone(legacy_store.read_head("rollout-fixture"))
         with self.assertRaises(ProjectionError):
-            legacy_store.save_checkpoint(forged)
-        with self.assertRaises(ProjectionError):
             legacy_store.restore(fixture.root_id, fixture.root.parent / "no-verifier-workspace")
-
-        terminal_root = replace(
-            fixture.fixture.state,
-            position={**fixture.fixture.state.position, "phase": "terminal"},
-        )
-        with self.assertRaises(ProjectionError):
-            legacy_store.save_checkpoint(terminal_root)
         self.assertIsNone(legacy_store.read_head("rollout-fixture"))
 
-    def test_initial_commit_cannot_start_from_midlineage_and_branch_is_refused_under_gate(
-        self,
-    ) -> None:
+    def test_initial_commit_cannot_start_from_midlineage(self) -> None:
         fixture = GateStoreFixture(self)
-        midlineage = fixture.store.save_checkpoint(fixture.fixture.state, parent=fixture.root_id)
-        transition = fixture.first_transition()
+        first = fixture.first_transition()
+        fixture.persist_artifacts(first)
+        midlineage = fixture.store.save_checkpoint(first.state, parent=fixture.root_id)
+        midlineage_view = fixture.verified_view(midlineage)
+        transition = fixture.next_tool_transition(midlineage_view)
         fixture.persist_artifacts(transition)
         with self.assertRaises(ProjectionError):
             fixture.store.publish(
@@ -498,15 +490,7 @@ class LineageGateTests(unittest.TestCase):
                 transition.state,
                 parent_checkpoint=midlineage,
             )
-        with self.assertRaises(ProjectionError):
-            fixture.store.branch(
-                fixture.root_id,
-                "rollout-branch",
-                (transition.event,),
-                transition.state,
-            )
         self.assertIsNone(fixture.store.read_head("rollout-fixture"))
-        self.assertIsNone(fixture.store.read_head("rollout-branch"))
 
     def test_cached_view_is_not_a_validation_memo_and_warm_view_uses_checkpoint_id(self) -> None:
         fixture = GateStoreFixture(self)

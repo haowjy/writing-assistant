@@ -12,10 +12,12 @@ from unittest import mock
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
+    ContextContentV1,
     ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
+    MaterializedContextV1,
     MessageV1,
     NodeSpecV1,
     canonical_bytes,
@@ -23,30 +25,39 @@ from writing_agent.task_graph import (
     domain_hash,
     tree_hash,
 )
-from writing_agent.task_graph_gate import LineageGate
+from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_store import (
     ConcurrentUpdateError,
     CorruptRecordError,
     MaterializationError,
     MissingReferenceError,
-    ReplayError,
     TaskGraphStore,
     WrongRecordDomainError,
     _ClosureValidator,
 )
 
 
+class PatchVerifier:
+    """Test-only verifier for storage/CAS tests unrelated to transition derives."""
+
+    def view(self, store, checkpoint_id):
+        return store.load_checkpoint(checkpoint_id)
+
+    def verify_commit(self, store, base_checkpoint_id, events, next_state):
+        del store, base_checkpoint_id, events, next_state
+
+
 class StoreFixture:
     def __init__(self, root: Path, **limits):
         root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.store = TaskGraphStore(root / "store", **limits)
+        self.store = TaskGraphStore(root / "store", verifier=PatchVerifier(), **limits)
         self.common = {}
         for name in (
             "entry",
             "template",
             "tokenizer",
             "tools",
-            "requirements",
             "decisions",
             "disclosures",
             "versions",
@@ -57,7 +68,18 @@ class StoreFixture:
             "provenance",
         ):
             self.common[name] = self.store.put_artifact({"fixture": name})
+        self.common["versions"] = self.store.put_artifact(
+            ExecutionVersionsV1(
+                1,
+                SEMANTICS_V1,
+                self.common["entry"],
+                {"max_file_bytes": 4096, "max_workspace_bytes": 8192},
+            ).to_wire()
+        )
         self.private = self.store.put_artifact({"fixture": "author-packet"}, private=True)
+        self.common["requirements"] = self.store.put_artifact(
+            {"fixture": "requirements"}, private=True
+        )
         self.instance = GraphInstanceV1(
             template_ref=self.common["template"],
             entry_node="write",
@@ -67,10 +89,10 @@ class StoreFixture:
         self.context = self.make_context("Please revise the draft.")
 
     def make_context(self, text: str, *, event_head=None, provenance=()):
-        context = ContextRevisionV1(
+        node = ContextContentV1(
+            parent_ref=None,
             messages=(MessageV1(content=(text,), origin="request:1"),),
-            event_head=event_head,
-            provenance_refs=provenance,
+            tools=(),
             rendering={
                 "projection_version": "v1",
                 "prefix_id": "root",
@@ -79,7 +101,14 @@ class StoreFixture:
                 "tool_schema_ref": self.common["tools"],
             },
         )
+        self.store.persist(node)
+        context = ContextRevisionV1(
+            content_ref=node.identity(),
+            event_head=event_head,
+            provenance_refs=tuple(provenance),
+        )
         self.store.persist(context)
+        self.materialized_context = MaterializedContextV1(node.messages, node.tools, node.rendering)
         return context
 
     def state(
@@ -149,7 +178,7 @@ class StoreFixture:
         state = self.state(files=files, lineage=lineage)
         return self.store.save_checkpoint(state), state
 
-    def effect_event_state(
+    def event_state(
         self,
         before,
         *,
@@ -159,41 +188,32 @@ class StoreFixture:
         history_set=None,
         kind="tool_result",
     ):
-        set_values = json.loads(canonical_json(set_values or {}))
-        history_set = json.loads(canonical_json(history_set or {}))
-        effect = {
-            "artifact_type": "Phase2RecordedEffectV1",
-            "before_state_ref": before.identity(),
-            "file_delta": file_delta or {},
-            "set": set_values,
-            "history_set": history_set,
-        }
-        effect_ref = self.store.put_artifact(effect)
+        payload_ref = self.store.put_artifact({"store_test_event": kind})
         event = EventV1(
             previous=before.history["head"],
             seq=before.history["seq"] + 1,
             lineage_id=lineage,
             kind=kind,
             audience=("controller",),
-            payload_ref=effect_ref,
+            payload_ref=payload_ref,
             versions_ref=self.common["versions"],
             provenance_ref=self.common["provenance"],
         )
-        value = before.to_dict()
-        value.update(set_values)
+        body = json.loads(canonical_json(before.to_dict()))
+        body.update(json.loads(canonical_json(set_values or {})))
         files = dict(before.files)
         for path, delta in (file_delta or {}).items():
             if delta["after"] is None:
                 files.pop(path, None)
             else:
                 files[path] = delta["after"]
-        value["files"] = files
-        value["tree_hash"] = tree_hash(files)
-        history = before.to_dict()["history"]
-        history.update(history_set)
+        body["files"] = files
+        body["tree_hash"] = tree_hash(files)
+        history = dict(body["history"])
+        history.update(json.loads(canonical_json(history_set or {})))
         history.update(head=event.identity(), seq=event.seq)
-        value["history"] = history
-        return event, EnvironmentStateV1.from_dict(value), effect_ref
+        body["history"] = history
+        return event, EnvironmentStateV1.from_dict(body), payload_ref
 
 
 class TaskGraphStoreTest(unittest.TestCase):
@@ -205,6 +225,33 @@ class TaskGraphStoreTest(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_publish_and_restore_refuse_a_missing_verifier(self):
+        root, state = self.fixture.root()
+        store = TaskGraphStore(self.store.root)
+        event, next_state, _ = self.fixture.event_state(state, lineage="seed")
+
+        with self.assertRaisesRegex(ProjectionError, "store.verifier"):
+            store.publish("seed", None, (event,), next_state, parent_checkpoint=root)
+        with self.assertRaisesRegex(ProjectionError, "store.verifier"):
+            store.restore(root, self.root / "unverified")
+
+    def test_runtime_lineage_requires_transition_semantics_pin(self):
+        state = self.fixture.state()
+        old_versions = self.store.put_artifact(
+            {
+                "schema": 1,
+                "admission_policy_ref": self.fixture.common["entry"],
+                "tool_spec": {"max_file_bytes": 4096, "max_workspace_bytes": 8192},
+            }
+        )
+        legacy_state = replace(state, versions_ref=old_versions)
+        with self.assertRaisesRegex(
+            ProjectionError,
+            "state.versions_ref.transition_semantics: runtime lineages require "
+            "task-graph-derive-v1",
+        ):
+            self.store.save_checkpoint(legacy_state)
 
     def test_operation_reuses_verified_artifacts_and_returns_deep_copies(self):
         value = {"nested": [{"items": ["original"]}]}
@@ -262,7 +309,7 @@ class TaskGraphStoreTest(unittest.TestCase):
     def publish_change(self, lineage="main", expected=None, parent=None, before=None, text="beta"):
         if before is None:
             parent, before = self.fixture.root()
-        event, after, effect = self.fixture.effect_event_state(
+        event, after, effect = self.fixture.event_state(
             before,
             lineage=lineage,
             file_delta={"draft.txt": {"before": before.files["draft.txt"], "after": text}},
@@ -275,35 +322,8 @@ class TaskGraphStoreTest(unittest.TestCase):
             (event,),
             after,
             parent_checkpoint=parent if expected is None else None,
-            artifact_refs=(effect,),
         )
         return commit, self.store.load_commit(commit).checkpoint, after, event, effect
-
-    def test_generic_phase2_log_shape_does_not_grant_writer_capability(self):
-        root, before = self.fixture.root()
-        lookalike = self.store.put_artifact(
-            {"record_type": "WriterRuntimeLogV1", "rollout_id": "main", "entries": []}
-        )
-        event, after, effect = self.fixture.effect_event_state(
-            before,
-            lineage="main",
-            kind="context_changed",
-            set_values={
-                "position": {**before.position, "lineage_id": "main"},
-                "external_inputs_ref": lookalike,
-            },
-        )
-        commit = self.store.publish(
-            "main",
-            None,
-            (event,),
-            after,
-            parent_checkpoint=root,
-            artifact_refs=(effect,),
-        )
-        checkpoint = self.store.load_commit(commit).checkpoint
-        self.assertEqual(self.store.restore(checkpoint, self.root / "generic-log").state, after)
-        self.assertEqual(self.store.replay("main", root, (commit,)), checkpoint)
 
     def test_round_trip_restore_preserves_complete_state_context_and_files(self):
         files = {"empty.txt": "", "unicode/雪.txt": "café\n", "draft.txt": "alpha"}
@@ -311,7 +331,7 @@ class TaskGraphStoreTest(unittest.TestCase):
         runtime = self.store.restore(root, self.root / "worker")
 
         self.assertEqual(runtime.state, state)
-        self.assertEqual(runtime.context, self.fixture.context)
+        self.assertEqual(runtime.context, self.fixture.materialized_context)
         self.assertEqual(runtime.checkpoint_id, root)
         self.assertEqual((runtime.workspace / "empty.txt").read_bytes(), b"")
         self.assertEqual((runtime.workspace / "unicode" / "雪.txt").read_text(), "café\n")
@@ -327,7 +347,7 @@ class TaskGraphStoreTest(unittest.TestCase):
 
     def test_deletion_diff_and_non_file_diff(self):
         root, before = self.fixture.root(files={"gone.txt": "x", "same": "", "z": "old"})
-        event, after, effect = self.fixture.effect_event_state(
+        event, after, effect = self.fixture.event_state(
             before,
             lineage="main",
             file_delta={
@@ -337,9 +357,7 @@ class TaskGraphStoreTest(unittest.TestCase):
             },
             set_values={"position": {**before.position, "lineage_id": "main", "phase": "checking"}},
         )
-        commit = self.store.publish(
-            "main", None, (event,), after, parent_checkpoint=root, artifact_refs=(effect,)
-        )
+        commit = self.store.publish("main", None, (event,), after, parent_checkpoint=root)
         target = self.store.load_commit(commit).checkpoint
         difference = self.store.diff(root, target, text=True)
         self.assertEqual(
@@ -415,10 +433,12 @@ class TaskGraphStoreTest(unittest.TestCase):
         with self.assertRaises(WrongRecordDomainError):
             self.store.load_event(event.identity())
 
-        context_path = self.store.root / "contexts" / f"{self.fixture.context.identity()}.json"
+        context_path = (
+            self.store.root / "context_revisions" / f"{self.fixture.context.identity()}.json"
+        )
         context_path.write_bytes(b"not-json")
         with self.assertRaises(CorruptRecordError):
-            self.store.load_context(self.fixture.context.identity())
+            self.store.load_context_revision(self.fixture.context.identity())
 
     def test_stored_symlink_and_unsafe_path_are_rejected(self):
         checkpoint, _ = self.fixture.root()
@@ -439,14 +459,14 @@ class TaskGraphStoreTest(unittest.TestCase):
 
     def test_event_sequence_and_commit_order_closure(self):
         root, before = self.fixture.root()
-        event, after, effect = self.fixture.effect_event_state(
+        event, after, effect = self.fixture.event_state(
             before,
             lineage="line",
             file_delta={"draft.txt": {"before": "alpha", "after": "beta"}},
             set_values={"position": {**before.position, "lineage_id": "line"}},
         )
         self.store.persist(event)
-        checkpoint = self.store.save_checkpoint(after, parent=root, artifact_refs=(effect,))
+        checkpoint = self.store.save_checkpoint(after, parent=root)
         bad = CommitV1(events=(event.identity(), event.identity()), checkpoint=checkpoint)
         self.store.persist(bad)
         with self.assertRaises(CorruptRecordError):
@@ -467,11 +487,11 @@ class TaskGraphStoreTest(unittest.TestCase):
         invalid_body["history"].update(head=skipped.identity(), seq=skipped.seq)
         invalid_state = EnvironmentStateV1.from_dict(invalid_body)
         with self.assertRaises(CorruptRecordError):
-            self.store.save_checkpoint(invalid_state, parent=checkpoint, artifact_refs=(effect,))
+            self.store.save_checkpoint(invalid_state, parent=checkpoint)
 
     def test_authority_is_exact_projection_and_cas_is_idempotent(self):
         root, before = self.fixture.root()
-        event, after, effect = self.fixture.effect_event_state(
+        event, after, effect = self.fixture.event_state(
             before,
             lineage="main",
             file_delta={"draft.txt": {"before": "alpha", "after": "beta"}},
@@ -483,7 +503,6 @@ class TaskGraphStoreTest(unittest.TestCase):
             events=(event,),
             next_state=after,
             parent_checkpoint=root,
-            artifact_refs=(effect,),
         )
         commit = self.store.publish(**arguments)
         self.assertEqual(self.store.publish(**arguments), commit)
@@ -491,7 +510,7 @@ class TaskGraphStoreTest(unittest.TestCase):
         self.assertEqual(authority, {"head_commit": commit})
         self.assertNotIn("expected_head", authority)
 
-        competing_event, competing_state, competing_effect = self.fixture.effect_event_state(
+        competing_event, competing_state, competing_effect = self.fixture.event_state(
             before,
             lineage="main",
             file_delta={"draft.txt": {"before": "alpha", "after": "other"}},
@@ -504,7 +523,6 @@ class TaskGraphStoreTest(unittest.TestCase):
                 (competing_event,),
                 competing_state,
                 parent_checkpoint=root,
-                artifact_refs=(competing_effect,),
             )
 
     def test_competing_updates_allow_exactly_one_winner(self):
@@ -513,14 +531,14 @@ class TaskGraphStoreTest(unittest.TestCase):
         results = []
 
         def contender(label):
-            event, after, effect = self.fixture.effect_event_state(
+            event, after, effect = self.fixture.event_state(
                 state,
                 lineage="main",
                 file_delta={"draft.txt": {"before": "beta", "after": label}},
             )
             barrier.wait()
             try:
-                result = self.store.publish("main", first, (event,), after, artifact_refs=(effect,))
+                result = self.store.publish("main", first, (event,), after)
             except ConcurrentUpdateError:
                 result = "stale"
             results.append(result)
@@ -545,7 +563,7 @@ class TaskGraphStoreTest(unittest.TestCase):
                 directory = self.root / stage
                 fixture = StoreFixture(directory)
                 root, before = fixture.root()
-                event, after, effect = fixture.effect_event_state(
+                event, after, effect = fixture.event_state(
                     before,
                     lineage="main",
                     file_delta={"draft.txt": {"before": "alpha", "after": "beta"}},
@@ -563,7 +581,6 @@ class TaskGraphStoreTest(unittest.TestCase):
                         (event,),
                         after,
                         parent_checkpoint=root,
-                        artifact_refs=(effect,),
                         fault=fail,
                     )
                 head = fixture.store.read_head("main")
@@ -571,143 +588,6 @@ class TaskGraphStoreTest(unittest.TestCase):
                 authoritative = root if head is None else fixture.store.load_commit(head).checkpoint
                 expected = before if head is None else after
                 self.assertEqual(fixture.store.load_checkpoint(authoritative).state, expected)
-
-    def test_branch_isolated_full_state_and_parent_immutable(self):
-        parent, parent_state = self.fixture.root(files={"draft.txt": "alpha", "empty": ""})
-        parent_path = self.store.root / "checkpoints" / f"{parent}.json"
-        original = parent_path.read_bytes()
-        event, branch_state, effect = self.fixture.effect_event_state(
-            parent_state,
-            lineage="branch-a",
-            set_values={
-                "position": {
-                    **parent_state.position,
-                    "lineage_id": "branch-a",
-                    "start_checkpoint": parent,
-                }
-            },
-            history_set={"branch_base": parent_state.history["head"]},
-            kind="rollout_started",
-        )
-        commit = self.store.branch(
-            parent, "branch-a", (event,), branch_state, artifact_refs=(effect,)
-        )
-        child = self.store.load_commit(commit).checkpoint
-        runtime = self.store.restore(child, self.root / "branch-worker")
-        (runtime.workspace / "draft.txt").write_text("local mutation")
-        self.assertEqual(parent_path.read_bytes(), original)
-        self.assertEqual(self.store.load_checkpoint(parent).state, parent_state)
-        self.assertEqual(self.store.load_checkpoint(child).parents, (parent,))
-        self.assertEqual(runtime.state.position["start_checkpoint"], parent)
-        self.assertEqual(self.store.replay("branch-a", parent, (commit,)), child)
-
-    def test_recorded_replay_is_read_only_idempotent_and_verifies_post_state(self):
-        root, before = self.fixture.root()
-        first, state1, effect1 = self.fixture.effect_event_state(
-            before,
-            lineage="main",
-            file_delta={"draft.txt": {"before": "alpha", "after": "beta"}},
-            set_values={"position": {**before.position, "lineage_id": "main"}},
-        )
-        commit1 = self.store.publish(
-            "main", None, (first,), state1, parent_checkpoint=root, artifact_refs=(effect1,)
-        )
-        checkpoint1 = self.store.load_commit(commit1).checkpoint
-        second, state2, effect2 = self.fixture.effect_event_state(
-            state1,
-            lineage="main",
-            file_delta={"draft.txt": {"before": "beta", "after": "gamma"}},
-            history_set={"tool_result_ids": ("main:result:1",)},
-        )
-        commit2 = self.store.publish("main", commit1, (second,), state2, artifact_refs=(effect2,))
-        checkpoint2 = self.store.load_commit(commit2).checkpoint
-        authority_before = (self.store.root / "refs" / "main.json").read_bytes()
-        self.assertEqual(self.store.replay("main", root, (commit1, commit2)), checkpoint2)
-        self.assertEqual(self.store.replay("main", root, (commit1, commit2)), checkpoint2)
-        self.assertEqual((self.store.root / "refs" / "main.json").read_bytes(), authority_before)
-        self.assertEqual(self.store.replay("main", checkpoint1, (commit2,)), checkpoint2)
-
-        bad_effect = {
-            "artifact_type": "Phase2RecordedEffectV1",
-            "before_state_ref": state2.identity(),
-            "file_delta": {"draft.txt": {"before": "WRONG", "after": "delta"}},
-            "set": {},
-            "history_set": {},
-        }
-        bad_ref = self.store.put_artifact(bad_effect)
-        bad_event = EventV1(
-            previous=state2.history["head"],
-            seq=state2.history["seq"] + 1,
-            lineage_id="main",
-            kind="tool_result",
-            audience=("controller",),
-            payload_ref=bad_ref,
-            versions_ref=self.fixture.common["versions"],
-            provenance_ref=self.fixture.common["provenance"],
-        )
-        bad_body = state2.to_dict()
-        bad_body["files"] = {"draft.txt": "delta"}
-        bad_body["tree_hash"] = tree_hash({"draft.txt": "delta"})
-        bad_body["history"].update(head=bad_event.identity(), seq=bad_event.seq)
-        bad_state = EnvironmentStateV1.from_dict(bad_body)
-        with self.assertRaises(ReplayError):
-            self.store.publish("main", commit2, (bad_event,), bad_state, artifact_refs=(bad_ref,))
-        self.assertEqual(self.store.read_head("main"), commit2)
-
-    def test_verifier_store_keeps_the_legacy_reducer_and_post_state_check(self):
-        root, before = self.fixture.root(lineage="legacy-gated")
-        event, correct_state, _ = self.fixture.effect_event_state(
-            before,
-            lineage="legacy-gated",
-            kind="external_requested",
-        )
-        outcome = self.store.get_artifact(before.outcome_ref)
-        outcome["stop_reason"] = "forged"
-        forged_state = replace(
-            correct_state,
-            outcome_ref=self.store.put_artifact(outcome),
-        )
-        checkpoint = CheckpointV1(
-            parents=(root,),
-            state=forged_state,
-            event_head=event.id,
-        )
-        commit = CommitV1(events=(event.id,), checkpoint=checkpoint.identity())
-        self.store.persist(event)
-        self.store.persist(checkpoint)
-        self.store.persist(commit)
-
-        with self.assertRaises(ReplayError):
-            self.store.load_commit(commit.identity())
-        verifier_store = TaskGraphStore(self.store.root, verifier=LineageGate())
-        with self.assertRaises(ReplayError):
-            verifier_store.load_commit(commit.identity())
-        self.assertIsNone(self.store.read_head("legacy-gated"))
-
-    def test_verifier_store_branches_legacy_lineage_through_semantics_selector(self):
-        parent, parent_state = self.fixture.root()
-        event, branch_state, effect = self.fixture.effect_event_state(
-            parent_state,
-            lineage="legacy-branch",
-            set_values={
-                "position": {
-                    **parent_state.position,
-                    "lineage_id": "legacy-branch",
-                    "start_checkpoint": parent,
-                }
-            },
-            history_set={"branch_base": parent_state.history["head"]},
-            kind="rollout_started",
-        )
-        gate_store = TaskGraphStore(self.store.root, verifier=LineageGate())
-        commit = gate_store.branch(
-            parent,
-            "legacy-branch",
-            (event,),
-            branch_state,
-            artifact_refs=(effect,),
-        )
-        self.assertEqual(gate_store.read_head("legacy-branch"), commit)
 
     def test_binary_artifact_and_missing_public_reference_validation(self):
         binary = self.store.put_bytes_artifact(b"\x00\xff", domain="payload")
@@ -747,150 +627,23 @@ class TaskGraphStoreTest(unittest.TestCase):
         with self.assertRaises(MissingReferenceError):
             self.store.save_checkpoint(broken_state)
 
-    def test_recorded_effect_reference_edges_are_typed_and_transient(self):
-        root, state = self.fixture.root()
-        missing = "0" * 64
-        position = state.to_dict()["position"]
-        continuation = state.to_dict()["continuation"]
-        cases = {
-            "instance_ref": ({"instance_ref": missing}, {}),
-            "position.entry_contract": (
-                {"position": {**position, "entry_contract": missing}},
-                {},
-            ),
-            "position.start_checkpoint": (
-                {"position": {**position, "start_checkpoint": missing}},
-                {},
-            ),
-            "context_ref": ({"context_ref": missing}, {}),
-            "requirements_ref": ({"requirements_ref": missing}, {}),
-            "decisions_ref": ({"decisions_ref": missing}, {}),
-            "disclosures_ref": ({"disclosures_ref": missing}, {}),
-            "author_packet_ref": ({"author_packet_ref": missing}, {}),
-            "versions_ref": ({"versions_ref": missing}, {}),
-            "budgets_ref": ({"budgets_ref": missing}, {}),
-            "rng_ref": ({"rng_ref": missing}, {}),
-            "external_inputs_ref": ({"external_inputs_ref": missing}, {}),
-            "outcome_ref": ({"outcome_ref": missing}, {}),
-            "provenance_ref": ({"provenance_ref": missing}, {}),
-            "continuation.author_request": (
-                {"continuation": {**continuation, "author_request": missing}},
-                {},
-            ),
-            "continuation.check_requests": (
-                {"continuation": {**continuation, "check_requests": (missing,)}},
-                {},
-            ),
-            "history.branch_base": ({}, {"branch_base": missing}),
-            "history.imported_refs": ({}, {"imported_refs": (missing,)}),
-        }
-        for label, (set_values, history_set) in cases.items():
-            with self.subTest(edge=label):
-                effect = self.store.put_artifact(
-                    {
-                        "artifact_type": "Phase2RecordedEffectV1",
-                        "before_state_ref": state.identity(),
-                        "file_delta": {},
-                        "set": set_values,
-                        "history_set": history_set,
-                    }
-                )
-                with self.assertRaises(MissingReferenceError):
-                    self.store.save_checkpoint(state, parent=root, artifact_refs=(effect,))
-
-        wrong_domain_cases = {
-            "instance": ({"instance_ref": state.budgets_ref}, {}),
-            "context": ({"context_ref": state.budgets_ref}, {}),
-            "private": ({"author_packet_ref": state.budgets_ref}, {}),
-            "checkpoint": (
-                {"position": {**position, "start_checkpoint": state.budgets_ref}},
-                {},
-            ),
-            "event": ({}, {"branch_base": state.budgets_ref}),
-        }
-        for label, (set_values, history_set) in wrong_domain_cases.items():
-            with self.subTest(wrong_domain=label):
-                effect = self.store.put_artifact(
-                    {
-                        "artifact_type": "Phase2RecordedEffectV1",
-                        "before_state_ref": state.identity(),
-                        "file_delta": {},
-                        "set": set_values,
-                        "history_set": history_set,
-                    }
-                )
-                with self.assertRaises(WrongRecordDomainError):
-                    self.store.save_checkpoint(state, parent=root, artifact_refs=(effect,))
-
-        private_effect = self.store.put_artifact(
-            {
-                "artifact_type": "Phase2RecordedEffectV1",
-                "before_state_ref": state.identity(),
-                "file_delta": {"private-probe": {"before": None, "after": "x"}},
-                "set": {"budgets_ref": missing},
-                "history_set": {},
-            },
-            private=True,
-        )
-        private_body = state.to_dict()
-        private_body["continuation"]["check_requests"] = [private_effect]
-        with self.assertRaises(MissingReferenceError):
-            self.store.save_checkpoint(EnvironmentStateV1.from_dict(private_body))
-
-        # before_state_ref is a replay assertion over an EnvironmentStateV1
-        # identity, not a reference to a separately persisted state object.
-        assertion_only = self.store.put_artifact(
-            {
-                "artifact_type": "Phase2RecordedEffectV1",
-                "before_state_ref": missing,
-                "file_delta": {},
-                "set": {},
-                "history_set": {},
-            }
-        )
-        self.store.save_checkpoint(state, parent=root, artifact_refs=(assertion_only,))
-
-        first, transient, first_effect = self.fixture.effect_event_state(
-            state,
-            lineage="main",
-            set_values={
-                "position": {**state.position, "lineage_id": "main"},
-                "budgets_ref": missing,
-            },
-        )
-        second, final, second_effect = self.fixture.effect_event_state(
-            transient,
-            lineage="main",
-            set_values={"budgets_ref": state.budgets_ref},
-        )
-        with self.assertRaises(MissingReferenceError):
-            self.store.publish(
-                "main",
-                None,
-                (first, second),
-                final,
-                parent_checkpoint=root,
-                artifact_refs=(first_effect, second_effect),
-            )
-        self.assertIsNone(self.store.read_head("main"))
-
     def test_artifact_schemas_and_locations_fail_closed(self):
         _, state = self.fixture.root()
         malformed = self.store.put_artifact(
             {
-                "artifact_type": "Phase2RecordedEffectV1",
+                "artifact_type": "StoreTestEventV1",
                 "before_state_ref": state.identity(),
                 "file_delta": {},
                 "set": {},
             }
         )
-        with self.assertRaises(CorruptRecordError):
+        with self.assertRaises(ProjectionError):
             self.store.save_checkpoint(state, artifact_refs=(malformed,))
 
         unsupported = self.store.put_artifact(
             {"artifact_type": "FutureTransitionV9", "some_ref": "0" * 64}
         )
-        with self.assertRaises(WrongRecordDomainError):
+        with self.assertRaises(ProjectionError):
             self.store.save_checkpoint(state, artifact_refs=(unsupported,))
 
         duplicate = self.store.put_artifact({"duplicate": True})
@@ -980,54 +733,11 @@ class TaskGraphStoreTest(unittest.TestCase):
         # exceed this linear bound.
         self.assertLessEqual(reads, 400)
 
-    def test_publication_reduces_actual_parent_and_rejects_unsupported_effects(self):
-        root, before = self.fixture.root()
-        event, after, effect = self.fixture.effect_event_state(
-            before,
-            lineage="main",
-            set_values={"position": {**before.position, "lineage_id": "main"}},
-        )
-        body = after.to_dict()
-        body["budgets_ref"] = self.store.put_artifact({"fixture": "other-budget"})
-        contradictory = EnvironmentStateV1.from_dict(body)
-        with self.assertRaises(ReplayError):
-            self.store.publish(
-                "main",
-                None,
-                (event,),
-                contradictory,
-                parent_checkpoint=root,
-                artifact_refs=(effect,),
-            )
-        self.assertIsNone(self.store.read_head("main"))
-
-        payload = self.store.put_artifact({"transition": "future"})
-        unsupported = EventV1(
-            lineage_id="main",
-            kind="tool_result",
-            audience=("controller",),
-            payload_ref=payload,
-            versions_ref=self.fixture.common["versions"],
-            provenance_ref=self.fixture.common["provenance"],
-        )
-        unsupported_body = before.to_dict()
-        unsupported_body["position"]["lineage_id"] = "main"
-        unsupported_body["history"].update(head=unsupported.identity(), seq=1)
-        unsupported_state = EnvironmentStateV1.from_dict(unsupported_body)
-        with self.assertRaises(ReplayError):
-            self.store.publish(
-                "main",
-                None,
-                (unsupported,),
-                unsupported_state,
-                parent_checkpoint=root,
-                artifact_refs=(payload,),
-            )
-
     def test_durability_failures_are_repaired_by_reopen_and_retry(self):
         def reopen(store):
             return TaskGraphStore(
                 store.root,
+                verifier=PatchVerifier(),
                 max_workspace_bytes=store.max_workspace_bytes,
                 max_file_bytes=store.max_file_bytes,
                 max_record_bytes=store.max_record_bytes,
@@ -1100,7 +810,7 @@ class TaskGraphStoreTest(unittest.TestCase):
             directory = self.root / label
             fixture = StoreFixture(directory)
             root, before = fixture.root()
-            event, after, effect = fixture.effect_event_state(
+            event, after, effect = fixture.event_state(
                 before,
                 lineage="main",
                 set_values={"position": {**before.position, "lineage_id": "main"}},
@@ -1123,7 +833,6 @@ class TaskGraphStoreTest(unittest.TestCase):
                 events=(event,),
                 next_state=after,
                 parent_checkpoint=root,
-                artifact_refs=(effect,),
             )
             with mock.patch(
                 "writing_agent.task_graph_store.os.replace", side_effect=fail_replace_once
@@ -1139,7 +848,7 @@ class TaskGraphStoreTest(unittest.TestCase):
         directory = self.root / "post-replace-fsync"
         fixture = StoreFixture(directory)
         root, before = fixture.root()
-        event, after, effect = fixture.effect_event_state(
+        event, after, effect = fixture.event_state(
             before,
             lineage="main",
             set_values={"position": {**before.position, "lineage_id": "main"}},
@@ -1150,7 +859,6 @@ class TaskGraphStoreTest(unittest.TestCase):
             events=(event,),
             next_state=after,
             parent_checkpoint=root,
-            artifact_refs=(effect,),
         )
         original_barrier = fixture.store._fsync_directory
         tripped = False
@@ -1173,78 +881,9 @@ class TaskGraphStoreTest(unittest.TestCase):
             self.assertTrue(any(call.args[0].name == "refs" for call in barrier.call_args_list))
         self.assertEqual(resumed.read_head("main"), commit)
 
-    def test_branch_retry_repairs_post_replace_barrier_and_conflicts_stay_distinct(self):
-        for reopen in (False, True):
-            with self.subTest(reopen=reopen):
-                fixture = StoreFixture(self.root / f"branch-retry-{reopen}")
-                parent, before = fixture.root()
-                event, after, effect = fixture.effect_event_state(
-                    before,
-                    lineage="child",
-                    set_values={
-                        "position": {
-                            **before.position,
-                            "lineage_id": "child",
-                            "start_checkpoint": parent,
-                        }
-                    },
-                    history_set={"branch_base": before.history["head"]},
-                    kind="rollout_started",
-                )
-                arguments = (parent, "child", (event,), after)
-                keywords = {"artifact_refs": (effect,)}
-                real_barrier = fixture.store._fsync_directory
-                failed = False
-
-                def fail_refs_once(path, _barrier=real_barrier):
-                    nonlocal failed
-                    if not failed and path.name == "refs":
-                        failed = True
-                        raise OSError("injected refs fsync failure")
-                    return _barrier(path)
-
-                with mock.patch.object(
-                    fixture.store, "_fsync_directory", side_effect=fail_refs_once
-                ):
-                    with self.assertRaises(OSError):
-                        fixture.store.branch(*arguments, **keywords)
-
-                store = TaskGraphStore(fixture.store.root) if reopen else fixture.store
-                with mock.patch.object(
-                    store, "_fsync_directory", wraps=store._fsync_directory
-                ) as barrier:
-                    commit = store.branch(*arguments, **keywords)
-                    self.assertTrue(
-                        any(call.args[0].name == "refs" for call in barrier.call_args_list)
-                    )
-                self.assertEqual(store.read_head("child"), commit)
-
-                other_event, other_state, other_effect = fixture.effect_event_state(
-                    before,
-                    lineage="child",
-                    set_values={
-                        "position": {
-                            **before.position,
-                            "lineage_id": "child",
-                            "start_checkpoint": parent,
-                            "phase": "checking",
-                        }
-                    },
-                    history_set={"branch_base": before.history["head"]},
-                    kind="rollout_started",
-                )
-                with self.assertRaises(ConcurrentUpdateError):
-                    store.branch(
-                        parent,
-                        "child",
-                        (other_event,),
-                        other_state,
-                        artifact_refs=(other_effect,),
-                    )
-
     def test_lineage_authority_is_bound_to_target_checkpoint(self):
         parent, before = self.fixture.root()
-        event, after, effect = self.fixture.effect_event_state(
+        event, after, effect = self.fixture.event_state(
             before,
             lineage="child",
             set_values={
@@ -1257,36 +896,32 @@ class TaskGraphStoreTest(unittest.TestCase):
             history_set={"branch_base": before.history["head"]},
             kind="rollout_started",
         )
-        commit = self.store.branch(parent, "child", (event,), after, artifact_refs=(effect,))
+        commit = self.store.publish("child", None, (event,), after, parent_checkpoint=parent)
         shutil.copyfile(
             self.store.root / "refs" / "child.json",
             self.store.root / "refs" / "imposter.json",
         )
         with self.assertRaises(CorruptRecordError):
             self.store.read_head("imposter")
-        with self.assertRaises(CorruptRecordError):
-            self.store.replay("imposter", parent, (commit,))
-        imposter_event, imposter_state, imposter_effect = self.fixture.effect_event_state(
+        imposter_event, imposter_state, _ = self.fixture.event_state(
             after,
-            lineage="imposter",
-            set_values={
-                "position": {
-                    **after.position,
-                    "lineage_id": "imposter",
-                }
-            },
+            lineage="child",
         )
-        with self.assertRaises(CorruptRecordError):
+        imposter_event = replace(imposter_event, lineage_id="imposter", id=None)
+        imposter_state = replace(
+            imposter_state,
+            history={**imposter_state.history, "head": imposter_event.identity()},
+        )
+        with self.assertRaises(ProjectionError):
             self.store.publish(
-                "imposter",
+                "child",
                 commit,
                 (imposter_event,),
                 imposter_state,
-                artifact_refs=(imposter_effect,),
             )
 
         child_checkpoint = self.store.load_commit(commit).checkpoint
-        foreign_event, foreign_state, foreign_effect = self.fixture.effect_event_state(
+        foreign_event, foreign_state, _ = self.fixture.event_state(
             after,
             lineage="foreign",
             set_values={
@@ -1300,7 +935,6 @@ class TaskGraphStoreTest(unittest.TestCase):
         foreign_checkpoint = self.store.save_checkpoint(
             foreign_state,
             parent=child_checkpoint,
-            artifact_refs=(foreign_effect,),
         )
         foreign_commit = CommitV1(
             parent_commit=commit,
@@ -1379,7 +1013,7 @@ class TaskGraphStoreTest(unittest.TestCase):
         workspace = self.root / "restore-cleanup"
         with mock.patch.object(
             self.store,
-            "load_context",
+            "materialize_context",
             side_effect=CorruptRecordError("induced late context corruption"),
         ):
             with self.assertRaises(CorruptRecordError):

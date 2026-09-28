@@ -12,6 +12,7 @@ from tests.test_task_graph_rollout_env import _group_spec
 from writing_agent.task_graph import canonical_bytes, domain_hash
 from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_controller import next_step
+from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
 from writing_agent.task_graph_gate import derive_input
 from writing_agent.task_graph_group_contract import derive_group_seed
@@ -24,7 +25,6 @@ from writing_agent.task_graph_local import (
 from writing_agent.task_graph_ports import PortDescriptorV1, RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import GroupMemberSpecV1, GroupSpecV1
 from writing_agent.task_graph_records import MemberStartV1, WriterRequestV1
-from writing_agent.task_graph_rollout_env import RolloutEnvironment
 
 
 def _sample(content: str = "A complete draft.", *, usage=None, trace=None) -> SampleResult:
@@ -278,7 +278,7 @@ class SamplingAcceptanceTests(unittest.TestCase):
             DeterministicEvaluator(),
         )
         root_id = fixture.runtime.checkpoint_id
-        unbound = RuntimeSession.create(fixture.store, fixture.lineage_id, root_id, dependencies)
+        unbound = RuntimeSession.create(fixture.store, dependencies)
         session = unbound.bind(fixture.store, unbound.manifest_ref)
         fixture.env = RolloutEnvironment(
             fixture.store,
@@ -305,7 +305,7 @@ class SamplingAcceptanceTests(unittest.TestCase):
             tools,
             DeterministicEvaluator(),
         )
-        unbound = RuntimeSession.create(fixture.store, fixture.lineage_id, root_id, dependencies)
+        unbound = RuntimeSession.create(fixture.store, dependencies)
         session = unbound.bind(fixture.store, unbound.manifest_ref)
         model_ref = fixture.store.put_artifact({"model_id": "pinned-model"})
         base = _group_spec(fixture.entry, root_id, fixture.store, model_ref=model_ref)
@@ -365,7 +365,10 @@ class SamplingAcceptanceTests(unittest.TestCase):
         view = replay_env.verify(replay_env.open_head(member_runtime.state.position["lineage_id"]))
         port = replay_env.port_input(view, next_step(view))
         sampled = fixture.gatherers.sampler.turn(port)
-        swapped_ref = fixture.store.put_artifact({"record_type": "RuntimeManifestV1", "ports": []})
+        changed_manifest = dict(fixture.store.get_artifact(session.manifest_ref))
+        changed_manifest["ports"] = [dict(port) for port in changed_manifest["ports"]]
+        changed_manifest["ports"][0]["implementation"] += "-changed"
+        swapped_ref = fixture.store.put_artifact(changed_manifest)
         forged = replace(sampled, adapter_trace={"adapter_ref": swapped_ref})
         before = _event_count(fixture.store)
         with self.assertRaises(AdapterContractError):

@@ -9,9 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_agent.task_graph import (
-    ContextRevisionV1 as LegacyContextRevisionV1,
-)
-from writing_agent.task_graph import (
+    ContextContentV1,
+    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
@@ -37,14 +36,11 @@ from writing_agent.task_graph_record_contracts import (
     GroupSpecV1,
 )
 from writing_agent.task_graph_records import (
-    LEGACY_PAYLOAD_RECORD_TYPES,
     RECORD_EDGES,
     RECORD_TYPES,
     AdmissionPolicyV1,
     AuthorReplyV1,
-    ContextContentV1,
     ContextOperationInputV1,
-    ContextRevisionV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
     ExternalInputsV1,
@@ -88,9 +84,47 @@ EXPECTED_REFS = {
     "DisclosureLedgerV1": (),
     "EnvironmentStepV1": (),
     "EvaluatorResultV1": (("evidence_ref", "artifact"), ("request_ref", "private")),
+    "DeterministicCheckEvidenceV1": (
+        ("evaluator_packet_ref", "private"),
+        ("target_checkpoint", "checkpoint"),
+    ),
+    "FixtureFileCountEvidenceV1": (
+        ("evaluator_packet_ref", "private"),
+        ("target_checkpoint", "checkpoint"),
+    ),
+    "TranscriptReviewEvidenceV1": (
+        ("evaluator_packet_ref", "private"),
+        ("target_checkpoint", "checkpoint"),
+    ),
     "ExecutionVersionsV1": (("admission_policy_ref", "artifact"),),
     "ExternalInputsV1": (("source_refs[]", "artifact"),),
     "GroupMemberSeedsV1": (("parent_rng_ref", "artifact"),),
+    "GroupScriptedTerminalV1": (("start_checkpoint_id", "checkpoint"),),
+    "GroupExecutionFailureV1": (
+        ("evidence_ref", "artifact"),
+        ("start_checkpoint_id", "checkpoint"),
+    ),
+    "GroupMemberResultV1": (
+        ("availability_ref", "artifact"),
+        ("failure_ref", "artifact"),
+        ("final_checkpoint_id", "checkpoint"),
+        ("fixture_ref", "artifact"),
+        ("start_checkpoint_id", "checkpoint"),
+        ("terminal_outcome_ref", "artifact"),
+    ),
+    "GroupDecisionV1": (
+        ("advantage_refs[]", "artifact"),
+        ("member_result_refs[]", "artifact"),
+        ("segment_credit_refs[]", "artifact"),
+    ),
+    "GroupAdvantageV1": (("result_ref", "artifact"),),
+    "GroupSegmentCreditV1": (
+        ("action_ref", "event"),
+        ("advantage_ref", "artifact"),
+        ("message_ref", "artifact"),
+        ("original_context_ref", "context_revision"),
+        ("trace_ref", "artifact"),
+    ),
     "GroupMemberSpecV1": (),
     "GroupSpecV1": (
         ("environment.author_packet_ref", "private"),
@@ -126,6 +160,8 @@ EXPECTED_REFS = {
         ("reward_ref", "artifact"),
     ),
     "RequirementLedgerV1": (),
+    "RuntimePortDescriptorV1": (),
+    "RuntimeManifestV1": (),
     "RewardV1": (
         ("candidate_checkpoint", "checkpoint"),
         ("check_result_refs[]", "artifact"),
@@ -172,6 +208,17 @@ EXPECTED_REFS = {
 EXPECTED_NON_EDGE_HASHES = {
     "GroupMemberSeedsV1": frozenset({"group_id"}),
     "WriterTurnV1": frozenset({"adapter_trace.context_content_hash"}),
+    "DeterministicCheckEvidenceV1": frozenset({"check_contract_hash"}),
+    "FixtureFileCountEvidenceV1": frozenset({"check_contract_hash"}),
+    "TranscriptReviewEvidenceV1": frozenset({"check_contract_hash"}),
+    "GroupScriptedTerminalV1": frozenset({"group_id"}),
+    "GroupExecutionFailureV1": frozenset({"group_id"}),
+    "GroupMemberResultV1": frozenset({"group_id"}),
+    "GroupDecisionV1": frozenset({"group_id"}),
+    "GroupAdvantageV1": frozenset({"group_id"}),
+    "GroupSegmentCreditV1": frozenset(
+        {"group_id", "original_context_content_hash", "segment_content_hash"}
+    ),
     "GroupSpecV1": frozenset(
         """group_id environment.entry_state_hash environment.entry_tree_hash
         environment.instance_hash environment.graph_hash environment.node_contract_hash
@@ -361,9 +408,6 @@ def record_examples():
             controller_versions=("deterministic-v1",),
             check_versions=("fixture-v1", "legacy-check-v1"),
         ),
-        ContextContentV1(parent_ref=H, messages=(message,), tools=None, rendering=None),
-        context_node,
-        context_revision,
         GroupMemberSpecV1("grp-example-0", 0, 7, 11),
         group_spec,
         ContextPolicyV1("carry"),
@@ -378,6 +422,132 @@ def record_examples():
 
 def shared_payload_examples():
     return {
+        "GroupScriptedTerminalV1": {
+            "record_type": "GroupScriptedTerminalV1",
+            "schema": 1,
+            "group_id": H,
+            "member_id": "group-member-0",
+            "start_checkpoint_id": P,
+            "execution_status": "valid",
+            "reward_status": "available",
+            "reward": {"numerator": 1, "denominator": 1},
+            "native_optimizer_eligible": False,
+        },
+        "GroupExecutionFailureV1": {
+            "record_type": "GroupExecutionFailureV1",
+            "schema": 1,
+            "group_id": H,
+            "member_id": "group-member-0",
+            "start_checkpoint_id": P,
+            "reason": "provider unavailable",
+            "evidence_ref": None,
+        },
+        "GroupMemberResultV1": {
+            "record_type": "GroupMemberResultV1",
+            "schema": 1,
+            "group_id": H,
+            "member_id": "group-member-0",
+            "start_checkpoint_id": P,
+            "final_checkpoint_id": None,
+            "terminal_outcome_ref": None,
+            "availability_ref": None,
+            "fixture_ref": None,
+            "failure_ref": None,
+            "execution_status": "pending",
+        },
+        "GroupDecisionV1": {
+            "record_type": "GroupDecisionV1",
+            "schema": 1,
+            "group_id": H,
+            "status": "pending",
+            "reason": "awaiting members",
+            "member_result_refs": [None],
+            "advantage_refs": [],
+            "segment_credit_refs": [],
+            "native_optimizer_eligible": False,
+        },
+        "GroupAdvantageV1": {
+            "record_type": "GroupAdvantageV1",
+            "schema": 1,
+            "group_id": H,
+            "member_id": "group-member-0",
+            "result_ref": P,
+            "reward": {"numerator": 1, "denominator": 1},
+            "mean": {"numerator": 1, "denominator": 1},
+            "variance": {"numerator": 0, "denominator": 1},
+            "centered": {"numerator": 0, "denominator": 1},
+            "expression": "zero",
+            "advantage": {"numerator": 0, "denominator": 1},
+            "zero_variance": True,
+            "native_optimizer_eligible": False,
+        },
+        "GroupSegmentCreditV1": {
+            "record_type": "GroupSegmentCreditV1",
+            "schema": 1,
+            "group_id": H,
+            "member_id": "group-member-0",
+            "action_id": "group-action-0",
+            "action_ref": P,
+            "message_ref": Q,
+            "trace_ref": R,
+            "original_context_ref": H,
+            "original_context_content_hash": Q,
+            "advantage_ref": R,
+            "segment_kind": "assistant_ending",
+            "part_index": None,
+            "segment_content_hash": None,
+            "excluded_roles": [
+                "system",
+                "user",
+                "author",
+                "tool",
+                "seed",
+                "environment",
+                "summary",
+            ],
+            "native_optimizer_eligible": False,
+            "token_mask_ref": None,
+            "logprob_ref": None,
+        },
+        "RuntimePortDescriptorV1": {
+            "record_type": "RuntimePortDescriptorV1",
+            "schema": 1,
+            "role": "sampling",
+            "implementation": "tests.FakeSampler",
+            "version": "1",
+            "configuration": {},
+        },
+        "RuntimeManifestV1": {
+            "record_type": "RuntimeManifestV1",
+            "schema": 1,
+            "ports": [
+                {
+                    "record_type": "RuntimePortDescriptorV1",
+                    "schema": 1,
+                    "role": role,
+                    "implementation": f"tests.{role.title()}",
+                    "version": "1",
+                    "configuration": {},
+                }
+                for role in ("sampling", "environment", "tools", "evaluator")
+            ],
+        },
+        **{
+            record_type: {
+                "record_type": record_type,
+                "schema": 1,
+                "target_checkpoint": H,
+                "check_contract_hash": Q,
+                "evaluator_packet_ref": R,
+                "evidence": {},
+                "status": "pass",
+            }
+            for record_type in (
+                "DeterministicCheckEvidenceV1",
+                "FixtureFileCountEvidenceV1",
+                "TranscriptReviewEvidenceV1",
+            )
+        },
         "DecisionLedgerV1": {
             "record_type": "DecisionLedgerV1",
             "schema": 1,
@@ -540,7 +710,12 @@ class RecordCodecTests(unittest.TestCase):
         class_names = {
             item.RECORD_TYPE or item.EDGE_TYPE or type(item).__name__ for item in examples
         }
-        self.assertEqual(class_names, set(RECORD_EDGES) - set(shared_payload_examples()))
+        self.assertEqual(
+            class_names,
+            set(RECORD_EDGES)
+            - set(shared_payload_examples())
+            - {"context_node", "context_revision"},
+        )
         record_types = [item.RECORD_TYPE for item in examples if item.RECORD_TYPE is not None]
         self.assertEqual(len(record_types), len(set(record_types)))
         self.assertEqual(
@@ -548,7 +723,6 @@ class RecordCodecTests(unittest.TestCase):
             | set(shared_payload_examples()),
             set(RECORD_TYPES),
         )
-        self.assertFalse(set(RECORD_TYPES) & LEGACY_PAYLOAD_RECORD_TYPES)
         self.assertNotIn("ExecutionVersionsV1", RECORD_TYPES)
         for record in examples:
             with self.subTest(record=type(record).__name__):
@@ -763,27 +937,25 @@ class RecordCodecTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             WriterTurnV1.from_dict(wire)
 
-    def test_legacy_set_excludes_registered_record_names(self):
-        expected_legacy = set(
-            """AuthorToolAckV1 AuthorTurnV1 CheckBatchV1 CheckResultV1 ContextOperationV1
-            DecisionDisclosureV1 DeterministicCheckEvidenceV1 FixtureFileCountEvidenceV1
-            GroupExecutionFailureV1 GroupAdvantageV1 GroupDecisionV1 GroupMemberResultV1
-            GroupSegmentCreditV1 GroupScriptedTerminalV1 InfrastructureInvalidV1
-            PreparedWriterRequestV1 RequirementSupersessionV1 RewardAvailabilityV1
-            RewardPublicationV1 RuntimeManifestV1 ScriptCoverageFailureV1 ScriptedAuthorReplyV1
-            TerminalOutcomeCommitV1 TerminalOutcomeV1 TransitionDecisionV1
-            TranscriptReviewEvidenceV1 VerifiedWriterMessagesV1 WriterActionTraceV1
-            WriterActionV1 WriterExhaustedStopV1 WriterRuntimeLogV1 WriterSampledBudgetStopV1
-            WriterToolResultV1""".split()
-        )
-        self.assertEqual(LEGACY_PAYLOAD_RECORD_TYPES, expected_legacy)
-        self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(RECORD_TYPES))
-        self.assertTrue(LEGACY_PAYLOAD_RECORD_TYPES.isdisjoint(shared_payload_examples()))
-        self.assertNotIn("EvaluatorPacketV1", LEGACY_PAYLOAD_RECORD_TYPES)
-        self.assertNotIn("RuntimePortDescriptorV1", LEGACY_PAYLOAD_RECORD_TYPES)
-
     def test_registered_shared_shapes_and_untagged_execution_versions_are_typed(self):
         expected = {
+            "GroupScriptedTerminalV1": (("checkpoint", P),),
+            "GroupExecutionFailureV1": (("checkpoint", P),),
+            "GroupMemberResultV1": (("checkpoint", P),),
+            "GroupDecisionV1": (),
+            "GroupAdvantageV1": (("artifact", P),),
+            "GroupSegmentCreditV1": (
+                ("event", P),
+                ("artifact", Q),
+                ("artifact", R),
+                ("context_revision", H),
+                ("artifact", R),
+            ),
+            "RuntimePortDescriptorV1": (),
+            "RuntimeManifestV1": (),
+            "DeterministicCheckEvidenceV1": (("checkpoint", H), ("private", R)),
+            "FixtureFileCountEvidenceV1": (("checkpoint", H), ("private", R)),
+            "TranscriptReviewEvidenceV1": (("checkpoint", H), ("private", R)),
             "DecisionLedgerV1": (),
             "DisclosureLedgerV1": (),
             "AuthorRequestV1": (
@@ -984,7 +1156,6 @@ class RecordClosureTests(unittest.TestCase):
                 "template",
                 "tokenizer",
                 "tools",
-                "requirements",
                 "decisions",
                 "disclosures",
                 "versions",
@@ -995,6 +1166,15 @@ class RecordClosureTests(unittest.TestCase):
                 "provenance",
             )
         }
+        common["requirements"] = store.put_artifact({"fixture": "requirements"}, private=True)
+        common["versions"] = store.put_artifact(
+            ExecutionVersionsV1(
+                1,
+                "task-graph-derive-v1",
+                common["entry"],
+                {"max_file_bytes": 4096, "max_workspace_bytes": 8192},
+            ).to_wire()
+        )
         private = store.put_artifact({"fixture": "private"}, private=True)
         instance = GraphInstanceV1(
             template_ref=common["template"],
@@ -1002,8 +1182,10 @@ class RecordClosureTests(unittest.TestCase):
             nodes=(NodeSpecV1(id="write", entry_contract=common["entry"]),),
         )
         store.persist(instance)
-        context = LegacyContextRevisionV1(
+        context_node = ContextContentV1(
+            parent_ref=None,
             messages=(MessageV1(content=("Begin the story.",), origin="entry:request"),),
+            tools=(),
             rendering={
                 "projection_version": "v1",
                 "prefix_id": "root",
@@ -1012,6 +1194,8 @@ class RecordClosureTests(unittest.TestCase):
                 "tool_schema_ref": common["tools"],
             },
         )
+        store.persist(context_node)
+        context = ContextRevisionV1(context_node.identity(), None, ())
         store.persist(context)
         state = EnvironmentStateV1(
             instance_ref=instance.identity(),
@@ -1225,7 +1409,7 @@ class RecordClosureTests(unittest.TestCase):
                 private=True,
             )
             with self.assertRaises(WrongRecordDomainError):
-                store.get_artifact(public_requirement_request, private=True)
+                store.get_artifact(public_requirement_request)
 
             unknown_versions = store.put_artifact(
                 {
@@ -1238,24 +1422,12 @@ class RecordClosureTests(unittest.TestCase):
             unknown_state = EnvironmentStateV1.from_dict(
                 {**chained_state.to_dict(), "versions_ref": unknown_versions}
             )
-            with self.assertRaises(WrongRecordDomainError):
+            with self.assertRaisesRegex(
+                ProjectionError,
+                "state.versions_ref.transition_semantics: runtime lineages require "
+                "task-graph-derive-v1",
+            ):
                 store.save_checkpoint(unknown_state)
-
-            legacy_context_with_new_semantics = EnvironmentStateV1.from_dict(
-                {
-                    **legacy_state.to_dict(),
-                    "requirements_ref": private,
-                    "versions_ref": new_semantics,
-                }
-            )
-            with self.assertRaises(WrongRecordDomainError):
-                gated_store.save_checkpoint(legacy_context_with_new_semantics)
-
-            chained_context_without_semantics = EnvironmentStateV1.from_dict(
-                {**legacy_state.to_dict(), "context_ref": revision.identity()}
-            )
-            with self.assertRaises(WrongRecordDomainError):
-                store.save_checkpoint(chained_context_without_semantics)
 
             unknown = store.put_artifact({"record_type": "UnregisteredV1", "value": 1})
             with self.assertRaises(ProjectionError):
@@ -1272,6 +1444,35 @@ class RecordClosureTests(unittest.TestCase):
             bad_binary = store.put_artifact(bad_binary_body)
             with self.assertRaises(WrongRecordDomainError):
                 store.get_artifact(bad_binary, expected_domain="payload")
+
+    def test_forged_typed_artifact_reports_its_own_codec_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            store = TaskGraphStore(Path(temporary) / "store")
+            outcome = OutcomeV1(
+                1,
+                "unknown",
+                "running",
+                None,
+                "pending",
+                "pending",
+                None,
+                None,
+                (),
+                None,
+                None,
+                None,
+                None,
+            ).to_wire()
+            outcome["forged_field"] = "not codec-owned"
+            identity = domain_hash("payload", outcome)
+            store._artifact_path(identity, False).write_bytes(
+                canonical_bytes(
+                    {"schema": 1, "domain": "payload", "encoding": "json", "body": outcome}
+                )
+            )
+
+            with self.assertRaisesRegex(ProjectionError, "artifact.forged_field"):
+                store.get_artifact(identity, expected_domain="payload")
 
 
 if __name__ == "__main__":
