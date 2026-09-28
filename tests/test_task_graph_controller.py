@@ -7,7 +7,6 @@ import unittest
 from dataclasses import replace
 
 from tests.task_graph_fixtures import make_entry_fixture
-from writing_agent.task_graph import ContextContentV1, ContextRevisionV1
 from writing_agent.task_graph_admission import AdmissionError
 from writing_agent.task_graph_contracts import (
     CheckContractV1,
@@ -16,7 +15,7 @@ from writing_agent.task_graph_contracts import (
     RewardContractV1,
 )
 from writing_agent.task_graph_controller import Directive, evaluate_guard, next_step, select_edge
-from writing_agent.task_graph_records import OutcomeV1
+from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1, OutcomeV1
 from writing_agent.task_graph_transition import (
     CheckpointChain,
     ContextView,

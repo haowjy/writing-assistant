@@ -14,6 +14,7 @@ from typing import Any, Protocol
 from writing_agent.task_graph import canonical_json, domain_hash, validate_hash
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
+from writing_agent.task_graph_records import RuntimeManifestV1, RuntimePortDescriptorV1
 
 
 @dataclass(frozen=True)
@@ -36,41 +37,19 @@ class PortDescriptorV1:
             raise ValueError("port configuration must be canonical JSON object")
 
     def to_wire(self) -> dict[str, Any]:
-        return {
-            "record_type": "RuntimePortDescriptorV1",
-            "schema": 1,
-            "role": self.role,
-            "implementation": self.implementation,
-            "version": self.version,
-            "configuration": json.loads(self.configuration_json),
-        }
+        return self.to_record().to_wire()
+
+    def to_record(self) -> RuntimePortDescriptorV1:
+        return RuntimePortDescriptorV1(
+            schema=1,
+            role=self.role,
+            implementation=self.implementation,
+            version=self.version,
+            configuration=json.loads(self.configuration_json),
+        )
 
     def identity(self) -> str:
-        return domain_hash("payload", self.to_wire())
-
-
-@dataclass(frozen=True)
-class RuntimeManifestV1:
-    descriptors: tuple[PortDescriptorV1, ...]
-
-    def __post_init__(self) -> None:
-        if {item.role for item in self.descriptors} != {
-            "sampling",
-            "environment",
-            "tools",
-            "evaluator",
-        } or len(self.descriptors) != 4:
-            raise ValueError("runtime manifest requires one descriptor for each port")
-
-    def to_wire(self) -> dict[str, Any]:
-        return {
-            "record_type": "RuntimeManifestV1",
-            "schema": 1,
-            "ports": [item.to_wire() for item in sorted(self.descriptors, key=lambda d: d.role)],
-        }
-
-    def identity(self) -> str:
-        return domain_hash("payload", self.to_wire())
+        return self.to_record().identity()
 
 
 @dataclass(frozen=True)
@@ -302,11 +281,13 @@ class RuntimeDependenciesV1:
                 raise ValueError(f"runtime {role} has a descriptor for another port")
 
     def manifest(self) -> RuntimeManifestV1:
-        return RuntimeManifestV1(
-            (
-                self.sampling.descriptor,
-                self.environment.descriptor,
-                self.tools.descriptor,
-                self.evaluator.descriptor,
+        ports = tuple(
+            sorted(
+                (
+                    port.descriptor.to_record()
+                    for port in (self.sampling, self.environment, self.tools, self.evaluator)
+                ),
+                key=lambda item: item.role,
             )
         )
+        return RuntimeManifestV1(schema=1, ports=ports)

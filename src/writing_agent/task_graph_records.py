@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Annotated, Any, ClassVar
 
+import writing_agent.task_graph_group_records  # noqa: F401 - register group payload records
 import writing_agent.task_graph_record_contracts  # noqa: F401 - populate the wire registry
 from writing_agent import task_graph_errors
 from writing_agent.task_graph import (
     EXECUTION_STATUSES,
     TASK_STATUSES,
-    ContextContentV1,
-    ContextRevisionV1,
     MaterializedContextV1,
     MessageV1,
+    domain_hash,
     safe_path,
 )
 from writing_agent.task_graph_payloads import payload_record_codecs
@@ -30,6 +29,7 @@ from writing_agent.task_graph_wire import (
     JsonValue,
     KindUnion,
     ListOf,
+    MessageValue,
     PayloadCodec,
     RecordOf,
     Str,
@@ -45,7 +45,6 @@ from writing_agent.task_graph_wire import (
 
 _PAYLOAD_CODECS = payload_record_codecs()
 
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _TRACE_REF_KEYS = (
     "model_ref behavior_policy_ref tokenizer_ref template_ref adapter_ref decoding_ref "
     "context_policy_ref policy_ref"
@@ -314,6 +313,73 @@ class OutcomeV1(WireRecord):
     RECORD_TYPE: ClassVar[str] = "OutcomeV1"
 
 
+@dataclass(frozen=True)
+class RuntimePortDescriptorV1(WireRecord):
+    schema: Annotated[int, Int(equals=1)]
+    role: Annotated[str, Enum(frozenset({"sampling", "environment", "tools", "evaluator"}))]
+    implementation: Annotated[str, Str(nonempty=True)]
+    version: Annotated[str, Str(nonempty=True)]
+    configuration: Annotated[Mapping[str, Any], DictOf(_JSON)]
+    RECORD_TYPE: ClassVar[str] = "RuntimePortDescriptorV1"
+
+
+@dataclass(frozen=True)
+class RuntimeManifestV1(WireRecord):
+    schema: Annotated[int, Int(equals=1)]
+    ports: Annotated[
+        tuple[RuntimePortDescriptorV1 | Mapping[str, Any], ...]
+        | list[RuntimePortDescriptorV1 | Mapping[str, Any]],
+        ListOf(RecordOf(RuntimePortDescriptorV1), min_items=4, max_items=4),
+    ]
+    RECORD_TYPE: ClassVar[str] = "RuntimeManifestV1"
+
+    def check(self) -> None:
+        roles = tuple(port.role for port in self.ports)
+        if set(roles) != {"sampling", "environment", "tools", "evaluator"} or len(roles) != 4:
+            raise ValueError("runtime manifest requires one descriptor for each port")
+
+
+@dataclass(frozen=True)
+class ContextContentV1(WireRecord):
+    """One immutable node in the writer-visible context chain."""
+
+    parent_ref: Annotated[str | None, Hash("context_node", optional=True)]
+    messages: Annotated[
+        tuple[MessageV1 | Mapping[str, Any], ...] | list[MessageV1 | Mapping[str, Any]],
+        ListOf(MessageValue()),
+    ]
+    tools: Annotated[
+        tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]] | None,
+        UnionOf((type(None), ListOf(obj_opt({}, extra=_JSON)))),
+    ]
+    rendering: Annotated[
+        Mapping[str, Any] | None,
+        UnionOf((type(None), _RENDERING_SCHEMA)),
+    ]
+    EDGE_TYPE: ClassVar[str] = "context_node"
+
+    def check(self) -> None:
+        is_root = self.parent_ref is None
+        if (self.tools is None) != (self.rendering is None) or is_root != (self.tools is not None):
+            raise ValueError("root content alone must carry tools and rendering")
+
+    def identity(self) -> str:
+        return domain_hash("context_content", self.to_wire())
+
+
+@dataclass(frozen=True)
+class ContextRevisionV1(WireRecord):
+    """Immutable reference to one materialized context node and its source history."""
+
+    content_ref: Annotated[str, Hash("context_node")]
+    event_head: Annotated[str | None, Hash("event", optional=True)]
+    provenance_refs: Annotated[tuple[str, ...] | list[str], ListOf(Hash("event"))]
+    EDGE_TYPE: ClassVar[str] = "context_revision"
+
+    def identity(self) -> str:
+        return domain_hash("context", self.to_wire())
+
+
 RECORD_TYPES: Mapping[str, type[WireRecord] | PayloadCodec] = MappingProxyType(
     {
         **{
@@ -327,8 +393,6 @@ RECORD_TYPES: Mapping[str, type[WireRecord] | PayloadCodec] = MappingProxyType(
 
 RECORD_EDGES: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
-        "context_node": ContextContentV1.REFS,
-        "context_revision": ContextRevisionV1.REFS,
         **{
             record.RECORD_TYPE or record.EDGE_TYPE or record.__name__: record.REFS
             for record in registered_record_classes()
@@ -351,29 +415,6 @@ def record_reference_paths(
     record_type: str, body: Mapping[str, Any]
 ) -> tuple[tuple[str, str, str], ...]:
     """Validate a record and return each reference with its codec field path."""
-    if record_type in {"context_node", "context_revision"}:
-        context_type = {
-            "context_node": ContextContentV1,
-            "context_revision": ContextRevisionV1,
-        }[record_type]
-        record = context_type.from_dict(dict(body))
-        if record_type == "context_node":
-            edges = []
-            if record.parent_ref is not None:
-                edges.append(("parent_ref", "context_node", record.parent_ref))
-            if record.rendering is not None:
-                edges.extend(
-                    (f"rendering.{field}", "artifact", record.rendering[field])
-                    for field in ("template_ref", "tokenizer_ref", "tool_schema_ref")
-                )
-        else:
-            edges = [("content_ref", "context_node", record.content_ref)]
-            if record.event_head is not None:
-                edges.append(("event_head", "event", record.event_head))
-            edges.extend(
-                ("provenance_refs[]", "event", identity) for identity in record.provenance_refs
-            )
-        return tuple((path, edge, identity) for path, edge, identity in edges)
     codec = RECORD_TYPES.get(record_type)
     if codec is None:
         try:
@@ -413,8 +454,3 @@ def materialize_context_nodes(
         raise task_graph_errors.MaterializationError("context chain has no materializable root")
     messages = tuple(message for chunk in reversed(chunks) for message in chunk)
     return MaterializedContextV1(messages, root.tools, root.rendering)
-
-
-def is_sha256_string(value: Any) -> bool:
-    """Small helper shared with the ``REFS`` completeness test."""
-    return type(value) is str and _SHA256_RE.fullmatch(value) is not None

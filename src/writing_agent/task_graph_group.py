@@ -18,17 +18,19 @@ from writing_agent.task_graph import (
 )
 from writing_agent.task_graph_environment import RolloutEnvironment, RuntimeHandle
 from writing_agent.task_graph_group_contract import (
+    derive_group_seed,
+    payload_hash,
+    resolve_group_environment,
+    validate_group_policy,
+)
+from writing_agent.task_graph_group_records import (
     GroupAdvantageV1,
     GroupDecisionV1,
     GroupExecutionFailureV1,
     GroupMemberResultV1,
     GroupScriptedTerminalV1,
     GroupSegmentCreditV1,
-    derive_group_seed,
     fraction_wire,
-    payload_hash,
-    resolve_group_environment,
-    validate_group_policy,
 )
 from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_record_contracts import (

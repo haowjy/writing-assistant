@@ -8,8 +8,6 @@ from typing import Any, Literal, Protocol, TypeAlias
 
 from writing_agent.task_graph import (
     CheckpointV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     MaterializedContextV1,
@@ -209,13 +207,13 @@ class ArtifactReader(Protocol):
 @dataclass(frozen=True)
 class DerivedArtifact:
     ref: Hash
-    value: bytes | Record | WireRecord | ContextRevisionV1
+    value: bytes | Record | WireRecord
     kind: str
     value_kind: Literal["record", "canonical_json", "bytes"]
 
     def __post_init__(self) -> None:
         validate_hash(self.ref)
-        record_types = (Record, WireRecord, ContextRevisionV1, ContextContentV1)
+        record_types = (Record, WireRecord)
         if not isinstance(self.value, (bytes, *record_types)):
             raise TypeError("derived artifact values must be canonical bytes or typed records")
         if self.kind not in {"artifact", "private", "context_revision", "context_node"}:
