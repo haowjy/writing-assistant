@@ -355,7 +355,7 @@ class RolloutEnvironment:
             transition.state,
             parent_checkpoint=runtime.checkpoint_id if head is None else None,
         )
-        published_view = self.gate.record_published(self.store, commit_id, transition.view)
+        published_view = self.gate.record_published(self.store, commit_id)
         context = MaterializedContextV1(
             published_view.context.messages,
             published_view.context.tools,

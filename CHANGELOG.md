@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Make gate publication retries thread-independent, preserve store-corruption errors, and
+  route branch semantics through the lineage-pinned selector.
+
 - Add typed port gatherers and a synchronous rollout driver that resumes from published heads.
 
 - Dispatch store semantics from the lineage's pinned transition version; only cache gate-owned

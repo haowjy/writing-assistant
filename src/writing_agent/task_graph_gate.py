@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Callable, Mapping, Sequence
-from threading import RLock, local
+from threading import RLock
 from typing import Any
 
 from writing_agent.task_graph import CheckpointV1, EventV1
@@ -22,7 +22,11 @@ from writing_agent.task_graph_derive_context import DERIVES as CONTEXT_DERIVES
 from writing_agent.task_graph_derive_entry import derive_entry, params_of
 from writing_agent.task_graph_derive_outcome import DERIVES as OUTCOME_DERIVES
 from writing_agent.task_graph_derive_writer import DERIVES as WRITER_DERIVES
-from writing_agent.task_graph_errors import CorruptRecordError, ProjectionError, StoreError
+from writing_agent.task_graph_errors import (
+    CorruptRecordError,
+    ProjectionError,
+    StoreError,
+)
 from writing_agent.task_graph_record_contracts import (
     SEMANTICS_V1,
     ExecutionVersionsV1,
@@ -71,7 +75,7 @@ def derive_input(view: LineageView, input_record: Any, reader: ArtifactReader) -
         if derive is None:
             raise ProjectionError(f"input.record_type: no derive route for {key!r}")
         return derive(view, input_record, reader)
-    except ProjectionError:
+    except (ProjectionError, CorruptRecordError):
         raise
     except Exception as exc:
         raise ProjectionError(
@@ -155,7 +159,8 @@ class LineageGate:
         self.cache = cache or ViewCache()
         self._admitted: dict[tuple[str, str, str], AdmittedGraphV1] = {}
         self._admission_lock = RLock()
-        self._pending = local()
+        self._pending: OrderedDict[str, LineageView] = OrderedDict()
+        self._pending_lock = RLock()
 
     def view(self, store: Any, checkpoint_id: str, *, root: str | None = None) -> LineageView:
         """Verify a checkpoint from its admitted entry and return its immutable view."""
@@ -191,7 +196,7 @@ class LineageGate:
                     params_of(root_checkpoint.state, reader),
                     reader,
                 )
-            except ProjectionError:
+            except (ProjectionError, CorruptRecordError):
                 raise
             except Exception as exc:
                 raise ProjectionError(
@@ -208,9 +213,9 @@ class LineageGate:
             cached_index = 0
 
         for index in range(cached_index + 1, len(chain)):
-            checkpoint_id, checkpoint = chain[index]
+            _, checkpoint = chain[index]
             parent = chain[index - 1][1]
-            view = self._fold_checkpoint(store, view, parent, checkpoint_id, checkpoint)
+            view = self._fold_checkpoint(store, view, parent, checkpoint)
         return view
 
     def verify_commit(
@@ -226,15 +231,22 @@ class LineageGate:
         base = store.load_checkpoint(base_checkpoint_id)
         before = self.view(store, base_checkpoint_id)
         candidate = self._step(store, before, base, events[0], next_state).view
-        self._pending.candidate = candidate
+        with self._pending_lock:
+            existing = self._pending.get(candidate.checkpoint_id)
+            if existing is not None and existing != candidate:
+                raise ProjectionError(
+                    "checkpoint.identity: candidate checkpoint produced conflicting views"
+                )
+            self._pending[candidate.checkpoint_id] = candidate
+            self._pending.move_to_end(candidate.checkpoint_id)
+            while len(self._pending) > self.cache.capacity:
+                self._pending.popitem(last=False)
         return candidate
 
-    def record_published(self, store: Any, commit_id: str, view: LineageView) -> LineageView:
-        """Cache this thread's gate candidate after matching its published identities."""
+    def record_published(self, store: Any, commit_id: str) -> LineageView:
+        """Cache the verified view of a commit that is the current published head."""
         try:
             commit = store.load_commit(commit_id)
-            if commit.checkpoint != view.checkpoint_id:
-                raise ProjectionError("commit.checkpoint: differs from candidate view")
             checkpoint = store.load_checkpoint(commit.checkpoint)
             if store.read_head(checkpoint.state.position["lineage_id"]) != commit_id:
                 raise ProjectionError("commit.head: candidate is not the published lineage head")
@@ -244,20 +256,12 @@ class LineageGate:
             raise ProjectionError(
                 f"commit.id: published candidate cannot be loaded: {exc}"
             ) from exc
-        if checkpoint.state.identity() != view.state.identity():
-            raise ProjectionError("checkpoint.state: published state differs from candidate")
-        candidate = getattr(self._pending, "candidate", None)
-        if candidate is None or candidate.checkpoint_id != commit.checkpoint:
-            raise ProjectionError("view.checkpoint_id: no gate-verified candidate")
-        if candidate.state.identity() != checkpoint.state.identity():
-            raise ProjectionError("checkpoint.state: gate candidate differs from published state")
-        del self._pending.candidate
+        with self._pending_lock:
+            candidate = self._pending.pop(commit.checkpoint, None)
+        if candidate is None:
+            candidate = self.view(store, commit.checkpoint)
         self.cache._insert(candidate)
         return candidate
-
-    def verify_checkpoint(self, store: Any, checkpoint_id: str) -> None:
-        """Verify the checkpoint's full lineage before the store materializes it."""
-        self.view(store, checkpoint_id)
 
     def _admitted_graph(
         self,
@@ -294,29 +298,14 @@ class LineageGate:
         store: Any,
         before: LineageView,
         parent: CheckpointV1,
-        checkpoint_id: str,
         checkpoint: CheckpointV1,
     ) -> LineageView:
-        parent_id = before.checkpoint_id
-        if checkpoint.parents != (parent_id,):
-            raise ProjectionError("checkpoint.parents: checkpoint ancestry is not contiguous")
-        if checkpoint.state.history["seq"] != parent.state.history["seq"] + 1:
-            raise ProjectionError("state.history.seq: checkpoint must advance one event")
-        event = store.load_event(checkpoint.event_head)
-        transition = self._step(store, before, parent, event, checkpoint.state)
-        if transition.view.checkpoint_id != checkpoint_id:
-            path = (
-                first_difference(
-                    CheckpointV1(
-                        parents=(parent_id,), state=transition.state, event_head=transition.event.id
-                    ),
-                    checkpoint,
-                    path="checkpoint",
-                )
-                or "checkpoint"
+        if checkpoint.artifact_refs:
+            raise ProjectionError(
+                "checkpoint.artifact_refs: runtime checkpoints have no supplemental refs"
             )
-            raise ProjectionError(f"derived checkpoint differs at {path}")
-        return transition.view
+        event = store.load_event(checkpoint.event_head)
+        return self._step(store, before, parent, event, checkpoint.state).view
 
     def _step(
         self,
@@ -347,13 +336,13 @@ class LineageGate:
             if not isinstance(codec, type):
                 raise ValueError("unknown input record type")
             input_record = codec.from_dict(dict(payload))
-            return derive_input(view, input_record, reader)
-        except ProjectionError:
+        except (ProjectionError, CorruptRecordError):
             raise
         except Exception as exc:
             raise ProjectionError(
                 f"event.payload_ref: recorded input cannot be derived: {exc}"
             ) from exc
+        return derive_input(view, input_record, reader)
 
     @staticmethod
     def _compare_event(expected: EventV1, actual: EventV1) -> None:

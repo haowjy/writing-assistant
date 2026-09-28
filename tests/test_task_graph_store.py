@@ -23,7 +23,6 @@ from writing_agent.task_graph import (
     domain_hash,
     tree_hash,
 )
-from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_store import (
     ConcurrentUpdateError,
@@ -685,10 +684,30 @@ class TaskGraphStoreTest(unittest.TestCase):
             verifier_store.load_commit(commit.identity())
         self.assertIsNone(self.store.read_head("legacy-gated"))
 
-    def test_branch_is_refused_before_any_gate_verification(self):
-        gate_store = TaskGraphStore(self.root / "gated", verifier=LineageGate())
-        with self.assertRaises(ProjectionError):
-            gate_store.branch("0" * 64, "branch", (), None)
+    def test_verifier_store_branches_legacy_lineage_through_semantics_selector(self):
+        parent, parent_state = self.fixture.root()
+        event, branch_state, effect = self.fixture.effect_event_state(
+            parent_state,
+            lineage="legacy-branch",
+            set_values={
+                "position": {
+                    **parent_state.position,
+                    "lineage_id": "legacy-branch",
+                    "start_checkpoint": parent,
+                }
+            },
+            history_set={"branch_base": parent_state.history["head"]},
+            kind="rollout_started",
+        )
+        gate_store = TaskGraphStore(self.store.root, verifier=LineageGate())
+        commit = gate_store.branch(
+            parent,
+            "legacy-branch",
+            (event,),
+            branch_state,
+            artifact_refs=(effect,),
+        )
+        self.assertEqual(gate_store.read_head("legacy-branch"), commit)
 
     def test_binary_artifact_and_missing_public_reference_validation(self):
         binary = self.store.put_bytes_artifact(b"\x00\xff", domain="payload")

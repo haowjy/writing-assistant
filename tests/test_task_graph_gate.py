@@ -109,7 +109,7 @@ class GateStoreFixture:
             parent_checkpoint=(self.root_id if expected_head is None else None),
             fault=fault,
         )
-        published_view = self.gate.record_published(self.store, commit_id, transition.view)
+        published_view = self.gate.record_published(self.store, commit_id)
         return commit_id, published_view.checkpoint_id
 
 
@@ -237,7 +237,7 @@ class LineageGateTests(unittest.TestCase):
 
         self.assert_projection_path(
             "state.budgets_ref",
-            lambda: fixture.gate.verify_checkpoint(fixture.store, midrun_root),
+            lambda: fixture.gate.view(fixture.store, midrun_root),
             store=fixture.store,
         )
 
@@ -252,7 +252,7 @@ class LineageGateTests(unittest.TestCase):
         )
         self.assert_projection_path(
             "checkpoint.artifact_refs",
-            lambda: fixture.gate.verify_checkpoint(fixture.store, checkpoint_id),
+            lambda: fixture.gate.view(fixture.store, checkpoint_id),
             store=fixture.store,
         )
 
@@ -556,7 +556,7 @@ class LineageGateTests(unittest.TestCase):
         )
         self.assert_projection_path(
             "state.budgets_ref",
-            lambda: fixture.gate.verify_checkpoint(fixture.store, sibling_id),
+            lambda: fixture.gate.view(fixture.store, sibling_id),
             store=fixture.store,
         )
         self.assert_projection_path(
@@ -586,7 +586,7 @@ class LineageGateTests(unittest.TestCase):
         )
         self.assert_projection_path(
             "state.budgets_ref",
-            lambda: fixture.gate.verify_checkpoint(fixture.store, sibling_id),
+            lambda: fixture.gate.view(fixture.store, sibling_id),
             store=fixture.store,
         )
         self.assert_projection_path(
@@ -622,7 +622,7 @@ class LineageGateTests(unittest.TestCase):
         self.assertEqual(calls, 1)
         self.assertIsNone(fixture.gate.cache.get(fixture.root_id, second.view.checkpoint_id))
         # The store's returned candidate is the only object the gate will cache.
-        gate_view = fixture.gate.record_published(fixture.store, commit_id, second.view)
+        gate_view = fixture.gate.record_published(fixture.store, commit_id)
         self.assertIs(fixture.gate.cache.get(fixture.root_id, gate_view.checkpoint_id), gate_view)
 
     def test_warm_gate_rejects_forged_outcome_sibling_too(self) -> None:
@@ -650,7 +650,7 @@ class LineageGateTests(unittest.TestCase):
         )
         self.assert_projection_path(
             "state.outcome_ref",
-            lambda: fixture.gate.verify_checkpoint(fixture.store, sibling_id),
+            lambda: fixture.gate.view(fixture.store, sibling_id),
             store=fixture.store,
         )
         self.assert_projection_path(
@@ -683,7 +683,7 @@ class LineageGateTests(unittest.TestCase):
         )
         self.assert_projection_path(
             "state.outcome_ref",
-            lambda: fixture.gate.verify_checkpoint(fixture.store, sibling_id),
+            lambda: fixture.gate.view(fixture.store, sibling_id),
             store=fixture.store,
         )
         self.assert_projection_path(
@@ -829,26 +829,34 @@ class LineageGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as workspace, self.assertRaises(CorruptRecordError):
             cold_store.restore(checkpoint_id, Path(workspace) / "runtime")
 
-    def test_record_published_rejects_untrusted_views_and_phantom_checkpoints(self) -> None:
+    def test_record_published_falls_back_to_a_verified_fold_for_an_honest_retry(self) -> None:
         fixture = GateStoreFixture(self)
         self.assertFalse(hasattr(fixture.gate.cache, "insert"))
         transition = fixture.first_transition()
         commit_id, checkpoint_id = fixture.publish(transition)
-        published_view = fixture.gate.view(fixture.store, checkpoint_id)
-        lying = replace(
-            published_view,
-            budget={**dict(published_view.budget), "limits": {"writer_turns": 10**9}},
-        )
-        phantom = replace(published_view, checkpoint_id="f" * 64)
-
-        for untrusted in (lying, phantom):
-            with (
-                self.subTest(checkpoint=untrusted.checkpoint_id),
-                self.assertRaises(ProjectionError),
-            ):
-                fixture.gate.record_published(fixture.store, commit_id, untrusted)
+        fresh_gate = LineageGate()
+        published_view = fresh_gate.record_published(fixture.store, commit_id)
+        self.assertEqual(published_view.checkpoint_id, checkpoint_id)
         self.assertEqual(fixture.store.read_head("rollout-fixture"), commit_id)
-        self.assertIs(fixture.gate.cache.get(fixture.root_id, checkpoint_id), published_view)
+        self.assertEqual(
+            fresh_gate.cache.get(fixture.root_id, checkpoint_id), published_view
+        )
+
+    def test_record_published_requires_the_commit_to_be_the_published_head(self) -> None:
+        fixture = GateStoreFixture(self)
+        transition = fixture.first_transition()
+        fixture.persist_artifacts(transition)
+        checkpoint = CheckpointV1(
+            parents=(fixture.root_id,), state=transition.state, event_head=transition.event.id
+        )
+        commit = CommitV1(events=(transition.event.id,), checkpoint=checkpoint.identity())
+        fixture.store.persist(checkpoint)
+        fixture.store.persist(commit)
+
+        with self.assertRaises(ProjectionError):
+            fixture.gate.record_published(fixture.store, commit.identity())
+        self.assertIsNone(fixture.store.read_head("rollout-fixture"))
+        self.assertIsNone(fixture.gate.cache.get(fixture.root_id, checkpoint.identity()))
 
     def test_record_published_does_not_cache_a_candidate_without_a_published_head(self) -> None:
         fixture = GateStoreFixture(self)
@@ -866,7 +874,7 @@ class LineageGateTests(unittest.TestCase):
         fixture.store.persist(commit)
 
         with self.assertRaises(ProjectionError):
-            fixture.gate.record_published(fixture.store, commit.identity(), transition.view)
+            fixture.gate.record_published(fixture.store, commit.identity())
         self.assertIsNone(fixture.store.read_head("rollout-fixture"))
         self.assertIsNone(fixture.gate.cache.get(fixture.root_id, checkpoint.identity()))
 

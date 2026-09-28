@@ -124,6 +124,8 @@ _RECORDED_DIRECT_REF_KINDS = {
 class CommitVerifier(Protocol):
     """Semantic authority injected at the store's publish and restore seams."""
 
+    def view(self, store: TaskGraphStore, checkpoint_id: str) -> Any: ...
+
     def verify_commit(
         self,
         store: TaskGraphStore,
@@ -131,9 +133,6 @@ class CommitVerifier(Protocol):
         events: Sequence[EventV1],
         next_state: EnvironmentStateV1,
     ) -> Any: ...
-
-    def verify_checkpoint(self, store: TaskGraphStore, checkpoint_id: str) -> None: ...
-
 
 @dataclass(frozen=True)
 class _Artifact:
@@ -556,9 +555,9 @@ class TaskGraphStore:
         fault: FaultHook | None = None,
     ) -> str:
         """Publish the first commit of a new lineage from an immutable parent."""
-        if self._verifier is not None:
-            raise ProjectionError("checkpoint.parents: branching is unsupported with a verifier")
         validator = self._validator()
+        if self._verifier_for_checkpoint(parent_checkpoint, validator) is not None:
+            raise ProjectionError("checkpoint.parents: branching is unsupported with a verifier")
         parent = validator.validate(("checkpoint", parent_checkpoint))
         if dict(next_state.files) != dict(parent.state.files):
             raise ValueError("branch initialization must start with the parent's full file state")
@@ -665,7 +664,7 @@ class TaskGraphStore:
         if verifier is None:
             self._validate_writer_history(checkpoint_id)
         else:
-            verifier.verify_checkpoint(self, checkpoint_id)
+            verifier.view(self, checkpoint_id)
         workspace = self._materialize_checkpoint(checkpoint, fresh_root, fault=fault)
         try:
             context = self.load_context(checkpoint.state.context_ref)
