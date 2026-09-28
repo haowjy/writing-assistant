@@ -12,7 +12,6 @@ from typing import Any
 
 from writing_agent.task_graph import (
     EventV1,
-    MessageV1,
     canonical_bytes,
     load_canonical_json,
     validate_hash,
@@ -584,13 +583,18 @@ class GroupCoordinatorV1:
         return view
 
     @staticmethod
-    def _context_for_revision(view, revision_ref: str):
+    def _sample_content_index(view):
+        contexts = {}
+        messages = {}
         chain = view.ancestry
         while chain is not None:
-            if chain.context.revision_ref == revision_ref:
-                return chain.context
+            context = chain.context
+            contexts.setdefault(context.revision_ref, context)
+            for source, message in zip(context.sources, context.messages, strict=True):
+                if source is not None:
+                    messages.setdefault(source, message)
             chain = chain.parent
-        raise GroupError("sample context is absent from the verified member view")
+        return contexts, messages
 
     @operation_scoped
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
@@ -688,15 +692,20 @@ class GroupCoordinatorV1:
         if view is None:
             raise GroupError("real segment credit requires a verified member view")
         refs = []
+        contexts, messages = self._sample_content_index(view)
         for sample in view.samples:
             if sample.outcome != "action":
                 continue
             turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
-            message = self._message_for_sample(view, sample.event_id)
+            message = messages.get(sample.event_id)
+            if message is None:
+                raise GroupError("sample event has no verified assistant message")
             if message.role != "assistant" or message.origin != sample.action_id:
                 raise GroupError("sample does not own its derived assistant message")
             message_ref = self.store.persist(message)
-            context = self._context_for_revision(view, turn.context_revision_ref)
+            context = contexts.get(turn.context_revision_ref)
+            if context is None:
+                raise GroupError("sample context is absent from the verified member view")
 
             segments = []
             for index, part in enumerate(message.content):
@@ -730,13 +739,3 @@ class GroupCoordinatorV1:
                 )
                 refs.append(self.store.put_artifact(credit.to_dict()))
         return refs
-
-    @staticmethod
-    def _message_for_sample(view, event_id: str) -> MessageV1:
-        chain = view.ancestry
-        while chain is not None:
-            for source, message in zip(chain.context.sources, chain.context.messages, strict=True):
-                if source == event_id:
-                    return message
-            chain = chain.parent
-        raise GroupError("sample event has no verified assistant message")
