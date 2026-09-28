@@ -47,7 +47,8 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 - A new seam module goes into both `NEW_SEAM_MODULES` (not in any runtime SCC) and
   `LAYER_RANKS`. No module in `NEW_SEAM_MODULES` may import `task_graph_checks`, which S7.3
   deletes. A module-name-pattern rule forbids any `task_graph_gatherers` module from
-  importing `task_graph_transition`, where `LineageView` lives (I6).
+  importing `task_graph_transition`, where `LineageView` lives (I6). The same rule covers
+  `task_graph_rollout`.
 - `derive_entry` may not import the store, ports, local, writer, environment, replay or any
   filesystem module. Derives in general read only the view, the input and the
   `ArtifactReader` (I7).
@@ -244,6 +245,39 @@ Two more publication rules hold on both paths:
   store; a v1 lineage is refused because a branched state keeps its parent's `lineage_id`.
   Group members start through `MemberStartV1` instead.
 
+## Driver and gatherers
+
+`RolloutDriver.run(runtime, max_steps=...)` owns the synchronous sequence: verify the
+published handle, compute `next_step`, return on `done` or `halt`, enforce the operational
+step budget, build the typed port input, consult `alternatives` only when the directive
+offers alternatives, gather the selected input (or encode an environment step), and commit
+exactly one event before looping. Adapter and caller callbacks run outside store operation
+scopes. Its `RunResult(runtime, directive)` preserves the terminal distinction; a
+`DriverBudgetError` carries the last committed `runtime` so a caller can inspect or resume.
+
+`RolloutEnvironment.open_head(lineage_id)` is the single resume path: it resolves the
+published commit to its checkpoint and opens that verified state. If a first commit never
+published a head, it opens the unique persisted root checkpoint so the caller can retry the
+initial step. Do not resume from an in-memory handle left by a failed process.
+
+Gatherers receive only a typed port input. Sampling intake checks the assistant role,
+`SampleResult` type, and binary-logprob/token alignment before bytes are written. It also
+classifies non-text assistant content as a live adapter failure; the same forged recorded
+turn remains a `ProjectionError` at replay. Usage, sampling binding, and group pin checks
+belong to the writer-turn derive; tool effects and evaluator evidence are checked at their
+corresponding adapter boundaries and again by the derive during replay. Gatherers receive a
+narrow artifact sink plus only the reader needed to verify evaluator evidence, not the whole
+store.
+
+The shared fixture API lives in `tests/task_graph_rollout_fixtures.py`: `run_slice(fixture,
+*, alternatives=None, runtime=None, until=None)` can stop before a matching directive;
+`fixture.commit_observer` captures published checkpoints without wrapping `env.commit`;
+`make_gatherers(fixture, *, sampler=None, tools=None, author=None, evaluator=None)` swaps
+ports; `fixture.lineage_id` names the lineage; `mode="feedback"` exercises mandatory
+feedback and requirement supersession; `session=` binds an environment to runtime session
+seals. `ports_disabled()` provides offline replay protection by making every producer port
+fail if reached.
+
 **Error classes.** Callers tell a rejected input from a damaged store by class:
 - `ProjectionError`: the candidate or recorded input is invalid. This covers derive and
   fold mismatches, a closure failure on the candidate's own event, checkpoint or commit
@@ -295,16 +329,18 @@ policy.
   persists the instance and entry artifacts, and saves the parentless root checkpoint.
   Nothing is published until the first `commit`.
 - `open` is a cold restore: stale-head and policy checks, a full gate fold, then
-  creation of a handle from the verified state and context.
-- `verify` checks the session seals, requires the handle to be the lineage head (or a
-  parentless root with no head), checks policy, state, context and graph identity, then
-  returns `gate.view`. A root with no head passes only through the gate's I3 check. The
-  shared `_checked_head` also protects `open` and port construction: stale checkpoints are
-  `ConcurrentUpdateError`, while a graph/policy mismatch or handle forgery is
+  creation of a handle from the verified state and context. `open_head(lineage_id)` is the
+  resume path: it follows the current head's commit to its checkpoint and opens it. If the
+  first commit has not published, it opens the unique persisted root so the caller can retry.
+- `verify` checks the session seals, requires the handle to be the published lineage head,
+  checks policy, state, context and graph identity, then returns `gate.view`. The separately
+  named `_published_checkpoint` and `_inspect_checkpoint` paths distinguish current-head
+  verification from a commit-base inspection needed for an exact publication retry.
+  Stale checkpoints are `ConcurrentUpdateError`; graph/policy mismatch or handle forgery is
   `WriterRuntimeError`.
-- `port_input(view, directive)` requires `view` to be the verified, published head (or the
-  verified root) and `directive` to equal `next_step(view)`. It returns the typed port input,
-  or `None` when that directive has no external port.
+- `port_input(view, directive)` requires `view` to be the verified published head and
+  `directive` to equal `next_step(view)`. It returns the typed port input, or `None` when
+  that directive has no external port.
 - `commit(runtime, input)` derives through `derive_input`, persists, calls `store.publish`
   (which re-derives under the lineage lock), then `gate.record_published`. An exact retry
   whose requested commit is already the head returns that published result; a stale
@@ -315,9 +351,8 @@ policy.
   starts a new lineage whose first commit's parent is that entry.
 
 **Workspace scope.** The new-core handle carries state and verified context, not a
-materialized workspace: the driver, gatherers and shared S4 fixture consume checkpoint
-files directly. Accordingly, environment `enter` and `open` do not materialize one. This
-differs from design §7's planned materialization; low-level legacy `TaskGraphStore.restore`
+materialized workspace. The driver and gatherers consume typed port inputs; `enter` and
+`open` do not materialize the legacy workspace. Low-level legacy `TaskGraphStore.restore`
 still materializes its legacy handle.
 
 **Persistence order** (design §7): the input payload artifact, then every other derived
@@ -327,8 +362,8 @@ no `artifact_refs`; closure follows typed edges, and a missing artifact fails th
 A single `TaskGraphStore.persist_artifact` owns derived-artifact kind/value dispatch.
 A failure at any stage leaves the old head or the new one, never a partial commit. Orphan
 immutables are harmless, and a retry of the same input yields the same commit ID. The
-crash-matrix test covers 10 of the 11 event kinds; `budget_charged` is unreachable because
-no admitted entry has token limits (see the O1 rationale below).
+crash-matrix test covers every publication fault stage on commits 1, 3, 5 and 11; its first
+commit cases also cover the root-checkpoint resume path before a head exists.
 
 **Port inputs are the privacy boundary (I6).** A gatherer receives one of four frozen
 types, never a `LineageView`. `RolloutDriver` dispatches by that returned type; `None` means
@@ -403,13 +438,11 @@ preserved on both paths for damaged persisted bytes.
   - **Check-phase entry:** only `request_checks` moves a checking view into
     `awaiting_checks`; check-result transitions stay within that active batch
     (`tests/test_task_graph_derive_outcome.py`).
-- **O1: a writer turn without sampling evidence is charged 0 tokens.** No admitted entry
-  has token limits: `BudgetContractV1` declares none, so neither runtime seeds
-  `generated_tokens` or `total_tokens`. `derive_writer_turn` requires usage evidence only
-  under a token limit and binds usage to token IDs only when IDs are present, the same rule
-  as the old runtime. This is not a seam regression. Token-budgeted admission is a named
-  follow-up before Phase 8 native training; it makes `budget_charged` reachable, and the
-  crash matrix must then cover it.
+- **O1: a writer turn without sampling evidence is charged 0 tokens.** Entries without
+  generated- or total-token limits seed no corresponding counters. `derive_writer_turn`
+  requires usage evidence under a token limit and binds usage to token IDs only when IDs are
+  present, matching the old runtime. A real generated-token-limited fixture exercises the
+  usage requirement; such entries can make `budget_charged` reachable.
 - **One validator for the sampled message, not a sentinel.** The records codec and
   `task_graph_calls` once accepted different values for the same message, so the store
   could persist a `WriterTurnV1` that `parse_calls` rejects. That is a producer/replay split

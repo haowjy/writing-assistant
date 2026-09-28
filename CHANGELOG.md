@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Document the driver, gatherer, replay, and cross-lane fixture extension contracts.
+
 - Expose shared rollout fixture hooks for ports, alternatives, feedback, sessions, checkpoint
   observation, and resume-safe crash recovery; return named driver outcomes.
 
