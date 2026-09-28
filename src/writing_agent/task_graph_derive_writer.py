@@ -95,7 +95,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     _bind_writer_turn(view, turn, reader)
 
     usage = turn.usage
-    next_budget, exceeded = sampled_usage_charge(dict(view.budget), usage)
+    next_budget, exceeded = sampled_usage_charge(view.budget, usage)
     input_artifact = payload_artifact(turn)
     turn_ref = input_artifact.ref
     if exceeded is not None:
@@ -314,21 +314,23 @@ def _build_assistant_message(
         )
         if call.rejection is not None:
             part = {"type": "invalid_tool_call", "id": call.call_id}
+
+            def has_noncanonical_tag(value):
+                if isinstance(value, Mapping):
+                    return "$noncanonical" in value or any(
+                        has_noncanonical_tag(item) for item in value.values()
+                    )
+                if isinstance(value, (tuple, list)):
+                    return any(has_noncanonical_tag(item) for item in value)
+                return False
+
             if turn.message.tool_calls_was_list:
                 carries_sampled_content = (
-                    index < len(turn.message.calls) and turn.message.calls[index]["bounded"]
+                    index < len(turn.message.calls)
+                    and turn.message.calls[index]["bounded"]
+                    and not has_noncanonical_tag(raw)
                 )
             else:
-
-                def has_noncanonical_tag(value):
-                    if isinstance(value, Mapping):
-                        return "$noncanonical" in value or any(
-                            has_noncanonical_tag(item) for item in value.values()
-                        )
-                    if isinstance(value, (tuple, list)):
-                        return any(has_noncanonical_tag(item) for item in value)
-                    return False
-
                 carries_sampled_content = not has_noncanonical_tag(raw)
             part["raw"] = (
                 raw if carries_sampled_content else {"$noncanonical": "no-sampled-content"}
@@ -411,7 +413,7 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
             read_charge = 0
 
     next_budget, _charge = tool_result_charge(
-        dict(view.budget), view.state.files, files_after, read_charge
+        view.budget, view.state.files, files_after, read_charge
     )
     result_id = (
         f"{view.state.position['lineage_id']}:tool_result:"

@@ -94,6 +94,8 @@ class SamplingRunner:
         content = message.get("content")
         if content is not None and not isinstance(content, str):
             raise AdapterContractError("sampled assistant content must be text or null")
+        if not isinstance(message.get("tool_calls", []), list):
+            raise AdapterContractError("sampled tool_calls must be an array")
         usage = dict(result.usage or {})
         trace = dict(result.trace or {})
         try:

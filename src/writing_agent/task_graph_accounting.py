@@ -10,7 +10,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from writing_agent.task_graph import ContextRevisionV1, canonical_bytes, canonical_json
+from writing_agent.task_graph import ContextRevisionV1, canonical_bytes, canonical_json, thaw
 from writing_agent.task_graph_compaction import context_bytes
 
 READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
@@ -23,7 +23,9 @@ EXHAUSTION_ORDER = (
 )
 
 
-def sampled_usage_charge(budget: dict, usage: Mapping[str, Any]) -> tuple[dict, str | None]:
+def sampled_usage_charge(
+    budget: Mapping[str, Any], usage: Mapping[str, Any]
+) -> tuple[dict, str | None]:
     """Charge one sampled call, including an overrun, with parent totals counted once."""
     result = json.loads(canonical_json(budget))
     consumed = result["consumed"]
@@ -85,11 +87,11 @@ def observation_read_tokens(observation: Mapping[str, Any], name: str, tokenizer
         return 0
     if tokenizer != "whitespace-v1":
         raise ValueError("unsupported read tokenizer")
-    return len(json.dumps(observation["result"], ensure_ascii=False).split())
+    return len(json.dumps(thaw(observation["result"]), ensure_ascii=False).split())
 
 
 def tool_result_charge(
-    budget: dict,
+    budget: Mapping[str, Any],
     before_files: Mapping[str, str],
     after_files: Mapping[str, str],
     read_tokens: int,
@@ -113,7 +115,7 @@ def tool_result_charge(
     return result, charge
 
 
-def charge_tool_attempt(budget: dict) -> tuple[dict, int]:
+def charge_tool_attempt(budget: Mapping[str, Any]) -> tuple[dict, int]:
     """Charge one attempted tool call without result or file/read accounting."""
     result = json.loads(canonical_json(budget))
     consumed = result["consumed"]
@@ -123,15 +125,17 @@ def charge_tool_attempt(budget: dict) -> tuple[dict, int]:
     return result, call_charge
 
 
-def charge_context_append(old_budget: dict, new_context: ContextRevisionV1) -> dict | None:
+def charge_context_append(
+    old_budget: Mapping[str, Any], new_context: ContextRevisionV1
+) -> dict | None:
     """Meter a visible append when context accounting has been activated.
 
     The paid action remains committed if the append itself crosses the limit; the
     next request is blocked and a drained writer boundary can record the stop.
     """
     if (
-        not isinstance(old_budget, dict)
-        or not isinstance(old_budget.get("limits"), dict)
+        not isinstance(old_budget, Mapping)
+        or not isinstance(old_budget.get("limits"), Mapping)
         or "context_bytes" not in old_budget["limits"]
     ):
         return None

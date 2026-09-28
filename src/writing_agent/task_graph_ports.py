@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from writing_agent.task_graph import canonical_json, domain_hash, validate_hash
+from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
 
 
@@ -148,17 +149,30 @@ class SampleResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.message, Mapping):
-            raise TypeError("sample message must be a parsed object")
+            raise AdapterContractError("sample message must be a parsed object")
         if self.raw_output is not None and not isinstance(self.raw_output, (str, bytes)):
-            raise TypeError("sample raw output must be exact text or bytes")
+            raise AdapterContractError("sample raw output must be exact text or bytes")
         if self.logprobs is not None and not isinstance(self.logprobs, BinaryLogprobEvidence):
-            raise TypeError("sample logprobs must be typed binary evidence")
-        for field in ("message", "usage", "trace"):
+            raise AdapterContractError("sample logprobs must be typed binary evidence")
+
+        # Tool-call values are model output, not adapter metadata. Leave their nested
+        # values for intake_message, which records noncanonical values as an invalid call.
+        try:
+            message = dict(self.message)
+        except (TypeError, ValueError) as exc:
+            raise AdapterContractError("sample message is not a readable object") from exc
+        object.__setattr__(self, "message", message)
+        for field in ("usage", "trace"):
             value = getattr(self, field)
-            if value is not None:
-                if not isinstance(value, Mapping):
-                    raise TypeError(f"sample {field} must be a parsed object")
-                object.__setattr__(self, field, json.loads(canonical_json(value)))
+            if value is None:
+                continue
+            if not isinstance(value, Mapping):
+                raise AdapterContractError(f"sample {field} must be a parsed object")
+            try:
+                copied = json.loads(canonical_json(value))
+            except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+                raise AdapterContractError(f"sample {field} is not canonical JSON") from exc
+            object.__setattr__(self, field, copied)
 
 
 class SampleBackend(Protocol):

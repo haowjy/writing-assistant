@@ -258,7 +258,10 @@ An empty required set never counts as a pass.
   on the same bytes. The strict canonical-value decoder lives in `task_graph_wire`.
   `intake_message` returns a `SampledMessageV1`, `parse_calls` only decodes that type, and
   the type carries the guarantee a `$sampled_message_v1` marker used to carry. Do not add
-  a second validator for a shape that already has a codec.
+  a second validator for a shape that already has a codec. Intake tags a noncanonical value
+  inside a sampled call and derives it as an invalid call with the uncreditable
+  `$noncanonical` placeholder; a malformed sampling message or non-array `tool_calls` field
+  is instead an adapter contract failure before a turn input or event is recorded.
 - **Group and context-policy records moved down into the records layer.** `GroupSpecV1`,
   `GroupMemberSpecV1` and `ContextPolicyV1` moved out of `group_contract` and
   `compaction`, and `ExecutionVersionsV1` gained a codec, all in

@@ -36,6 +36,7 @@ from writing_agent.task_graph_evaluation import (
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_gate import derive_input as gate_derive_input
 from writing_agent.task_graph_gatherers import CheckRunner
+from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentResult, EnvironmentSnapshot, SampleResult
 from writing_agent.task_graph_records import ContextOperationInputV1, SampledMessageV1, WriterTurnV1
 from writing_agent.task_graph_rollout import RolloutDriver
@@ -536,6 +537,144 @@ class GathererContractTests(unittest.TestCase):
         with self.assertRaises(ProjectionError):
             driver.run(fixture.runtime, max_steps=1)
         self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
+
+    def test_noncanonical_sampled_call_is_invalid_model_behavior_through_driver(self):
+        malformed_call = {
+            "id": "noncanonical-envelope",
+            "type": "other",
+            "function": {
+                "name": "write_file",
+                "arguments": {"path": "bad.txt", "content": b"not canonical"},
+            },
+        }
+        fixture = build_rollout_fixture(self.root / "noncanonical-call", mode="none")
+
+        class Backend:
+            def sample(self, _prepared):
+                return SampleResult(
+                    {"role": "assistant", "content": "", "tool_calls": [malformed_call]}
+                )
+
+        fixture.gatherers = make_gatherers(fixture, sampler=Backend())
+
+        with self.assertRaises(DriverBudgetError) as caught:
+            fixture.driver().run(fixture.runtime, max_steps=2)
+
+        runtime = caught.exception.runtime
+        view = fixture.env.verify(runtime)
+        self.assertEqual(runtime.state.files, fixture.runtime.state.files)
+        self.assertEqual(runtime.state.continuation["next_call"], 1)
+        self.assertEqual(runtime.state.continuation["tool_queue"][0]["name"], "invalid_call")
+        assistant = next(
+            message for message in view.context.messages if message.role == "assistant"
+        )
+        self.assertEqual(assistant.content[0]["raw"], {"$noncanonical": "no-sampled-content"})
+        budget = fixture.store.get_artifact(runtime.state.budgets_ref)
+        self.assertEqual(budget["consumed"]["attempted_tool_calls"], 1)
+
+    def test_malformed_sample_envelope_is_adapter_error_before_lineage_recording(self):
+        fixture = build_rollout_fixture(self.root / "malformed-sample-envelope", mode="none")
+
+        class Backend:
+            def sample(self, _prepared):
+                return SampleResult(
+                    {"role": "assistant", "content": "bad envelope", "tool_calls": None}
+                )
+
+        fixture.gatherers = make_gatherers(fixture, sampler=Backend())
+        head = fixture.store.read_head(fixture.lineage_id)
+        checkpoints = tuple(fixture.checkpoint_ids)
+
+        with self.assertRaises(AdapterContractError):
+            fixture.driver().run(fixture.runtime, max_steps=1)
+
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
+        self.assertEqual(tuple(fixture.checkpoint_ids), checkpoints)
+
+    def test_noncanonical_sampling_metadata_is_adapter_error_before_lineage_recording(self):
+        fixture = build_rollout_fixture(self.root / "noncanonical-sampling-metadata", mode="none")
+
+        class Backend:
+            def sample(self, _prepared):
+                return SampleResult(
+                    {"role": "assistant", "content": "draft", "tool_calls": []},
+                    trace={"opaque": b"not canonical"},
+                )
+
+        fixture.gatherers = make_gatherers(fixture, sampler=Backend())
+        head = fixture.store.read_head(fixture.lineage_id)
+        checkpoints = tuple(fixture.checkpoint_ids)
+
+        with self.assertRaises(AdapterContractError):
+            fixture.driver().run(fixture.runtime, max_steps=1)
+
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
+        self.assertEqual(tuple(fixture.checkpoint_ids), checkpoints)
+
+    def test_frozen_search_result_is_read_accounted_through_driver(self):
+        sample = SampleResult(
+            {
+                "role": "assistant",
+                "content": "Search notes.",
+                "tool_calls": [
+                    {
+                        "id": "search-notes",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": {"query": "moon", "path": "notes"},
+                        },
+                    }
+                ],
+            }
+        )
+        fixture = build_rollout_fixture(self.root / "frozen-search", mode="none")
+        local = LocalTextToolProvider()
+
+        class FrozenSearchProvider:
+            def execute(self, spec, snapshot, action):
+                result = local.execute(spec, snapshot, action)
+                observation = dict(result.observation)
+                observation["result"] = tuple(
+                    MappingProxyType(dict(row)) for row in observation["result"]
+                )
+                return EnvironmentResult(MappingProxyType(observation), result.snapshot)
+
+        class Backend:
+            def sample(self, _prepared):
+                return sample
+
+        fixture.gatherers = make_gatherers(fixture, sampler=Backend(), tools=FrozenSearchProvider())
+
+        with self.assertRaises(DriverBudgetError) as caught:
+            fixture.driver().run(fixture.runtime, max_steps=2)
+
+        runtime = caught.exception.runtime
+        budget = fixture.store.get_artifact(runtime.state.budgets_ref)
+        self.assertGreater(budget["consumed"]["read_tokens"], 0)
+        action = fixture.store.load_event(runtime.state.history["head"])
+        self.assertEqual(action.kind, "tool_result")
+
+    def test_frozen_budget_mapping_does_not_skip_writer_context_storage_charge(self):
+        fixture = build_rollout_fixture(self.root / "frozen-writer-budget", mode="none")
+        policy_ref = fixture.store.put_artifact(ContextPolicyV1("carry").to_wire())
+        selected = False
+
+        def alternatives(directive, _port):
+            nonlocal selected
+            if directive.kind == "sample_writer" and not selected:
+                selected = True
+                return ContextOperationInputV1(policy_ref)
+            return None
+
+        driver = fixture.driver(alternatives=alternatives)
+        with self.assertRaises(DriverBudgetError) as caught:
+            driver.run(fixture.runtime, max_steps=2)
+
+        runtime = caught.exception.runtime
+        budget = fixture.store.get_artifact(runtime.state.budgets_ref)
+        self.assertGreater(budget["consumed"]["context_storage_bytes"], 0)
+        self.assertGreater(budget["consumed"]["context_bytes"], 0)
 
     def test_evaluator_family_mismatch_is_rejected_before_dispatch(self):
         fixture = build_rollout_fixture(self.root / "evaluator")

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Sanitize noncanonical sampled tool-call values into uncreditable invalid calls, while
+  classifying malformed sampling envelopes as adapter contract failures.
+- Preserve read-token and context-storage charges across recursively frozen view mappings.
+
 - Carry sampler policy pins and the gate-bound context hash in one typed request, bind
   context claims for every lineage, and make scripted sampling report the sealed claims.
 - Move tool-effect and evaluator-evidence verification to producer derives; remove redundant

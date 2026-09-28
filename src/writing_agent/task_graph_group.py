@@ -14,6 +14,7 @@ from writing_agent.task_graph import (
     EventV1,
     canonical_bytes,
     load_canonical_json,
+    thaw,
     validate_hash,
 )
 from writing_agent.task_graph_group_contract import (
@@ -170,7 +171,7 @@ class GroupCoordinatorV1:
                 view=view,
                 instance=self.environment.graph.instance,
             ),
-            dict(view.context.rendering),
+            thaw(view.context.rendering),
         )
 
     @operation_scoped

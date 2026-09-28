@@ -257,7 +257,7 @@ def _derive_answered_reply(
     changes: dict[str, Any] = {"continuation": continuation, "position": position}
     reply_artifact = payload_artifact(reply)
     artifacts: list[DerivedArtifact] = [reply_artifact]
-    budget = dict(view.budget)
+    budget = thaw(view.budget)
 
     if source == "writer_request":
         if request["call_id"] is None or request["action_id"] is None:

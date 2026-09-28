@@ -9,6 +9,7 @@ from writing_agent.task_graph import (
 )
 from writing_agent.task_graph import (
     domain_hash,
+    thaw,
 )
 from writing_agent.task_graph_compaction import (
     make_record,
@@ -99,7 +100,7 @@ def derive_context_operation(
             operation.policy_ref,
             new_materialized,
             summary_ref,
-            dict(view.budget),
+            thaw(view.budget),
             seed=seed,
             seed_sources=seed_sources,
         )
