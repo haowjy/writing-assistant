@@ -5,6 +5,8 @@
 - Sanitize noncanonical sampled tool-call values into uncreditable invalid calls, while
   classifying malformed sampling envelopes as adapter contract failures.
 - Preserve read-token and context-storage charges across recursively frozen view mappings.
+- Classify context-operation policy mismatches as caller-input projection failures at
+  `input.policy_ref` and align evaluator port error expectations with replay.
 
 - Carry sampler policy pins and the gate-bound context hash in one typed request, bind
   context claims for every lineage, and make scripted sampling report the sealed claims.

@@ -16,15 +16,19 @@ Catch the exact class. `CorruptRecordError` and `ConcurrentUpdateError` are both
 
 | Class | Meaning | Raised for | Caller rule |
 |---|---|---|---|
-| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a missing reference named by the input; a directive that differs from `next_step`; persisted adapter violations (`AdapterContractProjectionError` is a subclass); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
+| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a missing reference named by the input; a directive that differs from `next_step`; invalid caller-authored input (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); persisted adapter violations (`AdapterContractProjectionError` is a subclass); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
 | `CorruptRecordError` | Bytes already on disk fail their checks | Hash mismatch on read, on both the producer path (`commit`) and the gate path. Also two parentless entry checkpoints for one lineage | Stop. The store is damaged; re-deriving will not help. |
 | `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` when no head has been published | Re-open with `open_head(lineage_id)` and continue from its `next_step`. |
 | `WriterRuntimeError` | The caller has a bug | A handle whose state or context differs from its checkpoint; a checkpoint or view admitted under another graph or admission policy; a port view that differs from the gate's view | Fix the caller. |
-| `AdapterContractError` | A fresh adapter response breaks its contract | Raised by a gatherer (role, type, content, logprob alignment), or by `commit` when the derive raises `AdapterContractProjectionError` | Fix the adapter. `commit` wrote nothing and the head did not move. The gatherer may have left orphan evidence artifacts, which are harmless. |
+| `AdapterContractError` | A fresh adapter response breaks its contract | Raised by a gatherer (sample message/tool-call-array envelope, assistant role/content, usage/trace shape, logprob alignment), or by `commit` when the derive raises `AdapterContractProjectionError` | Fix the adapter. `commit` wrote nothing and the head did not move. The gatherer may have left orphan evidence artifacts, which are harmless. |
 | `DriverBudgetError` | Operational: `max_steps` ran out before `done` or `halt` | `RolloutDriver.run` | Not a task outcome. `err.runtime` is the last committed handle; inspect it, or call `run` on it again. |
 
 A fresh adapter violation and the same bytes replayed from disk get different classes on
 purpose. Replay has no live adapter, so a persisted violation is a forged input.
+The `alternatives` callback is caller-controlled, not an adapter boundary: a
+`ContextOperationInputV1` it returns is caller input. A grouped lineage's foreign
+`input.policy_ref` is therefore a `ProjectionError` at that path on fresh commit and replay,
+not an `AdapterContractError`.
 
 ## Gate and store verifier port
 

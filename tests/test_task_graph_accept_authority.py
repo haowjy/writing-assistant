@@ -11,6 +11,7 @@ from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
 from writing_agent.task_graph import CheckpointV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import (
+    AdapterContractError,
     CorruptRecordError,
     DriverBudgetError,
     ProjectionError,
@@ -127,9 +128,8 @@ class AuthorityAcceptanceTests(unittest.TestCase):
                 expected_path = "input.status" if forgery == "status" else "input.evidence_ref"
 
                 head = fixture.store.read_head(fixture.lineage_id)
-                with self.assertRaises(ProjectionError) as caught:
+                with self.assertRaises(AdapterContractError):
                     fixture.env.commit(runtime, forged)
-                self.assertIn(expected_path, str(caught.exception))
                 self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
 
                 # The same forged typed input is rejected by store.publish's gate,

@@ -199,12 +199,13 @@ class SamplingAcceptanceTests(unittest.TestCase):
         second = fixture.env.commit(first.runtime, observation)
         view = fixture.env.verify(second.runtime)
         current_port = fixture.env.port_input(view, next_step(view))
+        honest_current = fixture.gatherers.sampler.turn(current_port)
         forged = replace(
             stale,
             action_id=current_port.action_id,
             context_revision_ref=current_port.context_revision_ref,
+            adapter_trace=honest_current.adapter_trace,
         )
-        honest_current = fixture.gatherers.sampler.turn(current_port)
         honest_transition = derive_input(view, honest_current, fixture.env.reader)
         for artifact in honest_transition.artifacts:
             fixture.store.persist_artifact(artifact)
@@ -241,13 +242,14 @@ class SamplingAcceptanceTests(unittest.TestCase):
             verified_messages=True,
         )
         request_ref = fixture.store.put_artifact(fresh_request.to_wire())
+        honest = fixture.gatherers.sampler.turn(current_port)
         forged = replace(
             old_turn,
             action_id=current_port.action_id,
             context_revision_ref=current_port.context_revision_ref,
             prepared_request_ref=request_ref,
+            adapter_trace=honest.adapter_trace,
         )
-        honest = fixture.gatherers.sampler.turn(current_port)
         honest_transition = derive_input(view, honest, fixture.env.reader)
         for artifact in honest_transition.artifacts:
             fixture.store.persist_artifact(artifact)

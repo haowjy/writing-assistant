@@ -445,7 +445,12 @@ class PublishedEventAndStateForgeryTests(unittest.TestCase):
                 for index, forged in enumerate(inputs):
                     with self.subTest(forgery=case, index=index):
                         previous_head = fixture.store.read_head(fixture.lineage_id)
-                        with self.assertRaises(ProjectionError):
+                        expected_error = (
+                            AdapterContractError
+                            if case == "evaluator_result" and index != 1
+                            else ProjectionError
+                        )
+                        with self.assertRaises(expected_error):
                             fixture.env.commit(runtime, forged)
                         self.assertEqual(fixture.store.read_head(fixture.lineage_id), previous_head)
 

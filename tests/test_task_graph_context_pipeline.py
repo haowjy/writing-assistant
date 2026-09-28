@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
@@ -12,8 +13,11 @@ from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import DriverBudgetError, ProjectionError
 from writing_agent.task_graph_gate import StoreArtifactReader
+from writing_agent.task_graph_group import POLICY_FIELDS, GroupCoordinatorV1
 from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_record_contracts import ContextPolicyV1 as SealedContextPolicyV1
 from writing_agent.task_graph_records import ContextOperationInputV1
+from writing_agent.task_graph_rollout_env import derive_input
 
 
 def _write_sample(text: str, call_id: str, contents: str) -> SampleResult:
@@ -118,6 +122,33 @@ class ContextPipelineTests(unittest.TestCase):
         self.assertIsInstance(fixture.env.reader, StoreArtifactReader)
         return fixture
 
+    def _group_member(self, name):
+        fixture = self._fixture(name)
+        store = fixture.store
+        rendering = fixture.runtime.context.rendering
+        policy = {
+            field: store.put_artifact({"pin": field})
+            for field in POLICY_FIELDS
+            if field != "rng_derivation_version"
+        }
+        policy["model_ref"] = store.put_artifact({"model_id": "context-policy-test-v1"})
+        policy["context_policy_ref"] = store.put_artifact(SealedContextPolicyV1("carry").to_wire())
+        policy.update(
+            tokenizer_ref=rendering["tokenizer_ref"],
+            template_ref=rendering["template_ref"],
+            rng_derivation_version="sha256-domain-v1",
+        )
+        coordinator = GroupCoordinatorV1(fixture.env, self.root / f"{name}-workers")
+        spec = coordinator.seal(
+            fixture.runtime.checkpoint_id,
+            policy=policy,
+            group_seed=771,
+            group_sequence=0,
+            member_count=2,
+        )
+        runtime = coordinator.start(spec, 0, policy=policy)
+        return fixture, runtime, policy["context_policy_ref"]
+
     def _assert_context_commit(self, flow: _Rollout, call: int):
         fixture = flow.fixture
         before = flow.bases[call]
@@ -163,6 +194,50 @@ class ContextPipelineTests(unittest.TestCase):
         )
         self.assertEqual(after.context.messages, before.context.messages)
         self.assertEqual(budget["consumed"]["context_operations"], 1)
+
+    def test_foreign_context_policy_from_alternatives_is_projection_error_at_commit(self):
+        fixture, runtime, _sealed_policy_ref = self._group_member("fresh-foreign-policy")
+        foreign_policy_ref = fixture.store.put_artifact(ContextPolicyV1("drop").to_wire())
+        member_id = runtime.state.position["lineage_id"]
+        before_head = fixture.store.read_head(member_id)
+
+        driver = fixture.driver(
+            alternatives=lambda directive, _port: (
+                ContextOperationInputV1(foreign_policy_ref)
+                if directive.kind == "sample_writer"
+                else None
+            )
+        )
+        with self.assertRaises(ProjectionError) as caught:
+            driver.run(runtime, max_steps=1)
+
+        self.assertIn("input.policy_ref", str(caught.exception))
+        self.assertEqual(fixture.store.read_head(member_id), before_head)
+
+    def test_published_foreign_context_policy_has_same_projection_path(self):
+        fixture, runtime, sealed_policy_ref = self._group_member("persisted-foreign-policy")
+        view = fixture.env.verify(runtime)
+        honest = derive_input(
+            view,
+            ContextOperationInputV1(sealed_policy_ref),
+            fixture.env.reader,
+        )
+        for artifact in honest.artifacts:
+            fixture.store.persist_artifact(artifact)
+        foreign_policy_ref = fixture.store.put_artifact(ContextPolicyV1("drop").to_wire())
+        payload_ref = fixture.store.put_artifact(
+            ContextOperationInputV1(foreign_policy_ref).to_wire()
+        )
+        event = replace(honest.event, payload_ref=payload_ref, id=None)
+        state = replace(honest.state, history={**honest.state.history, "head": event.id})
+        member_id = runtime.state.position["lineage_id"]
+        before_head = fixture.store.read_head(member_id)
+
+        with self.assertRaises(ProjectionError) as caught:
+            fixture.store.publish(member_id, before_head, (event,), state)
+
+        self.assertIn("input.policy_ref", str(caught.exception))
+        self.assertEqual(fixture.store.read_head(member_id), before_head)
 
     def test_context_policies_and_successive_compactions_commit_on_real_reader(self):
         fixture = self._fixture("policies")

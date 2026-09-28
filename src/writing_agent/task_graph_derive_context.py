@@ -62,7 +62,7 @@ def derive_context_operation(
     if not isinstance(operation, ContextOperationInputV1):
         raise ProjectionError("context operation input has the wrong record type")
     if view.group is not None and operation.policy_ref != view.group.policy["context_policy_ref"]:
-        raise ProjectionError("group context policy differs from the sealed policy")
+        raise ProjectionError("input.policy_ref: context policy differs from the sealed policy")
 
     try:
         policy = ContextPolicyV1.from_dict(reader.artifact(operation.policy_ref))
