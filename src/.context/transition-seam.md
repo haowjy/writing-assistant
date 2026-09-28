@@ -5,16 +5,28 @@ stores each step's typed **input** record as the event payload. One pure **deriv
 kind computes the event, the next state and the new artifacts, and the producer and replay
 share it. The old runtime (writer, scripted runtime classes, checks, terminal,
 author validation, projection, the old replay and environment batch) stays importable and
-tested as the behavior oracle until the S7 parity check, which deletes it. Do not extend it.
+tested as the behavior oracle until S7.3 deletes it. Do not extend it.
 
 This checkout contains the wire records, calls, transition types, `derive_entry`, the
-controller, four derive modules, `LineageGate`, `RolloutEnvironment`, the gatherers and
-`RolloutDriver`. For a lineage pinned to `task-graph-derive-v1`, `store.publish` and
-`store.restore` run the gate. The old runtime remains the behavior oracle until S7.2.
+controller, four derive modules, `LineageGate`, `RolloutEnvironment`, the gatherers,
+`RolloutDriver` and group coordination on the new core. For a lineage pinned to
+`task-graph-derive-v1`, `store.publish` and `store.restore` run the gate. S7.2 moves the
+remaining callers onto the new core, and S7.3 then deletes the old runtime.
+
+**The parity harness is not in this repository.** It lives in the `parity/` directory of
+the task-graph-environment work item and runs against an exported checkout. It runs the
+old-runtime test modules with their producer boundaries patched to record each lineage. It
+then replays each lineage's successful prefix through `RolloutDriver`, with playback ports,
+on a copy of its content-addressed store. Finally it compares outcomes, and for groups the
+rewards, advantages and segment credit, against a written list of expected differences. It
+shows that the new core reproduces the old runtime's outcomes, and its verdict gates S7.3.
+It needs the old runtime to record, so it is deleted along with it. Nothing in `tests/`
+depends on it.
 
 This file covers records, derives and the layer order. How the gate, the environment, the
-driver and the gatherers run a lineage (error classes, publication, rule owners, resume)
-is in [gate-and-rollout.md](gate-and-rollout.md).
+driver and the gatherers run a lineage (error classes, publication, rule owners, resume,
+the acceptance suite) is in [gate-and-rollout.md](gate-and-rollout.md). Groups are in
+[group-coordination.md](group-coordination.md).
 
 The design numbers these invariants, and code, tests and reviews cite them:
 
@@ -69,7 +81,9 @@ New-core modules still import pure helpers from two old-runtime modules:
   and `scripted_author_reply` from `task_graph_scripted`.
 
 These are policy and codec functions that S7.3 keeps when it strips the runtime classes
-from those modules. Do not add imports of runtime classes. Add a helper there only when
+from those modules. Everything else in `task_graph_sampling` has no new-core caller: the
+prepared-request, adapter-evidence, sampling-evidence, eligibility-decision and
+action-binding codecs and their decoders (about 460 lines). S7.3 deletes them. Do not add imports of runtime classes. Add a helper there only when
 design §11 names the pure half of that module as its S7 home. `scripted_author_reply` and
 `persist_logprob_trace` were added on that basis.
 
@@ -159,6 +173,21 @@ verbatim in the input, and everything else is derived and never recorded.
 - **Read history indexes from the view.** `view.raw_call_ids`, `call_sources`, `samples`
   and `ancestry` exist so a derive never re-reads earlier turn artifacts. Rebuilding them
   costs O(n) reads per step.
+- **View values are frozen all the way down, so never copy one shallowly.** `LineageView`
+  and its context pass their mappings through `freeze` (in `task_graph`), which turns every
+  nested mapping into a `MappingProxyType` and every list into a tuple. `dict(view.budget)`
+  copies only the top level, and the nested `limits` and `consumed` stay frozen. This bug
+  class has shipped twice, and both times it failed quietly:
+  - `charge_context_append` tested `isinstance(limits, dict)`, got a frozen mapping, and
+    skipped every context-storage charge, so a paid overrun went uncharged;
+  - `json.dumps` of a frozen tool observation raised, and read-token accounting surfaced
+    it as a false `AdapterContractError`.
+
+  Pass the value as a `Mapping` when the code only reads it. Call `thaw` (also in
+  `task_graph`) when it needs mutable containers or plain JSON. Type-check with `Mapping`,
+  never `dict`. Exact `dict` and `list` checks remain right for canonical wire values
+  decoded from bytes. This applies to gatherers, accounting and the group coordinator as
+  much as to derives.
 - **I5: runtime checkpoints carry no `artifact_refs`.** `advance` builds
   `CheckpointV1(parents, state, event_head)`, so the checkpoint ID matches what the store
   publishes. Every artifact must be reachable through typed edges from the state, the
@@ -208,7 +237,11 @@ pinned parameters. The gate and `RolloutEnvironment.enter` both take the root vi
 it; do not build a root view by hand. `params_of(state, reader)` inverts it for the root
 fixed-point check (I3). A mid-run state is never a fixed point.
 `derive_entry.SYSTEM_PROMPT` is a copy of `agent.SYSTEM_PROMPT`, pinned by a test, so
-`derive_entry` does not import `agent`.
+`derive_entry` does not import `agent`. A node's initial requirements come from
+`task_graph_admission.initial_requirements`, which admission and `derive_entry` share. It
+takes the `requirement_version` artifact when the entry names one and the author packet
+otherwise, and it rejects a packet and version that disagree. The old runtime reads the
+packet, so S7.1 lists this as an expected difference.
 
 The controller (`next_step`, `select_edge`, `applicable_checks`, `Directive`,
 `evaluate_guard`) reads only structured view fields. `select_edge` raises on any tie in
@@ -249,9 +282,19 @@ An empty required set never counts as a pass.
     canonical form when `None`, and every existing contract keeps its identity. This field
     departs from the design package. It exists so that the `token_limited` rollout fixture
     carries a real limit, which makes missing usage and `budget_charged` reachable.
-  - **Still open:** admission does not yet require a usage-reporting adapter for a
-    token-limited node. That rule is a named follow-up before Phase 8 native training, and
-    the phase-end review judges the omit-when-`None` codec mechanism.
+  - **Why a hook and not a new contract version.** A `BudgetContractV2` would force
+    version dispatch in admission, `derive_entry` and the old writer, for one optional
+    field. A token-limits sub-contract becomes the right shape once `total_tokens` limits
+    arrive.
+  - **The old runtime ignores the field**, so S7.1 lists `token_limited` nodes as an
+    expected difference.
+  - **Still open, before Phase 8 native training:** admission accepts a token-limited node
+    whatever adapter later runs it, and the only guard is the derive's
+    `AdapterContractError`, raised after the port call. In a group, that becomes a member
+    failure mid-rollout. The follow-up adds a usage-reporting capability to
+    `RuntimeManifestV1`. It refuses, at seal and bind time (`require_seal`,
+    `GroupCoordinatorV1.seal`), a manifest without that capability when the entry budget
+    has token limits. It also wires `total_tokens` the same way as `generated_tokens`.
 - **One validator for the sampled message, not a sentinel.** The records codec and
   `task_graph_calls` once accepted different values for the same message, so the store
   could persist a `WriterTurnV1` that `parse_calls` rejects. That is a producer/replay split
