@@ -1,21 +1,81 @@
-# Deterministic GRPO groups (Phase 7)
+# Deterministic task-graph groups
 
-`GroupCoordinatorV1` in `writing_agent.task_graph_group` (with record contracts in `task_graph_group_contract.py`) is an **offline coordinator**, not a GRPO trainer. It seals one admitted, unsampled writer-node checkpoint and a complete environment/policy contract, creates two to 64 fixed member slots, restores a separate branch and workspace for each, collects immutable terminal evidence, and emits exact group-relative advantage and segment-credit artifacts. It does not call a model or update weights. Legacy evaluation and SFT APIs are unchanged.
+`GroupCoordinatorV1` prepares offline comparison and segment-credit artifacts; it is not a
+GRPO trainer. It seals a group around an admitted, unsampled entry checkpoint and a complete
+environment/policy contract, starts isolated member lineages through the verified rollout
+environment, and collects terminal evidence from verified views. It does not call a model or
+update weights. The separate legacy evaluation and SFT APIs are unchanged.
 
-## Contract and lifecycle
+## Seal and start
 
-Construct `GroupCoordinatorV1(environment, workers_root)` with the verified `RolloutEnvironment`, then call `seal(entry_checkpoint_id, policy=..., group_seed=..., group_sequence=..., member_count=...)` **before** any member starts. For real member execution, configure the environment with its bound session so the manifest matches the sealed `adapter_ref`. Every policy field is required and content-addressed: `model_ref`, `behavior_policy_ref`, `tokenizer_ref`, `template_ref`, `adapter_ref`, `decoding_ref`, `simulator_ref`, `context_policy_ref`, `controller_ref`, plus `rng_derivation_version="sha256-domain-v1"`. Policy artifacts must already exist. Tokenizer and template refs must match the entry context's rendering pins. The other policy refs are experiment-supplied immutable configuration artifacts, not inferred from a prompt. A missing field, unsupported derivation, changed entry checkpoint, or changed policy requires a new group. The group ID also binds member count; `group_sequence` prevents separate samples of the same contract from being pooled. Set `runner_mode="fixture"` only for scripted tests; real and scripted results cannot share a group.
+Construct the coordinator with the same `RolloutEnvironment` used by the members:
 
-The coordinator resolves the checkpoint and admitted graph closure and records hashes/refs for the exact state/files, graph/node/visit, source and request bytes, checks/reward, scripted simulator, controller, hidden ledgers, visible prefix/messages, rendering/tool schemas, budgets, versions, RNG and continuation. `assert_start_contract` compares the *whole* sealed contract, not just rendered messages. The group spec and per-slot start/result receipts live under the private store's `groups/` tree; result records and decisions are content-addressed payload artifacts. Receipts are fsynced. `resume(group_id)` rechecks the sealed entry; `restore_member(spec, ordinal, fresh_path)` restores the current authoritative member head into a new disposable workspace. Never reuse a possibly modified old workspace.
+```python
+coordinator = GroupCoordinatorV1(environment, workers_root)
+spec = coordinator.seal(
+    entry_checkpoint_id,
+    policy=policy,
+    group_seed=group_seed,
+    group_sequence=group_sequence,
+    member_count=member_count,
+)
+runtime = coordinator.start(spec, ordinal, policy=policy)
+```
 
-`start` derives the same environment seed for every slot and a distinct writer seed for each ordinal using separate SHA-256 domains. The seed artifact records group/member identity and the parent RNG ref. The branch event changes only lineage/start and RNG provenance; all other starting state, exact context and file bytes remain equal. The parent checkpoint stays immutable. Member IDs depend on the spec and ordinal, not completion order.
+Seal before starting a member. Every policy field is required and content-addressed:
+`model_ref`, `behavior_policy_ref`, `tokenizer_ref`, `template_ref`, `adapter_ref`,
+`decoding_ref`, `simulator_ref`, `context_policy_ref`, and `controller_ref`, plus
+`rng_derivation_version="sha256-domain-v1"`. Tokenizer and template pins must match the
+entry context's rendering. Policy artifacts must already exist. The group identity includes
+the entry checkpoint, policy, seed, runner mode, member count, and `group_sequence`; do not
+pool separate groups. Use `runner_mode="fixture"` only for scripted fixture results.
 
-Collect a real Phase 5 member with `GroupMemberResultV1` naming its start, final checkpoint, terminal outcome and reward-availability refs. Both `collect` and reopened `finalize` apply the same complete admission: runner mode, member slot, canonical start receipt and exact start binding, branch ancestry/projection, terminal/reward/eligibility lineage, and the sealed reward contract. Missing or corrupt start receipts fail closed before a decision or credit is made. Every sampled writer trace is checked, including `budget_charged` sampled stops rather than only credited `writer_action` messages. Supplied seed/model and adapter or exact-request policy/context claims must agree with the member and sealed policy; the projector independently binds each trace to its request and sampling context. Absent native trace evidence is not invented. Or use `collect_scripted` with an exact `fractions.Fraction` for a deterministic test result. Scripted results carry no writer-action credits. `collect_invalid` records a real infrastructure failure with reason/evidence. An unavailable or missing reward holds the group pending. A correctly pinned sampled budget stop is a valid writer failure in the denominator; seed/model drift is rejected rather than reclassified as infrastructure failure. An infrastructure-invalid member invalidates the entire group. A reward may resolve monotonically from pending/unavailable to available for the **same** terminal outcome; an available result cannot be replaced. Run `finalize(spec)` any number of times, including from a reopened store: it recomputes the same decision from immutable receipts.
+Each member has its own lineage, created by `RolloutEnvironment.start_member` from the
+shared entry and its sealed `MemberStartV1`. Its initial environment seed is shared; its
+writer seed is derived by member ordinal. The coordinator has no bare-store start, branch, or
+workspace-materialization path. The `RolloutDriver` gathers typed port inputs and commits one
+event per step; see [the writer runtime](task-graph-writer.md). A runner that needs a
+materialized execution environment must provide that separately through its execution port.
 
-For available rewards `rᵢ`, artifacts record exact reduced fractions for `rᵢ`, group mean, population variance, and centered reward. The declared advantage expression is `centered / sqrt(population_variance)`; it is intentionally symbolic because its value need not be rational. All-tie groups have an explicit exact-zero advantage fraction, `expression="zero"`, and `status="tie"`, never an undefined `0/sqrt(0)` or a spurious floating-point residual. No canonical group artifact contains a float.
+A start receipt is a cache of verified ancestry: every `start` checks the member view and
+re-derives the start checkpoint as the member's first checkpoint below the sealed entry. A
+retry after a crash resumes through `environment.open_head(member_id)` and produces the same
+receipt, even if the member has since progressed. The receipt is not its own authority.
 
-One artifact is emitted for each eligible historical writer-action text part, tool-call syntax part, and assistant ending. Each carries the original message ref, part index/content hash where applicable, and that member's advantage ref. Original `WriterActionTraceV1` context revision/content hashes survive later compaction. Tool observations, system/user/author/seed/environment/summary messages and ineligible action segments receive no credit. Segment artifacts explicitly carry `native_optimizer_eligible=false`, `token_mask_ref=null`, and `logprob_ref=null`: Phase 7 has no native token alignment, probabilities, loss masks, or optimizer eligibility. Do not use these segment artifacts as token-level training targets.
+## Collect and finalize
 
-A bound session persists its typed four-port manifest and must match the sealed `adapter_ref` before member start, collection, finalization, or writer effects. Run each member through the same `RolloutEnvironment` and `RolloutDriver`; the driver gathers typed inputs and the environment commits them. The legacy store-only coordinator path is not a new-core caller and is removed in S7.3. Group directories sealed through that path are not resumable by the new-core coordinator.
+`collect` and `finalize` validate real members by opening and checking their published head
+through the environment and reading outcome, reward, eligibility, samples, and contexts from
+the verified view and its ancestry. The gate derives every event against the sealed group and
+context-policy pins, so collection does not repeat a policy walk. A fixture result carries a
+typed scripted terminal record and is never optimizer-eligible. An infrastructure-invalid
+member carries typed failure evidence and no reward. Missing or unavailable reward holds the
+group pending; an infrastructure-invalid member invalidates the group; tied rewards yield
+explicit zero advantages.
 
-The fake coordinator assumes trusted harness workers and the existing path-constrained text-tool boundary; private store files must not be mounted into writer workspaces. It does not attest external model-service determinism or prove that an adapter actually used its pinned decoding configuration. Native on-policy sampling/optimization is a separate gate.
+For rewards `rᵢ`, the coordinator stores exact reduced fractions for each reward, mean,
+population variance, and centered reward. The declared normalized advantage is
+`centered / sqrt(population_variance)`; its expression is kept symbolic because the result may
+not be rational. All-tie groups have an exact zero advantage and `status="tie"`; artifacts
+contain no floating-point values.
+
+One artifact is emitted for each eligible historical writer text part, tool-call syntax part,
+and assistant ending. The writer derive marks whether a sampled part is creditable. An
+`invalid_tool_call` part without bounded sampled content carries the exact sentinel
+`{"$noncanonical": "no-sampled-content"}` and receives no segment credit. Tool observations,
+system/user/author/seed/environment/summary messages and other ineligible parts receive no
+credit. Phase 7 segment artifacts set `native_optimizer_eligible=false` and have null token
+mask/logprob refs: they are not token-level training targets.
+
+A collected `final_checkpoint_id` currently needs to belong to the member lineage; binding it
+to the verified current head and orphan collection remain a HIGH-5 follow-up. Do not treat
+this limit as evidence that the checkpoint's lineage history was not verified.
+
+## Runtime boundary
+
+Group members use the same single-event runtime core as other rollouts: typed inputs derive
+events and complete next state; the store requires the lineage gate for publication and
+restore; the `OutcomeV1` referenced by state holds check, transition, terminal, reward, and
+eligibility references. No separate runtime log is used. See
+[context operations](task-graph-compaction.md) for the pinned context policy and safe
+compaction boundary.

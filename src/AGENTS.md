@@ -25,8 +25,9 @@ down: read them through `Mapping`, and `thaw` them before mutating or serializin
 `dict(...)` copy, or a `dict` type check, silently mishandles nested values. Size budgets
 apply to total `task_graph*` source, not to single files. Read
 [.context/transition-seam.md](.context/transition-seam.md) before adding a record or a
-derive, [.context/gate-and-rollout.md](.context/gate-and-rollout.md) before writing code or
-tests that call the gate, the environment or the driver, and
+derive, [.context/gate-and-rollout.md](.context/gate-and-rollout.md) before changing gate,
+store-verifier or environment behavior, [.context/rollout-execution.md](.context/rollout-execution.md)
+before changing driver, gatherer, resume or rollout-test behavior, and
 [.context/group-coordination.md](.context/group-coordination.md) before changing how a
 group starts, collects or credits members.
 
