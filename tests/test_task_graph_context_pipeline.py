@@ -318,26 +318,43 @@ class ContextPipelineTests(unittest.TestCase):
         self.assertEqual(fixture.store.read_head(fixture.lineage_id), before_head)
         self.assertEqual(_events(fixture), before_events)
 
-    def test_compaction_summary_excludes_private_feedback_canaries(self):
-        fixture = self._fixture("private-compaction", mode="feedback")
+    def test_compaction_summary_excludes_private_and_writer_evidence(self):
+        read = _read_sample("read-private-evidence")
+        sample = SampleResult(
+            read.message,
+            raw_output="RAW_OUTPUT_OUTSIDE_WRITER_CONTEXT",
+            trace={"model": "MODEL_TRACE_OUTSIDE_WRITER_CONTEXT", "seed": 7},
+        )
+        fixture = self._fixture("private-compaction", mode="feedback", sample_results=(sample,))
         for canary in CANARIES.values():
             self.assertIn(canary, repr(fixture.entry.reader.private))
 
         flow = _Rollout(fixture)
         flow.schedule(
-            3,
+            2,
             ContextPolicyV1(
                 "compact",
                 summarizer_version="visible-text-v1",
                 max_summary_chars=4000,
             ),
         )
-        flow.commit_at(3)
-        _before, after, event, _budget = self._assert_context_commit(flow, 3)
+        flow.commit_at(2)
+        _before, after, event, _budget = self._assert_context_commit(flow, 2)
         self.assertEqual(event.kind, "context_changed")
         self.assertTrue(any(":context:" in message.origin for message in after.context.messages))
+        summary = repr(after.context.messages)
+        writer_event = next(event for event in _events(fixture) if event.kind == "writer_action")
+        writer_turn = fixture.store.get_artifact(writer_event.payload_ref)
+        self.assertIsNotNone(writer_turn["prepared_request_ref"])
         for canary in CANARIES.values():
-            self.assertNotIn(canary, repr(after.context.messages))
+            self.assertNotIn(canary, summary)
+        for evidence in (
+            "RAW_OUTPUT_OUTSIDE_WRITER_CONTEXT",
+            "MODEL_TRACE_OUTSIDE_WRITER_CONTEXT",
+            writer_turn["prepared_request_ref"],
+            writer_turn["raw_output_ref"],
+        ):
+            self.assertNotIn(evidence, summary)
 
     def test_unicode_summary_preserves_a_complete_retained_tail(self):
         fixture = self._fixture(
