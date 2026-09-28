@@ -1610,8 +1610,12 @@ class _ClosureValidator:
                                         break
                         return edges
                     except (TypeError, ValueError) as exc:
-                        raise CorruptRecordError(
-                            f"invalid task-graph payload record: {record_type}"
+                        error = (
+                            ProjectionError if record_type in RECORD_TYPES else CorruptRecordError
+                        )
+                        raise error(
+                            "artifact.record_type: invalid task-graph payload record: "
+                            f"{record_type}"
                         ) from exc
                 if "artifact_type" in value.value:
                     return self._phase3_contract_edges(value.value, private=value.private)

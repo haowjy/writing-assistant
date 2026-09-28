@@ -7,6 +7,10 @@
 - Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;
   retain the observation and error-classification findings as expected failures.
 
+- Classify a runtime adapter-manifest change after binding as an adapter contract failure.
+
+- Classify hash-correct malformed registered payloads as projection forgeries, not disk corruption.
+
 - Document the driver, gatherer, replay, and cross-lane fixture extension contracts.
 
 - Expose shared rollout fixture hooks for ports, alternatives, feedback, sessions, checkpoint
