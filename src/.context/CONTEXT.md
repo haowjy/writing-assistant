@@ -76,9 +76,11 @@ retains its smoke-evaluation and training-format workflows.
   duplicated trace/action/request claims. The bound sampling input carries the
   complete canonical persisted request/options value; composition stores typed
   binary logprob output and constructs its ref without backend CAS access. Only the
-  composition runner invokes `SampleBackend`. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
-  owns exact scripted author requests/replies, disclosure and authorized requirement
-  updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
+  composition runner invokes `SampleBackend`. The [author derive](../writing_agent/task_graph_derive_author.py)
+  builds author requests and replies, disclosure and authorized requirement updates. The
+  [scripted policy module](../writing_agent/task_graph_scripted.py) retains pure script-policy
+  helpers and the legacy runtime until retirement.
+  [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
   checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
   applies terminal guards and publishes immutable outcome/reward evidence. All three
   use the same semantic replay walk before publication and during recovery;

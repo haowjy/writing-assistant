@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -14,7 +14,9 @@ from writing_agent.task_graph_accounting import (
     tool_result_charge,
 )
 from writing_agent.task_graph_calls import (
+    ToolQueueEntry,
     apply_effect,
+    parse_calls,
     tool_effect_contract,
 )
 from writing_agent.task_graph_controller import next_step
@@ -29,6 +31,7 @@ from writing_agent.task_graph_derive_common import (
 from writing_agent.task_graph_errors import (
     AdapterContractError,
     ProjectionError,
+    WriterRuntimeError,
 )
 from writing_agent.task_graph_records import (
     ToolObservationV1,
@@ -36,13 +39,8 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_sampling import (
     WriterTurnSamplingBindingV1,
-    assistant_message,
-    bind_group_writer_sampling,
+    bind_group_sampling_claims,
     decode_and_bind_sampling,
-    parse_writer_turn_calls,
-    requires_usage_evidence,
-    updated_raw_call_ids,
-    usage_overrun_outcome,
 )
 from writing_agent.task_graph_scripted import validate_ask_semantics
 from writing_agent.task_graph_transition import (
@@ -51,6 +49,7 @@ from writing_agent.task_graph_transition import (
     SampleRef,
     Transition,
 )
+from writing_agent.task_graph_wire import decode_canonical_value
 
 READ_BUDGET_EXCEEDED = "Read-token budget exceeded"
 
@@ -76,7 +75,28 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         raise ProjectionError("writer sampling evidence is invalid") from exc
 
     if view.group is not None:
-        bind_group_writer_sampling(view, turn, reader)
+        spec = view.group
+        lineage_id = view.state.position["lineage_id"]
+        member = next((item for item in spec.members if item.member_id == lineage_id), None)
+        if member is None:
+            raise ProjectionError("writer lineage is absent from its sealed group spec")
+        try:
+            model = reader.artifact(spec.policy["model_ref"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProjectionError("sealed group model is unavailable") from exc
+        if not isinstance(model, Mapping) or not isinstance(model.get("model_id"), str):
+            raise ProjectionError("sealed group model has no model ID")
+        claims = turn.adapter_trace
+        bind_group_sampling_claims(
+            spec.policy,
+            member.writer_seed,
+            claims or {},
+            claims or {},
+            model_id=model["model_id"],
+            context_content_hash=view.context.content_ref,
+            context_revision_ref=view.context.revision_ref,
+            rendering=view.context.rendering,
+        )
 
     content = turn.message.content
     if content is not None and not isinstance(content, str):
@@ -89,11 +109,13 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     turn_ref = input_artifact.ref
     if exceeded is not None:
         stop_reason = f"{exceeded}_budget"
-        outcome = usage_overrun_outcome(
+        outcome = replace(
             view.outcome,
-            view.checkpoint_id,
-            view.state.requirements_ref,
-            stop_reason,
+            task_status="incomplete",
+            execution_status="valid",
+            stop_reason=stop_reason,
+            candidate_checkpoint=view.checkpoint_id,
+            requirement_version=view.state.requirements_ref,
         )
         outcome_ref = outcome.identity()
         event = new_event(
@@ -128,12 +150,80 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         return result_view
 
     ask_semantics = validate_ask_semantics if view.mode.ask_semantics else None
-    queue = parse_writer_turn_calls(view, turn, reader, ask_semantics)
+    ordinal = turn.action_id.removeprefix(f"{view.state.position['lineage_id']}:action:")
+    if not ordinal.isdecimal():
+        raise ProjectionError("sampled action ID has an invalid ordinal")
+    id_prefix = f"{view.state.position['lineage_id']}:call:{ordinal}"
+    if not turn.message.tool_calls_was_list:
+        queue = [
+            ToolQueueEntry(f"{id_prefix}:0", "invalid_call", {}, "tool_calls must be an array")
+        ]
+    else:
+        prior: set[str] = set()
+        for sample in view.samples:
+            if sample.action_id == turn.action_id:
+                break
+            if sample.outcome != "action":
+                continue
+            try:
+                raw = reader.artifact(sample.turn_ref)
+                previous = raw if isinstance(raw, WriterTurnV1) else WriterTurnV1.from_dict(raw)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ProjectionError("writer sample history cannot be decoded") from exc
+            if previous.message.tool_calls_was_list:
+                prior.update(_raw_call_ids(previous))
+        if view.mode.ask_semantics:
+            if ask_semantics is None:
+                raise ProjectionError("ask semantics are required for this writer turn")
+            decisions = reader.artifact(view.state.decisions_ref)
 
-    if requires_usage_evidence(next_budget, usage):
+            def ask(arguments):
+                ask_semantics(arguments, view.node, decisions)
+
+        else:
+            ask = None
+        try:
+            queue = parse_calls(
+                turn.message,
+                id_prefix=id_prefix,
+                allowed=frozenset(view.node.contract.entry_contract.tool_allowlist),
+                prior_raw_ids=frozenset(prior),
+                ask_semantics=ask,
+            )
+        except WriterRuntimeError as exc:
+            raise ProjectionError("sampled calls violate the canonical call envelope") from exc
+
+    limits = next_budget["limits"]
+    if ("generated_tokens" in limits and "completion_tokens" not in usage) or (
+        "total_tokens" in limits
+        and "total_tokens" not in usage
+        and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
+    ):
         raise ProjectionError("token-limited writer turn lacks usage evidence")
 
-    assistant = assistant_message(action_id, content, turn, queue)
+    parts: list[dict[str, Any]] = []
+    if content:
+        parts.append({"type": "text", "text": content})
+    for index, call in enumerate(queue):
+        raw = (
+            turn.message.calls[index]["value"]
+            if turn.message.tool_calls_was_list and index < len(turn.message.calls)
+            else turn.message.calls
+        )
+        if call.rejection is not None:
+            parts.append({"type": "invalid_tool_call", "id": call.call_id, "raw": raw})
+        else:
+            parts.append(
+                {
+                    "type": "tool_call",
+                    "id": call.call_id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                }
+            )
+    assistant = MessageV1(
+        role="assistant", content=tuple(parts), origin=action_id, loss_eligible=True
+    )
     event = new_event(
         view,
         turn_ref,
@@ -170,7 +260,9 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         if call.call_id in sources:
             raise ProjectionError("writer turn reuses a logical tool-call ID")
         sources[call.call_id] = CallSource(action_id, index)
-    raw_call_ids = updated_raw_call_ids(view.raw_call_ids, turn)
+    raw_call_ids = view.raw_call_ids
+    if turn.message.tool_calls_was_list:
+        raw_call_ids = frozenset((*raw_call_ids, *_raw_call_ids(turn)))
     artifacts = (
         input_artifact,
         payload_artifact(budget),
@@ -316,6 +408,25 @@ def _directive(view: LineageView):
         return next_step(view)
     except (AssertionError, KeyError, TypeError, ValueError) as exc:
         raise ProjectionError("lineage view has no valid next directive") from exc
+
+
+def _raw_call_ids(turn: WriterTurnV1) -> set[str]:
+    found: set[str] = set()
+    for item in turn.message.calls:
+        if not item["bounded"]:
+            continue
+        raw = decode_canonical_value(item["value"])
+        if not isinstance(raw, Mapping):
+            continue
+        raw_id = raw.get("id")
+        if (
+            isinstance(raw_id, str)
+            and raw_id
+            and not any(character.isspace() for character in raw_id)
+            and raw_id.isprintable()
+        ):
+            found.add(raw_id)
+    return found
 
 
 DERIVES: dict[DeriveKey, Callable] = {
