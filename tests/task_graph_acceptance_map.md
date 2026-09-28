@@ -8,6 +8,18 @@ corresponding `subTest` case. Attacks go through the public seams:
 `open_head`/`verify`. Tests may call `derive_input` to build an honest candidate before
 mutating it; that does not bypass the attack seam.
 
+## S7.3 restored owner-level guards
+
+| Guard | Direct owner test |
+|---|---|
+| Initial requirement supersession, evaluator terminal evidence, packet/version consistency, and author-packet typing | `test_task_graph_lost_guards.AdmissionGuardTests` |
+| Scripted-author decision, proposal, question and positional-selector limits | `test_task_graph_lost_guards.ScriptedPolicyGuardTests` |
+| Context-operation budget, entry author-call limit and queued-tool quiescence | `test_task_graph_lost_guards.BudgetGuardTests` |
+| Mixed ask/file batches, intake depth, and deeply nested JSON | `test_task_graph_calls.IntakeAndParserTests.test_mixed_ask_batch_is_all_invalid_and_intake_depth_is_bounded`; `test_deep_json_arguments_do_not_escape_as_recursion_error` |
+| A runtime commit contains exactly one event | `test_task_graph_gate.LineageGateTests.test_gate_rejects_a_commit_with_more_than_one_event` |
+| Context and commit domain tags; entry system-prompt identity | `test_task_graph.TaskGraphRecordsTest.test_canonical_fixture_and_round_trip`; `test_task_graph_derive_entry.DeriveEntryTests.test_entry_system_prompt_identity_is_pinned` |
+| A disk-published lineage without the supported transition-semantics pin is rejected by both head readers | `test_task_graph_accept_b.PersistedForgeTests.test_unpinned_transition_semantics_are_refused_by_open_and_read_head` |
+
 ## a. Forged writer, tool, author, check and terminal records
 
 Every `commit` row checks the specified exception class and preserves the previous head.
@@ -76,7 +88,7 @@ first differing path.
 | Parentless root checkpoint carries supplemental refs | Runtime roots may not add `artifact_refs` | `test_task_graph_accept_b.PersistedForgeTests.test_root_checkpoint_with_supplemental_refs_is_rejected` (`ProjectionError` at `checkpoint.artifact_refs`; no head is created) |
 | Forged pre-state phase/status | Parentless root must be a fixed point of entry derivation | `test_task_graph_accept_b.PersistedForgeTests.test_forged_parentless_entry_state_fails_the_root_fixed_point` `[pre_phase, pre_status]` |
 | `position.lineage_id` changed together with a forged writer event | A different lineage id is valid only when the input derives that lineage start | `test_task_graph_accept_b.PersistedForgeTests.test_relineaged_writer_event_is_not_a_member_start` (`event.lineage_id`) |
-| Hash-correct forged typed state artifact | Codec validation reports the typed artifact's own field path, not the event-payload label | `test_task_graph_records.RecordClosureTests.test_forged_typed_artifact_reports_its_own_codec_path` (`artifact.forged_field`) |
+| Hash-correct forged typed state artifact | Codec validation reports the typed artifact's own field path, not the event-payload label | `test_task_graph_records.RecordClosureTests.test_forged_typed_artifact_reports_its_own_codec_path` (`state.outcome_ref.forged_field`) |
 | On-disk payload body changed and hash/name recomputed | A forged typed record must be a `ProjectionError`, not store corruption | Separate live assertions: `test_hash_correct_payload_with_extra_field_is_projection_rejection` (`event.payload_ref.newly_forged_field`) and `test_hash_correct_payload_with_unknown_record_type_is_projection_rejection` (`event.payload_ref.record_type`). |
 
 ## j. Generic-reducer downgrade

@@ -13,9 +13,10 @@ from writing_agent.task_graph import (
     ContextRevisionV1,
     MessageV1,
     canonical_bytes,
+    domain_hash,
     load_canonical_json,
 )
-from writing_agent.task_graph_derive_entry import derive_entry, params_of
+from writing_agent.task_graph_derive_entry import SYSTEM_PROMPT, derive_entry, params_of
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_gate import StoreArtifactReader as StoreReader
 from writing_agent.task_graph_store import TaskGraphStore
@@ -23,6 +24,12 @@ from writing_agent.task_graph_transition import first_difference
 
 
 class DeriveEntryTests(unittest.TestCase):
+    def test_entry_system_prompt_identity_is_pinned(self) -> None:
+        self.assertEqual(
+            domain_hash("payload", SYSTEM_PROMPT),
+            "8a826cfb9db10547562491f9709ff78dd5cc501967721b07c812e5ae5b93936d",
+        )
+
     def test_entry_is_deterministic_and_params_of_midrun_is_not_a_fixed_point(self) -> None:
         fixture = make_entry_fixture()
         entry = derive_entry(fixture.graph, fixture.node_id, fixture.params, fixture.reader)

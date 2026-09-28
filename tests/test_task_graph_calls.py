@@ -336,6 +336,36 @@ class IntakeAndParserTests(unittest.TestCase):
         with self.assertRaises(WriterRuntimeError):
             parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
 
+    def test_mixed_ask_batch_is_all_invalid_and_intake_depth_is_bounded(self):
+        ask = _good_call(
+            '{"decision_ids":[],"question":"?","proposals":[],"option_refs":[]}',
+            name="ask_author",
+            raw_id="ask",
+        )
+        file_call = _good_call("{}", name="read_file", raw_id="read")
+        mixed = parse_calls(
+            intake_message({"tool_calls": [ask, file_call]}),
+            id_prefix="r:call:0",
+            allowed=ALLOWED,
+        )
+        self.assertTrue(all(entry.name == "invalid_call" for entry in mixed))
+        self.assertTrue(all(entry.rejection is not None for entry in mixed))
+
+        deeply_nested = _good_call({"nested": _deep(70)})
+        intake = intake_message({"tool_calls": [deeply_nested]})
+        self.assertFalse(intake.calls[0]["bounded"])
+
+    def test_deep_json_arguments_do_not_escape_as_recursion_error(self):
+        deep_json = "[" * 16_000 + "0" + "]" * 16_000
+        entries = parse_calls(
+            intake_message({"tool_calls": [_good_call(deep_json)]}),
+            id_prefix="r:call:0",
+            allowed=ALLOWED,
+        )
+
+        self.assertEqual(entries[0].name, "invalid_call")
+        self.assertIsNotNone(entries[0].rejection)
+
     def test_full_seeded_roundtrip_60006_batches(self):
         count = 0
         for seed in (7, 11):

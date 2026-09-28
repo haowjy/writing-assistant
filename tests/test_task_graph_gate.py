@@ -195,6 +195,20 @@ class LineageGateTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 task_graph_gate._assemble_derives()
 
+    def test_gate_rejects_a_commit_with_more_than_one_event(self) -> None:
+        fixture = GateStoreFixture(self)
+        transition = fixture.first_transition()
+
+        with self.assertRaises(ProjectionError) as rejected:
+            fixture.gate.verify_commit(
+                fixture.store,
+                fixture.root_id,
+                (transition.event, transition.event),
+                transition.state,
+            )
+
+        self.assertIn("commit.events", str(rejected.exception))
+
     def test_view_cache_is_a_64_entry_lru(self) -> None:
         cache = ViewCache(capacity=2)
         fixture = GateStoreFixture(self, cache=cache)

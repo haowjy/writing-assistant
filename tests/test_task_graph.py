@@ -86,6 +86,7 @@ class TaskGraphRecordsTest(unittest.TestCase):
         }
         context_content = ContextContentV1(None, (message,), (), rendering)
         context = ContextRevisionV1(context_content.identity(), None, ())
+        commit = CommitV1(parent_commit=None, events=(H,), checkpoint=H)
         instance = GraphInstanceV1(
             template_ref=H,
             entry_node="n",
@@ -104,10 +105,12 @@ class TaskGraphRecordsTest(unittest.TestCase):
         records = (
             (message, "message"),
             (context_content, "context_content"),
+            (context, "context"),
             (instance, "instance"),
             (state, "state"),
             (checkpoint, "checkpoint"),
             (event, "event"),
+            (commit, "commit"),
         )
         for record, expected in records:
             self.assertEqual(record.identity(), FIXTURE[expected])
