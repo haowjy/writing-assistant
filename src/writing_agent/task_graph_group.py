@@ -781,8 +781,13 @@ class GroupCoordinatorV1:
                 kind = {
                     "text": "assistant_text",
                     "tool_call": "tool_syntax",
-                    "invalid_tool_call": "tool_syntax",
                 }.get(part["type"])
+                if part["type"] == "invalid_tool_call":
+                    kind = (
+                        None
+                        if part["raw"] == {"$noncanonical": "no-sampled-content"}
+                        else "tool_syntax"
+                    )
                 if kind is not None:
                     segments.append((kind, index, payload_hash(part)))
             segments.append(("assistant_ending", None, None))

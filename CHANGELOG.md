@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Exclude intake placeholders from group segment credit using the derive's per-part decision.
+
 - Move group member starts and result/credit collection onto verified rollout views.
 
 - Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;

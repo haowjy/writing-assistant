@@ -327,6 +327,56 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             replayed = offline.finalize(spec)
         self.assertEqual(replayed.identity(), decision.identity())
 
+    def test_noncanonical_tool_call_values_do_not_receive_segment_credit(self):
+        def nested(depth):
+            value = "x"
+            for _ in range(depth):
+                value = [value]
+            return value
+
+        cases = (
+            (
+                "unbounded_list_call",
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "deep",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": {"p": nested(80)},
+                            },
+                        }
+                    ],
+                },
+            ),
+            (
+                "non_list_call_with_noncanonical_tag",
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": {"function": {"arguments": nested(80)}},
+                },
+            ),
+        )
+        for sequence, (label, malformed_call) in enumerate(cases, start=90):
+            with self.subTest(call_shape=label):
+                self.fixture.sample_results = (
+                    SampleResult(malformed_call),
+                    SampleResult(
+                        {"role": "assistant", "content": "The revised draft.", "tool_calls": []}
+                    ),
+                )
+                spec = self.group(sequence=sequence)
+                for ordinal in range(2):
+                    _, result = self.run_member(spec, ordinal)
+                    self.coordinator.collect(spec, result)
+                decision = self.coordinator.finalize(spec)
+                credits = [self.store.get_artifact(ref) for ref in decision.segment_credit_refs]
+                self.assertFalse(any(credit["segment_kind"] == "tool_syntax" for credit in credits))
+
     def test_context_updates_do_not_rebind_sample_credit(self):
         spec = self.group(sequence=23)
         results = [self.run_member(spec, ordinal)[1] for ordinal in range(2)]
