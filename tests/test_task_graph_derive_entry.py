@@ -196,6 +196,14 @@ class DeriveEntryTests(unittest.TestCase):
                 "state.versions_ref",
             ),
         )
+        scripted_budget = scripted.store.get_artifact(generated_scripted.budgets_ref)
+        self.assertEqual(
+            scripted_budget["limits"]["author_calls"],
+            scripted_node.contract.budget_contract.max_author_calls,
+        )
+        plain = make_entry_fixture()
+        plain_budget = plain.reader.artifact(plain.state.budgets_ref)
+        self.assertNotIn("author_calls", plain_budget["limits"])
         self.assertEqual(
             generated_scripted.requirements_ref,
             scripted.runtime.state.requirements_ref,

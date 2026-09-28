@@ -112,7 +112,7 @@ class RolloutDriverTests(unittest.TestCase):
         gate = LineageGate()
         store = TaskGraphStore(copied_store, verifier=gate)
         env = RolloutEnvironment(store, fixture.entry.graph, None, gate, fixture.entry.graph.policy)
-        replay_runtime = env.open(final.checkpoint_id, self.root / "replay-workspace")
+        replay_runtime = env.open(final.checkpoint_id)
         self.assertEqual(replay_runtime.checkpoint_id, final.checkpoint_id)
         for checkpoint_id in checkpoints:
             self.assertEqual(gate.view(store, checkpoint_id).checkpoint_id, checkpoint_id)
@@ -166,7 +166,7 @@ class RolloutDriverTests(unittest.TestCase):
                     fresh_gate,
                     fixture.entry.graph.policy,
                 )
-                resumed = fresh_env.open(stopped.checkpoint_id, self.root / f"resume-{stop_after}")
+                resumed = fresh_env.open(stopped.checkpoint_id)
                 gatherers = fixture.recovery_gatherers(resumed, store=fresh_store)
                 actual = RolloutDriver(fresh_env, gatherers).run(resumed, max_steps=40)
                 self.assertEqual(actual.checkpoint_id, expected_final.checkpoint_id)

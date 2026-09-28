@@ -53,42 +53,24 @@ class RolloutDriver:
             if steps >= max_steps:
                 raise DriverBudgetError(max_steps)
 
-            port = self._port_input(view, directive)
+            port = self.env.port_input(view, directive)
             input_record = self.alternatives(directive, port) if directive.alternatives else None
             if input_record is None:
                 input_record = self._gather(directive, port)
             runtime = self.env.commit(runtime, input_record).runtime
             steps += 1
 
-    def _port_input(self, view: Any, directive: Directive) -> PortInput | None:
-        if directive.kind not in {
-            "sample_writer",
-            "execute_tool",
-            "await_author_reply",
-            "await_check_result",
-        }:
-            return None
-        return self.env.port_input(view, directive)
-
     def _gather(self, directive: Directive, port: PortInput | None) -> Any:
-        match directive.kind:
-            case "sample_writer":
-                if not isinstance(port, SamplerInput):
-                    raise TypeError("sample_writer requires SamplerInput")
+        match port:
+            case SamplerInput():
                 return self.gatherers.sampler.turn(port)
-            case "execute_tool":
-                if not isinstance(port, ToolInput):
-                    raise TypeError("execute_tool requires ToolInput")
+            case ToolInput():
                 return self.gatherers.tools.observe(port)
-            case "await_author_reply":
-                if not isinstance(port, AuthorInput):
-                    raise TypeError("await_author_reply requires AuthorInput")
+            case AuthorInput():
                 return self.gatherers.author.reply(port)
-            case "await_check_result":
-                if not isinstance(port, CheckInput):
-                    raise TypeError("await_check_result requires CheckInput")
+            case CheckInput():
                 return self.gatherers.evaluator.result(port)
-            case _:
+            case None:
                 return _environment_step(directive)
 
 

@@ -6,7 +6,12 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import canonical_json, load_canonical_json, validate_hash
+from writing_agent.task_graph import (
+    EnvironmentStateV1,
+    canonical_json,
+    load_canonical_json,
+    validate_hash,
+)
 from writing_agent.task_graph_environment import EnvironmentTransactionService
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
@@ -66,12 +71,12 @@ class RuntimeSession:
         ):
             raise ValueError("sealed adapter manifest differs from executing runtime")
 
-    def require_member_seal(self, store, runtime) -> None:
+    def require_member_seal(self, store, state: EnvironmentStateV1) -> None:
         """Bind a started group member to its immutable group policy before effects."""
-        lineage = runtime.state.position["lineage_id"]
+        lineage = state.position["lineage_id"]
         if not lineage.startswith("grp-"):
             return
-        seed = store.get_artifact(runtime.state.rng_ref)
+        seed = store.get_artifact(state.rng_ref)
         if (
             not isinstance(seed, dict)
             or seed.get("record_type") != "GroupMemberSeedsV1"

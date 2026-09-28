@@ -4,18 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol, TypeAlias
 
 from writing_agent.task_graph import (
+    CheckpointV1,
     EnvironmentStateV1,
     MessageV1,
     Phase,
-    Record,
     freeze,
-    load_canonical_json,
 )
-from writing_agent.task_graph_accounting import tool_error
 from writing_agent.task_graph_admission import (
     AdmissionPolicyV1 as AdmissionPolicy,
 )
@@ -24,10 +21,17 @@ from writing_agent.task_graph_admission import (
 )
 from writing_agent.task_graph_controller import Directive, next_step
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry
+from writing_agent.task_graph_derive_writer import (
+    group_member,
+    sampling_usage_requirements,
+    tool_dispatch_error,
+    writer_action_id,
+)
 from writing_agent.task_graph_errors import (
     AdapterContractError,
     AdapterContractProjectionError,
     ConcurrentUpdateError,
+    CorruptRecordError,
     MissingReferenceError,
     ProjectionError,
     WriterRuntimeError,
@@ -44,17 +48,15 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
-from writing_agent.task_graph_wire import WireRecord
 
 
 @dataclass(frozen=True)
 class RuntimeHandle:
-    """New-core handle: a checkpoint plus its flattened, verified context."""
+    """New-core handle: a checkpoint plus its verified flattened context."""
 
     checkpoint_id: str
     state: EnvironmentStateV1
     context: MaterializedContextV1
-    workspace: Path
 
 
 class SessionSeals(Protocol):
@@ -62,7 +64,7 @@ class SessionSeals(Protocol):
 
     def require_seal(self, adapter_ref: str) -> None: ...
 
-    def require_member_seal(self, store: TaskGraphStore, runtime: RuntimeHandle) -> None: ...
+    def require_member_seal(self, store: TaskGraphStore, state: EnvironmentStateV1) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -166,7 +168,7 @@ class RolloutEnvironment:
         self.reader = StoreArtifactReader(store)
 
     @operation_scoped
-    def enter(self, node_id: str, params: EntryParamsV1, workspace_root: Path) -> RuntimeHandle:
+    def enter(self, node_id: str, params: EntryParamsV1) -> RuntimeHandle:
         if not isinstance(params, EntryParamsV1):
             raise TypeError("entry parameters must be EntryParamsV1")
         self._require_admission_policy(params.versions_ref, path="params.versions_ref")
@@ -175,53 +177,41 @@ class RolloutEnvironment:
         entry = derive_entry(self.graph, node_id, params, self.reader)
         self.store.persist(self.graph.instance)
         for artifact in entry.artifacts:
-            self._persist_artifact(artifact)
+            self.store.persist_artifact(artifact)
         self.store.save_checkpoint(entry.state)
-        runtime = self._materialize(entry.view, workspace_root)
-        self._check_session_seals(runtime)
+        runtime = self._runtime(entry.view)
+        self._check_session_seals(runtime.state)
         return runtime
 
     @operation_scoped
-    def open(self, checkpoint_id: str, workspace_root: Path) -> RuntimeHandle:
-        return self._open(checkpoint_id, workspace_root)
+    def open(self, checkpoint_id: str) -> RuntimeHandle:
+        return self._open(checkpoint_id)
 
     @operation_scoped
     def verify(self, runtime: RuntimeHandle) -> LineageView:
-        return self._verify(runtime)
+        view, _, _ = self._verify(runtime)
+        return view
 
     @operation_scoped
-    def port_input(self, view: LineageView, directive: Directive) -> PortInput:
-        self._require_published_view(view)
-        self._check_session_seals(view)
+    def port_input(self, view: LineageView, directive: Directive) -> PortInput | None:
+        checkpoint, _, _ = self._checked_head(view.checkpoint_id)
+        if view.state != checkpoint.state:
+            raise WriterRuntimeError("port view state differs from its checkpoint")
+        if self.gate.view(self.store, view.checkpoint_id) != view:
+            raise WriterRuntimeError("port view differs from the verified published checkpoint")
+        self._check_session_seals(view.state)
         if next_step(view) != directive:
             raise ProjectionError("port directive differs from the verified view")
         if directive.kind == "sample_writer":
-            member = None
-            if view.group is not None:
-                lineage = view.state.position["lineage_id"]
-                member = next(
-                    (item for item in view.group.members if item.member_id == lineage), None
-                )
-                if member is None:
-                    raise ProjectionError("group view has no sealed member sampling pins")
+            member = group_member(view)
             policy = {} if view.group is None else view.group.policy
             return SamplerInput(
                 messages=view.context.messages,
                 tools=view.context.tools,
                 rendering=view.context.rendering,
                 context_revision_ref=view.context.revision_ref,
-                action_id=(
-                    f"{view.state.position['lineage_id']}:action:"
-                    f"{len(view.state.history['action_ids'])}"
-                ),
-                usage_requirements=frozenset(
-                    field
-                    for limit, field in (
-                        ("generated_tokens", "completion_tokens"),
-                        ("total_tokens", "total_tokens"),
-                    )
-                    if limit in view.budget["limits"]
-                ),
+                action_id=writer_action_id(view),
+                usage_requirements=sampling_usage_requirements(view.budget),
                 writer_seed=None if member is None else member.writer_seed,
                 model_ref=policy.get("model_ref"),
                 behavior_policy_ref=policy.get("behavior_policy_ref"),
@@ -235,10 +225,7 @@ class RolloutEnvironment:
             if cursor is None or not 0 <= cursor < len(queue):
                 raise ProjectionError("tool directive has no queued call")
             queue_entry = queue[cursor]
-            dispatch_permitted = (
-                tool_error(dict(view.budget), queue_entry.get("rejection"), queue_entry["name"])
-                is None
-            )
+            dispatch_permitted = tool_dispatch_error(view.budget, queue_entry) is None
             return ToolInput(view.state.files, queue_entry, view.tool_spec, dispatch_permitted)
         if directive.kind == "await_author_reply":
             request_ref = view.state.continuation["author_request"]
@@ -256,96 +243,112 @@ class RolloutEnvironment:
             packet_ref = request["evaluator_packet_ref"]
             packet = None if packet_ref is None else self.reader.artifact(packet_ref, private=True)
             return CheckInput(request_ref, request, view.state.files, packet)
-        raise ValueError(f"directive {directive.kind!r} has no external port")
+        return None
 
     @operation_scoped
     def commit(self, runtime: RuntimeHandle, input_record: InputRecord) -> StepResult:
         return self._commit(runtime, input_record)
 
     @operation_scoped
-    def start_member(
-        self, entry_checkpoint_id: str, start: MemberStartV1, workspace_root: Path
-    ) -> RuntimeHandle:
+    def start_member(self, entry_checkpoint_id: str, start: MemberStartV1) -> RuntimeHandle:
         if not isinstance(start, MemberStartV1):
             raise TypeError("member start must be MemberStartV1")
-        runtime = self._open(entry_checkpoint_id, workspace_root)
+        runtime = self._open(entry_checkpoint_id)
         return self._commit(runtime, start).runtime
 
-    def _open(self, checkpoint_id: str, workspace_root: Path) -> RuntimeHandle:
-        checkpoint = self._current_checkpoint(checkpoint_id)
-        self._require_admission_policy(checkpoint.state.versions_ref, path="state.versions_ref")
-        if checkpoint.state.instance_ref != self.graph.instance.identity():
-            raise WriterRuntimeError("checkpoint graph identity differs from the admitted graph")
+    def _open(self, checkpoint_id: str) -> RuntimeHandle:
+        self._checked_head(checkpoint_id)
         view = self.gate.view(self.store, checkpoint_id)
-        runtime = self._materialize(view, workspace_root)
-        self._check_session_seals(runtime)
+        runtime = self._runtime(view)
+        self._check_session_seals(runtime.state)
         return runtime
 
-    def _materialize(self, view: LineageView, workspace_root: Path) -> RuntimeHandle:
-        workspace = self.store.materialize(view.checkpoint_id, workspace_root)
-        context = self.store.materialize_context(view.state.context_ref)
-        return RuntimeHandle(view.checkpoint_id, view.state, context, workspace)
+    @staticmethod
+    def _runtime(view: LineageView) -> RuntimeHandle:
+        context = MaterializedContextV1(
+            view.context.messages, view.context.tools, view.context.rendering
+        )
+        return RuntimeHandle(view.checkpoint_id, view.state, context)
 
-    def _verify(self, runtime: RuntimeHandle) -> LineageView:
+    def _verify(
+        self, runtime: RuntimeHandle, *, allow_stale: bool = False
+    ) -> tuple[LineageView, str | None, bool]:
         if not isinstance(runtime, RuntimeHandle):
             raise TypeError("runtime must be a RolloutEnvironment RuntimeHandle")
-        self._check_session_seals(runtime)
-        checkpoint = self._current_checkpoint(runtime.checkpoint_id)
-        self._require_admission_policy(checkpoint.state.versions_ref, path="state.versions_ref")
+        checkpoint, head, is_head = self._checked_head(
+            runtime.checkpoint_id, allow_stale=allow_stale
+        )
         if checkpoint.state != runtime.state:
             raise WriterRuntimeError("runtime handle state differs from its checkpoint")
-        context = self.store.materialize_context(runtime.state.context_ref)
-        if context != runtime.context:
-            raise WriterRuntimeError("runtime handle context differs from its checkpoint")
-        if runtime.state.instance_ref != self.graph.instance.identity():
-            raise WriterRuntimeError("runtime graph identity differs from the admitted graph")
-        return self.gate.view(self.store, runtime.checkpoint_id)
+        view = self.gate.view(self.store, runtime.checkpoint_id)
+        if runtime.context != MaterializedContextV1(
+            view.context.messages, view.context.tools, view.context.rendering
+        ):
+            raise WriterRuntimeError("runtime handle context differs from its verified checkpoint")
+        self._check_session_seals(runtime.state)
+        return view, head, is_head
 
-    def _current_checkpoint(self, checkpoint_id: str):
-        checkpoint = self.store.load_checkpoint(checkpoint_id)
+    def _checked_head(
+        self, checkpoint_id: str, *, allow_stale: bool = False
+    ) -> tuple[CheckpointV1, str | None, bool]:
+        try:
+            checkpoint = self.store.load_checkpoint(checkpoint_id)
+        except MissingReferenceError as exc:
+            raise ConcurrentUpdateError("checkpoint is not persisted") from exc
+        if checkpoint.state.instance_ref != self.graph.instance.identity():
+            raise WriterRuntimeError("checkpoint graph identity differs from the admitted graph")
+        self._require_admission_policy(
+            checkpoint.state.versions_ref,
+            path="state.versions_ref",
+            mismatch_error=WriterRuntimeError,
+        )
         lineage = checkpoint.state.position["lineage_id"]
         head = self.store.read_head(lineage)
         if head is None:
-            if checkpoint.parents:
-                raise WriterRuntimeError("unpublished checkpoint is not a lineage entry")
-        elif self.store.load_commit(head).checkpoint != checkpoint_id:
-            raise WriterRuntimeError("runtime checkpoint is not the published lineage head")
-        return checkpoint
+            is_head = not checkpoint.parents
+        else:
+            is_head = self.store.load_commit(head).checkpoint == checkpoint_id
+        if not is_head and not allow_stale:
+            raise ConcurrentUpdateError("checkpoint is not the current published lineage head")
+        return checkpoint, head, is_head
 
-    def _require_published_view(self, view: LineageView) -> None:
-        try:
-            checkpoint = self._current_checkpoint(view.checkpoint_id)
-        except MissingReferenceError as exc:
-            raise ProjectionError("candidate view has not been published") from exc
-        if checkpoint.state.position["lineage_id"] != view.state.position["lineage_id"]:
-            raise ProjectionError("view lineage differs from its published checkpoint")
-        if self.gate.view(self.store, view.checkpoint_id) != view:
-            raise ProjectionError("port view differs from the verified published checkpoint")
-
-    def _check_session_seals(self, runtime: RuntimeHandle) -> None:
+    def _check_session_seals(self, state: EnvironmentStateV1) -> None:
         if self.session is None:
             return
         sealed_ref = self.session.sealed_adapter_ref
         if sealed_ref is not None:
             self.session.require_seal(sealed_ref)
-        self.session.require_member_seal(self.store, runtime)
+        self.session.require_member_seal(self.store, state)
 
-    def _require_admission_policy(self, versions_ref: str, *, path: str) -> None:
+    def _require_admission_policy(
+        self,
+        versions_ref: str,
+        *,
+        path: str,
+        mismatch_error: type[Exception] = ProjectionError,
+    ) -> None:
         try:
             versions = ExecutionVersionsV1.from_dict(self.reader.artifact(versions_ref))
+        except (CorruptRecordError, MissingReferenceError):
+            raise
         except Exception as exc:
             raise ProjectionError(f"{path}: pinned execution versions are invalid: {exc}") from exc
         if versions.admission_policy_ref != self.admission_policy_ref:
-            raise ProjectionError(f"{path}.admission_policy_ref: differs from environment policy")
+            raise mismatch_error(f"{path}.admission_policy_ref: differs from environment policy")
 
     def _commit(self, runtime: RuntimeHandle, input_record: InputRecord) -> StepResult:
-        view = self._verify(runtime)
-        head = self.store.read_head(view.state.position["lineage_id"])
-        if head is not None and self.store.load_commit(head).checkpoint != runtime.checkpoint_id:
-            raise ConcurrentUpdateError("runtime checkpoint is no longer the lineage head")
+        view, head, base_is_head = self._verify(runtime, allow_stale=True)
         transition = self._derive(view, input_record)
-        self._persist_transition(transition)
         lineage = transition.state.position["lineage_id"]
+        if lineage == view.state.position["lineage_id"] and not base_is_head:
+            if head is not None and self._is_published_retry(
+                head, runtime.checkpoint_id, transition
+            ):
+                published_view = self.gate.record_published(self.store, head)
+                return self._step_result(published_view, head, transition.event.id)
+            raise ConcurrentUpdateError("runtime checkpoint is no longer the lineage head")
+
+        self._persist_transition(transition)
         if lineage != view.state.position["lineage_id"]:
             head = None
         commit_id = self.store.publish(
@@ -356,20 +359,29 @@ class RolloutEnvironment:
             parent_checkpoint=runtime.checkpoint_id if head is None else None,
         )
         published_view = self.gate.record_published(self.store, commit_id)
-        context = MaterializedContextV1(
-            published_view.context.messages,
-            published_view.context.tools,
-            published_view.context.rendering,
+        return self._step_result(published_view, commit_id, transition.event.id)
+
+    def _is_published_retry(
+        self, commit_id: str, base_checkpoint_id: str, transition: Transition
+    ) -> bool:
+        if self.store.read_head(transition.state.position["lineage_id"]) != commit_id:
+            raise ConcurrentUpdateError("lineage head changed while retrying a published step")
+        commit = self.store.load_commit(commit_id)
+        checkpoint = self.store.load_checkpoint(commit.checkpoint)
+        return (
+            checkpoint.identity() == transition.view.checkpoint_id
+            and checkpoint.parents == (base_checkpoint_id,)
+            and commit.events == (transition.event.id,)
         )
-        next_runtime = RuntimeHandle(
-            published_view.checkpoint_id, transition.state, context, runtime.workspace
-        )
+
+    @staticmethod
+    def _step_result(view: LineageView, commit_id: str, event_id: str) -> StepResult:
         return StepResult(
-            next_runtime,
+            RolloutEnvironment._runtime(view),
             commit_id,
-            transition.event.id,
-            Phase(transition.state.position["phase"]),
-            next_step(published_view),
+            event_id,
+            Phase(view.state.position["phase"]),
+            next_step(view),
         )
 
     def _derive(self, view: LineageView, input_record: InputRecord) -> Transition:
@@ -385,32 +397,14 @@ class RolloutEnvironment:
         )
         if input_artifact is None:
             raise ProjectionError("transition does not return its input payload artifact")
-        self._persist_artifact(input_artifact)
+        self.store.persist_artifact(input_artifact)
         for artifact in transition.artifacts:
             if artifact is not input_artifact and artifact.kind != "context_revision":
-                self._persist_artifact(artifact)
+                self.store.persist_artifact(artifact)
         self.store.persist(transition.event)
         for artifact in transition.artifacts:
             if artifact.kind == "context_revision":
-                self._persist_artifact(artifact)
-
-    def _persist_artifact(self, artifact) -> None:
-        value = artifact.value
-        if artifact.kind in {"context_node", "context_revision"}:
-            identity = self.store.persist(value)
-        elif artifact.value_kind == "bytes":
-            identity = self.store.put_bytes_artifact(value, private=artifact.kind == "private")
-        else:
-            body = (
-                value.to_wire()
-                if isinstance(value, WireRecord)
-                else value.to_dict()
-                if isinstance(value, Record)
-                else load_canonical_json(value)
-            )
-            identity = self.store.put_artifact(body, private=artifact.kind == "private")
-        if identity != artifact.ref:
-            raise ProjectionError("persisted artifact identity differs from its derive")
+                self.store.persist_artifact(artifact)
 
 
 __all__ = [

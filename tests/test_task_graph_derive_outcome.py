@@ -249,6 +249,15 @@ class OutcomeLifecycleTests(unittest.TestCase):
         persist_transition(self.fixture, request_transition.view, derived)
         return result, derived
 
+    def test_check_request_resets_statuses_and_enters_the_check_phase(self):
+        view = replace(make_view(self.fixture, "checking"), check_statuses={"nonempty": "pass"})
+        step = EnvironmentStepV1(directive={"kind": "request_checks"})
+
+        transition = derive_check_request(view, step, self.fixture.reader)
+
+        self.assertEqual(transition.view.check_statuses["nonempty"], None)
+        self.assertEqual(transition.state.position["phase"], "awaiting_checks")
+
     def test_none_mode_unit_fold_from_checks_through_seal_and_reward(self):
         _, _, requested = self.request()
         request_ref = requested.state.continuation["check_requests"][0]

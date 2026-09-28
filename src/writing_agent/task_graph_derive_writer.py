@@ -55,6 +55,40 @@ from writing_agent.task_graph_wire import decode_canonical_value
 READ_BUDGET_EXCEEDED = "Read-token budget exceeded"
 
 
+def writer_action_id(view: LineageView) -> str:
+    """Return the action identity bound to the view's next writer turn."""
+    return f"{view.state.position['lineage_id']}:action:{len(view.state.history['action_ids'])}"
+
+
+def group_member(view: LineageView):
+    """Resolve this view's sealed group member, if it belongs to a group."""
+    if view.group is None:
+        return None
+    lineage_id = view.state.position["lineage_id"]
+    member = next((item for item in view.group.members if item.member_id == lineage_id), None)
+    if member is None:
+        raise ProjectionError("writer lineage is absent from its sealed group spec")
+    return member
+
+
+def sampling_usage_requirements(budget: Mapping[str, Any]) -> frozenset[str]:
+    """Return usage fields required by the active token-budget limits."""
+    limits = budget["limits"]
+    return frozenset(
+        field
+        for limit, field in (
+            ("generated_tokens", "completion_tokens"),
+            ("total_tokens", "total_tokens"),
+        )
+        if limit in limits
+    )
+
+
+def tool_dispatch_error(budget: Mapping[str, Any], queue_entry: Mapping[str, Any]) -> str | None:
+    """Return the persisted tool call's budget or syntax rejection, if any."""
+    return tool_error(dict(budget), queue_entry.get("rejection"), queue_entry["name"])
+
+
 def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Transition:
     """Derive the one event, state and context caused by a sampled writer turn."""
     action_ordinal, action_id, content = _validate_writer_turn(view, turn)
@@ -115,9 +149,9 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         prior_raw_ids=view.raw_call_ids,
     )
 
-    limits = next_budget["limits"]
-    if ("generated_tokens" in limits and "completion_tokens" not in usage) or (
-        "total_tokens" in limits
+    required_usage = sampling_usage_requirements(next_budget)
+    if ("completion_tokens" in required_usage and "completion_tokens" not in usage) or (
+        "total_tokens" in required_usage
         and "total_tokens" not in usage
         and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
     ):
@@ -192,7 +226,7 @@ def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, s
         raise ProjectionError("writer turn input must use its strict wire codec")
 
     ordinal = len(view.state.history["action_ids"])
-    action_id = f"{view.state.position['lineage_id']}:action:{ordinal}"
+    action_id = writer_action_id(view)
     if turn.action_id != action_id or turn.context_revision_ref != view.context.revision_ref:
         raise ProjectionError("writer turn is not bound to the active action and context")
     content = turn.message.content
@@ -207,13 +241,10 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
     except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
         raise AdapterContractProjectionError("writer sampling evidence is invalid") from exc
 
-    if view.group is None:
+    member = group_member(view)
+    if member is None:
         return
     spec = view.group
-    lineage_id = view.state.position["lineage_id"]
-    member = next((item for item in spec.members if item.member_id == lineage_id), None)
-    if member is None:
-        raise ProjectionError("writer lineage is absent from its sealed group spec")
     try:
         model = reader.artifact(spec.policy["model_ref"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -316,7 +347,7 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
         raise ProjectionError("tool result has no matching writer-call source")
     call_name = queued["name"]
     call_arguments = queued["arguments"]
-    predispatch_error = tool_error(dict(view.budget), queued.get("rejection"), call_name)
+    predispatch_error = tool_dispatch_error(view.budget, queued)
     if predispatch_error is not None:
         if obs.dispatch is not None:
             raise ProjectionError("pre-dispatch tool error unexpectedly executed")
@@ -447,4 +478,12 @@ DERIVES: dict[DeriveKey, Callable] = {
 }
 
 
-__all__ = ["DERIVES", "derive_tool_result", "derive_writer_turn"]
+__all__ = [
+    "DERIVES",
+    "derive_tool_result",
+    "derive_writer_turn",
+    "group_member",
+    "sampling_usage_requirements",
+    "tool_dispatch_error",
+    "writer_action_id",
+]

@@ -13,7 +13,6 @@ from typing import Any
 
 from tests.task_graph_fixtures import EntryFixture
 from tests.test_task_graph_derive_outcome import make_outcome_fixture
-from writing_agent.task_graph import load_canonical_json
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
@@ -293,17 +292,7 @@ def _persist_entry(store: TaskGraphStore, fixture: EntryFixture) -> str:
         store.put_artifact(body, private=True)
     store.persist(fixture.graph.instance)
     for artifact in fixture.artifacts:
-        if artifact.kind in {"context_node", "context_revision"}:
-            store.persist(artifact.value)
-        elif artifact.value_kind == "bytes":
-            store.put_bytes_artifact(artifact.value, private=artifact.kind == "private")
-        else:
-            body = (
-                load_canonical_json(artifact.value)
-                if artifact.value_kind == "canonical_json"
-                else artifact.value.to_wire()
-            )
-            store.put_artifact(body, private=artifact.kind == "private")
+        store.persist_artifact(artifact)
     return store.save_checkpoint(fixture.state)
 
 
@@ -354,7 +343,7 @@ def build_rollout_fixture(
     store = TaskGraphStore(root / "store", verifier=gate)
     checkpoint = _persist_entry(store, entry)
     env = RolloutEnvironment(store, entry.graph, None, gate, entry.graph.policy)
-    runtime = env.open(checkpoint, root / "workspace")
+    runtime = env.open(checkpoint)
     counter = PortCallCounter(raising=raising_ports)
     gatherers = _gatherers(store, entry, sample_results, counter)
     return RolloutFixture(

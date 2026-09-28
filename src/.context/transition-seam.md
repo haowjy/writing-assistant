@@ -8,10 +8,9 @@ author validation, projection, the old replay and environment batch) stays impor
 tested as the behavior oracle until the S7 parity check, which deletes it. Do not extend it.
 
 This checkout contains the wire records, calls, transition types, `derive_entry`, the
-controller, four derive modules, the `LineageGate` with its `DERIVE` registry and view cache,
-the store's verifier port, and `RolloutEnvironment`. For a lineage pinned to
-`task-graph-derive-v1`, `store.publish` and `store.restore` run the gate. The driver and
-gatherers are not built yet (S4), and callers stay on the old runtime until S7.2.
+controller, four derive modules, `LineageGate`, `RolloutEnvironment`, the S4 gatherers and
+`RolloutDriver`. For a lineage pinned to `task-graph-derive-v1`, `store.publish` and
+`store.restore` run the gate. The old runtime remains the behavior oracle until S7.2.
 
 The design numbers these invariants, and code, tests and reviews cite them:
 
@@ -206,16 +205,17 @@ An empty required set never counts as a pass.
 ## Gate and store verifier port
 
 [`task_graph_gate.py`](../writing_agent/task_graph_gate.py) is the one semantic verifier.
-`LineageGate` implements the store's `CommitVerifier` port (`verify_commit`,
-`verify_checkpoint`) and adds `view` and `record_published`.
+`LineageGate` implements the store's `CommitVerifier` port (`verify_commit`, `view`) and
+adds `record_published`.
+The store calls `view` during restore; there is no `verify_checkpoint` alias.
 
 **One fold.** `view(store, checkpoint_id)` loads the checkpoint chain back to its root,
-then walks forward from the newest cached view (or from the root). Each step checks
-`event.previous` and `event.seq` against the parent, derives the recorded input through
-`derive_input`, and requires the derived event and state identity to equal the stored ones
-(I1, I2). A mismatch raises `ProjectionError` naming the first differing path. The
-pre-publication check (`verify_commit`) and cold restore (`verify_checkpoint`) run the same
-`_step`; `verify_commit` rejects a commit of more than one event (I10).
+then walks forward from the newest cached view (or from the root). Each step derives the
+recorded input through `derive_input`; `_step` checks `event.previous`, `event.seq`, and the
+derived event and state identity against the stored ones (I1, I2). Runtime checkpoints must
+have no supplemental `artifact_refs`. A mismatch raises `ProjectionError` naming the first
+differing event or state path. The pre-publication check (`verify_commit`) and cold restore
+(`view`) run the same `_step`; `verify_commit` rejects a commit of more than one event (I10).
 
 **Root fixed point and re-admission.** With no cached view, the gate re-admits the root's
 graph under the admission policy that the root's `ExecutionVersionsV1` pins, derives the
@@ -240,16 +240,18 @@ validation all use it:
 Two more publication rules hold on both paths:
 - A first commit (`expected_head is None`) must start from a parentless checkpoint. A first
   commit from a mid-lineage checkpoint would leave earlier events out of the commit chain.
-- `store.branch` raises `ProjectionError` when a verifier is configured. A branched state
-  keeps its parent's `lineage_id`, so the gate could never verify it. Group members start
-  through `MemberStartV1` instead.
+- `store.branch` uses the same selector. Legacy lineages can still branch on a verifier
+  store; a v1 lineage is refused because a branched state keeps its parent's `lineage_id`.
+  Group members start through `MemberStartV1` instead.
 
 **Error classes.** Callers tell a rejected input from a damaged store by class:
 - `ProjectionError`: the candidate or recorded input is invalid. This covers derive and
   fold mismatches, a closure failure on the candidate's own event, checkpoint or commit
   (the validator's `gated_candidates`), and a wrong-visibility reference in a candidate.
-- `CorruptRecordError`: bytes already on disk fail their checks. Because `put_artifact`
-  validates typed payloads at write time, this class now means the stored bytes changed.
+- `CorruptRecordError`: bytes already on disk fail their checks. Producer and fold derive
+  wrappers preserve this class; a missing reference named by an input is instead a
+  `ProjectionError`. Because `put_artifact` validates typed payloads at write time,
+  corruption usually means stored bytes changed.
 
 **View cache.** `ViewCache` is a locked LRU of 64 immutable views keyed by
 `(root_checkpoint_id, checkpoint_id)`:
@@ -257,11 +259,11 @@ Two more publication rules hold on both paths:
   so a hit is a checkpoint the gate already derived. An event hashes only its payload, so
   two sibling checkpoints can share a head event with different states.
 - *Published commits only, and only through the gate.* Insertion is private
-  (`ViewCache._insert`). `verify_commit` stores its candidate view in a thread-local slot.
-  `LineageGate.record_published(store, commit_id, view)` inserts that candidate only if the
-  commit is the lineage's published head, its checkpoint is the candidate's, and the
-  persisted state identity equals the candidate's. A caller cannot insert a view it built,
-  so `verify_commit` and `record_published` for one commit must run on the same thread.
+  (`ViewCache._insert`). `verify_commit` stores its candidate in a small locked, bounded map
+  keyed by checkpoint id. `LineageGate.record_published(store, commit_id)` first requires
+  that commit to be the lineage's published head, then pops its candidate or performs a
+  verified `view` fold when the candidate was lost, evicted, or belongs to another process.
+  No caller-supplied view is trusted and no thread affinity is required.
 - *Not a validation memo.* The cache lets a fold skip re-deriving history. It never skips
   reading and hashing bytes: every operation's closure pass re-validates the target's
   ancestry from disk before the gate reads the cache.
@@ -283,50 +285,61 @@ unrelated work).
 **Construction pins the operator's policy.** The constructor takes the store, the admitted
 graph, the session seals, the gate and an `AdmissionPolicy`. It requires
 `store.verifier is gate` and `graph.policy == admission_policy`. `enter` rejects entry
-parameters whose `versions_ref` pins another policy, and `open` and `verify` reject
-lineages pinned to another policy. The gate alone proves a lineage was admitted under the
+parameters whose `versions_ref` pins another policy, and `open`, `verify` and `port_input`
+reject lineages pinned to another policy. The gate alone proves a lineage was admitted under the
 policy it pins. Pinning the policy on the environment is what makes it the operator's
 policy.
 
 **The methods.**
 - `enter` refuses a lineage that already has a head. It then runs `derive_entry`,
-  persists the instance and entry artifacts, saves the parentless root checkpoint and
-  materializes it from `entry.view`. Nothing is published until the first `commit`.
+  persists the instance and entry artifacts, and saves the parentless root checkpoint.
+  Nothing is published until the first `commit`.
 - `open` is a cold restore: stale-head and policy checks, a full gate fold, then
-  materialization.
+  creation of a handle from the verified state and context.
 - `verify` checks the session seals, requires the handle to be the lineage head (or a
   parentless root with no head), checks policy, state, context and graph identity, then
-  returns `gate.view`. A root with no head passes only through the gate's I3 check.
+  returns `gate.view`. A root with no head passes only through the gate's I3 check. The
+  shared `_checked_head` also protects `open` and port construction: stale checkpoints are
+  `ConcurrentUpdateError`, while a graph/policy mismatch or handle forgery is
+  `WriterRuntimeError`.
 - `port_input(view, directive)` requires `view` to be the verified, published head (or the
-  verified root) and `directive` to equal `next_step(view)`. It builds the one typed input
-  for that directive.
-- `commit(runtime, input)` runs `verify`, rejects a stale head with
-  `ConcurrentUpdateError`, derives once through `derive_input`, persists, calls
-  `store.publish` (which re-derives under the lineage lock), then
-  `gate.record_published`. The returned handle and `StepResult.directive` come from the
-  published view, not from a restore-after-publish pass. With a warm cache a commit costs
-  two derives (producer and gate) and `verify` costs none.
+  verified root) and `directive` to equal `next_step(view)`. It returns the typed port input,
+  or `None` when that directive has no external port.
+- `commit(runtime, input)` derives through `derive_input`, persists, calls `store.publish`
+  (which re-derives under the lineage lock), then `gate.record_published`. An exact retry
+  whose requested commit is already the head returns that published result; a stale
+  different input raises `ConcurrentUpdateError`. The returned handle and directive come
+  from the published view. With a warm cache a new commit costs two derives (producer and
+  gate) and `verify` costs none.
 - `start_member` opens the shared entry checkpoint and commits a `MemberStartV1`, which
   starts a new lineage whose first commit's parent is that entry.
+
+**Workspace scope.** The new-core handle carries state and verified context, not a
+materialized workspace: the driver, gatherers and shared S4 fixture consume checkpoint
+files directly. Accordingly, environment `enter` and `open` do not materialize one. This
+differs from design §7's planned materialization; low-level legacy `TaskGraphStore.restore`
+still materializes its legacy handle.
 
 **Persistence order** (design §7): the input payload artifact, then every other derived
 artifact except context revisions, then the event, then the context revision (it names
 the event), then `store.publish`, which writes the checkpoint, commit and head. There are
 no `artifact_refs`; closure follows typed edges, and a missing artifact fails the publish.
+A single `TaskGraphStore.persist_artifact` owns derived-artifact kind/value dispatch.
 A failure at any stage leaves the old head or the new one, never a partial commit. Orphan
 immutables are harmless, and a retry of the same input yields the same commit ID. The
 crash-matrix test covers 10 of the 11 event kinds; `budget_charged` is unreachable because
 no admitted entry has token limits (see the O1 rationale below).
 
 **Port inputs are the privacy boundary (I6).** A gatherer receives one of four frozen
-types, never a `LineageView`:
+types, never a `LineageView`. `RolloutDriver` dispatches by that returned type; `None` means
+the directive is an environment step without an external gatherer:
 
 | Directive | Port input | Contents |
 |---|---|---|
 | `sample_writer` | `SamplerInput` | visible messages, tools, rendering, context revision ref, action ID; for a group member, its sealed writer seed and the group's model, behavior-policy, tokenizer, template and decoding refs |
 | `execute_tool` | `ToolInput` | files, the one queued call at the directive's index, the pinned tool spec |
-| `await_author_reply` | `AuthorInput` | the private author request, the node's script, the decision and disclosure ledgers |
-| `await_check_result` | `CheckInput` | the private check request, the candidate files, the evaluator packet |
+| `await_author_reply` | `AuthorInput` | private request body and `request_ref`, the node's script, the decision and disclosure ledgers |
+| `await_check_result` | `CheckInput` | private request body and `request_ref`, the candidate files, the evaluator packet |
 
 Other directives have no external port. To widen a port input, add the field to its type
 and update the test that enumerates each type's field set; the test is the allowlist.
@@ -337,8 +350,8 @@ request from a commit the store might still reject.
 
 **Error boundary.** On the producer path, `commit` maps `AdapterContractProjectionError` to
 `AdapterContractError`: the live adapter broke its contract, and nothing is written. The
-same bytes read back under the gate stay `ProjectionError`, because by then they are a
-recorded input to reject, not an adapter to blame.
+same invalid recorded input stays `ProjectionError` under the gate. `CorruptRecordError` is
+preserved on both paths for damaged persisted bytes.
 
 ## Rationale and rejected alternatives
 
@@ -361,7 +374,8 @@ recorded input to reject, not an adapter to blame.
   because closure re-hashes stored bytes but never compares them with a cached decoded
   body. Only the gate's own candidate, matched to the published head, is inserted.
   `publish` keeps its return type; the candidate passes from `verify_commit` to
-  `record_published` through the thread-local slot instead.
+  `record_published` through a checkpoint-keyed, bounded stash, with a verified fold when
+  a retry has no stashed candidate.
 - **Rejected: choosing the path by verifier presence.** S3.1 first ran the gate whenever a
   verifier was configured and the legacy reducer otherwise. The review broke it both ways:
   a default `TaskGraphStore(root)` published a forged v1 lineage (terminal root, forged
@@ -378,6 +392,17 @@ recorded input to reject, not an adapter to blame.
   `_feedback_budgets_allow`, `ask_semantics` exactly when the node is `scripted_author`,
   and the contract's author-call limit, pinned in the entry budget. I4 is the single
   authority.
+
+  That deletion depends on four named invariants, each owned and pinned at its rule site:
+  - **Admission prerequisite scope:** feedback prerequisites name only `each_turn` checks or
+    checks scoped to that feedback (`tests/test_task_graph_scripted.py`).
+  - **Check-batch status reset:** `derive_check_request` resets the requested batch to
+    unknown before results arrive (`tests/test_task_graph_derive_outcome.py`).
+  - **Scripted-author budget pin:** `derive_entry` seeds `author_calls` only for
+    `scripted_author` nodes (`tests/test_task_graph_derive_entry.py`).
+  - **Check-phase entry:** only `request_checks` moves a checking view into
+    `awaiting_checks`; check-result transitions stay within that active batch
+    (`tests/test_task_graph_derive_outcome.py`).
 - **O1: a writer turn without sampling evidence is charged 0 tokens.** No admitted entry
   has token limits: `BudgetContractV1` declares none, so neither runtime seeds
   `generated_tokens` or `total_tokens`. `derive_writer_turn` requires usage evidence only

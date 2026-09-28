@@ -158,6 +158,42 @@ class ScriptedFixture(WriterFixture):
         self.checks = DeterministicChecksV1(self.writer)
         self.terminal = ScriptedTerminalV1(self.writer)
 
+    def test_feedback_prerequisites_must_match_their_check_scope(self):
+        node = self.writer.graph.node("legacy-writer")
+        script = replace(
+            node.script,
+            feedback=(
+                {
+                    "id": "f1",
+                    "utterance": "Please revise.",
+                    "prerequisite_check_ids": ["nonempty"],
+                    "requirement_update_ref": None,
+                },
+            ),
+        )
+        policy = replace(node.interaction_policy, mandatory_feedback=("f1",))
+        self.store.put_artifact(script.to_dict(), private=True)
+        self.store.put_artifact(policy.to_dict())
+        contract = replace(
+            node.contract,
+            interaction=replace(
+                node.contract.interaction_contract,
+                script_ref=script.identity(),
+                interaction_policy_ref=policy.identity(),
+                mandatory_feedback=("f1",),
+            ),
+        )
+        self.store.put_artifact(contract.to_dict())
+        instance = replace(
+            self.writer.graph.instance,
+            nodes=(replace(node.spec, entry_contract=contract.identity()),),
+        )
+        self.store.persist(instance)
+
+        with self.assertRaises(AdmissionError) as rejected:
+            admit_graph(instance, StoreArtifactResolver(self.store))
+        self.assertEqual(rejected.exception.code, "script_coverage")
+
     def test_completion_route_admission_matrix(self):
         node = self.writer.graph.node("legacy-writer")
         base = node.checks["nonempty"]

@@ -17,6 +17,7 @@ from tests.test_task_graph_derive_writer import call, make_turn, with_budget
 from writing_agent.task_graph import EventV1, domain_hash, load_canonical_json
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_compaction import ContextPolicyV1
+from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
     DecisionBindingsV1,
@@ -28,11 +29,21 @@ from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_entry import derive_entry
 from writing_agent.task_graph_errors import (
     AdapterContractError,
+    ConcurrentUpdateError,
+    CorruptRecordError,
     MissingReferenceError,
     ProjectionError,
+    WriterRuntimeError,
 )
-from writing_agent.task_graph_gate import DERIVE, LineageGate
+from writing_agent.task_graph_gate import DERIVE, LineageGate, StoreArtifactReader
 from writing_agent.task_graph_group import POLICY_FIELDS, derive_group_seed
+from writing_agent.task_graph_local import (
+    DeterministicEvaluator,
+    LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
+    ScriptedSampleBackend,
+)
+from writing_agent.task_graph_ports import PortDescriptorV1, RuntimeDependenciesV1
 from writing_agent.task_graph_record_contracts import GroupMemberSpecV1, GroupSpecV1
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1 as AdmissionPolicyRecord,
@@ -82,17 +93,7 @@ def _persist_fixture(store, fixture, *, checkpoint=True):
         store.put_artifact(body, private=True)
     store.persist(fixture.graph.instance)
     for artifact in fixture.artifacts:
-        if artifact.kind in {"context_node", "context_revision"}:
-            store.persist(artifact.value)
-        elif artifact.value_kind == "bytes":
-            store.put_bytes_artifact(artifact.value, private=artifact.kind == "private")
-        else:
-            body = (
-                load_canonical_json(artifact.value)
-                if artifact.value_kind == "canonical_json"
-                else artifact.value.to_wire()
-            )
-            store.put_artifact(body, private=artifact.kind == "private")
+        store.persist_artifact(artifact)
     if checkpoint:
         return store.save_checkpoint(fixture.state)
     return None
@@ -247,23 +248,16 @@ def _assert_fault_matrix(
             env = RolloutEnvironment(
                 store, environment.graph, None, gate, environment.admission_policy
             )
-            cloned_runtime = type(runtime)(
-                runtime.checkpoint_id, runtime.state, runtime.context, runtime.workspace
-            )
+            cloned_runtime = type(runtime)(runtime.checkpoint_id, runtime.state, runtime.context)
             old_head = store.read_head(lineage)
             publish = store.publish
-            captured = {}
 
             def crash(
                 *args,
                 _stage=stage,
                 _publish=publish,
-                _captured=captured,
                 **kwargs,
             ):
-                _captured["args"] = args
-                _captured["kwargs"] = dict(kwargs)
-
                 def fail(current, expected=_stage):
                     if current == expected:
                         raise RuntimeError("injected crash")
@@ -280,7 +274,6 @@ def _assert_fault_matrix(
                             env.start_member(
                                 entry_checkpoint,
                                 input_record,
-                                clone_root / "member-workspace",
                             )
                 head = store.read_head(lineage)
                 if stage == "after_head_publication":
@@ -291,16 +284,31 @@ def _assert_fault_matrix(
                         env.verify(cloned_runtime).checkpoint_id, runtime.checkpoint_id
                     )
 
-                args = captured["args"]
-                retry_kwargs = captured["kwargs"]
                 if stage == "after_head_publication":
-                    published = publish(*args, **retry_kwargs)
-                    commit_id = published[0] if isinstance(published, tuple) else published
+                    # Recreate the store and gate to exercise the cold retry path.
+                    retry_gate = LineageGate()
+                    retry_store = TaskGraphStore(clone_root / "store", verifier=retry_gate)
+                    retry_env = RolloutEnvironment(
+                        retry_store,
+                        environment.graph,
+                        None,
+                        retry_gate,
+                        environment.admission_policy,
+                    )
+                    if entry_checkpoint is None:
+                        commit_id = retry_env.commit(cloned_runtime, input_record).commit_id
+                    else:
+                        started = retry_env.start_member(entry_checkpoint, input_record)
+                        commit_id = retry_store.read_head(lineage)
+                        test.assertEqual(
+                            started.checkpoint_id,
+                            retry_store.load_commit(commit_id).checkpoint,
+                        )
                     test.assertEqual(commit_id, head)
                 elif entry_checkpoint is None:
                     commit_id = env.commit(cloned_runtime, input_record).commit_id
                 else:
-                    env.start_member(entry_checkpoint, input_record, clone_root / "retry-workspace")
+                    env.start_member(entry_checkpoint, input_record)
                     commit_id = store.read_head(lineage)
                 test.assertEqual(store.read_head(lineage), commit_id)
                 retry_ids.append(commit_id)
@@ -312,8 +320,8 @@ def _assert_fault_matrix(
                     (),
                 )
                 if stage == "after_head_publication":
-                    opened = env.open(commit.checkpoint, clone_root / "recovered-workspace")
-                    test.assertEqual(env.verify(opened).checkpoint_id, commit.checkpoint)
+                    opened = retry_env.open(commit.checkpoint)
+                    test.assertEqual(retry_env.verify(opened).checkpoint_id, commit.checkpoint)
         finally:
             shutil.rmtree(clone_root, ignore_errors=True)
     test.assertEqual(len(set(retry_ids)), 1)
@@ -331,7 +339,38 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.environment = RolloutEnvironment(
             self.store, self.fixture.graph, None, self.gate, self.fixture.graph.policy
         )
-        self.runtime = self.environment.open(self.entry, self.root / "entry-workspace")
+        self.runtime = self.environment.open(self.entry)
+
+    def test_real_runtime_session_seals_are_checked_against_state(self):
+        tools = LocalTextToolProvider()
+        backend = ScriptedSampleBackend(())
+        dependencies = RuntimeDependenciesV1(
+            backend,
+            LocalWorkspaceEnvironment(tools),
+            tools,
+            DeterministicEvaluator(),
+        )
+        unbound = RuntimeSession.create(
+            self.store,
+            self.fixture.params.lineage_id,
+            self.entry,
+            dependencies,
+        )
+        session = unbound.bind(self.store, unbound.manifest_ref)
+        environment = RolloutEnvironment(
+            self.store,
+            self.fixture.graph,
+            session,
+            self.gate,
+            self.fixture.graph.policy,
+        )
+        runtime = environment.open(self.entry)
+        view = environment.verify(runtime)
+        self.assertIsInstance(environment.port_input(view, next_step(view)), SamplerInput)
+
+        backend.descriptor = PortDescriptorV1("sampling", "altered-backend", "1")
+        with self.assertRaises(ValueError):
+            environment.verify(runtime)
 
     def _alternate_policy_entry(self, lineage: str):
         policy = replace(
@@ -360,11 +399,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
     def _enter_alternate_policy(self, lineage: str):
         graph, policy, params = self._alternate_policy_entry(lineage)
         environment = RolloutEnvironment(self.store, graph, None, self.gate, policy)
-        runtime = environment.enter(
-            self.fixture.node_id,
-            params,
-            self.root / f"{lineage}-workspace",
-        )
+        runtime = environment.enter(self.fixture.node_id, params)
         return environment, runtime
 
     def test_enter_rejects_entry_params_with_a_different_admission_policy(self):
@@ -373,21 +408,17 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.environment.enter(
                 self.fixture.node_id,
                 params,
-                self.root / "mismatched-entry-workspace",
             )
         self.assertIsNone(self.store.read_head("policy-enter"))
 
     def test_open_rejects_a_lineage_pinned_to_a_different_admission_policy(self):
         _, runtime = self._enter_alternate_policy("policy-open")
-        with self.assertRaises(ProjectionError):
-            self.environment.open(
-                runtime.checkpoint_id,
-                self.root / "mismatched-open-workspace",
-            )
+        with self.assertRaises(WriterRuntimeError):
+            self.environment.open(runtime.checkpoint_id)
 
     def test_verify_rejects_a_lineage_pinned_to_a_different_admission_policy(self):
         _, runtime = self._enter_alternate_policy("policy-verify")
-        with self.assertRaises(ProjectionError):
+        with self.assertRaises(WriterRuntimeError):
             self.environment.verify(runtime)
 
     def test_writer_and_tool_commits_close_without_artifact_refs_and_fold_once(self):
@@ -497,7 +528,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         store = TaskGraphStore(root / "store", verifier=gate)
         entry = _persist_fixture(store, fixture)
         env = RolloutEnvironment(store, fixture.graph, None, gate, fixture.graph.policy)
-        runtime = env.open(entry, root / "workspace")
+        runtime = env.open(entry)
 
         ask = call(
             "ask_author",
@@ -642,7 +673,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         store = TaskGraphStore(root / "store", verifier=gate)
         entry = _persist_fixture(store, fixture)
         env = RolloutEnvironment(store, fixture.graph, None, gate, fixture.graph.policy)
-        runtime = env.open(entry, root / "workspace")
+        runtime = env.open(entry)
 
         node = fixture.graph.node(fixture.node_id)
         self.assertIn(CANARY, repr(node.author_packet))
@@ -710,7 +741,6 @@ class RolloutEnvironmentTests(unittest.TestCase):
         started = self.environment.start_member(
             self.entry,
             member_start,
-            self.root / "member-workspace",
         )
         self.assertEqual(started.state.position["lineage_id"], spec.members[0].member_id)
         self.assertEqual(self.store.read_head(spec.members[0].member_id) is not None, True)
@@ -720,7 +750,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.assertEqual(sampler.writer_seed, spec.members[0].writer_seed)
         self.assertEqual(sampler.model_ref, spec.policy["model_ref"])
 
-    def test_enter_derives_and_materializes_an_unpublished_root(self):
+    def test_enter_derives_an_unpublished_root_without_materializing_a_workspace(self):
         fixture = make_entry_fixture()
         root = self.root / "enter"
         root.mkdir()
@@ -729,9 +759,12 @@ class RolloutEnvironmentTests(unittest.TestCase):
         store = TaskGraphStore(root / "store", verifier=gate)
         _persist_fixture(store, fixture, checkpoint=False)
         env = RolloutEnvironment(store, fixture.graph, None, gate, fixture.graph.policy)
-        runtime = env.enter(fixture.node_id, fixture.params, root / "workspace")
+        workspace = root / "workspace"
+        runtime = env.enter(fixture.node_id, fixture.params)
         self.assertIsNone(store.read_head(fixture.params.lineage_id))
         self.assertEqual(runtime.state, fixture.state)
+        self.assertFalse(workspace.exists())
+        self.assertFalse(hasattr(runtime, "workspace"))
         self.assertEqual(env.verify(runtime).checkpoint_id, runtime.checkpoint_id)
 
     def test_candidate_view_cannot_reach_a_port(self):
@@ -739,15 +772,104 @@ class RolloutEnvironmentTests(unittest.TestCase):
         transition = DERIVE["WriterTurnV1"](
             view, make_turn(view, content="draft"), self.environment.reader
         )
-        with self.assertRaises(ProjectionError):
+        with self.assertRaises(ConcurrentUpdateError):
             self.environment.port_input(transition.view, next_step(transition.view))
+
+    def test_head_and_caller_error_classes_are_consistent(self):
+        view = self.environment.verify(self.runtime)
+        candidate = DERIVE["WriterTurnV1"](
+            view, make_turn(view, content="candidate"), self.environment.reader
+        ).view
+        sibling = DERIVE["WriterTurnV1"](
+            view, make_turn(view, content="sibling"), self.environment.reader
+        )
+        for artifact in sibling.artifacts:
+            self.store.persist_artifact(artifact)
+        self.store.persist(sibling.event)
+        sibling_checkpoint = self.store.save_checkpoint(sibling.state, parent=view.checkpoint_id)
+        self.assertEqual(sibling_checkpoint, sibling.view.checkpoint_id)
+
+        foreign_env, foreign_runtime = self._enter_alternate_policy("policy-port")
+        foreign_view = foreign_env.verify(foreign_runtime)
+        wrong_state = replace(
+            self.runtime,
+            state=replace(
+                self.runtime.state,
+                position={**self.runtime.state.position, "visit_id": "forged-visit"},
+            ),
+        )
+        wrong_context = replace(
+            self.runtime,
+            context=replace(self.runtime.context, rendering={"forged": True}),
+        )
+        cases = (
+            (
+                "unpersisted candidate",
+                lambda: self.environment.port_input(candidate, next_step(candidate)),
+                ConcurrentUpdateError,
+            ),
+            (
+                "persisted sibling",
+                lambda: self.environment.port_input(sibling.view, next_step(sibling.view)),
+                ConcurrentUpdateError,
+            ),
+            (
+                "foreign admission policy",
+                lambda: self.environment.port_input(foreign_view, next_step(foreign_view)),
+                WriterRuntimeError,
+            ),
+            (
+                "handle state mismatch",
+                lambda: self.environment.verify(wrong_state),
+                WriterRuntimeError,
+            ),
+            (
+                "handle context mismatch",
+                lambda: self.environment.verify(wrong_context),
+                WriterRuntimeError,
+            ),
+        )
+        for label, action, error in cases:
+            with self.subTest(case=label), self.assertRaises(error):
+                action()
+
+        committed = self.environment.commit(self.runtime, make_turn(view, content="winner"))
+        stale_cases = (
+            ("stale handle", lambda: self.environment.verify(self.runtime)),
+            ("stale view", lambda: self.environment.port_input(view, next_step(view))),
+        )
+        for label, action in stale_cases:
+            with self.subTest(case=label), self.assertRaises(ConcurrentUpdateError):
+                action()
+        self.assertEqual(
+            self.store.read_head(view.state.position["lineage_id"]), committed.commit_id
+        )
+
+    def test_identical_commit_retry_returns_the_published_head(self):
+        view = self.environment.verify(self.runtime)
+        turn = make_turn(view, content="same candidate")
+        other_environment = RolloutEnvironment(
+            self.store,
+            self.fixture.graph,
+            None,
+            self.gate,
+            self.fixture.graph.policy,
+        )
+        winner = self.environment.commit(self.runtime, turn)
+        retry = other_environment.commit(self.runtime, turn)
+        self.assertEqual(retry.commit_id, winner.commit_id)
+        self.assertEqual(retry.runtime.checkpoint_id, winner.runtime.checkpoint_id)
 
     def test_adapter_contract_rejection_writes_nothing_and_gate_keeps_projection_error(self):
         view = self.environment.verify(self.runtime)
         # Entry contracts currently cannot seed token limits; isolate the producer mapping.
         limited_view = with_budget(view, self.fixture.reader, limits={"generated_tokens": 1})
         missing_usage = make_turn(limited_view, usage={})
-        with patch.object(self.environment, "_verify", return_value=limited_view):
+        with patch.object(
+            self.environment,
+            "_verify",
+            return_value=(limited_view, None, True),
+        ):
             with self.assertRaises(AdapterContractError):
                 self.environment.commit(self.runtime, missing_usage)
 
@@ -779,10 +901,57 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.gate.verify_commit(self.store, view.checkpoint_id, (event,), self.runtime.state)
         self.assertEqual(self.store.read_head(view.state.position["lineage_id"]), old_head)
 
+    def test_producer_corruption_stays_a_store_error_and_missing_input_ref_is_projection(self):
+        policy = ContextPolicyV1("drop")
+        policy_ref = self.store.put_artifact(policy.to_wire())
+        path = self.store._artifact_path(policy_ref, False)
+        path.write_bytes(b"corrupted bytes")
+        old_head = self.store.read_head(self.fixture.params.lineage_id)
+
+        with self.assertRaises(CorruptRecordError):
+            self.environment.commit(
+                self.runtime,
+                ContextOperationInputV1(policy_ref=policy_ref),
+            )
+        self.assertEqual(self.store.read_head(self.fixture.params.lineage_id), old_head)
+
+        missing_ref = "f" * 64
+        with self.assertRaises(ProjectionError) as rejected:
+            self.environment.commit(
+                self.runtime,
+                ContextOperationInputV1(policy_ref=missing_ref),
+            )
+        self.assertIsInstance(rejected.exception.__cause__, MissingReferenceError)
+        self.assertEqual(self.store.read_head(self.fixture.params.lineage_id), old_head)
+
+    def test_gate_decode_path_preserves_disk_corruption(self):
+        view = self.environment.verify(self.runtime)
+        policy = ContextPolicyV1("drop")
+        policy_ref = self.store.put_artifact(policy.to_wire())
+        input_record = ContextOperationInputV1(policy_ref=policy_ref)
+        payload_ref = self.store.put_artifact(input_record.to_wire())
+        event = EventV1(
+            previous=view.head_event_id,
+            seq=view.state.history["seq"] + 1,
+            lineage_id=view.state.position["lineage_id"],
+            rollout_id=view.state.position["lineage_id"],
+            node_visit_id=view.state.position["visit_id"],
+            kind="context_changed",
+            actor="environment",
+            audience=("controller", "writer"),
+            payload_ref=payload_ref,
+            versions_ref=view.state.versions_ref,
+            provenance_ref=view.state.provenance_ref,
+        )
+        self.store._artifact_path(policy_ref, False).write_bytes(b"tampered")
+
+        with self.assertRaises(CorruptRecordError):
+            self.gate._derive(self.store, view, event, StoreArtifactReader(self.store))
+
     def test_missing_derived_artifact_fails_publish_without_advancing_head(self):
         view = self.environment.verify(self.runtime)
         turn = make_turn(view, content="persisted turn")
-        original = self.environment._persist_artifact
+        original = self.store.persist_artifact
         head = self.store.read_head(view.state.position["lineage_id"])
 
         def omit_budget(artifact):
@@ -794,7 +963,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
                         return None
             return original(artifact)
 
-        with patch.object(self.environment, "_persist_artifact", side_effect=omit_budget):
+        with patch.object(self.store, "persist_artifact", side_effect=omit_budget):
             with self.assertRaises(MissingReferenceError):
                 self.environment.commit(self.runtime, turn)
         self.assertEqual(self.store.read_head(view.state.position["lineage_id"]), head)
@@ -818,17 +987,14 @@ class RolloutEnvironmentTests(unittest.TestCase):
 
         spec = _group_spec(self.fixture, self.entry, self.store)
         self.store.operation = counted
-        entered = self.environment.enter(
-            self.fixture.node_id, self.fixture.params, self.root / "scoped-entry"
-        )
+        entered = self.environment.enter(self.fixture.node_id, self.fixture.params)
         self.assertEqual(entered.checkpoint_id, self.entry)
         self.assertEqual(scopes, 1)
-        reopened = self.environment.open(self.entry, self.root / "scoped-open")
+        reopened = self.environment.open(self.entry)
         self.assertEqual(scopes, 2)
         self.environment.start_member(
             self.entry,
             MemberStartV1(group_spec_ref=spec.identity(), ordinal=0),
-            self.root / "scoped-member",
         )
         self.assertEqual(scopes, 3)
         view = self.environment.verify(reopened)

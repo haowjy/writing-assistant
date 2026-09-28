@@ -37,6 +37,7 @@ from writing_agent.task_graph import (
     EventV1,
     GraphInstanceV1,
     MessageV1,
+    Record,
     canonical_bytes,
     domain_hash,
     domain_hash_bytes,
@@ -77,6 +78,7 @@ from writing_agent.task_graph_records import (
 from writing_agent.task_graph_records import (
     ContextRevisionV1 as ChainedContextRevisionV1,
 )
+from writing_agent.task_graph_wire import WireRecord
 
 DEFAULT_MAX_WORKSPACE_BYTES = 1_000_000
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -133,6 +135,7 @@ class CommitVerifier(Protocol):
         events: Sequence[EventV1],
         next_state: EnvironmentStateV1,
     ) -> Any: ...
+
 
 @dataclass(frozen=True)
 class _Artifact:
@@ -305,6 +308,26 @@ class TaskGraphStore:
         if self._artifact_path(identity, True).exists():
             result.add("private")
         return frozenset(result)
+
+    @operation_scoped
+    def persist_artifact(self, artifact: Any) -> str:
+        """Persist one identity-checked derived artifact in its declared domain."""
+        value = artifact.value
+        if artifact.kind in {"context_node", "context_revision"}:
+            identity = self.persist(value)
+        elif artifact.value_kind == "bytes":
+            identity = self.put_bytes_artifact(value, private=artifact.kind == "private")
+        else:
+            if isinstance(value, WireRecord):
+                body = value.to_wire()
+            elif isinstance(value, Record):
+                body = value.to_dict()
+            else:
+                body = load_canonical_json(value)
+            identity = self.put_artifact(body, private=artifact.kind == "private")
+        if identity != artifact.ref:
+            raise ProjectionError("persisted artifact identity differs from its derive")
+        return identity
 
     @operation_scoped
     def persist(self, record: Any) -> str:

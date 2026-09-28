@@ -51,8 +51,7 @@ class GateStoreFixture:
             self.store.put_artifact(body, private=True)
         self.store.persist(self.fixture.graph.instance)
         for artifact in self.fixture.artifacts:
-            if artifact.kind in {"context_node", "context_revision"}:
-                self.store.persist(artifact.value)
+            self.store.persist_artifact(artifact)
         self.root_id = self.store.save_checkpoint(self.fixture.state)
         self.reader = StoreArtifactReader(self.store)
 
@@ -85,19 +84,9 @@ class GateStoreFixture:
         return DERIVE["ToolObservationV1"](view, observation, self.reader)
 
     def persist_artifacts(self, transition) -> None:
-        self.store.persist(transition.event)
         for artifact in transition.artifacts:
-            if artifact.kind in {"context_node", "context_revision"}:
-                self.store.persist(artifact.value)
-                continue
-            if artifact.value_kind == "canonical_json":
-                value = load_canonical_json(artifact.value)
-            elif artifact.value_kind == "record":
-                value = artifact.value.to_wire()
-            else:
-                self.store.put_bytes_artifact(artifact.value, private=artifact.kind == "private")
-                continue
-            self.store.put_artifact(value, private=artifact.kind == "private")
+            self.store.persist_artifact(artifact)
+        self.store.persist(transition.event)
 
     def publish(self, transition, *, expected_head=None, fault=None):
         self.persist_artifacts(transition)
@@ -838,9 +827,7 @@ class LineageGateTests(unittest.TestCase):
         published_view = fresh_gate.record_published(fixture.store, commit_id)
         self.assertEqual(published_view.checkpoint_id, checkpoint_id)
         self.assertEqual(fixture.store.read_head("rollout-fixture"), commit_id)
-        self.assertEqual(
-            fresh_gate.cache.get(fixture.root_id, checkpoint_id), published_view
-        )
+        self.assertEqual(fresh_gate.cache.get(fixture.root_id, checkpoint_id), published_view)
 
     def test_record_published_requires_the_commit_to_be_the_published_head(self) -> None:
         fixture = GateStoreFixture(self)
