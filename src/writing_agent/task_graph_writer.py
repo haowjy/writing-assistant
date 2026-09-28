@@ -254,7 +254,7 @@ class TransactionalWriterV1:
     def validate_runtime(self, runtime: RuntimeHandle) -> tuple[Any, dict[str, Any]]:
         if self.session.sealed_adapter_ref is not None:
             self.session.require_seal(self.session.sealed_adapter_ref)
-        self.session.require_member_seal(self.store, runtime.state)
+        self.session.require_legacy_group_member_seal(self.store, runtime.state)
         checkpoint = self.store.load_checkpoint(runtime.checkpoint_id)
         if (
             checkpoint.state != runtime.state

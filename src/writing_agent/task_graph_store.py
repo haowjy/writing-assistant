@@ -416,22 +416,6 @@ class TaskGraphStore:
     def read_head(self, lineage_id: str) -> str | None:
         return self._read_head(lineage_id, self._validator())
 
-    @operation_scoped
-    def entry_checkpoint(self, lineage_id: str) -> str | None:
-        """Find the unique parentless entry while a lineage has no published commit."""
-        self._lineage_name(lineage_id)
-        directory = self.root / "checkpoints"
-        if not directory.exists():
-            return None
-        roots = []
-        for path in directory.glob("*.json"):
-            checkpoint = self.load_checkpoint(path.stem)
-            if checkpoint.state.position["lineage_id"] == lineage_id and not checkpoint.parents:
-                roots.append(path.stem)
-        if len(roots) > 1:
-            raise CorruptRecordError("lineage has more than one parentless entry checkpoint")
-        return roots[0] if roots else None
-
     def _read_head(self, lineage_id: str, validator: _ClosureValidator) -> str | None:
         path = self._ref_path(lineage_id)
         try:

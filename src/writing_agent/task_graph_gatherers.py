@@ -8,17 +8,16 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
-from writing_agent.task_graph import canonical_json, context_content_hash
-from writing_agent.task_graph_calls import intake_message, tool_effect_contract
+from writing_agent.task_graph import canonical_json
+from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_contracts import CheckContractV1
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import (
     FAMILIES,
     EvaluationEvidenceV1,
     EvaluationRequestV1,
-    verify_evaluation_evidence,
 )
 from writing_agent.task_graph_ports import (
     EnvironmentAction,
@@ -42,21 +41,6 @@ from writing_agent.task_graph_records import (
 from writing_agent.task_graph_rollout_env import AuthorInput, CheckInput, SamplerInput, ToolInput
 from writing_agent.task_graph_sampling import ArtifactSink, persist_logprob_trace
 from writing_agent.task_graph_scripted import scripted_author_reply
-
-
-class ArtifactReader(Protocol):
-    def artifact(self, ref: str, *, domain: str = "payload", private: bool = False) -> Any: ...
-
-
-class _EvaluatorPacketResolver:
-    def __init__(self, reader: ArtifactReader, packet_ref: str) -> None:
-        self.reader = reader
-        self.packet_ref = packet_ref
-
-    def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]:
-        if ref != self.packet_ref:
-            raise ValueError("evaluator requested an unauthorized packet")
-        return self.reader.artifact(ref, private=True)
 
 
 class SamplingRunner:
@@ -88,10 +72,14 @@ class SamplingRunner:
         prepared = PreparedSamplingInput(
             request_ref=request_ref,
             prepared_request_ref=prepared_ref,
-            context_content_hash=context_content_hash(
-                port.messages, tools=port.tools, rendering=port.rendering
-            ),
+            context_content_hash=port.context_content_hash,
             context_revision_ref=port.context_revision_ref,
+            writer_seed=port.writer_seed,
+            model_ref=port.model_ref,
+            behavior_policy_ref=port.behavior_policy_ref,
+            decoding_ref=port.decoding_ref,
+            tokenizer_ref=port.tokenizer_ref,
+            template_ref=port.template_ref,
             messages_json=canonical_json(request["messages"]),
             tools_json=canonical_json(port.tools),
             rendering_json=canonical_json(port.rendering),
@@ -164,16 +152,6 @@ class ToolRunner:
                 raise ExecutionInfrastructureError(result.infrastructure)
             observation = dict(result.observation)
             after = result.snapshot.files()
-            tool_effect_contract(
-                name,
-                arguments,
-                before,
-                after,
-                observation.get("ok"),
-                max_file_bytes=port.tool_spec.max_file_bytes,
-                max_workspace_bytes=port.tool_spec.max_workspace_bytes,
-                storage_bytes_limit=port.tool_spec.max_workspace_bytes,
-            )
             effect = {
                 path: {"before": before.get(path), "after": after.get(path)}
                 for path in sorted(set(before) | set(after))
@@ -224,12 +202,10 @@ class CheckRunner:
     def __init__(
         self,
         artifacts: ArtifactSink,
-        reader: ArtifactReader,
         evaluator: Evaluator,
         check_contracts: Mapping[str, CheckContractV1],
     ) -> None:
         self.artifacts = artifacts
-        self.reader = reader
         self.evaluator = evaluator
         self.check_contracts = dict(check_contracts)
 
@@ -260,17 +236,12 @@ class CheckRunner:
             evaluator_packet=dict(port.evaluator_packet),
         )
         evidence = self.evaluator.evaluate(evaluation_request)
-        if not isinstance(evidence, EvaluationEvidenceV1) or evidence.family != family.name:
-            raise AdapterContractError("evaluator returned evidence for another family")
+        if not isinstance(evidence, EvaluationEvidenceV1):
+            raise AdapterContractError("evaluator must return EvaluationEvidenceV1")
         try:
             wire = evidence.to_wire(evaluation_request)
-            verified = verify_evaluation_evidence(
-                evaluation_request,
-                wire,
-                _EvaluatorPacketResolver(self.reader, packet_ref),
-            )
             evidence_ref = self.artifacts.put_artifact(wire)
-            return EvaluatorResultV1(port.request_ref, verified.status, evidence_ref)
+            return EvaluatorResultV1(port.request_ref, evidence.status, evidence_ref)
         except AdapterContractError:
             raise
         except (KeyError, TypeError, ValueError) as exc:

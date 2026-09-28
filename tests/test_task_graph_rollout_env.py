@@ -30,11 +30,19 @@ from writing_agent.task_graph_errors import (
     AdapterContractError,
     ConcurrentUpdateError,
     CorruptRecordError,
+    DriverBudgetError,
     MissingReferenceError,
     ProjectionError,
     WriterRuntimeError,
 )
 from writing_agent.task_graph_gate import DERIVE, LineageGate, StoreArtifactReader
+from writing_agent.task_graph_gatherers import (
+    CheckRunner,
+    Gatherers,
+    SamplingRunner,
+    ScriptedAuthorSource,
+    ToolRunner,
+)
 from writing_agent.task_graph_group import POLICY_FIELDS, derive_group_seed
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
@@ -42,17 +50,20 @@ from writing_agent.task_graph_local import (
     LocalWorkspaceEnvironment,
     ScriptedSampleBackend,
 )
-from writing_agent.task_graph_ports import PortDescriptorV1, RuntimeDependenciesV1
+from writing_agent.task_graph_ports import PortDescriptorV1, RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import GroupMemberSpecV1, GroupSpecV1
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1 as AdmissionPolicyRecord,
 )
 from writing_agent.task_graph_records import (
+    ContextContentV1,
     ContextOperationInputV1,
+    ContextRevisionV1,
     EnvironmentStepV1,
     MemberStartV1,
     ToolObservationV1,
 )
+from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_rollout_env import (
     AuthorInput,
     CheckInput,
@@ -61,6 +72,7 @@ from writing_agent.task_graph_rollout_env import (
     ToolInput,
 )
 from writing_agent.task_graph_store import TaskGraphStore
+from writing_agent.task_graph_transition import DerivedArtifact
 
 CANARY = "PORT_PRIVACY_CANARY_9814"
 FAULT_STAGES = (
@@ -96,6 +108,21 @@ def _persist_fixture(store, fixture, *, checkpoint=True):
     if checkpoint:
         return store.save_checkpoint(fixture.state)
     return None
+
+
+def _foreign_context_revision(store, view):
+    content = ContextContentV1(
+        parent_ref=None,
+        messages=view.context.messages,
+        tools=view.context.tools,
+        rendering={**view.context.rendering, "prefix_id": "other-context"},
+    )
+    revision = ContextRevisionV1(content.identity(), None, ())
+    store.persist_artifact(DerivedArtifact(content.identity(), content, "context_node", "record"))
+    store.persist_artifact(
+        DerivedArtifact(revision.identity(), revision, "context_revision", "record")
+    )
+    return revision.identity()
 
 
 def _author_check_fixture():
@@ -167,7 +194,7 @@ def _author_check_fixture():
     return replace(fixture, graph=graph, state=entry_value.state, artifacts=entry_value.artifacts)
 
 
-def _group_spec(fixture, entry_checkpoint, store, *, model_ref=None):
+def _group_spec(fixture, entry_checkpoint, store, *, model_ref=None, adapter_ref=None):
     state = fixture.state
 
     def marker(field):
@@ -204,6 +231,8 @@ def _group_spec(fixture, entry_checkpoint, store, *, model_ref=None):
     policy = {name: fixture.params.rng_ref for name in POLICY_FIELDS - {"rng_derivation_version"}}
     if model_ref is not None:
         policy["model_ref"] = model_ref
+    if adapter_ref is not None:
+        policy["adapter_ref"] = adapter_ref
     policy["context_policy_ref"] = store.put_artifact(ContextPolicyV1("drop").to_wire())
     policy["rng_derivation_version"] = "sha256-domain-v1"
     sequence, seed, mode, count = 0, 771, "fixture", 2
@@ -372,6 +401,70 @@ class RolloutEnvironmentTests(unittest.TestCase):
         backend.descriptor = PortDescriptorV1("sampling", "altered-backend", "1")
         with self.assertRaises(AdapterContractError):
             environment.verify(runtime)
+
+    def test_group_member_session_seal_uses_the_verified_view_manifest(self):
+        tools = LocalTextToolProvider()
+        backend = ScriptedSampleBackend(())
+        backend.descriptor = PortDescriptorV1("sampling", "group-runtime-a", "1")
+        dependencies = RuntimeDependenciesV1(
+            backend,
+            LocalWorkspaceEnvironment(tools),
+            tools,
+            DeterministicEvaluator(),
+        )
+        unbound = RuntimeSession.create(
+            self.store,
+            self.fixture.params.lineage_id,
+            self.entry,
+            dependencies,
+        )
+        session = unbound.bind(self.store, unbound.manifest_ref)
+        environment = RolloutEnvironment(
+            self.store,
+            self.fixture.graph,
+            session,
+            self.gate,
+            self.fixture.graph.policy,
+        )
+        model_ref = self.store.put_artifact({"model_id": "group-runtime-model"})
+        spec = _group_spec(
+            self.fixture,
+            self.entry,
+            self.store,
+            model_ref=model_ref,
+            adapter_ref=session.manifest_ref,
+        )
+        runtime = environment.start_member(
+            self.entry,
+            MemberStartV1(group_spec_ref=spec.identity(), ordinal=0),
+        )
+        self.assertEqual(environment.verify(runtime).group, spec)
+
+        other_tools = LocalTextToolProvider()
+        other_backend = ScriptedSampleBackend(())
+        other_backend.descriptor = PortDescriptorV1("sampling", "group-runtime-b", "1")
+        other_dependencies = RuntimeDependenciesV1(
+            other_backend,
+            LocalWorkspaceEnvironment(other_tools),
+            other_tools,
+            DeterministicEvaluator(),
+        )
+        other_unbound = RuntimeSession.create(
+            self.store,
+            spec.members[0].member_id,
+            runtime.checkpoint_id,
+            other_dependencies,
+        )
+        other_session = other_unbound.bind(self.store, other_unbound.manifest_ref)
+        other_environment = RolloutEnvironment(
+            self.store,
+            self.fixture.graph,
+            other_session,
+            self.gate,
+            self.fixture.graph.policy,
+        )
+        with self.assertRaises(AdapterContractError):
+            other_environment.open_head(spec.members[0].member_id)
 
     def _alternate_policy_entry(self, lineage: str):
         policy = replace(
@@ -702,6 +795,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
                 "messages",
                 "tools",
                 "rendering",
+                "context_content_hash",
                 "context_revision_ref",
                 "action_id",
                 "writer_seed",
@@ -750,6 +844,54 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.assertEqual(sampler.writer_seed, spec.members[0].writer_seed)
         self.assertEqual(sampler.model_ref, spec.policy["model_ref"])
 
+    def test_group_member_sampled_through_driver_reports_its_sealed_seed(self):
+        model_ref = self.store.put_artifact({"model_id": "pinned-model"})
+        spec = _group_spec(self.fixture, self.entry, self.store, model_ref=model_ref)
+        member_start = MemberStartV1(group_spec_ref=spec.identity(), ordinal=0)
+        runtime = self.environment.start_member(self.entry, member_start)
+        member = spec.members[0]
+        initial_context_ref = self.environment.verify(runtime).context.content_ref
+
+        class CapturingScriptedBackend(ScriptedSampleBackend):
+            def sample(self, prepared):
+                self.prepared = prepared
+                return super().sample(prepared)
+
+        backend = CapturingScriptedBackend(
+            [SampleResult({"role": "assistant", "content": "member draft", "tool_calls": []})]
+        )
+        checks = {
+            check.identity(): check
+            for node in self.fixture.graph.nodes.values()
+            for check in node.checks.values()
+        }
+        gatherers = Gatherers(
+            SamplingRunner(self.store, backend),
+            ToolRunner(LocalTextToolProvider()),
+            ScriptedAuthorSource(),
+            CheckRunner(self.store, DeterministicEvaluator(), checks),
+        )
+        try:
+            result = RolloutDriver(self.environment, gatherers).run(runtime, max_steps=1)
+            runtime = result.runtime
+        except DriverBudgetError as exc:
+            runtime = exc.runtime
+
+        event = self.store.load_event(runtime.state.history["head"])
+        turn = self.store.get_artifact(event.payload_ref)
+        trace = turn["adapter_trace"]
+        self.assertEqual(backend.prepared.writer_seed, member.writer_seed)
+        self.assertEqual(trace["seed"], member.writer_seed)
+        self.assertEqual(backend.prepared.model_ref, spec.policy["model_ref"])
+        self.assertEqual(backend.prepared.behavior_policy_ref, spec.policy["behavior_policy_ref"])
+        self.assertEqual(backend.prepared.decoding_ref, spec.policy["decoding_ref"])
+        self.assertEqual(backend.prepared.tokenizer_ref, spec.policy["tokenizer_ref"])
+        self.assertEqual(backend.prepared.template_ref, spec.policy["template_ref"])
+        self.assertEqual(
+            backend.prepared.context_content_hash,
+            initial_context_ref,
+        )
+
     def test_enter_derives_an_unpublished_root_without_materializing_a_workspace(self):
         fixture = make_entry_fixture()
         root = self.root / "enter"
@@ -766,6 +908,11 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.assertFalse(workspace.exists())
         self.assertFalse(hasattr(runtime, "workspace"))
         self.assertEqual(env.verify(runtime).checkpoint_id, runtime.checkpoint_id)
+
+    def test_open_head_requires_a_published_head_and_entry_can_open_directly(self):
+        with self.assertRaises(ConcurrentUpdateError):
+            self.environment.open_head(self.fixture.params.lineage_id)
+        self.assertEqual(self.environment.open(self.entry).checkpoint_id, self.entry)
 
     def test_candidate_view_cannot_reach_a_port(self):
         view = self.environment.verify(self.runtime)
@@ -890,6 +1037,47 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.gate.verify_commit(self.store, view.checkpoint_id, (event,), self.runtime.state)
         self.assertEqual(self.store.read_head(view.state.position["lineage_id"]), old_head)
 
+    def test_non_group_context_claims_are_bound_on_fresh_and_persisted_paths(self):
+        view = self.environment.verify(self.runtime)
+        wrong = domain_hash("payload", {"not": "this context"})
+        wrong_revision = _foreign_context_revision(self.store, view)
+        turn = make_turn(
+            view,
+            adapter_trace={
+                "context_revision_ref": wrong_revision,
+                "context_content_hash": wrong,
+            },
+        )
+        lineage = view.state.position["lineage_id"]
+        old_head = self.store.read_head(lineage)
+        with self.assertRaises(AdapterContractError):
+            self.environment.commit(self.runtime, turn)
+        self.assertEqual(self.store.read_head(lineage), old_head)
+
+        payload_ref = self.store.put_artifact(turn.to_wire())
+        event = EventV1(
+            previous=view.head_event_id,
+            seq=view.state.history["seq"] + 1,
+            lineage_id=lineage,
+            rollout_id=lineage,
+            node_visit_id=view.state.position["visit_id"],
+            kind="writer_action",
+            actor="writer",
+            audience=("controller", "trainer", "writer"),
+            payload_ref=payload_ref,
+            versions_ref=view.state.versions_ref,
+            provenance_ref=view.state.provenance_ref,
+        )
+        with self.assertRaises(ProjectionError):
+            self.store.publish(
+                lineage,
+                old_head,
+                (event,),
+                view.state,
+                parent_checkpoint=view.checkpoint_id,
+            )
+        self.assertEqual(self.store.read_head(lineage), old_head)
+
     def test_group_sampling_pin_drift_is_adapter_error_before_commit_and_projection_on_replay(self):
         model_ref = self.store.put_artifact({"model_id": "pinned-model"})
         spec = _group_spec(self.fixture, self.entry, self.store, model_ref=model_ref)
@@ -916,7 +1104,10 @@ class RolloutEnvironmentTests(unittest.TestCase):
             ),
             (
                 "context_revision_ref",
-                {**expected, "context_revision_ref": domain_hash("payload", {"wrong": "revision"})},
+                {
+                    **expected,
+                    "context_revision_ref": _foreign_context_revision(self.store, view),
+                },
             ),
             (
                 "rendering",

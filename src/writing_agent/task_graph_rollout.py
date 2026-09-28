@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph_controller import Directive, next_step
+from writing_agent.task_graph_controller import Directive
 from writing_agent.task_graph_errors import DriverBudgetError
 from writing_agent.task_graph_gatherers import Gatherers
 from writing_agent.task_graph_records import EnvironmentStepV1
@@ -55,14 +55,12 @@ class RolloutDriver:
         while True:
             # Each environment call owns and closes its operation scope. Never keep
             # store.operation() open while an adapter or caller callback runs.
-            view = self.env.verify(runtime)
-            directive = next_step(view)
+            _view, directive, port = self.env.step_input(runtime)
             if directive.kind in {"done", "halt"}:
                 return RunResult(runtime, directive)
             if steps >= max_steps:
                 raise DriverBudgetError(max_steps, runtime)
 
-            port = self.env.port_input(view, directive)
             input_record = self.alternatives(directive, port) if directive.alternatives else None
             if input_record is None:
                 input_record = self._gather(directive, port)

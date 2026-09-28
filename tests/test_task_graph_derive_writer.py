@@ -236,6 +236,12 @@ class WriterDeriveTests(unittest.TestCase):
         self.fixture, self.view = make_view()
         self.reader = self.fixture.reader
 
+    def test_negative_token_ids_are_rejected_by_writer_turn_codec(self):
+        wire = make_turn(self.view).to_dict()
+        wire["adapter_trace"] = {"generated_token_ids": [-1]}
+        with self.assertRaises((TypeError, ValueError)):
+            WriterTurnV1.from_dict(wire)
+
     def test_writer_turn_rule_table_and_fixed_points(self):
         valid_call = call("write_file", {"path": "draft.txt", "content": "edited\n"})
         invalid_call = {"id": "raw-bad", "type": "not-a-function", "payload": "sampled"}
@@ -382,17 +388,17 @@ class WriterDeriveTests(unittest.TestCase):
                     with self.assertRaises(ProjectionError):
                         derive_writer_turn(view, make_turn(view, adapter_trace=claims), self.reader)
 
-    def test_group_binding_legacy_caller_still_uses_its_trace(self):
+    def test_group_binding_checks_present_policy_seed_and_model_claims(self):
         policy = {"behavior_policy_ref": "a" * 64}
-        trace = {
-            "model": "model-v1",
-            "context_content_hash": "b" * 64,
-            "context_revision_ref": "c" * 64,
-            "rendering": {"template": "x"},
-        }
-        bind_group_sampling_claims(policy, 4, trace, {"behavior_policy_ref": "a" * 64})
-        with self.assertRaises(ProjectionError):
-            bind_group_sampling_claims(policy, 4, trace, {"model": "different"})
+        claims = {"behavior_policy_ref": policy["behavior_policy_ref"], "seed": 4}
+        bind_group_sampling_claims(policy, 4, claims, model_id="model-v1")
+        for changed in (
+            {**claims, "behavior_policy_ref": "b" * 64},
+            {**claims, "seed": 5},
+            {**claims, "model": "different"},
+        ):
+            with self.subTest(changed=changed), self.assertRaises(ProjectionError):
+                bind_group_sampling_claims(policy, 4, changed, model_id="model-v1")
 
 
 class ToolResultDeriveTests(unittest.TestCase):

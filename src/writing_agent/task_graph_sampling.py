@@ -471,19 +471,11 @@ def decode_and_bind_sampling(
 def bind_group_sampling_claims(
     policy: Mapping[str, str],
     writer_seed: int,
-    trace: Mapping[str, Any],
-    claims: Any,
+    claims: Mapping[str, Any],
     *,
-    model_id: str | None = None,
-    context_content_hash: str | None = None,
-    context_revision_ref: str | None = None,
-    rendering: Mapping[str, Any] | None = None,
+    model_id: str,
 ) -> None:
-    """Compare adapter claims with caller-pinned group and active-view values.
-
-    Keyword expectations are supplied by the new derive. Their ``None`` defaults
-    preserve the old group caller, which still binds against the legacy trace.
-    """
+    """Compare present adapter claims with the member's sealed sampling policy."""
     if not isinstance(claims, Mapping):
         return
     for field, expected in policy.items():
@@ -493,28 +485,8 @@ def bind_group_sampling_claims(
         policy["behavior_policy_ref"]
     ):
         raise ProjectionError("writer sample used a different behavior policy")
-    for field, expected in (
-        ("seed", writer_seed),
-        ("model", trace.get("model") if model_id is None else model_id),
-        (
-            "context_content_hash",
-            trace.get("context_content_hash")
-            if context_content_hash is None
-            else context_content_hash,
-        ),
-        (
-            "context_revision_ref",
-            trace.get("context_revision_ref")
-            if context_revision_ref is None
-            else context_revision_ref,
-        ),
-        ("rendering", trace.get("rendering") if rendering is None else rendering),
-    ):
-        if (
-            expected is not None
-            and field in claims
-            and canonical_bytes(claims[field]) != canonical_bytes(expected)
-        ):
+    for field, expected in (("seed", writer_seed), ("model", model_id)):
+        if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
             raise ProjectionError(f"writer sample request/adapter changed {field}")
 
 
@@ -532,22 +504,20 @@ def _decode_writer_turn_sampling(
     if adapter is not None:
         if not isinstance(adapter, Mapping) or "native_on_policy_eligible" in adapter:
             raise ProjectionError("input.adapter_trace: adapter may not claim native eligibility")
+        for field, expected in (
+            ("context_revision_ref", context.revision_ref),
+            ("context_content_hash", context.content_ref),
+            ("rendering", context.rendering),
+        ):
+            if field in adapter and canonical_bytes(adapter[field]) != canonical_bytes(expected):
+                raise ProjectionError(f"input.adapter_trace.{field}: differs from active context")
         tokens_present = "generated_token_ids" in adapter
         tokens = adapter.get("generated_token_ids")
-        if tokens_present and (
-            not isinstance(tokens, (tuple, list))
-            or any(type(token) is not int or token < 0 for token in tokens)
-        ):
-            raise ProjectionError(
-                "input.adapter_trace.generated_token_ids: expected nonnegative integers"
-            )
         if tokens_present and (
             type(turn.usage.get("completion_tokens")) is not int
             or turn.usage["completion_tokens"] != len(tokens)
         ):
-            raise ProjectionError(
-                "input.usage.completion_tokens: differs from generated token count"
-            )
+            raise ProjectionError("input.usage.completion_tokens: token count mismatch")
 
         logprob_fields = {
             "per_token_logprobs_ref",
@@ -556,9 +526,7 @@ def _decode_writer_turn_sampling(
         }
         present = logprob_fields & set(adapter)
         if present and present != logprob_fields:
-            raise ProjectionError(
-                "input.adapter_trace.per_token_logprobs_ref: reference, codec and shape required"
-            )
+            raise ProjectionError("input.adapter_trace.per_token_logprobs_ref: triplet required")
         if present:
             shape = adapter["per_token_logprobs_shape"]
             if (
@@ -569,25 +537,17 @@ def _decode_writer_turn_sampling(
                 or type(shape[0]) is not int
                 or shape[0] != len(tokens)
             ):
-                raise ProjectionError(
-                    "input.adapter_trace.per_token_logprobs_shape: not aligned with token IDs"
-                )
+                raise ProjectionError("input.adapter_trace.per_token_logprobs_shape: not aligned")
             try:
                 logprobs = reader.bytes_artifact(adapter["per_token_logprobs_ref"])
             except (KeyError, TypeError, ValueError) as exc:
-                raise ProjectionError(
-                    "input.adapter_trace.per_token_logprobs_ref: byte artifact unavailable"
-                ) from exc
+                raise ProjectionError("per_token_logprobs_ref: unavailable") from exc
             if not isinstance(logprobs, bytes) or len(logprobs) != 4 * len(tokens):
-                raise ProjectionError(
-                    "input.adapter_trace.per_token_logprobs_ref: byte shape differs"
-                )
+                raise ProjectionError("logprob byte shape differs")
         elif "per_token_logprobs_ref" in adapter:
             # The wire codec also rejects this partial triplet; keep the decoder strict
             # for direct callers that provide an intentionally forged instance.
-            raise ProjectionError(
-                "input.adapter_trace.per_token_logprobs_ref: typed metadata is incomplete"
-            )
+            raise ProjectionError("input.adapter_trace.per_token_logprobs_ref: triplet required")
 
     prepared = None
     if turn.prepared_request_ref is not None:
@@ -608,16 +568,12 @@ def _decode_writer_turn_sampling(
             try:
                 payload = reader.artifact(prepared.payload_ref)
             except (KeyError, TypeError, ValueError) as exc:
-                raise ProjectionError(
-                    "input.request_ref: verified request payload unavailable"
-                ) from exc
+                raise ProjectionError("input.request_ref: verified payload unavailable") from exc
             messages = [message.to_dict() for message in context.messages]
             if not isinstance(payload, Mapping) or canonical_bytes(
                 payload.get("messages")
             ) != canonical_bytes(messages):
-                raise ProjectionError(
-                    "input.request_ref: verified messages differ from the active context"
-                )
+                raise ProjectionError("input.request_ref: verified messages differ")
 
     return BoundWriterTurnSamplingV1(turn, prepared)
 

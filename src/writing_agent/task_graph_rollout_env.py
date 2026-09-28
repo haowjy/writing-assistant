@@ -63,7 +63,7 @@ class SessionSeals(Protocol):
 
     def require_seal(self, adapter_ref: str) -> None: ...
 
-    def require_member_seal(self, store: TaskGraphStore, state: EnvironmentStateV1) -> None: ...
+    def require_member_seal(self, view: LineageView) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,7 @@ class SamplerInput:
     messages: tuple[MessageV1, ...]
     tools: tuple[Mapping[str, Any], ...]
     rendering: Mapping[str, Any]
+    context_content_hash: str
     context_revision_ref: str
     action_id: str
     writer_seed: int | None
@@ -189,7 +190,7 @@ class RolloutEnvironment:
             self.store.persist_artifact(artifact)
         self.store.save_checkpoint(entry.state)
         runtime = self._runtime(entry.view)
-        self._check_session_seals(runtime.state)
+        self._check_session_seals(entry.view)
         return runtime
 
     @operation_scoped
@@ -201,10 +202,7 @@ class RolloutEnvironment:
         """Resume the verified lineage head through its published commit."""
         commit_id = self.store.read_head(lineage_id)
         if commit_id is None:
-            entry_checkpoint = self.store.entry_checkpoint(lineage_id)
-            if entry_checkpoint is None:
-                raise ConcurrentUpdateError("lineage has no published head or entry checkpoint")
-            return self._open(entry_checkpoint)
+            raise ConcurrentUpdateError("lineage has no published head")
         commit = self.store.load_commit(commit_id)
         checkpoint = self.store.load_checkpoint(commit.checkpoint)
         if checkpoint.state.position["lineage_id"] != lineage_id:
@@ -216,15 +214,25 @@ class RolloutEnvironment:
         return self._verify(runtime)
 
     @operation_scoped
+    def step_input(self, runtime: RuntimeHandle) -> tuple[LineageView, Directive, PortInput | None]:
+        """Verify once, then return the directive and its authorized port input."""
+        view = self._verify(runtime)
+        directive = next_step(view)
+        return view, directive, self._build_port_input(view, directive)
+
+    @operation_scoped
     def port_input(self, view: LineageView, directive: Directive) -> PortInput | None:
         checkpoint = self._published_checkpoint(view.checkpoint_id)
         if view.state != checkpoint.state:
             raise WriterRuntimeError("port view state differs from its checkpoint")
         if self.gate.view(self.store, view.checkpoint_id) != view:
             raise WriterRuntimeError("port view differs from the verified published checkpoint")
-        self._check_session_seals(view.state)
+        self._check_session_seals(view)
         if next_step(view) != directive:
             raise ProjectionError("port directive differs from the verified view")
+        return self._build_port_input(view, directive)
+
+    def _build_port_input(self, view: LineageView, directive: Directive) -> PortInput | None:
         if directive.kind == "sample_writer":
             member = group_member(view)
             policy = {} if view.group is None else view.group.policy
@@ -232,6 +240,7 @@ class RolloutEnvironment:
                 messages=view.context.messages,
                 tools=view.context.tools,
                 rendering=view.context.rendering,
+                context_content_hash=view.context.content_ref,
                 context_revision_ref=view.context.revision_ref,
                 action_id=writer_action_id(view),
                 writer_seed=None if member is None else member.writer_seed,
@@ -285,7 +294,7 @@ class RolloutEnvironment:
         self._published_checkpoint(checkpoint_id)
         view = self.gate.view(self.store, checkpoint_id)
         runtime = self._runtime(view)
-        self._check_session_seals(runtime.state)
+        self._check_session_seals(view)
         return runtime
 
     @staticmethod
@@ -315,7 +324,7 @@ class RolloutEnvironment:
             view.context.messages, view.context.tools, view.context.rendering
         ):
             raise WriterRuntimeError("runtime handle context differs from its verified checkpoint")
-        self._check_session_seals(runtime.state)
+        self._check_session_seals(view)
         return view
 
     def _published_checkpoint(self, checkpoint_id: str) -> CheckpointV1:
@@ -344,18 +353,18 @@ class RolloutEnvironment:
             is_head = self.store.load_commit(head).checkpoint == checkpoint_id
         return _CheckpointHead(checkpoint, head, is_head)
 
-    def _check_session_seals(self, state: EnvironmentStateV1) -> None:
+    def _check_session_seals(self, view: LineageView) -> None:
         if self.session is None:
             return
         sealed_ref = self.session.sealed_adapter_ref
-        if sealed_ref is not None:
-            try:
+        try:
+            if sealed_ref is not None:
                 self.session.require_seal(sealed_ref)
-            except ValueError as exc:
-                raise AdapterContractError(
-                    "runtime adapter manifest changed after binding"
-                ) from exc
-        self.session.require_member_seal(self.store, state)
+            self.session.require_member_seal(view)
+        except Exception as exc:
+            raise AdapterContractError(
+                "runtime session seal does not match the verified view"
+            ) from exc
 
     def _require_admission_policy(
         self,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -98,7 +99,30 @@ class ScriptedSampleBackend:
 
     def sample(self, prepared):
         self.calls += 1
-        return next(self._results)
+        result = next(self._results)
+        trace = dict(result.trace or {})
+        if prepared.writer_seed is not None:
+            trace.setdefault("seed", prepared.writer_seed)
+        for field in (
+            "model_ref",
+            "behavior_policy_ref",
+            "decoding_ref",
+            "tokenizer_ref",
+            "template_ref",
+        ):
+            value = getattr(prepared, field)
+            if value is not None:
+                trace.setdefault(field, value)
+        trace.setdefault("context_revision_ref", prepared.context_revision_ref)
+        trace.setdefault("context_content_hash", prepared.context_content_hash)
+        trace.setdefault("rendering", json.loads(prepared.rendering_json))
+        return SampleResult(
+            result.message,
+            result.raw_output,
+            result.usage,
+            trace,
+            result.logprobs,
+        )
 
 
 class LocalTextToolProvider:

@@ -78,6 +78,12 @@ class PreparedSamplingInput:
     prepared_request_ref: str
     context_content_hash: str
     context_revision_ref: str
+    writer_seed: int | None
+    model_ref: str | None
+    behavior_policy_ref: str | None
+    decoding_ref: str | None
+    tokenizer_ref: str | None
+    template_ref: str | None
     messages_json: str
     tools_json: str
     rendering_json: str
@@ -93,6 +99,21 @@ class PreparedSamplingInput:
         ):
             raise ValueError("prepared sampling input differs from its persisted request")
         validate_hash(self.prepared_request_ref)
+        validate_hash(self.context_content_hash)
+        validate_hash(self.context_revision_ref)
+        if self.writer_seed is not None and (
+            type(self.writer_seed) is not int or self.writer_seed < 0
+        ):
+            raise ValueError("prepared sampling seed must be a nonnegative integer")
+        for reference in (
+            self.model_ref,
+            self.behavior_policy_ref,
+            self.decoding_ref,
+            self.tokenizer_ref,
+            self.template_ref,
+        ):
+            if reference is not None:
+                validate_hash(reference)
 
     def request(self) -> dict[str, Any]:
         return json.loads(self.request_json)

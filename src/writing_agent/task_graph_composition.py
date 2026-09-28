@@ -6,12 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import (
-    EnvironmentStateV1,
-    canonical_json,
-    load_canonical_json,
-    validate_hash,
-)
+from writing_agent.task_graph import EnvironmentStateV1, canonical_json
 from writing_agent.task_graph_environment import EnvironmentTransactionService
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
@@ -24,8 +19,8 @@ from writing_agent.task_graph_ports import (
     RuntimeDependenciesV1,
     SampleResult,
 )
-from writing_agent.task_graph_record_contracts import GroupSpecV1
 from writing_agent.task_graph_sampling import persist_logprob_trace
+from writing_agent.task_graph_transition import LineageView
 
 
 @dataclass(frozen=True)
@@ -72,36 +67,25 @@ class RuntimeSession:
         ):
             raise ValueError("sealed adapter manifest differs from executing runtime")
 
-    def require_member_seal(self, store, state: EnvironmentStateV1) -> None:
-        """Bind a started group member to its immutable group policy before effects."""
-        lineage = state.position["lineage_id"]
-        if not lineage.startswith("grp-"):
+    def require_member_seal(self, view: LineageView) -> None:
+        """Check the gate-verified group contract against the executing manifest."""
+        spec = view.group
+        if spec is None:
             return
+        lineage = view.state.position["lineage_id"]
+        if lineage not in {member.member_id for member in spec.members}:
+            raise ValueError("group member differs from its verified group contract")
+        self.require_seal(spec.policy["adapter_ref"])
+
+    def require_legacy_group_member_seal(self, store, state: EnvironmentStateV1) -> None:
+        """Do not let an unbound legacy writer act on a recorded group member."""
         seed = store.get_artifact(state.rng_ref)
-        if (
-            not isinstance(seed, dict)
-            or seed.get("record_type") != "GroupMemberSeedsV1"
-            or seed.get("member_id") != lineage
-            or not isinstance(seed.get("group_id"), str)
-        ):
-            raise ValueError("group member lacks its sealed seed witness")
-        validate_hash(seed["group_id"])
-        path = store.root / "groups" / seed["group_id"] / "spec.json"
-        try:
-            spec = GroupSpecV1.from_dict(load_canonical_json(path.read_bytes()))
-        except (OSError, TypeError, ValueError) as exc:
-            raise ValueError("group member lacks a valid sealed group receipt") from exc
-        if spec.group_id != seed["group_id"] or lineage not in {
-            member.member_id for member in spec.members
-        }:
-            raise ValueError("group member differs from sealed group receipt")
-        adapter_ref = spec.policy["adapter_ref"]
-        declared = store.get_artifact(adapter_ref)
-        if isinstance(declared, dict) and declared.get("record_type") == "RuntimeManifestV1":
-            self.require_seal(adapter_ref)
-        elif self.sealed_adapter_ref is not None:
-            # A bound runtime cannot execute against an untyped legacy adapter pin.
-            self.require_seal(adapter_ref)
+        if not isinstance(seed, dict) or seed.get("record_type") != "GroupMemberSeedsV1":
+            return
+        if seed.get("member_id") != state.position["lineage_id"]:
+            raise ValueError("legacy group member has a mismatched seed witness")
+        if self.sealed_adapter_ref is None:
+            raise ValueError("legacy group member requires a sealed adapter manifest")
 
 
 def local_unbound_session(store, rollout_id, entry_checkpoint_id) -> RuntimeSession:
@@ -143,6 +127,12 @@ class RuntimeRunner:
             prepared_request_ref=prepared_ref,
             context_content_hash=runtime.context.content_hash,
             context_revision_ref=runtime.context.identity(),
+            writer_seed=None,
+            model_ref=None,
+            behavior_policy_ref=None,
+            decoding_ref=None,
+            tokenizer_ref=None,
+            template_ref=None,
             messages_json=canonical_json(request["messages"]),
             tools_json=canonical_json(runtime.context.tools),
             rendering_json=canonical_json(runtime.context.rendering),

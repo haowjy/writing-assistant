@@ -143,6 +143,7 @@ EXPECTED_REFS = {
         ("adapter_trace.adapter_ref", "artifact"),
         ("adapter_trace.behavior_policy_ref", "artifact"),
         ("adapter_trace.context_policy_ref", "artifact"),
+        ("adapter_trace.context_revision_ref", "context_revision"),
         ("adapter_trace.decoding_ref", "artifact"),
         ("adapter_trace.model_ref", "artifact"),
         ("adapter_trace.per_token_logprobs_ref", "bytes"),
@@ -169,9 +170,7 @@ EXPECTED_REFS = {
 
 EXPECTED_NON_EDGE_HASHES = {
     "GroupMemberSeedsV1": frozenset({"group_id"}),
-    "WriterTurnV1": frozenset(
-        {"adapter_trace.context_content_hash", "adapter_trace.context_revision_ref"}
-    ),
+    "WriterTurnV1": frozenset({"adapter_trace.context_content_hash"}),
     "GroupSpecV1": frozenset(
         """group_id environment.entry_state_hash environment.entry_tree_hash
         environment.instance_hash environment.graph_hash environment.node_contract_hash
@@ -305,6 +304,7 @@ def record_examples():
                 "per_token_logprobs_ref": R,
                 "per_token_logprobs_codec": "f32-le",
                 "per_token_logprobs_shape": [2],
+                "context_revision_ref": context_revision.identity(),
                 "model_ref": H,
                 "behavior_policy_ref": P,
                 "tokenizer_ref": Q,

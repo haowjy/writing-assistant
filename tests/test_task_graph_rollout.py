@@ -5,7 +5,11 @@ from __future__ import annotations
 import shutil
 import tempfile
 import unittest
+from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
+from unittest.mock import patch
 
 from tests.task_graph_rollout_fixtures import (
     AUTHOR_PACKET_CANARY,
@@ -14,19 +18,34 @@ from tests.task_graph_rollout_fixtures import (
     LEDGER_CANARY,
     PortCallCounter,
     build_rollout_fixture,
+    make_gatherers,
     ports_disabled,
     run_slice,
 )
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError, ProjectionError
-from writing_agent.task_graph_evaluation import EvaluationEvidenceV1
+from writing_agent.task_graph_evaluation import (
+    FAMILIES,
+    DecodedEvidence,
+    EvaluationEvidenceV1,
+    EvaluationRequestV1,
+    EvidenceFamily,
+    verify_evaluation_evidence,
+)
 from writing_agent.task_graph_gate import LineageGate
+from writing_agent.task_graph_gate import derive_input as gate_derive_input
 from writing_agent.task_graph_gatherers import CheckRunner
-from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_ports import EnvironmentResult, EnvironmentSnapshot, SampleResult
 from writing_agent.task_graph_records import ContextOperationInputV1, SampledMessageV1, WriterTurnV1
 from writing_agent.task_graph_rollout import RolloutDriver
-from writing_agent.task_graph_rollout_env import CheckInput, RolloutEnvironment
+from writing_agent.task_graph_rollout_env import (
+    CheckInput,
+    RolloutEnvironment,
+)
+from writing_agent.task_graph_rollout_env import (
+    derive_input as producer_derive_input,
+)
 from writing_agent.task_graph_store import TaskGraphStore
 
 
@@ -102,6 +121,88 @@ class RolloutDriverTests(unittest.TestCase):
         for body in fixture.entry.reader.public.values():
             self.assertNotIn(EVALUATOR_PACKET_CANARY, repr(body))
         self.assertIn(AUTHOR_PACKET_CANARY, repr(author_packet))
+
+    def test_backend_echoed_content_hash_is_the_derive_bound_context_hash(self):
+        class EchoBackend:
+            def sample(self, prepared):
+                self.prepared = prepared
+                return SampleResult(
+                    {"role": "assistant", "content": "echo accepted", "tool_calls": []},
+                    trace={
+                        "context_content_hash": prepared.context_content_hash,
+                        "context_revision_ref": prepared.context_revision_ref,
+                    },
+                )
+
+        fixture = build_rollout_fixture(self.root / "context-hash-echo", mode="none")
+        view = fixture.env.verify(fixture.runtime)
+        backend = EchoBackend()
+        gatherers = make_gatherers(fixture, sampler=backend)
+        try:
+            result = RolloutDriver(fixture.env, gatherers).run(fixture.runtime, max_steps=1)
+            runtime = result.runtime
+        except DriverBudgetError as exc:
+            runtime = exc.runtime
+
+        self.assertEqual(backend.prepared.context_content_hash, view.context.content_ref)
+        event = fixture.store.load_event(runtime.state.history["head"])
+        turn = WriterTurnV1.from_dict(fixture.store.get_artifact(event.payload_ref))
+        self.assertEqual(turn.adapter_trace["context_content_hash"], view.context.content_ref)
+
+    def test_driver_combines_dispatch_view_and_scope_per_step(self):
+        fixture = build_rollout_fixture(self.root / "step-counts", mode="none")
+        scopes = 0
+        depth = 0
+        view_calls = 0
+        old_operation = fixture.store.operation
+        original_view = fixture.gate.view
+
+        @contextmanager
+        def count_scope():
+            nonlocal scopes, depth
+            if depth == 0:
+                scopes += 1
+            depth += 1
+            try:
+                with old_operation():
+                    yield
+            finally:
+                depth -= 1
+
+        def count_view(*args, **kwargs):
+            nonlocal view_calls
+            view_calls += 1
+            return original_view(*args, **kwargs)
+
+        fixture.store.operation = count_scope
+        fixture.gate.view = count_view
+        committed = []
+
+        def stop_after_commit(result):
+            committed.append(result)
+            raise RuntimeError("stop after one committed step")
+
+        fixture.env.commit_observer = stop_after_commit
+        with (
+            patch(
+                "writing_agent.task_graph_rollout_env.derive_input",
+                wraps=producer_derive_input,
+            ) as producer_derive,
+            patch(
+                "writing_agent.task_graph_gate.derive_input",
+                wraps=gate_derive_input,
+            ) as verifier_derive,
+            self.assertRaisesRegex(RuntimeError, "stop after one committed step"),
+        ):
+            fixture.driver().run(fixture.runtime, max_steps=40)
+
+        self.assertEqual(len(committed), 1)
+        # Two adapter artifact writes also open scopes; step_input and commit are the
+        # only environment scopes on this one-step dispatch.
+        self.assertEqual(scopes, 4)
+        self.assertEqual(view_calls, 3)
+        self.assertEqual(producer_derive.call_count, 1)
+        self.assertEqual(verifier_derive.call_count, 1)
 
     def test_context_operation_runs_only_when_offered_and_callback_is_not_overoffered(self):
         fixture = build_rollout_fixture(self.root / "context-alternative")
@@ -273,7 +374,11 @@ class RolloutDriverTests(unittest.TestCase):
                     env = RolloutEnvironment(
                         store, fixture.entry.graph, None, gate, fixture.entry.graph.policy
                     )
-                    resumed = env.open_head(fixture.lineage_id)
+                    resumed = (
+                        env.open_head(fixture.lineage_id)
+                        if store.read_head(fixture.lineage_id) is not None
+                        else env.open(fixture.checkpoint_ids[0])
+                    )
                     result = RolloutDriver(
                         env, fixture.recovery_gatherers(resumed, store=store)
                     ).run(resumed, max_steps=40)
@@ -357,6 +462,48 @@ class GathererContractTests(unittest.TestCase):
                     fixture.driver().run(fixture.runtime, max_steps=1)
                 self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
 
+    def test_tool_effect_rejection_remains_adapter_error_after_gatherer_check_is_removed(self):
+        fixture = build_rollout_fixture(self.root / "tool-effect", mode="slice")
+        try:
+            fixture.driver().run(fixture.runtime, max_steps=1)
+        except DriverBudgetError as exc:
+            runtime = exc.runtime
+        view = fixture.env.verify(runtime)
+        port = fixture.env.port_input(view, next_step(view))
+        self.assertIsNotNone(port)
+
+        class OversizeToolProvider:
+            def execute(self, spec, _snapshot, _action):
+                value = "x" * (spec.max_file_bytes + 1)
+                return EnvironmentResult(
+                    {"ok": True, "valid": True, "result": "written"},
+                    EnvironmentSnapshot.from_files({"draft.txt": value}),
+                )
+
+        gatherers = make_gatherers(fixture, tools=OversizeToolProvider())
+        old_head = fixture.store.read_head(fixture.lineage_id)
+        with self.assertRaises(AdapterContractError):
+            RolloutDriver(fixture.env, gatherers).run(runtime, max_steps=1)
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
+
+    def test_evaluator_evidence_rejection_remains_adapter_error_at_derive(self):
+        fixture = build_rollout_fixture(self.root / "bad-evidence", mode="slice")
+        runtime = run_slice(fixture, until=lambda directive: directive.kind == "await_check_result")
+        view = fixture.env.verify(runtime)
+        port = fixture.env.port_input(view, next_step(view))
+
+        class InvalidEvidenceEvaluator:
+            family = "deterministic-file-v1"
+
+            def evaluate(self, _request):
+                return EvaluationEvidenceV1(self.family, "pass", {})
+
+        gatherers = make_gatherers(fixture, evaluator=InvalidEvidenceEvaluator())
+        old_head = fixture.store.read_head(fixture.lineage_id)
+        with self.assertRaises(AdapterContractError):
+            fixture.env.commit(runtime, gatherers.evaluator.result(port))
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
+
     def test_non_text_content_as_gatherer_vs_alternative_is_asymmetric(self):
         bad_sample = SampleResult({"role": "assistant", "content": [], "tool_calls": []})
         fixture = build_rollout_fixture(
@@ -407,7 +554,6 @@ class GathererContractTests(unittest.TestCase):
         packet_ref = packet.identity()
         runner = CheckRunner(
             fixture.store,
-            fixture.env.reader,
             evaluator,
             {check.identity(): check},
         )
@@ -418,9 +564,55 @@ class GathererContractTests(unittest.TestCase):
             "target_checkpoint": fixture.runtime.checkpoint_id,
         }
         port = CheckInput("request-ref", request, {}, packet.to_dict())
+        old_head = fixture.store.read_head(fixture.lineage_id)
         with self.assertRaises(AdapterContractError):
             runner.result(port)
         self.assertEqual(evaluator.calls, 0)
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
+
+    def test_evaluator_family_claim_is_bound_by_verifier(self):
+        fixture = build_rollout_fixture(self.root / "evaluator-family-claim")
+        check = next(iter(fixture.entry.graph.node(fixture.entry.node_id).checks.values()))
+        request = EvaluationRequestV1.create(
+            "deterministic-file-v1",
+            "target-checkpoint",
+            replace(check, evaluator_version="fixture-file-count-v1"),
+            "packet-ref",
+            {},
+        )
+
+        def decode(status, body):
+            return DecodedEvidence(status, body)
+
+        def accept(_request, _evidence, _resolver):
+            return None
+
+        other_family = EvidenceFamily(
+            "other-family-v1",
+            "OtherEvidenceV1",
+            "fixture-file-count-v1",
+            None,
+            None,
+            decode,
+            accept,
+        )
+        wire = {
+            "record_type": other_family.record_type,
+            "schema": 1,
+            "target_checkpoint": request.target_checkpoint,
+            "check_contract_hash": request.check.identity(),
+            "evaluator_packet_ref": request.evaluator_packet_ref,
+            "evidence": {},
+            "status": "pass",
+        }
+        with (
+            patch(
+                "writing_agent.task_graph_evaluation.FAMILIES",
+                MappingProxyType({**FAMILIES, other_family.name: other_family}),
+            ),
+            self.assertRaisesRegex(ProjectionError, "different admitted family"),
+        ):
+            verify_evaluation_evidence(request, wire)
 
 
 if __name__ == "__main__":

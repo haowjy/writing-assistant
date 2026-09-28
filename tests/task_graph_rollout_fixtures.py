@@ -35,7 +35,7 @@ from writing_agent.task_graph_contracts import (
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_entry import derive_entry
 from writing_agent.task_graph_errors import DriverBudgetError
-from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader
+from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_gatherers import (
     CheckRunner,
     Gatherers,
@@ -363,7 +363,7 @@ def _gatherers(
         ),
         ToolRunner(_ToolPort(counter, tools or LocalTextToolProvider())),
         _AuthorPort(counter, author or ScriptedAuthorSource()),
-        CheckRunner(store, StoreArtifactReader(store), evaluator, checks),
+        CheckRunner(store, evaluator, checks),
     )
 
 

@@ -410,7 +410,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         self.assertEqual(fixture.store.read_head("rollout-1"), head)
         self.assertEqual(action.runtime.state.files, fixture.runtime.state.files)
 
-    def test_sealed_manifest_mismatch_rejects_before_effect(self):
+    def test_runtime_runner_remains_usable_on_legacy_group_member(self):
         fixture = self.fixture(scripted_tests.ScriptedFixture)
         backend_a = IndependentBackend("A")
         backend_b = ScriptedSampleBackend(())
@@ -440,6 +440,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         self.assertEqual(fixture.store.read_head("rollout-1"), heads_before)
         self.assertIsNone(fixture.store.read_head(spec.members[0].member_id))
         self.assertEqual(backend_a.calls, 0)
+        self.assertEqual(backend_b.calls, 0)
         runtime = GroupCoordinatorV1(
             fixture.store, fixture.root / "group-a", session=session_a
         ).start(spec, 0, policy=policy)
@@ -450,26 +451,9 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
             spec.members[0].member_id,
             runtime.checkpoint_id,
         )
-        with self.assertRaisesRegex(ValueError, "manifest differs"):
+        with self.assertRaisesRegex(ValueError, "sealed adapter manifest"):
             unbound_writer.submit_action(runtime, fixture.action(content="bypass"))
         self.assertEqual(fixture.store.read_head(spec.members[0].member_id), member_head)
-        mismatched_member_session = RuntimeSession.create(
-            fixture.store,
-            spec.members[0].member_id,
-            runtime.checkpoint_id,
-            session_b.dependencies,
-        ).bind(fixture.store, session_b.manifest_ref)
-        mismatched_writer = TransactionalWriterV1(
-            fixture.store,
-            fixture.writer.graph,
-            spec.members[0].member_id,
-            runtime.checkpoint_id,
-            session=mismatched_member_session,
-        )
-        with self.assertRaisesRegex(ValueError, "manifest differs"):
-            RuntimeRunner(mismatched_writer, mismatched_member_session).sample(runtime)
-        self.assertEqual(fixture.store.read_head(spec.members[0].member_id), member_head)
-        self.assertEqual(backend_b.calls, 0)
         member_session = RuntimeSession.create(
             fixture.store,
             spec.members[0].member_id,

@@ -18,7 +18,7 @@ Catch the exact class. `CorruptRecordError` and `ConcurrentUpdateError` are both
 |---|---|---|---|
 | `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a missing reference named by the input; a directive that differs from `next_step`; persisted adapter violations (`AdapterContractProjectionError` is a subclass); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
 | `CorruptRecordError` | Bytes already on disk fail their checks | Hash mismatch on read, on both the producer path (`commit`) and the gate path. Also two parentless entry checkpoints for one lineage | Stop. The store is damaged; re-deriving will not help. |
-| `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` with neither a head nor an entry | Re-open with `open_head(lineage_id)` and continue from its `next_step`. |
+| `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` when no head has been published | Re-open with `open_head(lineage_id)` and continue from its `next_step`. |
 | `WriterRuntimeError` | The caller has a bug | A handle whose state or context differs from its checkpoint; a checkpoint or view admitted under another graph or admission policy; a port view that differs from the gate's view | Fix the caller. |
 | `AdapterContractError` | A fresh adapter response breaks its contract | Raised by a gatherer (role, type, content, logprob alignment), or by `commit` when the derive raises `AdapterContractProjectionError` | Fix the adapter. `commit` wrote nothing and the head did not move. The gatherer may have left orphan evidence artifacts, which are harmless. |
 | `DriverBudgetError` | Operational: `max_steps` ran out before `done` or `halt` | `RolloutDriver.run` | Not a task outcome. `err.runtime` is the last committed handle; inspect it, or call `run` on it again. |
@@ -150,17 +150,19 @@ copy can drift from the derive, or classify the same failure differently.
 |---|---|---|
 | Writer action ID | `task_graph_derive_writer.writer_action_id` | `port_input` fills `SamplerInput.action_id` |
 | Group member lookup | `task_graph_derive_writer.group_member` | `port_input` fills the sealed `writer_seed` |
-| Group sampling pins (seed, model, policy, tokenizer, template, decoding, context claims, rendering) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `port_input` exposes the pins; nothing producer-side checks them |
+| Group sampling pins (seed, model and policy refs) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `port_input` exposes the pins; nothing producer-side checks them |
+| Writer-turn context claims (`context_revision_ref`, `context_content_hash`, rendering) | `_decode_writer_turn_sampling` in `task_graph_sampling`, for every lineage | Nothing producer-side checks them |
 | Pre-dispatch tool error | `task_graph_derive_writer.tool_dispatch_error` | `port_input` fills `ToolInput.dispatch_permitted` |
 | Usage evidence under a token limit | `sampling_usage_requirements`, inside `derive_writer_turn` | None. `SamplerInput` carries no usage requirement |
 | Scripted author reply (proposals and mandatory feedback) | `task_graph_scripted.scripted_author_reply` | `ScriptedAuthorSource.reply` returns it; `derive_author_reply` compares against it |
 | Directive to environment step | `EnvironmentStepV1.of(directive)` | The driver encodes environment steps with it; derives compare `step == EnvironmentStepV1.of(next_step(view))` |
 
 **Gatherers keep only what a derive cannot check.** These are the assistant role, the
-`SampleResult` type, non-text assistant content, and binary-logprob/token alignment before
-the bytes are written (`persist_logprob_trace`, shared with the legacy
-`RuntimeRunner.sample`). Design §5: intake never validates what a derive must validate,
-because a check only intake makes is enforced on the producer and not on replay.
+`SampleResult` type, non-text assistant content, binary-logprob/token alignment before the
+bytes are written (`persist_logprob_trace`, shared with the legacy `RuntimeRunner.sample`),
+evaluator family before dispatch, and the tool `dispatch_permitted` branch. Tool effects and
+evaluation evidence are checked by the producer-path derives, which map adapter violations
+to `AdapterContractError`; the gate sees them as `ProjectionError` on replay.
 
 **Rejected: gatherer-side copies.** S4's `SamplingRunner._check_pins` checked 6 of the
 derive's 11 group claim keys. Drift in `policy_ref`, `model` or `context_revision_ref` passed
@@ -179,7 +181,7 @@ the `alternatives` callback, or replayed from disk, never passes through the gat
 
 [`task_graph_rollout_env.py`](../writing_agent/task_graph_rollout_env.py) is the producer,
 persistence and port-input boundary. Its public methods are `enter`, `open`, `open_head`,
-`verify`, `port_input`, `commit` and `start_member`.
+`verify`, `step_input`, `port_input`, `commit` and `start_member`.
 
 **One store scope per public method.** Each public method is `@operation_scoped`: one outer
 `store.operation()` scope per step, closed when the method returns. Private helpers
@@ -213,6 +215,8 @@ head. A parentless checkpoint counts as the head while its lineage has no head y
 - `verify(runtime)` checks the head, then requires the handle's state to equal its
   checkpoint and its context to equal the verified view's context. It checks the session
   seals and returns `gate.view`, which costs no derive at a cached head.
+- `step_input(runtime)` verifies once and returns `(view, directive, port)` in one operation
+  scope. `RolloutDriver` uses it to avoid repeating verification while building a port.
 - `port_input(view, directive)` requires `view` to be the gate's view of the published head
   and `directive` to equal `next_step(view)`. It returns the typed port input, or `None`
   when the directive has no external port.
@@ -242,7 +246,7 @@ types, never a `LineageView`:
 
 | Directive | Port input | Contents |
 |---|---|---|
-| `sample_writer` | `SamplerInput` | visible messages, tools, rendering, context revision ref, action ID; for a group member, its sealed writer seed and the group's model, behavior-policy, tokenizer, template and decoding refs |
+| `sample_writer` | `SamplerInput` | visible messages, tools, rendering, context content hash and revision ref, action ID; for a group member, its sealed writer seed and the group's model, behavior-policy, tokenizer, template and decoding refs |
 | `execute_tool` | `ToolInput` | files, the one queued call at the directive's index, the pinned tool spec, `dispatch_permitted` |
 | `await_author_reply` | `AuthorInput` | `request_ref`, the private request body, the node's script, the decision and disclosure ledgers |
 | `await_check_result` | `CheckInput` | `request_ref`, the private request body, the candidate files, the evaluator packet |
@@ -258,14 +262,13 @@ request from a commit the store might still reject.
 
 [`task_graph_rollout.py`](../writing_agent/task_graph_rollout.py) holds `RolloutDriver`.
 `run(runtime, max_steps=...)` loops:
-1. `verify` the handle;
-2. compute `next_step`, and return on `done` or `halt`;
+1. call `step_input` for the verified view, directive and typed port input;
+2. return on `done` or `halt`;
 3. enforce `max_steps`, before any port runs, so `DriverBudgetError` writes nothing;
-4. build the typed port input;
-5. consult `alternatives` only when the directive offers alternatives;
-6. dispatch on the port input's type to a gatherer, or encode `EnvironmentStepV1.of` when
+4. consult `alternatives` only when the directive offers alternatives;
+5. dispatch on the port input's type to a gatherer, or encode `EnvironmentStepV1.of` when
    the port input is `None`;
-7. `commit` exactly one event.
+6. `commit` exactly one event.
 
 It returns `RunResult(runtime, directive)`. `directive.kind` is `done`, or `halt`, which
 means the node is not runnable end to end (design §8.1). `max_steps` is an operational
@@ -274,19 +277,19 @@ guard; task budgets live in state. Adapter and caller callbacks run outside stor
 [`task_graph_gatherers.py`](../writing_agent/task_graph_gatherers.py) holds
 `SamplingRunner`, `ToolRunner`, `ScriptedAuthorSource` and `CheckRunner`. Each takes only
 its port-input type. `SamplingRunner` and `CheckRunner` get an `ArtifactSink`
-(`put_artifact`, `put_bytes_artifact`), not the store. `CheckRunner` also gets the reader it
-needs to verify evaluator evidence. `CheckRunner` rejects a family mismatch before it calls
-`evaluate`. Neither module may import `task_graph_transition`, where `LineageView` lives
+(`put_artifact`, `put_bytes_artifact`), not the store. `CheckRunner` rejects a family mismatch
+before it calls `evaluate`. Neither module may import `task_graph_transition`, where `LineageView` lives
 (import test).
 
 ## Resume and crashes
 
-**`open_head(lineage_id)` is the one resume path.** After any failure, discard in-memory
-handles and call `open_head`, from the same process or a fresh store and gate. It follows
-the published head's commit to its checkpoint and opens it with a full check. If no head
-was ever published, it opens the unique parentless entry checkpoint, which
-`store.entry_checkpoint` finds by scanning `checkpoints/`. The caller can then retry the
-first step. `DriverBudgetError.runtime` gives a resumable handle without re-opening.
+**Resume depends on whether the first head was published.** After a failure with a
+published head, discard in-memory handles and call `open_head(lineage_id)`, from the same
+process or a fresh store and gate. It follows the published head's commit to its checkpoint
+and opens it with a full check. Before the first head, `open_head` raises
+`ConcurrentUpdateError`; re-run the idempotent `enter(node_id, params)` or call `open` with
+the known entry checkpoint ID. `DriverBudgetError.runtime` gives a resumable handle without
+re-opening.
 
 **The crash matrix** (`tests/test_task_graph_rollout.py`) crashes the driver inside
 `commit` at each of the four `store.publish` fault stages (`before_immutable_writes`,
@@ -298,8 +301,8 @@ end. It proves three things:
   resumable lives only in memory;
 - a crash after head publication, or in `record_published`, is recovered by the new gate's
   verified fold;
-- commit 1 with a crash before head publication covers the resume path before any head
-  exists.
+- commit 1 with a crash before head publication resumes by opening the known entry
+  checkpoint; `open_head` is not used until a head exists.
 
 A separate test fails after each of the 13 commits returns and resumes the same way.
 
@@ -339,8 +342,11 @@ has not been amended, so trust the code:
   handle (§8.2).
 - **`BudgetContractV1.max_generated_tokens`** is new; see O1 in
   [transition-seam.md](transition-seam.md).
-- **`WriterTurnV1.adapter_trace` accepts `context_revision_ref` and
-  `context_content_hash` claims** as identity hashes (`Hash(None)`), not edges. For a group
-  member, `bind_group_sampling_claims` in the writer derive rejects a claim that differs
-  from the view's context. Like every group claim, it is checked only when present.
-  Requiring the claims is part of the HIGH-5 group-binding follow-up.
+- **`WriterTurnV1.adapter_trace` accepts optional context claims.** The
+  `context_revision_ref` claim is a typed `context_revision` edge. The universal writer-turn
+  decoder binds `context_revision_ref`, `context_content_hash` and rendering to the active
+  context for every lineage whenever each claim is present.
+- **Runtime session seals use the verified group view.** `RuntimeSession.require_member_seal`
+  compares `view.group` and its adapter manifest pin; it does not infer group membership from
+  the lineage name or read `groups/` files. The legacy `RuntimeRunner` remains on its own
+  writer path until S7.2; it is not the source of member-policy verification.

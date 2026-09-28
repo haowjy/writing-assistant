@@ -15,7 +15,7 @@ from writing_agent.task_graph_derive_common import (
     evidence_reader,
     payload_artifact,
 )
-from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_errors import AdapterContractProjectionError, ProjectionError
 from writing_agent.task_graph_evaluation import (
     FAMILIES,
     EvaluationRequestV1,
@@ -171,13 +171,9 @@ def derive_check_result(
             evaluation_request, evidence, evidence_reader(reader, packet_ref=packet_ref)
         )
     except ProjectionError as exc:
-        raise ProjectionError("input.evidence_ref: does not match the admitted evaluation") from exc
-    if verified.family != family.name:
-        raise ProjectionError(
-            "input.evidence_ref: evaluator family differs from the admitted check"
-        )
+        raise AdapterContractProjectionError("input.evidence_ref: evaluation mismatch") from exc
     if verified.status != result.status:
-        raise ProjectionError("input.status: contradicts the verified evaluator evidence")
+        raise AdapterContractProjectionError("input.status: contradicts evaluator evidence")
 
     checks = [dict(row) for row in view.outcome.checks]
     index = next(

@@ -155,9 +155,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         and "total_tokens" not in usage
         and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
     ):
-        raise AdapterContractProjectionError(
-            "input.usage.completion_tokens: token-limited writer turn lacks evidence"
-        )
+        raise AdapterContractProjectionError("input.usage.completion_tokens: required")
 
     assistant = _build_assistant_message(turn, action_id, content, queue)
     event = new_event(
@@ -243,9 +241,7 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
     except ProjectionError as exc:
         raise AdapterContractProjectionError(str(exc)) from exc
     except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
-        raise AdapterContractProjectionError(
-            "input.adapter_trace: writer sampling evidence is invalid"
-        ) from exc
+        raise AdapterContractProjectionError("input.adapter_trace: invalid") from exc
 
     member = group_member(view)
     if member is None:
@@ -263,16 +259,10 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
             spec.policy,
             member.writer_seed,
             claims or {},
-            claims or {},
             model_id=model["model_id"],
-            context_content_hash=view.context.content_ref,
-            context_revision_ref=view.context.revision_ref,
-            rendering=view.context.rendering,
         )
     except (ProjectionError, KeyError, TypeError, ValueError) as exc:
-        raise AdapterContractProjectionError(
-            "input.adapter_trace: sampling pins differ from the sealed group"
-        ) from exc
+        raise AdapterContractProjectionError("input.adapter_trace: group pin mismatch") from exc
 
 
 def _build_tool_queue(
@@ -391,9 +381,7 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
                 observation, call_name, view.budget["read_tokenizer"]
             )
         except (AdapterContractError, TypeError, ValueError) as exc:
-            raise AdapterContractProjectionError(
-                "input.dispatch.effect: violates the pinned tool effect contract"
-            ) from exc
+            raise AdapterContractProjectionError("input.dispatch.effect: invalid") from exc
         remaining_reads = view.budget["limits"].get("read_tokens", 0) - view.budget["consumed"].get(
             "read_tokens", 0
         )

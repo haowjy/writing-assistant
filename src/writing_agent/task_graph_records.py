@@ -67,7 +67,7 @@ _TRACE_SCHEMA = obj_opt(
         "seed": Int(minimum=None),
         "generated_token_ids": ListOf(Int()),
         **{key: Hash("artifact") for key in _TRACE_REF_KEYS},
-        "context_revision_ref": Hash(None),
+        "context_revision_ref": Hash("context_revision"),
         "context_content_hash": Hash(None),
         "per_token_logprobs_ref": Hash("bytes"),
         "per_token_logprobs_codec": Enum(frozenset({"f32-le"})),

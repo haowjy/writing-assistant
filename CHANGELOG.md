@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Carry sampler policy pins and the gate-bound context hash in one typed request, bind
+  context claims for every lineage, and make scripted sampling report the sealed claims.
+- Move tool-effect and evaluator-evidence verification to producer derives; remove redundant
+  sampling and outcome guards.
+- Remove the unpublished-entry checkpoint scan, return verified dispatch inputs in one scope,
+  and check runtime member seals against the verified group view.
+
 - Move group member starts and result/credit collection onto verified rollout views.
 
 - Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;
