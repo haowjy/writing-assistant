@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, make_gatherers
+from tests.task_graph_store_fixtures import PatchVerifier
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
@@ -221,8 +222,9 @@ class PersistedForgeTests(unittest.TestCase):
                 )
                 authority = store._ref_path(target.lineage_id)
                 authority_bytes = authority.read_bytes()
-                bare_store = TaskGraphStore(target.store.root)
-                actions = (env.open_head, bare_store.read_head)
+                # A permissive verifier: the store's own closure must refuse the pin.
+                structural_store = TaskGraphStore(target.store.root, verifier=PatchVerifier())
+                actions = (env.open_head, structural_store.read_head)
                 for action in actions:
                     with self.assertRaises(ProjectionError) as rejected:
                         action(target.lineage_id)
