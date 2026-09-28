@@ -8,7 +8,6 @@ from dataclasses import replace
 from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.task_graph import CheckpointV1, canonical_bytes, load_canonical_json
 from writing_agent.task_graph_admission import AdmittedNodeV1
-from writing_agent.task_graph_checks import applicable_checks as legacy_applicable_checks
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
     CheckContractV1,
@@ -398,9 +397,7 @@ class AuthorDeriveTests(unittest.TestCase):
         fixture, view = _new_view(source="mandatory_feedback", feedback_update=True)
         for cursor in (0, 1):
             with self.subTest(applicable_checks_cursor=cursor):
-                self.assertEqual(
-                    applicable_checks(view, cursor), legacy_applicable_checks(view.node, cursor)
-                )
+                self.assertEqual(applicable_checks(view, cursor), ())
         step = EnvironmentStepV1(
             directive={"kind": "request_author", "source": "mandatory_feedback"}
         )
@@ -427,10 +424,7 @@ class AuthorDeriveTests(unittest.TestCase):
             ),
             check_statuses={"progress": "fail"},
         )
-        self.assertEqual(
-            applicable_checks(prerequisite_view, 0),
-            legacy_applicable_checks(prerequisite_view.node, 0),
-        )
+        self.assertEqual(applicable_checks(prerequisite_view, 0), (check,))
 
         exhausted_budget = dict(view.budget)
         exhausted_budget["consumed"] = dict(exhausted_budget["consumed"])

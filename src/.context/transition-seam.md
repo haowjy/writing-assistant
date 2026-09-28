@@ -1,28 +1,17 @@
-# Transition seam: new-core contracts
+# Transition seam: runtime contracts
 
-The task-graph runtime is being rebuilt as a new core beside the old one. The new core
-stores each step's typed **input** record as the event payload. One pure **derive** per input
-kind computes the event, the next state and the new artifacts, and the producer and replay
-share it. The old runtime (writer, scripted runtime classes, checks, terminal,
-author validation, projection, the old replay and environment batch) remains importable for
-the behavior-oracle tests. Current callers use the new core; S7.3 removes the old runtime.
-Do not extend it.
+The task-graph runtime stores each step's typed **input** record as the event payload. One
+pure **derive** per input kind computes the event, next state and new artifacts. The producer
+and the gate use that same derive. The typed derive runtime is the only runtime; the legacy
+writer, patch reducer and multi-event environment batch have been removed.
 
 This checkout contains the wire records, calls, transition types, `derive_entry`, the
 controller, four derive modules, `LineageGate`, `RolloutEnvironment`, the gatherers,
-`RolloutDriver` and group coordination on the new core. For a lineage pinned to
-`task-graph-derive-v1`, `store.publish` and `store.restore` run the gate. The old role classes
-remain only for their behavior-oracle tests until S7.3 removes the legacy runtime.
-
-**The parity harness is not in this repository.** It lives in the `parity/` directory of
-the task-graph-environment work item and runs against an exported checkout. It runs the
-old-runtime test modules with their producer boundaries patched to record each lineage. It
-then replays each lineage's successful prefix through `RolloutDriver`, with playback ports,
-on a copy of its content-addressed store. Finally it compares outcomes, and for groups the
-rewards, advantages and segment credit, against a written list of expected differences. It
-shows that the new core reproduces the old runtime's outcomes, and its verdict gates S7.3.
-It needs the old runtime to record, so it is deleted along with it. Nothing in `tests/`
-depends on it.
+`RolloutDriver` and group coordination. `store.publish` and `store.restore` require the
+gate verifier. Runtime lineages must pin `task-graph-derive-v1`; lineages without the pin
+are rejected. The parity harness and old-runtime test modules were removed with the legacy
+runtime. The reviewed S7.1 p253 outcome-shape difference is an accepted difference, not a
+remaining parity gate.
 
 This file covers records, derives and the layer order. How the gate, the environment, the
 driver and the gatherers run a lineage (error classes, publication, rule owners, resume,
@@ -49,12 +38,13 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 
 | Rank | Modules |
 |---|---|
-| 0 | `task_graph_errors` (no imports at all), `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_operation`; all sit on `task_graph` (canonical JSON, core records), which the test does not rank |
-| 1 | `task_graph_calls`, `task_graph_controller`; they also use the pure policy modules `accounting`, `contracts`, `admission` |
-| 3 | `task_graph_transition` (shared types only), `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
-| 4 | `task_graph_gate` (derives, store reader, admission); `task_graph_group_contract` (imports store, projection and admission) |
-| 5 | `task_graph_rollout_env` (producer, store, gate and port boundary) |
-| 6 | `task_graph_gatherers`, `task_graph_rollout` (typed port inputs only) |
+| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_operation` |
+| 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
+| 2 | `task_graph_store` |
+| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
+| 4 | `task_graph_gate`, `task_graph_group_contract` |
+| 5 | `task_graph_environment` |
+| 6 | `task_graph_group`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
 
 - **`TYPE_CHECKING` imports count for layer order, not for cycles.** The layer test walks
   type-only imports; the SCC test ignores them. A type-only import is not a way around the
@@ -62,31 +52,25 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
   from `task_graph_record_contracts`, not from `group_contract`).
 - No lazy imports to dodge a cycle. No `from` import of an underscore name across task-graph
   modules.
-- A new seam module goes into both `NEW_SEAM_MODULES` (not in any runtime SCC) and
-  `LAYER_RANKS`. No module in `NEW_SEAM_MODULES` may import `task_graph_checks`, which S7.3
-  deletes. A module-name-pattern rule forbids `task_graph_gatherers` and
+- A new seam module goes into both `NEW_SEAM_MODULES` and `LAYER_RANKS`. A module-name-pattern
+  rule forbids `task_graph_gatherers` and
   `task_graph_rollout` (and any submodule of either) from importing
   `task_graph_transition`, where `LineageView` lives (I6).
-- `derive_entry` may not import the store, ports, local, writer, environment, replay or any
-  filesystem module. Derives in general read only the view, the input and the
+- `derive_entry` may not import the store, ports, local, environment or any filesystem
+  module. Derives in general read only the view, the input and the
   `ArtifactReader` (I7).
 
-New-core modules still import pure helpers from two old-runtime modules:
-- `derive_writer` uses `decode_and_bind_sampling`, `WriterTurnSamplingBindingV1` and
-  `bind_group_sampling_claims` from `task_graph_sampling`, and `validate_ask_semantics` from
-  `task_graph_scripted`;
+The core keeps pure helpers in the same concern modules:
+- `derive_writer` uses `decode_writer_turn_sampling` and `bind_group_sampling_claims` from
+  `task_graph_sampling`, and `validate_ask_semantics` from `task_graph_scripted`;
 - `derive_author` uses `resolve_script_reply`, `scripted_author_reply`,
   `ScriptCoverageError` and `validate_ask_semantics` from `task_graph_scripted`;
 - `derive_outcome` uses `CURRENT_ELIGIBILITY` from `task_graph_sampling`;
 - the gatherers use `ArtifactSink` and `persist_logprob_trace` from `task_graph_sampling`,
   and `scripted_author_reply` from `task_graph_scripted`.
 
-These are policy and codec functions that S7.3 keeps when it strips the runtime classes
-from those modules. Everything else in `task_graph_sampling` has no new-core caller: the
-prepared-request, adapter-evidence, sampling-evidence, eligibility-decision and
-action-binding codecs and their decoders (about 460 lines). S7.3 deletes them. Do not add imports of runtime classes. Add a helper there only when
-design §11 names the pure half of that module as its S7 home. `scripted_author_reply` and
-`persist_logprob_trace` were added on that basis.
+These are the pure helpers that remain after obsolete runtime classes and unused sampling
+codecs were removed. Do not add imports of runtime classes.
 
 ## Adding a wire record
 
@@ -94,9 +78,10 @@ Choose the module by concern:
 
 | Module | Holds |
 |---|---|
-| `task_graph_records` | New-core input and state records (`WriterTurnV1`, `ToolObservationV1`, `AuthorReplyV1`, `EvaluatorResultV1`, `ContextOperationInputV1`, `EnvironmentStepV1`, `MemberStartV1`, `ExternalInputsV1`, `AdmissionPolicyV1`, `OutcomeV1`), the chained context records, the registries and context materialization |
+| `task_graph_records` | New-core input and state records (`WriterTurnV1`, `ToolObservationV1`, `AuthorReplyV1`, `EvaluatorResultV1`, `ContextOperationInputV1`, `EnvironmentStepV1`, `MemberStartV1`, `ExternalInputsV1`, `AdmissionPolicyV1`, `OutcomeV1`), the registries and reference closure |
+| `task_graph` | Core environment records, the chained context records and context materialization |
 | `task_graph_record_contracts` | Sealed contracts with binding rules: `GroupSpecV1`, `GroupMemberSpecV1`, `ContextPolicyV1`, `ExecutionVersionsV1`, `SEMANTICS_V1`, `GroupError`, `CompactionError` |
-| `task_graph_payloads` | `PayloadCodec`s for shared payload shapes that both runtimes write and that have no Python class: the three ledgers, `AuthorRequestV1`, `CheckRequestV1`, `RewardV1`, `TrainingEligibilityV1`, `GroupMemberSeedsV1` |
+| `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, group seeds, and runtime port/manifest descriptors |
 
 The steps:
 
@@ -120,13 +105,10 @@ The steps:
    context records) or the class name. `RECORD_TYPES` and `RECORD_EDGES` in
    `task_graph_records` are built from that registry and the payload codecs. A record in
    a new module must be imported where the registry is populated.
-5. **Naming during coexistence.** A shape the old runtime also writes stays byte-identical,
-   including its `schema` field. A changed shape gets a new name. No `record_type` names
-   two shapes.
-6. **The legacy set is not an escape hatch.** `LEGACY_PAYLOAD_RECORD_TYPES` lists names only
-   the old runtime writes. The closure passes those payloads without decoding them or
-   following their edges. A test keeps the set disjoint from the registered names. Anything
-   the new core writes must be registered.
+5. **Preserve wire identity.** A retained shape stays byte-identical, including its
+   `schema` field. A changed shape gets a new name. No `record_type` names two shapes.
+6. **The registry is closed.** Every persisted typed payload is registered and decoded;
+   anything the runtime writes must have a declared codec and reference edges.
 7. **Tests** in `tests/test_task_graph_records.py`:
    - add an example to `record_examples()` (or `shared_payload_examples()`), which the
      round-trip, exact-key and coercion tests require;
@@ -138,12 +120,11 @@ The steps:
 
 The store follows registered edges for every payload with a `record_type`. It fails closed
 on an unregistered `record_type` and on a `private` edge that resolves to a public
-artifact. `put_artifact` refuses record domains, and it decodes every registered,
-non-legacy `record_type` payload in canonical wire form before writing: a malformed record
-raises `ValueError` at write time and never reaches disk. The chained context uses
-`context_node` in `context_content/` and `context_revision` in `context_revisions/`. It is
-chosen only when the state's `ExecutionVersionsV1` pins `transition_semantics`. An absent
-value means legacy `contexts/`, and an unknown value raises.
+artifact. `put_artifact` refuses record domains, and it decodes every registered
+`record_type` payload in canonical wire form before writing: a malformed record raises
+`ValueError` at write time and never reaches disk. Chained context uses `context_node` and
+`context_revision` reference kinds in the shared closure; no version-dependent context
+storage path remains.
 
 ## Writing a derive
 
@@ -255,7 +236,7 @@ An empty required set never counts as a pass.
 ## Rationale and rejected alternatives
 
 - **Rejected: derive re-checks of controller rules.** `derive_author_request` once matched
-  the directive and then re-checked the feedback phase (through `task_graph_checks`),
+  the directive and then re-checked the feedback phase through a separate check layer,
   prerequisites and budgets. That gave three sites for the applicable-checks rule. Before
   the re-checks were deleted, forgery tests showed the directive alone rejects each case.
   The controller's rules match the deleted ones: the `tool_error` author budget,

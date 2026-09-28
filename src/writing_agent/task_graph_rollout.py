@@ -7,10 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from writing_agent.task_graph_controller import Directive
-from writing_agent.task_graph_errors import DriverBudgetError
-from writing_agent.task_graph_gatherers import Gatherers
-from writing_agent.task_graph_records import EnvironmentStepV1
-from writing_agent.task_graph_rollout_env import (
+from writing_agent.task_graph_environment import (
     AuthorInput,
     CheckInput,
     PortInput,
@@ -19,6 +16,9 @@ from writing_agent.task_graph_rollout_env import (
     SamplerInput,
     ToolInput,
 )
+from writing_agent.task_graph_errors import DriverBudgetError
+from writing_agent.task_graph_gatherers import Gatherers
+from writing_agent.task_graph_records import EnvironmentStepV1
 
 Alternative = Callable[[Directive, PortInput | None], Any | None]
 

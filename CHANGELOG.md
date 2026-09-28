@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- Remove the legacy task-graph runtime, move context values into the core, and make the rollout environment the final runtime entry point.
 - Switch task-graph callers to the rollout core, use pinned `SamplingRunner` inputs, and remove the legacy store probe.
 - Keep parser fuzz and canonical-roundtrip coverage independent of the legacy writer.
 

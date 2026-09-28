@@ -151,9 +151,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
             provider,
             evaluator or DeterministicEvaluator(),
         )
-        unbound = RuntimeSession.create(
-            fixture.store, fixture.lineage_id, fixture.runtime.checkpoint_id, dependencies
-        )
+        unbound = RuntimeSession.create(fixture.store, dependencies)
         return unbound.bind(fixture.store, unbound.manifest_ref)
 
     @staticmethod

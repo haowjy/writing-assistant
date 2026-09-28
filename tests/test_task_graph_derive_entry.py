@@ -1,4 +1,4 @@
-"""Entry derivation and legacy-fixture comparison evidence."""
+"""Entry derivation evidence."""
 
 from __future__ import annotations
 
@@ -8,18 +8,18 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tests.task_graph_fixtures import make_entry_fixture
-from writing_agent.agent import SYSTEM_PROMPT as AGENT_SYSTEM_PROMPT
-from writing_agent.task_graph import MessageV1, canonical_bytes, load_canonical_json
-from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry, params_of
-from writing_agent.task_graph_gate import LineageGate
-from writing_agent.task_graph_gate import StoreArtifactReader as StoreReader
-from writing_agent.task_graph_records import (
-    AdmissionPolicyV1,
+from writing_agent.task_graph import (
     ContextContentV1,
     ContextRevisionV1,
+    MessageV1,
+    canonical_bytes,
+    load_canonical_json,
 )
+from writing_agent.task_graph_derive_entry import derive_entry, params_of
+from writing_agent.task_graph_gate import LineageGate
+from writing_agent.task_graph_gate import StoreArtifactReader as StoreReader
 from writing_agent.task_graph_store import TaskGraphStore
-from writing_agent.task_graph_transition import LineageMode, first_difference
+from writing_agent.task_graph_transition import first_difference
 
 
 class DeriveEntryTests(unittest.TestCase):
@@ -140,11 +140,6 @@ class DeriveEntryTests(unittest.TestCase):
                 ):
                     derive_entry(graph, fixture.node_id, fixture.params, fixture.reader)
 
-    def test_entry_prompt_stays_byte_identical_to_legacy_prompt(self) -> None:
-        from writing_agent.task_graph_derive_entry import SYSTEM_PROMPT
-
-        self.assertEqual(SYSTEM_PROMPT, AGENT_SYSTEM_PROMPT)
-
     def test_params_of_and_entry_fixed_point_use_real_store_context_reader(self) -> None:
         fixture = make_entry_fixture()
         with TemporaryDirectory() as directory:
@@ -173,140 +168,6 @@ class DeriveEntryTests(unittest.TestCase):
             self.assertEqual(
                 reader.checkpoint(checkpoint).state.identity(), fixture.state.identity()
             )
-
-    def test_old_hand_built_entries_expose_only_explicit_wire_differences(self) -> None:
-        from tests.test_task_graph_writer import WriterFixture
-
-        legacy = WriterFixture()
-        legacy.setUp()
-        self.addCleanup(legacy.doCleanups)
-        old = legacy.runtime.state
-        self._assert_legacy_difference_paths(
-            legacy.bundle.admission(),
-            old,
-            old.position["node_id"],
-            legacy,
-            (
-                "state.context_ref",
-                "state.external_inputs_ref",
-                "state.outcome_ref",
-                "state.requirements_ref",
-                "state.versions_ref",
-            ),
-        )
-
-    def test_scripted_entry_delta_and_group_entry_fixed_point(self) -> None:
-        from tests.test_task_graph_scripted import ScriptedFixture
-
-        scripted = ScriptedFixture()
-        scripted.setUp()
-        self.addCleanup(scripted.doCleanups)
-        scripted_node = scripted.writer.graph.node(scripted.runtime.state.position["node_id"])
-        mode = LineageMode.for_node(scripted_node)
-        self.assertEqual(mode.interaction, "scripted_author")
-        self.assertTrue(mode.ask_semantics)
-        self.assertTrue(mode.evaluation)
-        self.assertEqual(mode.reward, scripted_node.reward_contract)
-        generated_scripted = self._assert_legacy_difference_paths(
-            scripted.writer.graph,
-            scripted.runtime.state,
-            scripted.runtime.state.position["node_id"],
-            scripted,
-            (
-                "state.context_ref",
-                "state.external_inputs_ref",
-                "state.outcome_ref",
-                "state.versions_ref",
-            ),
-        )
-        scripted_budget = scripted.store.get_artifact(generated_scripted.budgets_ref)
-        self.assertEqual(
-            scripted_budget["limits"]["author_calls"],
-            scripted_node.contract.budget_contract.max_author_calls,
-        )
-        plain = make_entry_fixture()
-        plain_budget = plain.reader.artifact(plain.state.budgets_ref)
-        self.assertNotIn("author_calls", plain_budget["limits"])
-        self.assertEqual(
-            generated_scripted.requirements_ref,
-            scripted.runtime.state.requirements_ref,
-        )
-        self.assertIn(
-            "public", scripted.store.artifact_visibilities(generated_scripted.requirements_ref)
-        )
-        derived_private = {
-            artifact.ref: artifact.kind
-            for artifact in derive_entry(
-                scripted.writer.graph,
-                scripted.runtime.state.position["node_id"],
-                self._legacy_params(scripted),
-                StoreReader(scripted.store),
-            ).artifacts
-        }
-        self.assertEqual(derived_private[generated_scripted.requirements_ref], "private")
-
-        from tests.test_task_graph_group import GroupCoordinatorTests
-
-        group = GroupCoordinatorTests("test_full_contract_drift_and_start_isolation")
-        group.setUp()
-        self.addCleanup(group.doCleanups)
-        group_entry = derive_entry(
-            group.fixture.entry.graph,
-            group.fixture.entry.node_id,
-            group.fixture.entry.params,
-            StoreReader(group.store),
-        )
-        self.assertEqual(group_entry.state, group.runtime.state)
-        self.assertEqual(group_entry.state, group.fixture.entry.state)
-
-    def _assert_legacy_difference_paths(self, graph, old, node_id, fixture, expected_paths):
-        entry = derive_entry(
-            graph,
-            node_id,
-            self._legacy_params(fixture),
-            StoreReader(fixture.store),
-        )
-        generated = entry.state
-        old_body, generated_body = old.to_dict(), generated.to_dict()
-        for path in expected_paths:
-            field = path.removeprefix("state.")
-            self.assertNotEqual(old_body[field], generated_body[field], path)
-            old_body[field] = generated_body[field] = None
-        self.assertIsNone(first_difference(old_body, generated_body))
-        self.assertEqual(first_difference(old, generated), expected_paths[0])
-        node = graph.node(node_id)
-        if node.author_packet is not None:
-            expected_requirements = dict(node.author_packet.requirements)
-        else:
-            source_ref = node.contract.entry_contract.requirement_version
-            expected_requirements = (
-                {}
-                if source_ref is None
-                else StoreReader(fixture.store).artifact(source_ref, private=True)["requirements"]
-            )
-        self._assert_entry_payload_bodies(entry, expected_requirements)
-
-        for artifact in entry.artifacts:
-            if artifact.kind in {"context_node", "context_revision"}:
-                fixture.store.persist(artifact.value)
-        reader = StoreReader(fixture.store)
-        derived_context = reader.context(generated.context_ref)
-        legacy_context = fixture.store.load_context(old.context_ref)
-        self.assertEqual(
-            canonical_bytes(derived_context.messages), canonical_bytes(legacy_context.messages)
-        )
-        self.assertEqual(
-            canonical_bytes(derived_context.tools), canonical_bytes(legacy_context.tools)
-        )
-        self.assertEqual(
-            canonical_bytes(derived_context.rendering), canonical_bytes(legacy_context.rendering)
-        )
-        self.assertIn("state.versions_ref", expected_paths)
-        self.assertEqual(
-            fixture.store.get_artifact(generated.versions_ref)["transition_semantics"],
-            "task-graph-derive-v1",
-        )
-        return generated
 
     def _assert_entry_payload_bodies(
         self,
@@ -357,28 +218,6 @@ class DeriveEntryTests(unittest.TestCase):
                 "schema": 1,
                 "source_refs": [external_source_ref],
             },
-        )
-
-    @staticmethod
-    def _legacy_params(fixture):
-        state = fixture.runtime.state
-        graph = fixture.writer.graph
-        admission_policy = AdmissionPolicyV1.from_admission_policy(graph.policy)
-        admission_policy_ref = fixture.store.put_artifact(admission_policy.to_wire())
-        versions = fixture.store.get_artifact(state.versions_ref)
-        versions.update(
-            transition_semantics="task-graph-derive-v1",
-            admission_policy_ref=admission_policy_ref,
-            tool_spec={"max_file_bytes": 128_000, "max_workspace_bytes": 4096},
-            rendering=dict(fixture.runtime.context.rendering),
-        )
-        return EntryParamsV1(
-            lineage_id=state.position["lineage_id"],
-            visit_id=state.position["visit_id"],
-            rendering=fixture.runtime.context.rendering,
-            versions_ref=fixture.store.put_artifact(versions),
-            provenance_ref=state.provenance_ref,
-            rng_ref=state.rng_ref,
         )
 
 

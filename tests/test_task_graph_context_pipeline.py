@@ -11,13 +11,13 @@ from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
 from writing_agent.task_graph import EventV1
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_controller import next_step
+from writing_agent.task_graph_environment import derive_input
 from writing_agent.task_graph_errors import DriverBudgetError, ProjectionError
 from writing_agent.task_graph_gate import StoreArtifactReader
 from writing_agent.task_graph_group import POLICY_FIELDS, GroupCoordinatorV1
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1 as SealedContextPolicyV1
 from writing_agent.task_graph_records import ContextOperationInputV1
-from writing_agent.task_graph_rollout_env import derive_input
 
 
 def _write_sample(text: str, call_id: str, contents: str) -> SampleResult:

@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.task_graph import (
-    EventV1,
     canonical_bytes,
     load_canonical_json,
     thaw,
     validate_hash,
 )
+from writing_agent.task_graph_environment import RolloutEnvironment, RuntimeHandle
 from writing_agent.task_graph_group_contract import (
     GroupAdvantageV1,
     GroupDecisionV1,
@@ -39,10 +39,6 @@ from writing_agent.task_graph_record_contracts import (
     GroupSpecV1,
 )
 from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
-from writing_agent.task_graph_rollout_env import RolloutEnvironment
-from writing_agent.task_graph_rollout_env import RuntimeHandle as RolloutRuntimeHandle
-from writing_agent.task_graph_store import RuntimeHandle as LegacyRuntimeHandle
-from writing_agent.task_graph_store import TaskGraphStore
 
 
 class GroupCoordinatorV1:
@@ -50,18 +46,14 @@ class GroupCoordinatorV1:
 
     def __init__(
         self,
-        store_or_environment: TaskGraphStore | RolloutEnvironment,
+        environment: RolloutEnvironment,
         workers_root: Path | str,
         *,
         session=None,
     ):
-        self.environment = (
-            store_or_environment if isinstance(store_or_environment, RolloutEnvironment) else None
-        )
-        self.store = (
-            self.environment.store if self.environment is not None else store_or_environment
-        )
-        self.session = session or (None if self.environment is None else self.environment.session)
+        self.environment = environment
+        self.store = environment.store
+        self.session = session or environment.session
         self.workers_root = Path(workers_root).resolve()
         self.workers_root.mkdir(parents=True, exist_ok=True)
         self.groups_root = self.store.root / "groups"
@@ -159,17 +151,12 @@ class GroupCoordinatorV1:
             os.unlink(temporary)
 
     def _entry_contract(self, checkpoint_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
-        if self.environment is None:
-            state = self.store.load_checkpoint(checkpoint_id).state
-            rendering = self.store.load_context(state.context_ref).rendering
-            return resolve_group_environment(self.store, checkpoint_id), dict(rendering)
         view = self.environment.verify(self.environment.open(checkpoint_id))
         return (
             resolve_group_environment(
                 self.store,
                 checkpoint_id,
                 view=view,
-                instance=self.environment.graph.instance,
             ),
             thaw(view.context.rendering),
         )
@@ -203,15 +190,10 @@ class GroupCoordinatorV1:
             raise GroupError("member policy contract drifted")
 
     @operation_scoped
-    def start(
-        self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]
-    ) -> RolloutRuntimeHandle | LegacyRuntimeHandle:
+    def start(self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]) -> RuntimeHandle:
         """Start a member from its sealed slot, resuming a published head on retry."""
         if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
             raise GroupError("invalid member ordinal")
-        if self.environment is None:
-            return self._start_legacy(spec, ordinal, policy=policy)
-
         self.resume(spec.group_id)
         member = spec.members[ordinal]
         self.assert_start_contract(spec, spec.environment["entry_checkpoint_id"], policy)
@@ -228,79 +210,11 @@ class GroupCoordinatorV1:
         self._start_receipt(spec, ordinal, view=view)
         return runtime
 
-    def _start_legacy(
-        self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]
-    ) -> LegacyRuntimeHandle:
-        """Temporary old-runtime bridge; S7.2 retargets its remaining caller."""
-        self.resume(spec.group_id)
-        member = spec.members[ordinal]
-        self.assert_start_contract(spec, spec.environment["entry_checkpoint_id"], policy)
-        parent_id = spec.environment["entry_checkpoint_id"]
-        parent = self.store.load_checkpoint(parent_id)
-        seed_ref = self.store.put_artifact(
-            {
-                "record_type": "GroupMemberSeedsV1",
-                "group_id": spec.group_id,
-                "member_id": member.member_id,
-                "derivation": member.seed_provenance,
-                "writer_seed": member.writer_seed,
-                "environment_seed": member.environment_seed,
-                "parent_rng_ref": parent.state.rng_ref,
-            }
-        )
-        position = {
-            **parent.state.to_dict()["position"],
-            "lineage_id": member.member_id,
-            "start_checkpoint": parent_id,
-        }
-        effect = {
-            "artifact_type": "Phase2RecordedEffectV1",
-            "before_state_ref": parent.state.identity(),
-            "file_delta": {},
-            "set": {"position": position, "rng_ref": seed_ref},
-            "history_set": {"branch_base": parent.event_head},
-        }
-        effect_ref = self.store.put_artifact(effect)
-        event = EventV1(
-            previous=parent.event_head,
-            seq=parent.state.history["seq"] + 1,
-            lineage_id=member.member_id,
-            rollout_id=member.member_id,
-            node_visit_id=parent.state.position["visit_id"],
-            kind="rollout_started",
-            actor="environment",
-            audience=("controller", "trainer"),
-            payload_ref=effect_ref,
-            versions_ref=parent.state.versions_ref,
-            provenance_ref=parent.state.provenance_ref,
-        )
-        next_state = self.store._apply_recorded_effect_body(parent.state, event, effect)
-        commit = self.store.branch(
-            parent_id, member.member_id, (event,), next_state, artifact_refs=(effect_ref, seed_ref)
-        )
-        child_id = self.store.load_commit(commit).checkpoint
-        with self._locked(spec.group_id) as directory:
-            self._receipt(
-                directory / f"start-{ordinal}.json",
-                {
-                    "member_id": member.member_id,
-                    "parent_checkpoint_id": parent_id,
-                    "start_checkpoint_id": child_id,
-                    "commit_id": commit,
-                },
-            )
-        destination = self.workers_root / member.member_id
-        if destination.exists():
-            raise GroupError("member workspace exists; remove disposable copy before restoring")
-        return self.store.restore(child_id, destination)
-
     def _assert_member_view(self, spec, member, view) -> None:
         if view.state.position["lineage_id"] != member.member_id or view.group != spec:
             raise GroupError("verified member view differs from its sealed start")
 
     def _start_receipt(self, spec: GroupSpecV1, ordinal: int, *, view=None) -> dict:
-        if self.environment is None:
-            raise GroupError("member receipt verification requires a RolloutEnvironment")
         member = spec.members[ordinal]
         if view is None:
             view = self._verified_member_view(spec, ordinal)
@@ -575,8 +489,6 @@ class GroupCoordinatorV1:
         return ordinal, view
 
     def _verified_member_view(self, spec: GroupSpecV1, ordinal: int):
-        if self.environment is None:
-            raise GroupError("real group collection requires a RolloutEnvironment")
         member = spec.members[ordinal]
         runtime = self.environment.open_head(member.member_id)
         view = self.environment.verify(runtime)

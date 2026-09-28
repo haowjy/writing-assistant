@@ -13,6 +13,7 @@ from typing import Any
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_contracts import CheckContractV1
+from writing_agent.task_graph_environment import AuthorInput, CheckInput, SamplerInput, ToolInput
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import (
     FAMILIES,
@@ -38,7 +39,6 @@ from writing_agent.task_graph_records import (
     WriterRequestV1,
     WriterTurnV1,
 )
-from writing_agent.task_graph_rollout_env import AuthorInput, CheckInput, SamplerInput, ToolInput
 from writing_agent.task_graph_sampling import ArtifactSink, persist_logprob_trace
 from writing_agent.task_graph_scripted import scripted_author_reply
 

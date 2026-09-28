@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from writing_agent.task_graph import (
-    ContextRevisionV1,
     EnvironmentStateV1,
+    MaterializedContextV1,
     MessageV1,
     Record,
     canonical_bytes,
@@ -188,11 +188,11 @@ def verify_fixed_summary(messages: tuple[MessageV1, ...], max_chars: int, record
 
 
 def select_context(
-    old: ContextRevisionV1,
+    old: MaterializedContextV1,
     sources: tuple[str | None, ...],
     policy: ContextPolicyV1,
     *,
-    seed: ContextRevisionV1 | None = None,
+    seed: MaterializedContextV1 | None = None,
     seed_sources: tuple[str | None, ...] = (),
     summary_origin: str,
     recorded_summary: str | None = None,
@@ -252,7 +252,7 @@ def select_context(
     return tuple(messages), tuple(selected_sources), summary, removed
 
 
-def context_bytes(messages: tuple[MessageV1, ...], old: ContextRevisionV1) -> int:
+def context_bytes(messages: tuple[MessageV1, ...], old: MaterializedContextV1) -> int:
     return len(
         canonical_bytes(
             {
@@ -307,8 +307,8 @@ def require_quiescent(state: EnvironmentStateV1, *, pending: tuple[str, ...] = (
 def charge_budget(
     old_budget: dict,
     policy: ContextPolicyV1,
-    old_context: ContextRevisionV1,
-    new_context: ContextRevisionV1,
+    old_context: MaterializedContextV1,
+    new_context: MaterializedContextV1,
     summary: str | None,
 ) -> tuple[dict, dict]:
     """Meter the active context and immutable context storage before publication."""
@@ -353,15 +353,20 @@ def charge_budget(
 def make_record(
     store,
     before: EnvironmentStateV1,
-    old: ContextRevisionV1,
+    old: MaterializedContextV1,
     sources: tuple[str | None, ...],
     policy: ContextPolicyV1,
     policy_ref: str,
-    new: ContextRevisionV1,
+    new: MaterializedContextV1,
     summary_ref: str | None,
     old_budget: dict,
     *,
-    seed: ContextRevisionV1 | None = None,
+    old_content_hash: str,
+    new_content_hash: str,
+    new_context_ref: str,
+    event_head: str | None,
+    provenance_refs: tuple[str, ...],
+    seed: MaterializedContextV1 | None = None,
     seed_sources: tuple[str | None, ...] = (),
     recorded_summary: str | None = None,
 ) -> tuple[dict, dict, tuple[str | None, ...]]:
@@ -379,7 +384,7 @@ def make_record(
     )
     if messages != new.messages or old.tools != new.tools or old.rendering != new.rendering:
         raise CompactionError("new context differs from the deterministic selection")
-    if new.event_head != before.history["head"] or new.provenance_refs != (
+    if event_head != before.history["head"] or provenance_refs != (
         (before.history["head"],) if before.history["head"] is not None else ()
     ):
         raise CompactionError("new context has false revision provenance")
@@ -412,7 +417,7 @@ def make_record(
         "policy_ref": policy_ref,
         "operation": policy.operation,
         "old_context_ref": before.context_ref,
-        "old_content_hash": old.content_hash,
+        "old_content_hash": old_content_hash,
         "old_messages": message_evidence(old.messages, sources),
         "source_event_ids": source_ids,
         "source_range": source_range(store, source_ids),
@@ -425,8 +430,8 @@ def make_record(
         "retained_tail": retained_tail,
         "seed_name": policy.seed_name,
         "seed_checkpoint_ref": policy.seed_checkpoint_ref,
-        "new_context_ref": new.identity(),
-        "new_content_hash": new.content_hash,
+        "new_context_ref": new_context_ref,
+        "new_content_hash": new_content_hash,
         "new_messages": message_evidence(new.messages, selected_sources),
         "dropped_messages": dropped,
         "charges": charges,

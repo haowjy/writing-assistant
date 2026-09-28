@@ -45,10 +45,6 @@ class MaterializationError(StoreError):
     """A checkpoint could not be safely materialized."""
 
 
-class ReplayError(StoreError):
-    """A recorded suffix did not deterministically reproduce its checkpoints."""
-
-
 class AdapterContractError(RuntimeError):
     """An adapter returned output that violates its declared contract."""
 
@@ -71,7 +67,6 @@ __all__ = [
     "MaterializationError",
     "MissingReferenceError",
     "ProjectionError",
-    "ReplayError",
     "StoreError",
     "VerifiedMessagesStaleError",
     "WrongRecordDomainError",

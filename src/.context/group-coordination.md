@@ -88,27 +88,9 @@ to `tool_syntax`. It skips a part only when `raw` equals the sentinel. Never re-
 Before the sentinel existed, an unbounded call earned `tool_syntax` credit, which was hashed
 on the environment's placeholder.
 
-## Legacy start bridge (until S7.3)
+## Runtime boundary
 
-A coordinator constructed with a `TaskGraphStore` instead of a `RolloutEnvironment` starts
-members through `_start_legacy`: a recorded effect, `store.branch` and a workspace restore.
-Its sites are the constructor union, every `self.environment is None` branch in
-`task_graph_group.py`, `_start_legacy`, and the `view is None` path of
-`resolve_group_environment`. Only tests call it: `test_task_graph_ports` (seal and start) and
-`test_task_graph_group` (a legacy test and the `GroupCoordinatorTests` fixture, which
-`test_task_graph_derive_context`, `_entry` and `_fold` borrow).
-
-The two paths are not interchangeable:
-- They seal different environment hashes. The legacy path takes `visible_prefix_hash` and
-  `context_revision_ref` from `context.content_hash` and `context.identity()`, and the new
-  core takes them from `content_ref` and `revision_ref`.
-- The legacy receipt also carries `commit_id`.
-
-A group sealed through the legacy path therefore does not resume on the new core. S7.2
-retargets those test modules to `build_rollout_fixture`, and must re-seal or discard any
-on-disk group directory that was sealed through the legacy path. S7.3 then deletes the
-bridge whole, and `resolve_group_environment` takes a `LineageView` only. Do not add
-callers.
+`GroupCoordinatorV1` requires a `RolloutEnvironment`. It has no bare-store, branch or workspace-restore start path; group members begin and resume only through the verified environment.
 
 ## Known limit
 

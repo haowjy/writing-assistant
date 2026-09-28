@@ -14,25 +14,20 @@ from dataclasses import dataclass, fields
 from dataclasses import field as dataclass_field
 from typing import Any, ClassVar, Self
 
-from writing_agent.task_graph import canonical_json, domain_hash, freeze, thaw, validate_hash
+from writing_agent.task_graph import (
+    EXECUTION_STATUSES,
+    TASK_STATUSES,
+    canonical_json,
+    domain_hash,
+    freeze,
+    thaw,
+    validate_hash,
+)
 
 FILE_TOOLS = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file"})
 GRAPH_TOOLS = FILE_TOOLS | {"ask_author"}
 WRITER_FAMILIES = frozenset({"F1", "F2", "F3", "F4", "F5"})
 CHECK_APPLICABILITY = frozenset({"each_turn", "node_exit_candidate"})
-TASK_STATUSES = frozenset({"complete", "accepted_partial", "incomplete", "unknown"})
-EXECUTION_STATUSES = frozenset(
-    {
-        "running",
-        "valid",
-        "interrupted",
-        "environment_error",
-        "backend_error",
-        "simulator_error",
-        "controller_error",
-        "external_cancelled",
-    }
-)
 CHECK_STATUSES = frozenset({"pass", "fail", "unavailable"})
 GUARD_BUDGETS = frozenset(
     {

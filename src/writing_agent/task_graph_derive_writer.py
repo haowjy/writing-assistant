@@ -39,9 +39,8 @@ from writing_agent.task_graph_records import (
     WriterTurnV1,
 )
 from writing_agent.task_graph_sampling import (
-    WriterTurnSamplingBindingV1,
     bind_group_sampling_claims,
-    decode_and_bind_sampling,
+    decode_writer_turn_sampling,
 )
 from writing_agent.task_graph_scripted import validate_ask_semantics
 from writing_agent.task_graph_transition import (
@@ -237,7 +236,7 @@ def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, s
 
 def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> None:
     try:
-        decode_and_bind_sampling(WriterTurnSamplingBindingV1(turn, view.context, reader))
+        decode_writer_turn_sampling(turn, view.context, reader)
     except ProjectionError as exc:
         raise AdapterContractProjectionError(str(exc)) from exc
     except (AdapterContractError, KeyError, TypeError, ValueError) as exc:

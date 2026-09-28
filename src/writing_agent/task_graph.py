@@ -60,6 +60,19 @@ EVENT_KINDS = frozenset(
         "reward_recorded",
     }
 )
+TASK_STATUSES = frozenset({"complete", "accepted_partial", "incomplete", "unknown"})
+EXECUTION_STATUSES = frozenset(
+    {
+        "running",
+        "valid",
+        "interrupted",
+        "environment_error",
+        "backend_error",
+        "simulator_error",
+        "controller_error",
+        "external_cancelled",
+    }
+)
 
 
 class Phase(StrEnum):
@@ -650,147 +663,188 @@ class EventV1(Record):
         validate_hash(self.provenance_ref)
 
 
-_DEFAULT_RENDERING = MappingProxyType(
-    {
-        "projection_version": "v1",
-        "prefix_id": "root",
-        "template_ref": "0" * 64,
-        "tokenizer_ref": "0" * 64,
-        "tool_schema_ref": "0" * 64,
-    }
-)
-
-
 @dataclass(frozen=True)
-class ContextContentV1(Record):
-    """Provenance-free writer input identity."""
+class ContextContentV1:
+    """One immutable node in the writer-visible context chain."""
 
-    messages: tuple[MessageV1 | Mapping[str, Any], ...] = ()
-    tools: tuple[Mapping[str, Any], ...] = ()
-    projection_version: str = "v1"
-    prefix_id: str = "root"
-    template_ref: str = "0" * 64
-    tokenizer_ref: str = "0" * 64
-    tool_schema_ref: str = "0" * 64
+    parent_ref: str | None
+    messages: tuple[MessageV1 | Mapping[str, Any], ...]
+    tools: tuple[Mapping[str, Any], ...] | None
+    rendering: Mapping[str, Any] | None
     DOMAIN: ClassVar[str] = "context_content"
+    RECORD_TYPE: ClassVar[str | None] = None
+    EDGE_TYPE: ClassVar[str] = "context_node"
+    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
+        {
+            "parent_ref": "context_node",
+            "rendering.template_ref": "artifact",
+            "rendering.tokenizer_ref": "artifact",
+            "rendering.tool_schema_ref": "artifact",
+        }
+    )
+
+    def __post_init__(self) -> None:
+        messages = tuple(
+            message if isinstance(message, MessageV1) else MessageV1.from_dict(dict(message))
+            for message in self.messages
+        )
+        object.__setattr__(self, "messages", messages)
+        if self.tools is not None:
+            object.__setattr__(self, "tools", tuple(freeze(tool) for tool in self.tools))
+        if self.rendering is not None:
+            object.__setattr__(self, "rendering", freeze(self.rendering))
+        object.__setattr__(self, "parent_ref", self.parent_ref)
+        self.validate()
+
+    def validate(self) -> None:
+        validate_hash(self.parent_ref, optional=True)
+        if (self.tools is None) != (self.rendering is None) or (self.parent_ref is None) != (
+            self.tools is not None
+        ):
+            raise ValueError("root context content alone must carry tools and rendering")
+        if not isinstance(self.messages, tuple) or any(
+            not isinstance(message, MessageV1) for message in self.messages
+        ):
+            raise TypeError("context messages must be MessageV1 records")
+        if self.tools is not None and any(not isinstance(tool, Mapping) for tool in self.tools):
+            raise TypeError("context tools must be objects")
+        if self.rendering is not None:
+            required = {
+                "projection_version",
+                "prefix_id",
+                "template_ref",
+                "tokenizer_ref",
+                "tool_schema_ref",
+            }
+            if not isinstance(self.rendering, Mapping) or set(self.rendering) != required:
+                raise ValueError("context rendering has the wrong shape")
+            utf8(self.rendering["projection_version"], "projection version")
+            logical_id(self.rendering["prefix_id"], "prefix id")
+            for name in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
+                validate_hash(self.rendering[name])
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "parent_ref": self.parent_ref,
+            "messages": [message.to_dict() for message in self.messages],
+            "tools": None if self.tools is None else thaw(self.tools),
+            "rendering": None if self.rendering is None else thaw(self.rendering),
+        }
+
+    to_dict = to_wire
+
+    def identity(self) -> str:
+        return domain_hash(self.DOMAIN, self.to_wire())
+
+    def to_json(self) -> str:
+        return canonical_json(self.to_wire())
 
     @classmethod
-    def from_revision(cls, revision: ContextRevisionV1) -> ContextContentV1:
-        if not isinstance(revision, ContextRevisionV1):
-            raise TypeError("revision must be ContextRevisionV1")
-        pins = revision.rendering
-        return cls(
-            messages=revision.messages,
-            tools=revision.tools,
-            projection_version=pins["projection_version"],
-            prefix_id=pins["prefix_id"],
-            template_ref=pins["template_ref"],
-            tokenizer_ref=pins["tokenizer_ref"],
-            tool_schema_ref=pins["tool_schema_ref"],
+    def from_dict(cls, value: Mapping[str, Any]) -> ContextContentV1:
+        if not isinstance(value, Mapping) or set(value) != {
+            "parent_ref",
+            "messages",
+            "tools",
+            "rendering",
+        }:
+            raise ValueError("context content has the wrong schema")
+        result = cls(
+            parent_ref=value["parent_ref"],
+            messages=tuple(value["messages"]),
+            tools=None if value["tools"] is None else tuple(value["tools"]),
+            rendering=value["rendering"],
         )
+        if result.to_wire() != dict(value):
+            raise ValueError("context content is not canonical")
+        return result
 
-    def __post_init__(self) -> None:
-        messages = tuple(
-            message if isinstance(message, MessageV1) else MessageV1(**dict(message))
-            for message in self.messages
-        )
-        object.__setattr__(self, "messages", messages)
-        super().__post_init__()
-
-    def validate(self) -> None:
-        if not self.messages:
-            raise ValueError("context content requires messages")
-        utf8(self.projection_version, "projection version")
-        logical_id(self.prefix_id, "prefix id")
-        validate_hash(self.template_ref)
-        validate_hash(self.tokenizer_ref)
-        validate_hash(self.tool_schema_ref)
-        if not isinstance(self.tools, tuple):
-            raise TypeError("tools must be an array")
-        for tool in self.tools:
-            if not isinstance(tool, Mapping):
-                raise TypeError("tool definitions must be objects")
-
-
-def context_content_hash(
-    messages: tuple[MessageV1 | Mapping[str, Any], ...],
-    *,
-    tools: tuple[Mapping[str, Any], ...] = (),
-    rendering: Mapping[str, str] | None = None,
-) -> str:
-    pins = _DEFAULT_RENDERING if rendering is None else rendering
-    required = {
-        "projection_version",
-        "prefix_id",
-        "template_ref",
-        "tokenizer_ref",
-        "tool_schema_ref",
-    }
-    if not isinstance(pins, Mapping) or set(pins) != required:
-        raise ValueError("rendering must contain exactly the pinned inputs")
-    content = ContextContentV1(
-        messages=messages,
-        tools=tools,
-        projection_version=pins["projection_version"],
-        prefix_id=pins["prefix_id"],
-        template_ref=pins["template_ref"],
-        tokenizer_ref=pins["tokenizer_ref"],
-        tool_schema_ref=pins["tool_schema_ref"],
-    )
-    return content.identity()
+    @classmethod
+    def from_json(cls, data: str | bytes) -> ContextContentV1:
+        raw = data.encode("utf-8", "strict") if isinstance(data, str) else data
+        result = cls.from_dict(load_canonical_json(raw))
+        if canonical_bytes(result.to_wire()) != raw:
+            raise ValueError("context content is not canonical")
+        return result
 
 
 @dataclass(frozen=True)
-class ContextRevisionV1(Record):
-    messages: tuple[MessageV1 | Mapping[str, Any], ...] = ()
-    tools: tuple[Mapping[str, Any], ...] = ()
-    content_hash: str | None = None
-    event_head: str | None = None
-    provenance_refs: tuple[str, ...] = ()
-    rendering: Mapping[str, str] = dataclass_field(default_factory=lambda: dict(_DEFAULT_RENDERING))
+class ContextRevisionV1:
+    """Immutable reference to one materialized context node and its source history."""
+
+    content_ref: str
+    event_head: str | None
+    provenance_refs: tuple[str, ...]
     DOMAIN: ClassVar[str] = "context"
+    RECORD_TYPE: ClassVar[str | None] = None
+    EDGE_TYPE: ClassVar[str] = "context_revision"
+    REFS: ClassVar[Mapping[str, str]] = MappingProxyType(
+        {
+            "content_ref": "context_node",
+            "event_head": "event",
+            "provenance_refs[]": "event",
+        }
+    )
 
     def __post_init__(self) -> None:
-        messages = tuple(
-            message if isinstance(message, MessageV1) else MessageV1(**dict(message))
-            for message in self.messages
-        )
-        object.__setattr__(self, "messages", messages)
-        super().__post_init__()
+        object.__setattr__(self, "provenance_refs", tuple(self.provenance_refs))
+        self.validate()
 
     def validate(self) -> None:
-        expected = context_content_hash(self.messages, tools=self.tools, rendering=self.rendering)
-        if self.content_hash is None:
-            object.__setattr__(self, "content_hash", expected)
-        elif self.content_hash != expected:
-            raise ValueError("content_hash does not match context content")
-        validate_hash(self.content_hash)
+        validate_hash(self.content_ref)
         validate_hash(self.event_head, optional=True)
         _hash_tuple(self.provenance_refs)
-        for message in self.messages:
-            if not isinstance(message, MessageV1):
-                MessageV1.from_dict(message)
-        if not isinstance(self.tools, tuple) or any(
-            not isinstance(tool, Mapping) for tool in self.tools
-        ):
-            raise TypeError("tools must be objects")
-        if not isinstance(self.rendering, Mapping):
-            raise TypeError("rendering must be an object")
-        required = {
-            "projection_version",
-            "prefix_id",
-            "template_ref",
-            "tokenizer_ref",
-            "tool_schema_ref",
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "content_ref": self.content_ref,
+            "event_head": self.event_head,
+            "provenance_refs": list(self.provenance_refs),
         }
-        if set(self.rendering) != required:
-            raise ValueError("rendering must contain exactly the pinned inputs")
-        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.rendering.items()):
-            raise ValueError("rendering values must be strings")
-        utf8(self.rendering["projection_version"], "projection version")
-        logical_id(self.rendering["prefix_id"], "prefix id")
-        for key in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
-            validate_hash(self.rendering[key])
+
+    to_dict = to_wire
+
+    def identity(self) -> str:
+        return domain_hash(self.DOMAIN, self.to_wire())
+
+    def to_json(self) -> str:
+        return canonical_json(self.to_wire())
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ContextRevisionV1:
+        if not isinstance(value, Mapping) or set(value) != {
+            "content_ref",
+            "event_head",
+            "provenance_refs",
+        }:
+            raise ValueError("context revision has the wrong schema")
+        result = cls(value["content_ref"], value["event_head"], tuple(value["provenance_refs"]))
+        if result.to_wire() != dict(value):
+            raise ValueError("context revision is not canonical")
+        return result
+
+    @classmethod
+    def from_json(cls, data: str | bytes) -> ContextRevisionV1:
+        raw = data.encode("utf-8", "strict") if isinstance(data, str) else data
+        result = cls.from_dict(load_canonical_json(raw))
+        if canonical_bytes(result.to_wire()) != raw:
+            raise ValueError("context revision is not canonical")
+        return result
+
+
+@dataclass(frozen=True)
+class MaterializedContextV1:
+    """Flattened, read-only projection of a chained context revision."""
+
+    messages: tuple[MessageV1, ...]
+    tools: tuple[Mapping[str, Any], ...]
+    rendering: Mapping[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "messages": [message.to_dict() for message in self.messages],
+            "tools": thaw(self.tools),
+            "rendering": thaw(self.rendering),
+        }
 
 
 @dataclass(frozen=True)
@@ -1041,7 +1095,7 @@ __all__ = [
     "EventV1",
     "ContextRevisionV1",
     "ContextContentV1",
-    "context_content_hash",
+    "MaterializedContextV1",
     "EnvironmentStateV1",
     "CheckpointV1",
     "CommitV1",

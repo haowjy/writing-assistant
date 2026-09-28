@@ -18,9 +18,7 @@ from writing_agent.task_graph import (
     domain_hash,
     validate_hash,
 )
-from writing_agent.task_graph_admission import StoreArtifactResolver, admit_graph
 from writing_agent.task_graph_compaction import require_quiescent
-from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_record_contracts import (
     POLICY_FIELDS,
     GroupError,
@@ -78,26 +76,15 @@ def resolve_group_environment(
     store: TaskGraphStore,
     checkpoint_id: str,
     *,
-    view: Any = None,
-    instance: Any = None,
+    view: Any,
 ) -> dict[str, Any]:
-    """Resolve the equality-critical entry contract through the active runtime path."""
-    if view is None:
-        checkpoint = store.load_checkpoint(checkpoint_id)
-        state = checkpoint.state
-        instance = store.load_instance(state.instance_ref)
-        graph = admit_graph(instance, StoreArtifactResolver(store))
-        node = graph.node(state.position["node_id"])
-        context = store.load_context(state.context_ref)
-        visible_prefix_hash = context.content_hash
-        context_revision_ref = context.identity()
-        project_writer_context(store, checkpoint_id, checkpoint_id)
-    else:
-        if view.checkpoint_id != checkpoint_id:
-            raise GroupError("verified entry view differs from requested checkpoint")
-        state, node, context = view.state, view.node, view.context
-        visible_prefix_hash = context.content_ref
-        context_revision_ref = context.revision_ref
+    """Resolve the equality-critical entry contract from a verified new-core view."""
+    if view.checkpoint_id != checkpoint_id:
+        raise GroupError("verified entry view differs from requested checkpoint")
+    state, node, context = view.state, view.node, view.context
+    instance = store.load_instance(state.instance_ref)
+    visible_prefix_hash = context.content_ref
+    context_revision_ref = context.revision_ref
     if (
         state.position["phase"] != "ready_writer"
         or state.history["action_ids"]

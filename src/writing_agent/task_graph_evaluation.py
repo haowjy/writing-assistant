@@ -20,7 +20,7 @@ from writing_agent.task_graph import (
     tree_hash,
 )
 from writing_agent.task_graph_contracts import CheckContractV1
-from writing_agent.task_graph_sampling import ProjectionError
+from writing_agent.task_graph_errors import ProjectionError
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,12 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from writing_agent.legacy_graph import compile_legacy_scenario
-from writing_agent.task_graph import CheckpointV1, domain_hash, load_canonical_json
+from writing_agent.task_graph import (
+    CheckpointV1,
+    MaterializedContextV1,
+    domain_hash,
+    load_canonical_json,
+)
 from writing_agent.task_graph_admission import (
     AdmittedGraphV1,
     MappingArtifactResolver,
@@ -23,7 +28,6 @@ from writing_agent.task_graph_records import (
     AdmissionPolicyV1,
     ContextContentV1,
     ContextRevisionV1,
-    MaterializedContextV1,
     materialize_context_nodes,
 )
 from writing_agent.task_graph_transition import DerivedArtifact

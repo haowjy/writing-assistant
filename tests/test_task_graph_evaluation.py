@@ -4,12 +4,12 @@ import unittest
 
 from writing_agent.task_graph import domain_hash, tree_hash
 from writing_agent.task_graph_contracts import CheckContractV1
+from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_evaluation import (
     EvaluationRequestV1,
     produce_evaluation_evidence,
     verify_evaluation_evidence,
 )
-from writing_agent.task_graph_sampling import ProjectionError
 
 
 class EvaluationFamilyTests(unittest.TestCase):

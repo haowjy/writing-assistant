@@ -1,18 +1,11 @@
-"""Composition root for sealed runtime adapters and the local publication service."""
+"""Composition root for sealed runtime adapter manifests."""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 
-from writing_agent.task_graph import EnvironmentStateV1
-from writing_agent.task_graph_environment import EnvironmentTransactionService
-from writing_agent.task_graph_local import (
-    DeterministicEvaluator,
-    LocalTextToolProvider,
-    LocalWorkspaceEnvironment,
-    ScriptedSampleBackend,
-)
+from writing_agent.task_graph_local import LocalWorkspaceEnvironment
 from writing_agent.task_graph_ports import (
     RuntimeDependenciesV1,
 )
@@ -22,12 +15,11 @@ from writing_agent.task_graph_transition import LineageView
 @dataclass(frozen=True)
 class RuntimeSession:
     dependencies: RuntimeDependenciesV1
-    publisher: EnvironmentTransactionService
     manifest_ref: str
     sealed_adapter_ref: str | None = None
 
     @classmethod
-    def create(cls, store, rollout_id, entry_checkpoint_id, dependencies):
+    def create(cls, store, dependencies: RuntimeDependenciesV1) -> RuntimeSession:
         if (
             isinstance(dependencies.environment, LocalWorkspaceEnvironment)
             and dependencies.environment.provider is not dependencies.tools
@@ -44,7 +36,6 @@ class RuntimeSession:
             raise ValueError("runtime manifest persistence changed identity")
         return cls(
             dependencies,
-            EnvironmentTransactionService(store, rollout_id, entry_checkpoint_id),
             ref,
         )
 
@@ -53,7 +44,7 @@ class RuntimeSession:
             self.dependencies.manifest().to_wire()
         ):
             raise ValueError("sealed adapter manifest differs from executing runtime")
-        return RuntimeSession(self.dependencies, self.publisher, self.manifest_ref, adapter_ref)
+        return RuntimeSession(self.dependencies, self.manifest_ref, adapter_ref)
 
     def require_seal(self, adapter_ref: str) -> None:
         if (
@@ -72,25 +63,3 @@ class RuntimeSession:
         if lineage not in {member.member_id for member in spec.members}:
             raise ValueError("group member differs from its verified group contract")
         self.require_seal(spec.policy["adapter_ref"])
-
-    def require_legacy_group_member_seal(self, store, state: EnvironmentStateV1) -> None:
-        """Do not let an unbound legacy writer act on a recorded group member."""
-        seed = store.get_artifact(state.rng_ref)
-        if not isinstance(seed, dict) or seed.get("record_type") != "GroupMemberSeedsV1":
-            return
-        if seed.get("member_id") != state.position["lineage_id"]:
-            raise ValueError("legacy group member has a mismatched seed witness")
-        if self.sealed_adapter_ref is None:
-            raise ValueError("legacy group member requires a sealed adapter manifest")
-
-
-def local_unbound_session(store, rollout_id, entry_checkpoint_id) -> RuntimeSession:
-    """Explicit legacy/offline direct-submit composition; never claims group binding."""
-    tools = LocalTextToolProvider()
-    dependencies = RuntimeDependenciesV1(
-        ScriptedSampleBackend(()),
-        LocalWorkspaceEnvironment(tools),
-        tools,
-        DeterministicEvaluator(),
-    )
-    return RuntimeSession.create(store, rollout_id, entry_checkpoint_id, dependencies)

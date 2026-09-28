@@ -24,12 +24,7 @@ from writing_agent.task_graph_records import (
     WriterRequestV1,
     WriterTurnV1,
 )
-from writing_agent.task_graph_sampling import (
-    CURRENT_ELIGIBILITY,
-    TrainingEligibilityBindingV1,
-    bind_group_sampling_claims,
-    decode_and_bind_sampling,
-)
+from writing_agent.task_graph_sampling import bind_group_sampling_claims
 from writing_agent.task_graph_transition import (
     CallSource,
     CheckpointChain,
@@ -489,6 +484,23 @@ class ToolResultDeriveTests(unittest.TestCase):
         self.assertEqual(dict(result.state.files), dict(action.state.files))
         self.assertEqual(result.view.budget["consumed"]["read_tokens"], 0)
 
+    def test_identical_content_write_is_a_noop(self):
+        action = self._action(call("write_file", {"path": "draft.txt", "content": "alpha\n"}))
+        result = assert_fixed_point(
+            self,
+            derive_tool_result,
+            action.view,
+            self._observation(
+                action,
+                observation={"ok": True, "valid": True, "result": "written"},
+            ),
+            self.reader,
+        )
+
+        self.assertEqual(dict(result.state.files), dict(action.state.files))
+        self.assertEqual(result.state.tree_hash, action.state.tree_hash)
+        self.assertEqual(result.view.budget["consumed"]["tool_calls"], 1)
+
     def test_tool_error_precedence_budget_then_call_rejection(self):
         malformed = {"id": "bad-envelope", "type": "function"}
         view = with_budget(
@@ -700,17 +712,6 @@ class SamplingCodecTests(unittest.TestCase):
                 ),
                 self.reader,
             )
-
-    def test_eligibility_decoder_compares_canonical_wire_bytes(self):
-        outcome_ref = "c" * 64
-        wire = CURRENT_ELIGIBILITY.training_wire(outcome_ref)
-        self.assertIs(
-            decode_and_bind_sampling(TrainingEligibilityBindingV1(wire, outcome_ref)),
-            CURRENT_ELIGIBILITY,
-        )
-        wire["schema"] = True
-        with self.assertRaises(ProjectionError):
-            decode_and_bind_sampling(TrainingEligibilityBindingV1(wire, outcome_ref))
 
 
 if __name__ == "__main__":

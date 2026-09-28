@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from threading import RLock
 from typing import Any
 
-from writing_agent.task_graph import CheckpointV1, EventV1
+from writing_agent.task_graph import CheckpointV1, EventV1, MaterializedContextV1
 from writing_agent.task_graph_admission import (
     AdmissionError,
     AdmittedGraphV1,
@@ -35,7 +35,6 @@ from writing_agent.task_graph_records import (
     RECORD_TYPES,
     AdmissionPolicyV1,
     EnvironmentStepV1,
-    MaterializedContextV1,
 )
 from writing_agent.task_graph_transition import (
     ArtifactReader,

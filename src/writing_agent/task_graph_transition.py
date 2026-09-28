@@ -8,8 +8,11 @@ from typing import Any, Literal, Protocol, TypeAlias
 
 from writing_agent.task_graph import (
     CheckpointV1,
+    ContextContentV1,
+    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
+    MaterializedContextV1,
     MessageV1,
     Phase,
     Record,
@@ -28,7 +31,6 @@ from writing_agent.task_graph_records import (
     ContextOperationInputV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
-    MaterializedContextV1,
     MemberStartV1,
     OutcomeV1,
     ToolObservationV1,
@@ -207,26 +209,27 @@ class ArtifactReader(Protocol):
 @dataclass(frozen=True)
 class DerivedArtifact:
     ref: Hash
-    value: bytes | Record | WireRecord
+    value: bytes | Record | WireRecord | ContextRevisionV1
     kind: str
     value_kind: Literal["record", "canonical_json", "bytes"]
 
     def __post_init__(self) -> None:
         validate_hash(self.ref)
-        if not isinstance(self.value, (bytes, Record, WireRecord)):
+        record_types = (Record, WireRecord, ContextRevisionV1, ContextContentV1)
+        if not isinstance(self.value, (bytes, *record_types)):
             raise TypeError("derived artifact values must be canonical bytes or typed records")
         if self.kind not in {"artifact", "private", "context_revision", "context_node"}:
             raise ValueError("unsupported derived artifact kind")
         value_kind = self.value_kind
         if value_kind not in {"record", "canonical_json", "bytes"}:
             raise ValueError("unsupported derived artifact value kind")
-        if value_kind == "record" and not isinstance(self.value, (Record, WireRecord)):
+        if value_kind == "record" and not isinstance(self.value, record_types):
             raise TypeError("record artifacts require a typed record")
         if value_kind == "canonical_json" and isinstance(self.value, bytes):
             identity = domain_hash("payload", load_canonical_json(self.value))
         elif value_kind == "bytes" and isinstance(self.value, bytes):
             identity = domain_hash_bytes("payload", self.value)
-        elif value_kind == "record" and isinstance(self.value, (Record, WireRecord)):
+        elif value_kind == "record" and isinstance(self.value, record_types):
             identity = self.value.identity()
         else:
             raise ValueError("artifact value kind does not match its value")

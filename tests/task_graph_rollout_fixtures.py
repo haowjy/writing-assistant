@@ -34,6 +34,7 @@ from writing_agent.task_graph_contracts import (
 )
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_entry import derive_entry
+from writing_agent.task_graph_environment import RolloutEnvironment, RuntimeHandle
 from writing_agent.task_graph_errors import DriverBudgetError
 from writing_agent.task_graph_evaluation import FAMILIES
 from writing_agent.task_graph_gate import LineageGate
@@ -51,7 +52,6 @@ from writing_agent.task_graph_local import (
 )
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_rollout import RolloutDriver
-from writing_agent.task_graph_rollout_env import RolloutEnvironment, RuntimeHandle
 from writing_agent.task_graph_store import TaskGraphStore
 
 AUTHOR_PACKET_CANARY = "AUTHOR_PACKET_CANARY_S4_1937"

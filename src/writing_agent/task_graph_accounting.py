@@ -10,7 +10,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from writing_agent.task_graph import ContextRevisionV1, canonical_bytes, canonical_json, thaw
+from writing_agent.task_graph import MaterializedContextV1, canonical_bytes, canonical_json, thaw
 from writing_agent.task_graph_compaction import context_bytes
 
 READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
@@ -126,7 +126,7 @@ def charge_tool_attempt(budget: Mapping[str, Any]) -> tuple[dict, int]:
 
 
 def charge_context_append(
-    old_budget: Mapping[str, Any], new_context: ContextRevisionV1
+    old_budget: Mapping[str, Any], new_context: MaterializedContextV1
 ) -> dict | None:
     """Meter a visible append when context accounting has been activated.
 

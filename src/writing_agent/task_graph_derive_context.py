@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from writing_agent.task_graph import (
-    ContextRevisionV1 as MaterializedContextRevisionV1,
-)
-from writing_agent.task_graph import (
+    ContextContentV1,
+    ContextRevisionV1,
+    MaterializedContextV1,
     domain_hash,
     thaw,
 )
@@ -27,9 +27,7 @@ from writing_agent.task_graph_derive_common import (
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupSpecV1
 from writing_agent.task_graph_records import (
-    ContextContentV1,
     ContextOperationInputV1,
-    ContextRevisionV1,
     MemberStartV1,
 )
 from writing_agent.task_graph_transition import (
@@ -40,13 +38,11 @@ from writing_agent.task_graph_transition import (
 )
 
 
-def _materialized_context(context, event_head, messages=None):
-    return MaterializedContextRevisionV1(
+def _materialized_context(context, messages=None):
+    return MaterializedContextV1(
         messages=context.messages if messages is None else messages,
         tools=context.tools,
         rendering=context.rendering,
-        event_head=event_head,
-        provenance_refs=(event_head,) if event_head else (),
     )
 
 
@@ -67,13 +63,13 @@ def derive_context_operation(
     try:
         policy = ContextPolicyV1.from_dict(reader.artifact(operation.policy_ref))
         require_quiescent(view.state)
-        old = _materialized_context(view.context, view.head_event_id)
+        old = _materialized_context(view.context)
         seed = None
         seed_sources: tuple[str | None, ...] = ()
         if policy.operation == "seed":
             assert policy.seed_checkpoint_ref is not None
             seed_context = view.ancestry.context_at(policy.seed_checkpoint_ref)
-            seed = _materialized_context(seed_context, None)
+            seed = _materialized_context(seed_context)
             seed_sources = seed_context.sources
 
         origin = f"{view.state.position['lineage_id']}:context:{view.state.history['seq'] + 1}"
@@ -86,7 +82,18 @@ def derive_context_operation(
             summary_origin=origin,
         )
         summary_ref = summary_hash(summary)
-        new_materialized = _materialized_context(view.context, view.head_event_id, messages)
+        new_materialized = _materialized_context(view.context, messages)
+        content = ContextContentV1(
+            parent_ref=None,
+            messages=messages,
+            tools=old.tools,
+            rendering=old.rendering,
+        )
+        revision = ContextRevisionV1(
+            content_ref=content.identity(),
+            event_head=view.head_event_id,
+            provenance_refs=(view.head_event_id,) if view.head_event_id else (),
+        )
         # Recompute the non-persisted evidence record through the same helper used by
         # legacy replay. Its summary bytes are deterministic derived evidence, not an
         # artifact written by this transition.
@@ -101,23 +108,17 @@ def derive_context_operation(
             new_materialized,
             summary_ref,
             thaw(view.budget),
+            old_content_hash=view.context.content_ref,
+            new_content_hash=content.identity(),
+            new_context_ref=revision.identity(),
+            event_head=revision.event_head,
+            provenance_refs=revision.provenance_refs,
             seed=seed,
             seed_sources=seed_sources,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ProjectionError("context operation violates the view or policy") from exc
 
-    content = ContextContentV1(
-        parent_ref=None,
-        messages=messages,
-        tools=old.tools,
-        rendering=old.rendering,
-    )
-    revision = ContextRevisionV1(
-        content_ref=content.identity(),
-        event_head=view.head_event_id,
-        provenance_refs=(view.head_event_id,) if view.head_event_id else (),
-    )
     budget_ref = domain_hash("payload", budget)
     context = ContextView(
         messages=messages,

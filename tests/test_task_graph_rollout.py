@@ -24,6 +24,13 @@ from tests.task_graph_rollout_fixtures import (
 )
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_controller import next_step
+from writing_agent.task_graph_environment import (
+    CheckInput,
+    RolloutEnvironment,
+)
+from writing_agent.task_graph_environment import (
+    derive_input as producer_derive_input,
+)
 from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError, ProjectionError
 from writing_agent.task_graph_evaluation import (
     FAMILIES,
@@ -40,13 +47,6 @@ from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentResult, EnvironmentSnapshot, SampleResult
 from writing_agent.task_graph_records import ContextOperationInputV1, SampledMessageV1, WriterTurnV1
 from writing_agent.task_graph_rollout import RolloutDriver
-from writing_agent.task_graph_rollout_env import (
-    CheckInput,
-    RolloutEnvironment,
-)
-from writing_agent.task_graph_rollout_env import (
-    derive_input as producer_derive_input,
-)
 from writing_agent.task_graph_store import TaskGraphStore
 
 
@@ -186,7 +186,7 @@ class RolloutDriverTests(unittest.TestCase):
         fixture.env.commit_observer = stop_after_commit
         with (
             patch(
-                "writing_agent.task_graph_rollout_env.derive_input",
+                "writing_agent.task_graph_environment.derive_input",
                 wraps=producer_derive_input,
             ) as producer_derive,
             patch(

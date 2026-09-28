@@ -55,7 +55,7 @@ class DowngradeForgeryTests(unittest.TestCase):
             fixture = build_rollout_fixture(Path(directory) / "store")
             before = fixture.store.read_head(fixture.lineage_id)
             with self.assertRaises(ProjectionError) as rejected:
-                fixture.env.commit(fixture.runtime, {"artifact_type": "Phase2RecordedEffectV1"})
+                fixture.env.commit(fixture.runtime, {"artifact_type": "UnsupportedGenericInputV1"})
             self.assertIn("input.record_type", str(rejected.exception))
             self.assertEqual(fixture.store.read_head(fixture.lineage_id), before)
 

@@ -17,7 +17,7 @@ Catch the exact class. `CorruptRecordError` and `ConcurrentUpdateError` are both
 
 | Class | Meaning | Raised for | Caller rule |
 |---|---|---|---|
-| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a hash-correct payload that its codec rejects, such as an extra field or an unknown `record_type` (reported at `event.payload_ref` with the codec's message); a missing reference named by the input; a directive that differs from `next_step`; a failed derive rule that is not an adapter contract, even on a fresh commit (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); a persisted adapter violation (`AdapterContractProjectionError` is a subclass); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
+| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a hash-correct payload that its codec rejects (closure errors report the codec's own field path, for example `artifact.forged_field`); a missing reference named by the input; a directive that differs from `next_step`; a failed derive rule that is not an adapter contract, even on a fresh commit (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); a persisted adapter violation (`AdapterContractProjectionError` is a subclass); a lineage whose versions do not pin `task-graph-derive-v1`; `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
 | `CorruptRecordError` | Bytes already on disk fail their checks | A byte changed without its hash being recomputed, found on read on both the producer path (`commit`) and the gate path | Stop. The store is damaged; re-deriving will not help. |
 | `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` when no head has been published | Re-open with `open_head(lineage_id)` and continue from its `next_step`. Before the first head, re-run `enter` or `open` the entry checkpoint instead. |
 | `WriterRuntimeError` | The caller has a bug | A handle whose state or context differs from its checkpoint; a checkpoint or view admitted under another graph or admission policy; a port view that differs from the gate's view | Fix the caller. |
@@ -61,31 +61,18 @@ content-addressed inputs, so that key is sufficient. The store root is in the ke
 admission also checks that artifacts exist in that store. A lineage can be verified only
 under the policy its root pins, because the policy is part of the root's state identity.
 
-**The store chooses the path from pinned semantics, never from its configuration.**
-`TaskGraphStore._verifier_for_checkpoint` reads the lineage's pinned
-`transition_semantics`. `save_checkpoint`, `publish`, `restore`, `branch` and the closure's
-commit validation all use it:
+**The store has one runtime path.** `publish` and `restore` require a configured semantic
+verifier; a verifierless store refuses both. Runtime lineages must pin exactly
+`task-graph-derive-v1`. An absent or unsupported pin is refused with
+`ProjectionError("state.versions_ref.transition_semantics: runtime lineages require
+task-graph-derive-v1")`. `save_checkpoint` remains a structural persistence operation;
+the verifier runs when the checkpoint is published or restored. Runtime checkpoints may
+not add `artifact_refs`.
 
-| Pinned semantics | Path |
-|---|---|
-| `task-graph-derive-v1` | The verifier is required. A store without one raises `ProjectionError` on `save_checkpoint`, `publish` and `restore`. The patch reducer never runs. Runtime checkpoints may not add `artifact_refs`. |
-| Absent (legacy, until S7) | The patch reducer, post-state check and legacy writer hook run whether or not a verifier is configured. The verifier is never called. |
-| Any other value | Refused. |
-
-Two more publication rules hold on both paths:
-- A first commit (`expected_head is None`) must start from a parentless checkpoint. A first
-  commit from a mid-lineage checkpoint would leave earlier events out of the commit chain.
-- `store.branch` works for legacy lineages on any store. It refuses a v1 lineage, because a
-  branched state keeps its parent's `lineage_id`. Group members start through
-  `MemberStartV1` instead.
-
-**Rejected: choosing the path by verifier presence.** S3.1 first ran the gate whenever a
-verifier was configured, and the legacy reducer otherwise. The review broke it both ways.
-A default `TaskGraphStore(root)` published a forged v1 lineage (terminal root, forged
-outcome, 10⁶ budget limits). A verifier store accepted a legacy commit whose empty effect
-changed `outcome_ref`. The lineage's pinned semantics decides instead. S7.3 deletes the
-legacy row as one rule: the `verifier is None` arms at the call sites of
-`_verifier_for_checkpoint`.
+A first commit (`expected_head is None`) must start from a parentless checkpoint. A first
+commit from a mid-lineage checkpoint would leave earlier events out of the commit chain.
+Group members start from the shared entry checkpoint through `MemberStartV1`; there is no
+mid-lineage branch operation.
 
 ## Publication handoff
 
@@ -192,7 +179,7 @@ the `alternatives` callback, or replayed from disk, never passes through the gat
 
 ## Rollout environment
 
-[`task_graph_rollout_env.py`](../writing_agent/task_graph_rollout_env.py) is the producer,
+[`task_graph_environment.py`](../writing_agent/task_graph_environment.py) is the producer,
 persistence and port-input boundary. Its public methods are `enter`, `open`, `open_head`,
 `verify`, `step_input`, `port_input`, `commit` and `start_member`.
 
@@ -231,7 +218,7 @@ head. A parentless checkpoint counts as the head while its lineage has no head y
 - `step_input(runtime)` verifies once and returns `(view, directive, port)` in one operation
   scope. The driver uses it, so a step makes two environment calls (`step_input` and
   `commit`) and three `gate.view` lookups, including commit validation. Each lookup is a
-  cache hit at a warm head. S7.3's scaling gate measures this path, so do not add a
+  cache hit at a warm head. The S7.3 scaling check measures this path; do not add a
   verification call to it.
 - `port_input(view, directive)` is for callers that build a port outside the driver. It
   requires `view` to be the gate's view of the published head and `directive` to equal
@@ -317,13 +304,13 @@ The rules:
 - **Decoding settings come only from `decoding_ref`.** The request JSON holds only the
   messages, and the new core has no per-call extras channel. The pinned decoding artifact is
   what the group seals and the derive binds; a second channel would let a member sample
-  under settings that nobody sealed. S7.2 removed `RuntimeRunner` and its
-  `request_extras` channel; `SamplingRunner` is the only sampling path.
+  under settings that nobody sealed. The `request_extras` channel is absent;
+  `SamplingRunner` is the only sampling path.
 - **A backend reports what it was given.** `ScriptedSampleBackend` puts the supplied seed,
   the pinned refs and the context claims into its trace. When the pins did not reach the
   backend, a member was sampled with the backend's default seed, and an honest seed claim
   failed the group binding.
-- **Context claims are bound for every lineage.** `_decode_writer_turn_sampling` compares a
+- **Context claims are bound for every lineage.** `decode_writer_turn_sampling` compares a
   trace's `context_revision_ref`, `context_content_hash` and rendering with the active
   context whenever each claim is present. This is O2's present-only rule applied to every
   lineage. When only the group binder checked these claims, a non-group commit with false
@@ -415,8 +402,8 @@ has not been amended, so trust the code:
   and do not materialize, and `RuntimeHandle` has no `workspace`. Nothing in the driver,
   gatherers or fixture read it: gatherers use `ToolInput.files`. The S3 close review found
   the field was neither verified (a forged path committed and carried forward) nor
-  refreshed after a file-changing commit. The legacy `TaskGraphStore.restore` still
-  materializes.
+  refreshed after a file-changing commit. `TaskGraphStore.restore` verifies only; explicit
+  materialization remains a separate store operation.
 - **`CommitVerifier` exposes `view`**; there is no `verify_checkpoint` (§6.1).
 - **The gate caches through `record_published`** (§6.1 step 4 has the environment insert
   the candidate); see "Publication handoff" above.

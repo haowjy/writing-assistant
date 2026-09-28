@@ -26,6 +26,13 @@ from writing_agent.task_graph_contracts import (
 )
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_entry import derive_entry
+from writing_agent.task_graph_environment import (
+    AuthorInput,
+    CheckInput,
+    RolloutEnvironment,
+    SamplerInput,
+    ToolInput,
+)
 from writing_agent.task_graph_errors import (
     AdapterContractError,
     ConcurrentUpdateError,
@@ -64,13 +71,6 @@ from writing_agent.task_graph_records import (
     ToolObservationV1,
 )
 from writing_agent.task_graph_rollout import RolloutDriver
-from writing_agent.task_graph_rollout_env import (
-    AuthorInput,
-    CheckInput,
-    RolloutEnvironment,
-    SamplerInput,
-    ToolInput,
-)
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import DerivedArtifact
 
@@ -380,12 +380,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             tools,
             DeterministicEvaluator(),
         )
-        unbound = RuntimeSession.create(
-            self.store,
-            self.fixture.params.lineage_id,
-            self.entry,
-            dependencies,
-        )
+        unbound = RuntimeSession.create(self.store, dependencies)
         session = unbound.bind(self.store, unbound.manifest_ref)
         environment = RolloutEnvironment(
             self.store,
@@ -412,12 +407,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             tools,
             DeterministicEvaluator(),
         )
-        unbound = RuntimeSession.create(
-            self.store,
-            self.fixture.params.lineage_id,
-            self.entry,
-            dependencies,
-        )
+        unbound = RuntimeSession.create(self.store, dependencies)
         session = unbound.bind(self.store, unbound.manifest_ref)
         environment = RolloutEnvironment(
             self.store,
@@ -449,12 +439,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             other_tools,
             DeterministicEvaluator(),
         )
-        other_unbound = RuntimeSession.create(
-            self.store,
-            spec.members[0].member_id,
-            runtime.checkpoint_id,
-            other_dependencies,
-        )
+        other_unbound = RuntimeSession.create(self.store, other_dependencies)
         other_session = other_unbound.bind(self.store, other_unbound.manifest_ref)
         other_environment = RolloutEnvironment(
             self.store,

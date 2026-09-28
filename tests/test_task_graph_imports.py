@@ -9,13 +9,23 @@ from pathlib import Path
 
 SOURCE_PACKAGE = Path(__file__).resolve().parents[1] / "src" / "writing_agent"
 NEW_SEAM_MODULES = {
+    "writing_agent.task_graph",
     "writing_agent.task_graph_errors",
+    "writing_agent.task_graph_accounting",
+    "writing_agent.task_graph_sampling",
+    "writing_agent.task_graph_scripted",
     "writing_agent.task_graph_calls",
     "writing_agent.task_graph_records",
     "writing_agent.task_graph_wire",
     "writing_agent.task_graph_record_contracts",
     "writing_agent.task_graph_payloads",
     "writing_agent.task_graph_operation",
+    "writing_agent.task_graph_artifacts",
+    "writing_agent.task_graph_contracts",
+    "writing_agent.task_graph_admission",
+    "writing_agent.task_graph_evaluation",
+    "writing_agent.task_graph_compaction",
+    "writing_agent.task_graph_store",
     "writing_agent.task_graph_transition",
     "writing_agent.task_graph_derive_entry",
     "writing_agent.task_graph_derive_context",
@@ -25,9 +35,14 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_derive_writer",
     "writing_agent.task_graph_controller",
     "writing_agent.task_graph_gate",
-    "writing_agent.task_graph_rollout_env",
+    "writing_agent.task_graph_environment",
     "writing_agent.task_graph_gatherers",
     "writing_agent.task_graph_rollout",
+    "writing_agent.task_graph_group_contract",
+    "writing_agent.task_graph_group",
+    "writing_agent.task_graph_ports",
+    "writing_agent.task_graph_local",
+    "writing_agent.task_graph_composition",
 }
 FORBIDDEN_IMPORT_PATTERNS = {
     re.compile(r"^writing_agent\.task_graph_(?:gatherers|rollout)(?:\..+)?$"): frozenset(
@@ -38,6 +53,7 @@ LAYER_RANKS = {
     **{
         f"writing_agent.{name}": 0
         for name in (
+            "task_graph",
             "task_graph_errors",
             "task_graph_records",
             "task_graph_wire",
@@ -46,7 +62,22 @@ LAYER_RANKS = {
             "task_graph_operation",
         )
     },
-    **{f"writing_agent.{name}": 1 for name in ("task_graph_calls", "task_graph_controller")},
+    **{
+        f"writing_agent.{name}": 1
+        for name in (
+            "task_graph_accounting",
+            "task_graph_sampling",
+            "task_graph_scripted",
+            "task_graph_calls",
+            "task_graph_compaction",
+            "task_graph_contracts",
+            "task_graph_admission",
+            "task_graph_evaluation",
+            "task_graph_controller",
+            "task_graph_artifacts",
+        )
+    },
+    "writing_agent.task_graph_store": 2,
     **{
         f"writing_agent.{name}": 3
         for name in (
@@ -61,7 +92,11 @@ LAYER_RANKS = {
     },
     "writing_agent.task_graph_group_contract": 4,
     "writing_agent.task_graph_gate": 4,
-    "writing_agent.task_graph_rollout_env": 5,
+    "writing_agent.task_graph_environment": 5,
+    "writing_agent.task_graph_group": 6,
+    "writing_agent.task_graph_ports": 6,
+    "writing_agent.task_graph_local": 6,
+    "writing_agent.task_graph_composition": 6,
     "writing_agent.task_graph_gatherers": 6,
     "writing_agent.task_graph_rollout": 6,
 }
@@ -206,13 +241,6 @@ def strongly_connected_components(graph: dict[str, set[str]]) -> list[tuple[str,
 
 
 class TaskGraphImportTests(unittest.TestCase):
-    def test_new_core_does_not_import_legacy_checks(self) -> None:
-        graph = build_import_graph()
-        legacy_checks = "writing_agent.task_graph_checks"
-        for module in NEW_SEAM_MODULES:
-            with self.subTest(module=module):
-                self.assertNotIn(legacy_checks, graph[module])
-
     def test_gatherers_and_driver_cannot_import_transition_views(self) -> None:
         graph = build_import_graph()
         pattern = next(iter(FORBIDDEN_IMPORT_PATTERNS))
@@ -228,7 +256,7 @@ class TaskGraphImportTests(unittest.TestCase):
                     f"gatherer {module} imports a transition view",
                 )
 
-    def test_legacy_runtime_modules_do_not_reference_lineage_views(self) -> None:
+    def test_pure_helpers_do_not_reference_lineage_views(self) -> None:
         for filename in ("task_graph_scripted.py", "task_graph_sampling.py"):
             path = SOURCE_PACKAGE / filename
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -261,6 +289,11 @@ class TaskGraphImportTests(unittest.TestCase):
             for component in components
             if len(component) > 1 or component[0] in graph[component[0]]
         ]
+        task_graph_sccs = [
+            component
+            for component in cyclic_components
+            if any(module.rsplit(".", 1)[-1].startswith("task_graph") for module in component)
+        ]
         cycles_through_other_modules = [
             component
             for component in cyclic_components
@@ -271,8 +304,10 @@ class TaskGraphImportTests(unittest.TestCase):
             "writing_agent import graph: "
             f"{len(graph)} modules, {edge_count} edges, {len(components)} SCCs, "
             f"{len(cyclic_components)} cyclic SCCs: {cyclic_components}; "
+            f"task_graph SCCs: {task_graph_sccs}; "
             f"cycles through non-task_graph modules: {cycles_through_other_modules}"
         )
+        self.assertEqual([], task_graph_sccs)
 
         error_module = SOURCE_PACKAGE / "task_graph_errors.py"
         error_tree = ast.parse(error_module.read_text(encoding="utf-8"))
@@ -331,9 +366,7 @@ class TaskGraphImportTests(unittest.TestCase):
             "writing_agent.task_graph_store",
             "writing_agent.task_graph_ports",
             "writing_agent.task_graph_local",
-            "writing_agent.task_graph_writer",
             "writing_agent.task_graph_environment",
-            "writing_agent.task_graph_replay",
         }:
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, graph["writing_agent.task_graph_derive_entry"])

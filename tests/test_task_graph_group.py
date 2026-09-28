@@ -19,6 +19,7 @@ from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonica
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_writer_turn
+from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_group import (
@@ -32,7 +33,6 @@ from writing_agent.task_graph_group import (
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
 from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
-from writing_agent.task_graph_rollout_env import RolloutEnvironment
 from writing_agent.task_graph_store import TaskGraphStore
 
 

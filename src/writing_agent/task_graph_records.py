@@ -11,11 +11,14 @@ from typing import Annotated, Any, ClassVar
 import writing_agent.task_graph_record_contracts  # noqa: F401 - populate the wire registry
 from writing_agent import task_graph_errors
 from writing_agent.task_graph import (
+    EXECUTION_STATUSES,
+    TASK_STATUSES,
+    ContextContentV1,
+    ContextRevisionV1,
+    MaterializedContextV1,
     MessageV1,
-    domain_hash,
     safe_path,
 )
-from writing_agent.task_graph_contracts import EXECUTION_STATUSES, TASK_STATUSES
 from writing_agent.task_graph_payloads import payload_record_codecs
 from writing_agent.task_graph_wire import (
     Bool,
@@ -27,7 +30,6 @@ from writing_agent.task_graph_wire import (
     JsonValue,
     KindUnion,
     ListOf,
-    MessageValue,
     PayloadCodec,
     RecordOf,
     Str,
@@ -312,42 +314,6 @@ class OutcomeV1(WireRecord):
     RECORD_TYPE: ClassVar[str] = "OutcomeV1"
 
 
-@dataclass(frozen=True)
-class ContextContentV1(WireRecord):
-    parent_ref: Annotated[str | None, Hash("context_node", optional=True)]
-    messages: Annotated[
-        tuple[MessageV1 | Mapping[str, Any], ...] | list[MessageV1 | Mapping[str, Any]],
-        ListOf(MessageValue()),
-    ]
-    tools: Annotated[
-        tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]] | None,
-        UnionOf((type(None), ListOf(obj_opt({}, extra=_JSON)))),
-    ]
-    rendering: Annotated[Mapping[str, Any] | None, UnionOf((type(None), _RENDERING_SCHEMA))]
-    RECORD_TYPE: ClassVar[str | None] = None
-    EDGE_TYPE: ClassVar[str] = "context_node"
-
-    def check(self) -> None:
-        is_root = self.parent_ref is None
-        if (self.tools is None) != (self.rendering is None) or is_root != (self.tools is not None):
-            raise ValueError("root content alone must carry tools and rendering")
-
-    def identity(self) -> str:
-        return domain_hash("context_content", self.to_wire())
-
-
-@dataclass(frozen=True)
-class ContextRevisionV1(WireRecord):
-    content_ref: Annotated[str, Hash("context_node")]
-    event_head: Annotated[str | None, Hash("event", optional=True)]
-    provenance_refs: Annotated[tuple[str, ...] | list[str], ListOf(Hash("event"))]
-    RECORD_TYPE: ClassVar[str | None] = None
-    EDGE_TYPE: ClassVar[str] = "context_revision"
-
-    def identity(self) -> str:
-        return domain_hash("context", self.to_wire())
-
-
 RECORD_TYPES: Mapping[str, type[WireRecord] | PayloadCodec] = MappingProxyType(
     {
         **{
@@ -359,20 +325,10 @@ RECORD_TYPES: Mapping[str, type[WireRecord] | PayloadCodec] = MappingProxyType(
     }
 )
 
-LEGACY_PAYLOAD_RECORD_TYPES = frozenset(
-    "AuthorToolAckV1 AuthorTurnV1 CheckBatchV1 CheckResultV1 ContextOperationV1 "
-    "DecisionDisclosureV1 DeterministicCheckEvidenceV1 FixtureFileCountEvidenceV1 "
-    "GroupExecutionFailureV1 GroupAdvantageV1 GroupDecisionV1 GroupMemberResultV1 "
-    "GroupSegmentCreditV1 GroupScriptedTerminalV1 InfrastructureInvalidV1 "
-    "PreparedWriterRequestV1 RequirementSupersessionV1 RewardAvailabilityV1 "
-    "RewardPublicationV1 RuntimeManifestV1 ScriptCoverageFailureV1 ScriptedAuthorReplyV1 "
-    "TerminalOutcomeCommitV1 TerminalOutcomeV1 TransitionDecisionV1 "
-    "TranscriptReviewEvidenceV1 VerifiedWriterMessagesV1 WriterActionTraceV1 WriterActionV1 "
-    "WriterExhaustedStopV1 WriterRuntimeLogV1 WriterSampledBudgetStopV1 WriterToolResultV1".split()
-)
-
 RECORD_EDGES: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
+        "context_node": ContextContentV1.REFS,
+        "context_revision": ContextRevisionV1.REFS,
         **{
             record.RECORD_TYPE or record.EDGE_TYPE or record.__name__: record.REFS
             for record in registered_record_classes()
@@ -386,6 +342,38 @@ def record_reference_edges(
     record_type: str, body: Mapping[str, Any]
 ) -> tuple[tuple[str, str], ...]:
     """Validate one registered payload and return its direct declared edges."""
+    return tuple(
+        (edge, identity) for _path, edge, identity in record_reference_paths(record_type, body)
+    )
+
+
+def record_reference_paths(
+    record_type: str, body: Mapping[str, Any]
+) -> tuple[tuple[str, str, str], ...]:
+    """Validate a record and return each reference with its codec field path."""
+    if record_type in {"context_node", "context_revision"}:
+        context_type = {
+            "context_node": ContextContentV1,
+            "context_revision": ContextRevisionV1,
+        }[record_type]
+        record = context_type.from_dict(dict(body))
+        if record_type == "context_node":
+            edges = []
+            if record.parent_ref is not None:
+                edges.append(("parent_ref", "context_node", record.parent_ref))
+            if record.rendering is not None:
+                edges.extend(
+                    (f"rendering.{field}", "artifact", record.rendering[field])
+                    for field in ("template_ref", "tokenizer_ref", "tool_schema_ref")
+                )
+        else:
+            edges = [("content_ref", "context_node", record.content_ref)]
+            if record.event_head is not None:
+                edges.append(("event_head", "event", record.event_head))
+            edges.extend(
+                ("provenance_refs[]", "event", identity) for identity in record.provenance_refs
+            )
+        return tuple((path, edge, identity) for path, edge, identity in edges)
     codec = RECORD_TYPES.get(record_type)
     if codec is None:
         try:
@@ -397,16 +385,7 @@ def record_reference_edges(
         edges = record._wire_edges
     else:
         edges = validate_codec(codec, body)
-    return tuple((edge, identity) for _, edge, identity in edges)
-
-
-@dataclass(frozen=True)
-class MaterializedContextV1:
-    """Read-only flattened view of a chained context revision."""
-
-    messages: tuple[MessageV1, ...]
-    tools: tuple[Mapping[str, Any], ...]
-    rendering: Mapping[str, Any]
+    return tuple((path, edge, identity) for path, edge, identity in edges)
 
 
 def materialize_context_nodes(
