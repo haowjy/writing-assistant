@@ -56,8 +56,9 @@ class AdapterContractError(RuntimeError):
 class DriverBudgetError(RuntimeError):
     """The rollout driver reached its operational step limit before halting."""
 
-    def __init__(self, max_steps: int) -> None:
+    def __init__(self, max_steps: int, runtime: object) -> None:
         self.max_steps = max_steps
+        self.runtime = runtime
         super().__init__(f"rollout driver exceeded max_steps={max_steps}")
 
 

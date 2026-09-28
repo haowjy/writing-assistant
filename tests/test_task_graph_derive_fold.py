@@ -5,13 +5,9 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 
-from tests.task_graph_fixtures import make_entry_fixture
+from tests.task_graph_fixtures import make_entry_fixture, make_outcome_fixture
 from tests.test_task_graph_derive_author import _answered_reply
-from tests.test_task_graph_derive_outcome import (
-    evaluation_result,
-    make_outcome_fixture,
-    make_view,
-)
+from tests.test_task_graph_derive_outcome import evaluation_result, make_view
 from tests.test_task_graph_derive_writer import call, make_turn
 from writing_agent.task_graph import CheckpointV1, canonical_bytes, load_canonical_json
 from writing_agent.task_graph_compaction import ContextPolicyV1

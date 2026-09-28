@@ -376,8 +376,8 @@ class WriterDeriveTests(unittest.TestCase):
         for name, claims in drift_rows:
             with self.subTest(name=name):
                 if name == "context":
-                    with self.assertRaises(ValueError):
-                        make_turn(view, adapter_trace=claims)
+                    with self.assertRaises(ProjectionError):
+                        derive_writer_turn(view, make_turn(view, adapter_trace=claims), self.reader)
                 else:
                     with self.assertRaises(ProjectionError):
                         derive_writer_turn(view, make_turn(view, adapter_trace=claims), self.reader)

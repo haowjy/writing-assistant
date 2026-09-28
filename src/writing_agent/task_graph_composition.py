@@ -25,6 +25,7 @@ from writing_agent.task_graph_ports import (
     SampleResult,
 )
 from writing_agent.task_graph_record_contracts import GroupSpecV1
+from writing_agent.task_graph_sampling import persist_logprob_trace
 
 
 @dataclass(frozen=True)
@@ -151,21 +152,7 @@ class RuntimeRunner:
         if not isinstance(result, SampleResult):
             raise TypeError("sample backend must return SampleResult")
         trace = dict(result.trace or {})
-        if result.logprobs is not None:
-            if "per_token_logprobs_ref" in trace or "per_token_logprobs" in trace:
-                raise ValueError("sample supplied both binary and ref-only logprobs")
-            tokens = trace.get("generated_token_ids")
-            if (
-                not isinstance(tokens, list)
-                or any(type(token) is not int or token < 0 for token in tokens)
-                or len(tokens) != result.logprobs.shape[0]
-            ):
-                raise ValueError("binary logprobs must align with generated token IDs")
-            trace["per_token_logprobs_ref"] = self.writer.store.put_bytes_artifact(
-                result.logprobs.data
-            )
-            trace["per_token_logprobs_codec"] = result.logprobs.codec
-            trace["per_token_logprobs_shape"] = list(result.logprobs.shape)
+        persist_logprob_trace(self.writer.store, result, trace)
         return self.writer.submit_action(
             runtime,
             result.message,

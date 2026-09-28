@@ -6,12 +6,11 @@ checked here; ``RolloutEnvironment.commit`` remains the recording boundary.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from types import SimpleNamespace
-from typing import Any
+from typing import Any, Protocol
 
-from writing_agent.task_graph import canonical_bytes, canonical_json, context_content_hash
+from writing_agent.task_graph import canonical_json, context_content_hash
 from writing_agent.task_graph_calls import intake_message, tool_effect_contract
 from writing_agent.task_graph_contracts import CheckContractV1
 from writing_agent.task_graph_errors import AdapterContractError
@@ -19,10 +18,8 @@ from writing_agent.task_graph_evaluation import (
     FAMILIES,
     EvaluationEvidenceV1,
     EvaluationRequestV1,
-    StoreEvidenceResolver,
     verify_evaluation_evidence,
 )
-from writing_agent.task_graph_gate import StoreArtifactReader
 from writing_agent.task_graph_ports import (
     EnvironmentAction,
     EnvironmentResult,
@@ -43,43 +40,49 @@ from writing_agent.task_graph_records import (
     WriterTurnV1,
 )
 from writing_agent.task_graph_rollout_env import AuthorInput, CheckInput, SamplerInput, ToolInput
-from writing_agent.task_graph_sampling import (
-    WriterTurnSamplingBindingV1,
-    decode_and_bind_sampling,
-)
-from writing_agent.task_graph_scripted import ScriptCoverageError, resolve_script_reply
+from writing_agent.task_graph_sampling import ArtifactSink, persist_logprob_trace
+from writing_agent.task_graph_scripted import scripted_author_reply
+
+
+class ArtifactReader(Protocol):
+    def artifact(self, ref: str, *, domain: str = "payload", private: bool = False) -> Any: ...
+
+
+class _EvaluatorPacketResolver:
+    def __init__(self, reader: ArtifactReader, packet_ref: str) -> None:
+        self.reader = reader
+        self.packet_ref = packet_ref
+
+    def read_evaluator_packet(self, ref: str) -> Mapping[str, Any]:
+        if ref != self.packet_ref:
+            raise ValueError("evaluator requested an unauthorized packet")
+        return self.reader.artifact(ref, private=True)
 
 
 class SamplingRunner:
     """Run one sampling port call and produce its fully bound writer-turn input."""
 
-    def __init__(self, store: Any, backend: SampleBackend) -> None:
-        self.store = store
+    def __init__(
+        self,
+        artifacts: ArtifactSink,
+        backend: SampleBackend,
+        input_observer: Callable[[SamplerInput], None] | None = None,
+    ) -> None:
+        self.artifacts = artifacts
         self.backend = backend
+        self.input_observer = input_observer
 
     def turn(self, port: SamplerInput) -> WriterTurnV1:
         if not isinstance(port, SamplerInput):
             raise TypeError("sampling runner requires SamplerInput")
+        if self.input_observer is not None:
+            self.input_observer(port)
         request: dict[str, Any] = {
             "messages": [message.to_dict() for message in port.messages],
         }
-        pins = {
-            name: value
-            for name, value in (
-                ("writer_seed", port.writer_seed),
-                ("model_ref", port.model_ref),
-                ("behavior_policy_ref", port.behavior_policy_ref),
-                ("tokenizer_ref", port.tokenizer_ref),
-                ("template_ref", port.template_ref),
-                ("decoding_ref", port.decoding_ref),
-            )
-            if value is not None
-        }
-        if pins:
-            request["sampling_pins"] = pins
         request_json = canonical_json(request)
-        request_ref = self.store.put_artifact(request)
-        prepared_ref = self.store.put_artifact(
+        request_ref = self.artifacts.put_artifact(request)
+        prepared_ref = self.artifacts.put_artifact(
             WriterRequestV1(port.context_revision_ref, request_ref, True).to_wire()
         )
         prepared = PreparedSamplingInput(
@@ -104,35 +107,18 @@ class SamplingRunner:
         if content is not None and not isinstance(content, str):
             raise AdapterContractError("sampled assistant content must be text or null")
         usage = dict(result.usage or {})
-        if "completion_tokens" in port.usage_requirements and "completion_tokens" not in usage:
-            raise AdapterContractError("token-limited sample is missing completion usage")
-        if "total_tokens" in port.usage_requirements and not (
-            "total_tokens" in usage or {"prompt_tokens", "completion_tokens"} <= usage.keys()
-        ):
-            raise AdapterContractError("token-limited sample is missing total usage")
-
         trace = dict(result.trace or {})
-        if result.logprobs is not None:
-            if "per_token_logprobs_ref" in trace or "per_token_logprobs" in trace:
-                raise AdapterContractError("sample supplied duplicate logprob evidence")
-            tokens = trace.get("generated_token_ids")
-            if (
-                not isinstance(tokens, list)
-                or any(type(token) is not int or token < 0 for token in tokens)
-                or len(tokens) != result.logprobs.shape[0]
-            ):
-                raise AdapterContractError("binary logprobs do not align with sampled tokens")
-            trace["per_token_logprobs_ref"] = self.store.put_bytes_artifact(result.logprobs.data)
-            trace["per_token_logprobs_codec"] = result.logprobs.codec
-            trace["per_token_logprobs_shape"] = list(result.logprobs.shape)
-        self._check_pins(port, trace)
+        try:
+            persist_logprob_trace(self.artifacts, result, trace)
+        except ValueError as exc:
+            raise AdapterContractError("binary logprobs do not align with sampled tokens") from exc
 
         raw_output_ref = None
         if result.raw_output is not None:
             raw_output_ref = (
-                self.store.put_bytes_artifact(result.raw_output)
+                self.artifacts.put_bytes_artifact(result.raw_output)
                 if isinstance(result.raw_output, bytes)
-                else self.store.put_artifact(result.raw_output)
+                else self.artifacts.put_artifact(result.raw_output)
             )
         try:
             turn = WriterTurnV1(
@@ -145,34 +131,9 @@ class SamplingRunner:
                 adapter_trace=trace or None,
                 message=intake_message(dict(message)),
             )
-            context = SimpleNamespace(
-                revision_ref=port.context_revision_ref,
-                messages=port.messages,
-            )
-            decode_and_bind_sampling(
-                WriterTurnSamplingBindingV1(turn, context, StoreArtifactReader(self.store))
-            )
         except (TypeError, ValueError, KeyError) as exc:
             raise AdapterContractError("sample response violates the writer-turn contract") from exc
         return turn
-
-    @staticmethod
-    def _check_pins(port: SamplerInput, trace: Mapping[str, Any]) -> None:
-        expected = {
-            "seed": port.writer_seed,
-            "model_ref": port.model_ref,
-            "behavior_policy_ref": port.behavior_policy_ref,
-            "tokenizer_ref": port.tokenizer_ref,
-            "template_ref": port.template_ref,
-            "decoding_ref": port.decoding_ref,
-        }
-        for name, value in expected.items():
-            if (
-                value is not None
-                and name in trace
-                and canonical_bytes(trace[name]) != canonical_bytes(value)
-            ):
-                raise AdapterContractError(f"sample response contradicts pinned {name}")
 
 
 class ToolRunner:
@@ -243,46 +204,18 @@ class ScriptedAuthorSource:
     def reply(self, port: AuthorInput) -> AuthorReplyV1:
         if not isinstance(port, AuthorInput):
             raise TypeError("scripted author source requires AuthorInput")
-        request = {**dict(port.request), "request_ref": port.request_ref}
-        if request["source"] == "mandatory_feedback":
-            rule = next(
-                (item for item in port.script.feedback if item["id"] == request["feedback_id"]),
-                None,
-            )
-            if rule is None:
-                raise AdapterContractError("script lacks the requested feedback response")
-            result = {
-                "utterance": rule["utterance"],
-                "decision_ids": [],
-                "selected_proposals": {},
-            }
-        else:
-            result = None
         try:
-            if result is None:
-                _, _, result = resolve_script_reply(
-                    port.script,
-                    request,
-                    dict(port.decisions),
-                    dict(port.disclosures),
-                )
-        except ScriptCoverageError:
-            return AuthorReplyV1(port.request_ref, "unsupported_coverage", None, (), {})
+            return scripted_author_reply(
+                port.script,
+                port.request,
+                port.request_ref,
+                port.decisions,
+                port.disclosures,
+            )
         except (KeyError, TypeError, ValueError) as exc:
             raise AdapterContractError(
                 "scripted author response violates its source contract"
             ) from exc
-        selected = {
-            decision: [] if proposal is None else [proposal]
-            for decision, proposal in result["selected_proposals"].items()
-        }
-        return AuthorReplyV1(
-            port.request_ref,
-            "answered",
-            result["utterance"],
-            result["decision_ids"],
-            selected,
-        )
 
 
 class CheckRunner:
@@ -290,11 +223,13 @@ class CheckRunner:
 
     def __init__(
         self,
-        store: Any,
+        artifacts: ArtifactSink,
+        reader: ArtifactReader,
         evaluator: Evaluator,
         check_contracts: Mapping[str, CheckContractV1],
     ) -> None:
-        self.store = store
+        self.artifacts = artifacts
+        self.reader = reader
         self.evaluator = evaluator
         self.check_contracts = dict(check_contracts)
 
@@ -332,9 +267,9 @@ class CheckRunner:
             verified = verify_evaluation_evidence(
                 evaluation_request,
                 wire,
-                StoreEvidenceResolver(self.store, packet_ref),
+                _EvaluatorPacketResolver(self.reader, packet_ref),
             )
-            evidence_ref = self.store.put_artifact(wire)
+            evidence_ref = self.artifacts.put_artifact(wire)
             return EvaluatorResultV1(port.request_ref, verified.status, evidence_ref)
         except AdapterContractError:
             raise

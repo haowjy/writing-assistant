@@ -1,28 +1,41 @@
-"""Reusable S4 fixtures: one scripted Phase 5 slice and one writer-only node.
+"""Shared fixture API for the rollout, forgery, privacy, and group lanes.
 
-``build_rollout_fixture`` owns a temporary store's verified entry and scripted ports;
-``run_slice`` returns the final handle plus its ordered checkpoint identities. Setting
-``raising_ports=True`` makes every gatherer-backed port fail on use for replay probes.
+``build_rollout_fixture(root, *, mode="slice", raising_ports=False, sample_results=None,
+session=None)`` creates a verified entry, store, gate, environment, and default gatherers.
+Modes are ``slice`` (writer/tool/author/check), ``none`` (writer-only reward),
+``feedback`` (mandatory feedback plus requirement supersession), ``token_limited`` (a real
+generated-token budget), and ``halt`` (no admitted evaluation). The fixture exposes
+``entry``, ``store``, ``gate``, ``env``, ``runtime``, ``lineage_id``, ``counter``,
+``sampler_inputs``, ordered ``checkpoint_ids``, and a composable ``commit_observer`` hook.
+
+``run_slice(fixture, *, alternatives=None, runtime=None, until=None)`` returns the handle
+before the first directive matched by ``until`` or the final handle. ``make_gatherers``
+accepts optional ``sampler``, ``tools``, ``author``, and ``evaluator`` port replacements.
+``ports_disabled()`` raises if offline replay reaches any producer port.
 """
 
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
-from tests.task_graph_fixtures import EntryFixture
-from tests.test_task_graph_derive_outcome import make_outcome_fixture
+from tests.task_graph_fixtures import EntryFixture, make_entry_fixture, make_outcome_fixture
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
     DecisionBindingsV1,
     InteractionContractV1,
     InteractionPolicyV1,
+    RequirementUpdateV1,
     ScriptedAuthorV1,
 )
+from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_entry import derive_entry
-from writing_agent.task_graph_gate import LineageGate
+from writing_agent.task_graph_errors import DriverBudgetError
+from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader
 from writing_agent.task_graph_gatherers import (
     CheckRunner,
     Gatherers,
@@ -30,7 +43,11 @@ from writing_agent.task_graph_gatherers import (
     ScriptedAuthorSource,
     ToolRunner,
 )
-from writing_agent.task_graph_local import DeterministicEvaluator, LocalTextToolProvider
+from writing_agent.task_graph_local import (
+    DeterministicEvaluator,
+    LocalTextToolProvider,
+    ScriptedSampleBackend,
+)
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_rollout_env import RolloutEnvironment, RuntimeHandle
@@ -124,11 +141,9 @@ class PortCallCounter:
 
 
 class _SamplePort:
-    def __init__(self, counter: PortCallCounter, results: tuple[SampleResult, ...]) -> None:
-        from writing_agent.task_graph_local import ScriptedSampleBackend
-
+    def __init__(self, counter: PortCallCounter, backend) -> None:
         self.counter = counter
-        self.backend = ScriptedSampleBackend(results)
+        self.backend = backend
         self.prepared_inputs = []
 
     def sample(self, prepared):
@@ -137,28 +152,31 @@ class _SamplePort:
         return self.backend.sample(prepared)
 
 
-class _ToolPort(LocalTextToolProvider):
-    def __init__(self, counter: PortCallCounter) -> None:
+class _ToolPort:
+    def __init__(self, counter: PortCallCounter, provider) -> None:
         self.counter = counter
+        self.provider = provider
 
     def execute(self, spec, snapshot, action):
         self.counter.called("tools")
-        return super().execute(spec, snapshot, action)
+        return self.provider.execute(spec, snapshot, action)
 
 
-class _EvaluatorPort(DeterministicEvaluator):
-    def __init__(self, counter: PortCallCounter) -> None:
+class _EvaluatorPort:
+    def __init__(self, counter: PortCallCounter, evaluator) -> None:
         self.counter = counter
+        self.evaluator = evaluator
+        self.family = evaluator.family
 
     def evaluate(self, request):
         self.counter.called("evaluator")
-        return super().evaluate(request)
+        return self.evaluator.evaluate(request)
 
 
 class _AuthorPort:
-    def __init__(self, counter: PortCallCounter) -> None:
+    def __init__(self, counter: PortCallCounter, source) -> None:
         self.counter = counter
-        self.source = ScriptedAuthorSource()
+        self.source = source
 
     def reply(self, port):
         self.counter.called("author")
@@ -172,15 +190,21 @@ class RolloutFixture:
     gate: LineageGate
     env: RolloutEnvironment
     runtime: RuntimeHandle
-    gatherers: Gatherers
+    gatherers: Gatherers | None
     counter: PortCallCounter
     canaries: dict[str, str]
     sample_results: tuple[SampleResult, ...]
     root: Path
+    lineage_id: str
+    checkpoint_ids: list[str]
+    sampler_inputs: list[Any]
+    commit_observer: Any = None
 
     def driver(self, *, alternatives=None) -> RolloutDriver:
         if alternatives is None:
+            assert self.gatherers is not None
             return RolloutDriver(self.env, self.gatherers)
+        assert self.gatherers is not None
         return RolloutDriver(self.env, self.gatherers, alternatives)
 
     def recovery_gatherers(
@@ -198,47 +222,58 @@ class RolloutFixture:
             counter or PortCallCounter(raising=raising),
         )
 
+    def observe_commit(self, result) -> None:
+        self.checkpoint_ids.append(result.runtime.checkpoint_id)
+
 
 def _entry_fixture(mode: str) -> EntryFixture:
+    if mode == "halt":
+        return make_entry_fixture()
     fixture = make_outcome_fixture()
     node = fixture.graph.node(fixture.node_id)
-    check = node.checks["nonempty"]
     check = replace(
-        check,
-        id=EVALUATOR_PACKET_CANARY,
-        spec={**check.spec, "id": EVALUATOR_PACKET_CANARY},
+        node.checks["nonempty"],
+        spec={**node.checks["nonempty"].spec, "private_fixture_canary": EVALUATOR_PACKET_CANARY},
     )
-    reward = replace(
-        node.reward_contract,
-        components={EVALUATOR_PACKET_CANARY: node.reward_contract.components["nonempty"]},
-    )
-    packet = replace(
-        node.evaluator_packet,
-        reward_contract_ref=reward.identity(),
-        check_ids=(EVALUATOR_PACKET_CANARY,),
-    )
+    packet = replace(node.evaluator_packet, check_ids=(check.id,))
     fixture.reader.private.update(
         {
             check.identity(): check.to_dict(),
-            reward.identity(): reward.to_dict(),
             packet.identity(): packet.to_dict(),
         }
     )
-    completion = replace(
-        node.contract.completion_contract,
-        required_check_ids=(EVALUATOR_PACKET_CANARY,),
-        evaluation_packet_ref=packet.identity(),
-    )
-    contract = replace(
-        node.contract,
-        completion=completion,
-        mandatory_checks=(check.identity(),),
-    )
-    if mode == "slice":
+    entry_contract = node.contract.entry_contract
+    requirement_ref = None
+    if mode in {"slice", "feedback"}:
+        requirement_ref = fixture.reader.add(
+            {"requirements": {"baseline": LEDGER_CANARY}}, private=True
+        )
+        entry_contract = replace(entry_contract, requirement_version=requirement_ref)
+    interaction = node.contract.interaction_contract
+    budgets = node.contract.budget_contract
+    if mode in {"slice", "feedback"}:
         author_packet = AuthorPacketV1(
             preferences={"choice_key_91": "amber", "private_key_91": AUTHOR_PACKET_CANARY},
-            requirements={"private": LEDGER_CANARY},
+            requirements={},
         )
+        entry_contract = replace(
+            entry_contract,
+            tool_allowlist=(*entry_contract.tool_allowlist, "ask_author"),
+        )
+        feedback = ()
+        if mode == "feedback":
+            update = RequirementUpdateV1(
+                id="revised", supersedes="baseline", replacement="Revise for " + LEDGER_CANARY
+            )
+            fixture.reader.private[update.identity()] = update.to_dict()
+            feedback = (
+                {
+                    "id": "feedback-1",
+                    "utterance": "Revise the draft to satisfy the updated requirement.",
+                    "prerequisite_check_ids": [],
+                    "requirement_update_ref": update.identity(),
+                },
+            )
         script = ScriptedAuthorV1(
             answers={
                 "door": {
@@ -248,9 +283,13 @@ def _entry_fixture(mode: str) -> EntryFixture:
                     "selector": None,
                     "prerequisite_check_ids": [],
                 }
-            }
+            },
+            feedback=feedback,
         )
-        policy = InteractionPolicyV1(public_decisions=({"id": "door", "label": "door color"},))
+        policy = InteractionPolicyV1(
+            public_decisions=({"id": "door", "label": "door color"},),
+            mandatory_feedback=tuple(item["id"] for item in feedback),
+        )
         bindings = DecisionBindingsV1(bindings={"door": "choice_key_91"})
         for item in (author_packet, script, bindings):
             fixture.reader.private[item.identity()] = item.to_dict()
@@ -261,28 +300,30 @@ def _entry_fixture(mode: str) -> EntryFixture:
             author_packet_ref=author_packet.identity(),
             interaction_policy_ref=policy.identity(),
             decision_bindings_ref=bindings.identity(),
+            mandatory_feedback=tuple(item["id"] for item in feedback),
         )
-        entry_contract = replace(
-            contract.entry_contract,
-            tool_allowlist=(*contract.entry_contract.tool_allowlist, "ask_author"),
-        )
-        budgets = replace(contract.budget_contract, max_author_calls=2)
-        contract = replace(
-            contract,
+        entry = replace(
+            node.contract,
             entry=entry_contract,
             interaction=interaction,
-            budgets=budgets,
+            budgets=replace(budgets, max_author_calls=2),
         )
-    fixture.reader.public[contract.identity()] = contract.to_dict()
-    spec = replace(node.spec, entry_contract=contract.identity())
-    instance = replace(fixture.graph.instance, nodes=(spec,))
+    elif mode == "token_limited":
+        entry = replace(
+            node.contract,
+            budgets=replace(budgets, max_generated_tokens=100),
+        )
+    else:
+        entry = replace(node.contract, entry=entry_contract)
+    fixture.reader.public[entry.identity()] = entry.to_dict()
+    spec = replace(node.spec, entry_contract=entry.identity())
     graph = admit_graph(
-        instance,
+        replace(fixture.graph.instance, nodes=(spec,)),
         MappingArtifactResolver(fixture.reader.public, fixture.reader.private),
         policy=fixture.graph.policy,
     )
-    entry = derive_entry(graph, fixture.node_id, fixture.params, fixture.reader)
-    return replace(fixture, graph=graph, state=entry.state, artifacts=entry.artifacts)
+    derived = derive_entry(graph, fixture.node_id, fixture.params, fixture.reader)
+    return replace(fixture, graph=graph, state=derived.state, artifacts=derived.artifacts)
 
 
 def _persist_entry(store: TaskGraphStore, fixture: EntryFixture) -> str:
@@ -301,18 +342,45 @@ def _gatherers(
     entry: EntryFixture,
     samples: tuple[SampleResult, ...],
     counter: PortCallCounter,
+    *,
+    sampler=None,
+    tools=None,
+    author=None,
+    evaluator=None,
+    sampler_inputs=None,
 ) -> Gatherers:
-    evaluator = _EvaluatorPort(counter)
+    evaluator = _EvaluatorPort(counter, evaluator or DeterministicEvaluator())
     checks = {
         check.identity(): check
         for node in entry.graph.nodes.values()
         for check in node.checks.values()
     }
     return Gatherers(
-        SamplingRunner(store, _SamplePort(counter, samples)),
-        ToolRunner(_ToolPort(counter)),
-        _AuthorPort(counter),
-        CheckRunner(store, evaluator, checks),
+        SamplingRunner(
+            store,
+            _SamplePort(counter, sampler or ScriptedSampleBackend(samples)),
+            sampler_inputs.append if sampler_inputs is not None else None,
+        ),
+        ToolRunner(_ToolPort(counter, tools or LocalTextToolProvider())),
+        _AuthorPort(counter, author or ScriptedAuthorSource()),
+        CheckRunner(store, StoreArtifactReader(store), evaluator, checks),
+    )
+
+
+def make_gatherers(
+    fixture: RolloutFixture, *, sampler=None, tools=None, author=None, evaluator=None
+) -> Gatherers:
+    """Build public fixture gatherers with optional port substitutions."""
+    return _gatherers(
+        fixture.store,
+        fixture.entry,
+        fixture.sample_results,
+        fixture.counter,
+        sampler=sampler,
+        tools=tools,
+        author=author,
+        evaluator=evaluator,
+        sampler_inputs=fixture.sampler_inputs,
     )
 
 
@@ -322,17 +390,18 @@ def build_rollout_fixture(
     mode: str = "slice",
     raising_ports: bool = False,
     sample_results: tuple[SampleResult, ...] | None = None,
+    session=None,
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
-    if mode not in {"slice", "none"}:
-        raise ValueError("mode must be 'slice' or 'none'")
+    if mode not in {"slice", "none", "feedback", "token_limited", "halt"}:
+        raise ValueError("unsupported rollout fixture mode")
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)
     entry = _entry_fixture(mode)
     if sample_results is None:
         sample_results = (
             _scripted_samples()
-            if mode == "slice"
+            if mode in {"slice", "feedback"}
             else (
                 SampleResult(
                     {"role": "assistant", "content": "A complete draft.", "tool_calls": []}
@@ -342,42 +411,98 @@ def build_rollout_fixture(
     gate = LineageGate()
     store = TaskGraphStore(root / "store", verifier=gate)
     checkpoint = _persist_entry(store, entry)
-    env = RolloutEnvironment(store, entry.graph, None, gate, entry.graph.policy)
+    env = RolloutEnvironment(store, entry.graph, session, gate, entry.graph.policy)
     runtime = env.open(checkpoint)
     counter = PortCallCounter(raising=raising_ports)
-    gatherers = _gatherers(store, entry, sample_results, counter)
-    return RolloutFixture(
+    sampler_inputs = []
+    if mode == "feedback" and len(sample_results) == 4:
+        sample_results += (
+            SampleResult(
+                {
+                    "role": "assistant",
+                    "content": "The final revised draft is ready.",
+                    "tool_calls": [],
+                }
+            ),
+        )
+    fixture = RolloutFixture(
         entry,
         store,
         gate,
         env,
         runtime,
-        gatherers,
+        None,
         counter,
         dict(CANARIES),
         sample_results,
         root,
+        entry.params.lineage_id,
+        [checkpoint],
+        sampler_inputs,
     )
+    fixture.commit_observer = fixture.observe_commit
+    env.commit_observer = lambda result: fixture.commit_observer(result)
+    fixture.gatherers = make_gatherers(fixture)
+    return fixture
 
 
 def run_slice(
-    fixture: RolloutFixture, *, max_steps: int = 40
-) -> tuple[RuntimeHandle, tuple[str, ...]]:
-    """Run a fixture end to end and return its final handle and ordered checkpoints."""
-    checkpoint_ids = [fixture.runtime.checkpoint_id]
-    commit = fixture.env.commit
+    fixture: RolloutFixture, *, alternatives=None, runtime=None, until=None
+) -> RuntimeHandle:
+    """Run to completion or return the handle at the first matching directive."""
+    current = fixture.runtime if runtime is None else runtime
+    driver = fixture.driver(alternatives=alternatives)
+    for _ in range(40):
+        directive = next_step(fixture.env.verify(current))
+        if until is not None and until(directive):
+            return current
+        try:
+            result = driver.run(current, max_steps=1)
+        except DriverBudgetError as exc:
+            current = exc.runtime
+        else:
+            return result.runtime
+    raise DriverBudgetError(40, current)
 
-    def record_commit(runtime, input_record):
-        result = commit(runtime, input_record)
-        checkpoint_ids.append(result.runtime.checkpoint_id)
-        return result
 
-    fixture.env.commit = record_commit
-    try:
-        final = fixture.driver().run(fixture.runtime, max_steps=max_steps)
-    finally:
-        fixture.env.commit = commit
-    return final, tuple(checkpoint_ids)
+@contextmanager
+def ports_disabled():
+    """Fail if replay, entry opening, or any checkpoint fold invokes a producer port."""
+    calls = []
+
+    def forbidden(name):
+        def fail(*_args, **_kwargs):
+            calls.append(name)
+            raise AssertionError(f"offline replay called {name}")
+
+        return fail
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(ScriptedSampleBackend, "sample", side_effect=forbidden("sample"))
+        )
+        stack.enter_context(
+            patch.object(LocalTextToolProvider, "execute", side_effect=forbidden("tool"))
+        )
+        stack.enter_context(
+            patch.object(
+                DeterministicEvaluator,
+                "evaluate",
+                side_effect=forbidden("evaluator"),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "writing_agent.task_graph_evaluation.produce_evaluation_evidence",
+                side_effect=forbidden("evaluation evidence"),
+            )
+        )
+        stack.enter_context(
+            patch.object(ScriptedAuthorSource, "reply", side_effect=forbidden("author"))
+        )
+        yield
+        if calls:
+            raise AssertionError(f"offline replay reached producer ports: {calls}")
 
 
 __all__ = [
@@ -388,5 +513,7 @@ __all__ = [
     "PortCallCounter",
     "RolloutFixture",
     "build_rollout_fixture",
+    "make_gatherers",
+    "ports_disabled",
     "run_slice",
 ]

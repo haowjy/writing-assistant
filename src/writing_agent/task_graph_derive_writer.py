@@ -252,16 +252,19 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
     if not isinstance(model, Mapping) or not isinstance(model.get("model_id"), str):
         raise ProjectionError("sealed group model has no model ID")
     claims = turn.adapter_trace
-    bind_group_sampling_claims(
-        spec.policy,
-        member.writer_seed,
-        claims or {},
-        claims or {},
-        model_id=model["model_id"],
-        context_content_hash=view.context.content_ref,
-        context_revision_ref=view.context.revision_ref,
-        rendering=view.context.rendering,
-    )
+    try:
+        bind_group_sampling_claims(
+            spec.policy,
+            member.writer_seed,
+            claims or {},
+            claims or {},
+            model_id=model["model_id"],
+            context_content_hash=view.context.content_ref,
+            context_revision_ref=view.context.revision_ref,
+            rendering=view.context.rendering,
+        )
+    except (ProjectionError, KeyError, TypeError, ValueError) as exc:
+        raise AdapterContractProjectionError("writer sampling pins differ from the group") from exc
 
 
 def _build_tool_queue(
@@ -483,7 +486,6 @@ __all__ = [
     "derive_tool_result",
     "derive_writer_turn",
     "group_member",
-    "sampling_usage_requirements",
     "tool_dispatch_error",
     "writer_action_id",
 ]

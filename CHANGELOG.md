@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- Expose shared rollout fixture hooks for ports, alternatives, feedback, sessions, checkpoint
+  observation, and resume-safe crash recovery; return named driver outcomes.
+
+- Keep usage and group sampling checks at the derive, share logprob persistence and scripted
+  reply generation, and pin the adapter, replay, privacy, and failure boundaries in tests.
+
 - Make gate publication retries thread-independent, preserve store-corruption errors, and
   route branch semantics through the lineage-pinned selector.
 

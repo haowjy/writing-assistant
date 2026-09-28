@@ -13,6 +13,7 @@ from writing_agent.task_graph_accounting import charge_tool_attempt
 from writing_agent.task_graph_calls import validate_ask_shape
 from writing_agent.task_graph_errors import WriterRuntimeError
 from writing_agent.task_graph_operation import operation_scoped
+from writing_agent.task_graph_records import AuthorReplyV1
 
 
 def validate_ask_semantics(arguments, node, decisions) -> None:
@@ -111,6 +112,37 @@ def resolve_script_reply(script, request, decisions, disclosures):
         "selected_proposals": selected,
     }
     return values, ledger, reply
+
+
+def scripted_author_reply(script, request, request_ref, decisions, disclosures) -> AuthorReplyV1:
+    """Build the canonical typed reply for either admitted scripted-author source."""
+    bound_request = {**dict(request), "request_ref": request_ref}
+    if bound_request.get("source") == "mandatory_feedback":
+        rule = next(
+            (item for item in script.feedback if item["id"] == bound_request["feedback_id"]),
+            None,
+        )
+        if rule is None:
+            raise ScriptCoverageError("script lacks the requested feedback response")
+        return AuthorReplyV1(request_ref, "answered", rule["utterance"], (), {})
+
+    try:
+        _, _, result = resolve_script_reply(
+            script, bound_request, dict(decisions), dict(disclosures)
+        )
+    except ScriptCoverageError:
+        return AuthorReplyV1(request_ref, "unsupported_coverage", None, (), {})
+    selected = {
+        decision: [] if proposal is None else [proposal]
+        for decision, proposal in result["selected_proposals"].items()
+    }
+    return AuthorReplyV1(
+        request_ref,
+        "answered",
+        result["utterance"],
+        result["decision_ids"],
+        selected,
+    )
 
 
 class ScriptedAuthorRuntimeV1:

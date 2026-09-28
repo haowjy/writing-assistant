@@ -10,10 +10,9 @@ from dataclasses import fields, replace
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.task_graph_fixtures import make_entry_fixture
+from tests.task_graph_fixtures import make_entry_fixture, make_outcome_fixture
 from tests.test_task_graph_derive_author import _answer_rule, _answered_reply
-from tests.test_task_graph_derive_outcome import make_outcome_fixture
-from tests.test_task_graph_derive_writer import call, make_turn, with_budget
+from tests.test_task_graph_derive_writer import call, make_turn
 from writing_agent.task_graph import EventV1, domain_hash, load_canonical_json
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_compaction import ContextPolicyV1
@@ -168,7 +167,7 @@ def _author_check_fixture():
     return replace(fixture, graph=graph, state=entry_value.state, artifacts=entry_value.artifacts)
 
 
-def _group_spec(fixture, entry_checkpoint, store):
+def _group_spec(fixture, entry_checkpoint, store, *, model_ref=None):
     state = fixture.state
 
     def marker(field):
@@ -203,6 +202,8 @@ def _group_spec(fixture, entry_checkpoint, store):
         horizon="node_exit",
     )
     policy = {name: fixture.params.rng_ref for name in POLICY_FIELDS - {"rng_derivation_version"}}
+    if model_ref is not None:
+        policy["model_ref"] = model_ref
     policy["context_policy_ref"] = store.put_artifact(ContextPolicyV1("drop").to_wire())
     policy["rng_derivation_version"] = "sha256-domain-v1"
     sequence, seed, mode, count = 0, 771, "fixture", 2
@@ -703,7 +704,6 @@ class RolloutEnvironmentTests(unittest.TestCase):
                 "rendering",
                 "context_revision_ref",
                 "action_id",
-                "usage_requirements",
                 "writer_seed",
                 "model_ref",
                 "behavior_policy_ref",
@@ -862,17 +862,6 @@ class RolloutEnvironmentTests(unittest.TestCase):
 
     def test_adapter_contract_rejection_writes_nothing_and_gate_keeps_projection_error(self):
         view = self.environment.verify(self.runtime)
-        # Entry contracts currently cannot seed token limits; isolate the producer mapping.
-        limited_view = with_budget(view, self.fixture.reader, limits={"generated_tokens": 1})
-        missing_usage = make_turn(limited_view, usage={})
-        with patch.object(
-            self.environment,
-            "_verify",
-            return_value=(limited_view, None, True),
-        ):
-            with self.assertRaises(AdapterContractError):
-                self.environment.commit(self.runtime, missing_usage)
-
         bad = make_turn(
             view,
             usage={},
@@ -900,6 +889,70 @@ class RolloutEnvironmentTests(unittest.TestCase):
         with self.assertRaises(ProjectionError):
             self.gate.verify_commit(self.store, view.checkpoint_id, (event,), self.runtime.state)
         self.assertEqual(self.store.read_head(view.state.position["lineage_id"]), old_head)
+
+    def test_group_sampling_pin_drift_is_adapter_error_before_commit_and_projection_on_replay(self):
+        model_ref = self.store.put_artifact({"model_id": "pinned-model"})
+        spec = _group_spec(self.fixture, self.entry, self.store, model_ref=model_ref)
+        group_spec_ref = self.store.put_artifact(spec.to_wire())
+        runtime = self.environment.start_member(
+            self.entry, MemberStartV1(group_spec_ref=group_spec_ref, ordinal=0)
+        )
+        view = self.environment.verify(runtime)
+        port = self.environment.port_input(view, next_step(view))
+        expected = {
+            "seed": port.writer_seed,
+            "model": "pinned-model",
+            "policy_ref": port.behavior_policy_ref,
+            "context_revision_ref": port.context_revision_ref,
+            "rendering": dict(port.rendering),
+            "context_content_hash": view.context.content_ref,
+        }
+        variants = (
+            ("seed", {**expected, "seed": port.writer_seed + 1}),
+            ("model", {**expected, "model": "other-model"}),
+            (
+                "policy_ref",
+                {**expected, "policy_ref": self.store.put_artifact({"wrong": "policy"})},
+            ),
+            (
+                "context_revision_ref",
+                {**expected, "context_revision_ref": domain_hash("payload", {"wrong": "revision"})},
+            ),
+            (
+                "rendering",
+                {**expected, "rendering": {**expected["rendering"], "prefix_id": "wrong"}},
+            ),
+            (
+                "context_content_hash",
+                {**expected, "context_content_hash": domain_hash("payload", {"wrong": "content"})},
+            ),
+        )
+        lineage = runtime.state.position["lineage_id"]
+        for field, claims in variants:
+            with self.subTest(field=field):
+                turn = make_turn(view, content="sample", adapter_trace=claims)
+                old_head = self.store.read_head(lineage)
+                with self.assertRaises(AdapterContractError):
+                    self.environment.commit(runtime, turn)
+                self.assertEqual(self.store.read_head(lineage), old_head)
+
+                payload_ref = self.store.put_artifact(turn.to_wire())
+                event = EventV1(
+                    previous=view.head_event_id,
+                    seq=view.state.history["seq"] + 1,
+                    lineage_id=lineage,
+                    rollout_id=lineage,
+                    node_visit_id=view.state.position["visit_id"],
+                    kind="writer_action",
+                    actor="writer",
+                    audience=("controller", "trainer", "writer"),
+                    payload_ref=payload_ref,
+                    versions_ref=view.state.versions_ref,
+                    provenance_ref=view.state.provenance_ref,
+                )
+                with self.assertRaises(ProjectionError):
+                    self.store.publish(lineage, old_head, (event,), runtime.state)
+                self.assertEqual(self.store.read_head(lineage), old_head)
 
     def test_producer_corruption_stays_a_store_error_and_missing_input_ref_is_projection(self):
         policy = ContextPolicyV1("drop")

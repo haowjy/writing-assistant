@@ -53,6 +53,13 @@ _TRACE_LOGPROB_KEYS = frozenset(
 )
 _JSON = JsonValue()
 _TEXT = Str()
+_RENDERING_SCHEMA = obj(
+    projection_version=Str(nonempty=True),
+    prefix_id=Str(nonempty=True, logical=True),
+    template_ref=Hash("artifact"),
+    tokenizer_ref=Hash("artifact"),
+    tool_schema_ref=Hash("artifact"),
+)
 _TRACE_SCHEMA = obj_opt(
     {},
     {
@@ -60,18 +67,13 @@ _TRACE_SCHEMA = obj_opt(
         "seed": Int(minimum=None),
         "generated_token_ids": ListOf(Int()),
         **{key: Hash("artifact") for key in _TRACE_REF_KEYS},
+        "context_revision_ref": Hash(None),
+        "context_content_hash": Hash(None),
         "per_token_logprobs_ref": Hash("bytes"),
         "per_token_logprobs_codec": Enum(frozenset({"f32-le"})),
         "per_token_logprobs_shape": ListOf(Int()),
     },
     extra=_JSON,
-)
-_RENDERING_SCHEMA = obj(
-    projection_version=Str(nonempty=True),
-    prefix_id=Str(nonempty=True, logical=True),
-    template_ref=Hash("artifact"),
-    tokenizer_ref=Hash("artifact"),
-    tool_schema_ref=Hash("artifact"),
 )
 _USAGE_SCHEMA = obj_opt(
     {},
@@ -126,7 +128,8 @@ class WriterTurnV1(WireRecord):
         if {"per_token_logprobs", "native_on_policy_eligible"} & set(self.adapter_trace):
             raise ValueError("adapter trace contains a forbidden field")
         if any(
-            key.endswith("_ref") and key not in {*_TRACE_REF_KEYS, "per_token_logprobs_ref"}
+            key.endswith("_ref")
+            and key not in {*_TRACE_REF_KEYS, "context_revision_ref", "per_token_logprobs_ref"}
             for key in self.adapter_trace
         ):
             raise ValueError("unknown adapter reference claim")
@@ -224,6 +227,20 @@ class EnvironmentStepV1(WireRecord):
         ),
     ]
     RECORD_TYPE: ClassVar[str] = "EnvironmentStepV1"
+
+    @classmethod
+    def of(cls, directive: Any) -> EnvironmentStepV1:
+        """Encode the controller's directive in its exact environment-step shape."""
+        body: dict[str, Any] = {"kind": directive.kind}
+        if directive.kind == "request_author":
+            body["source"] = directive.source
+        elif directive.kind == "commit_transition":
+            body["edge_id"] = directive.edge_id
+        elif directive.kind == "seal_outcome":
+            body.update(task_status=directive.task_status, stop_reason=directive.stop_reason)
+        elif directive.kind == "stop_exhausted":
+            body["stop_reason"] = directive.stop_reason
+        return cls(directive=body)
 
 
 @dataclass(frozen=True)

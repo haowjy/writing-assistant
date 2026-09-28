@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, TypeAlias
 
@@ -23,7 +23,6 @@ from writing_agent.task_graph_controller import Directive, next_step
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry
 from writing_agent.task_graph_derive_writer import (
     group_member,
-    sampling_usage_requirements,
     tool_dispatch_error,
     writer_action_id,
 )
@@ -74,7 +73,6 @@ class SamplerInput:
     rendering: Mapping[str, Any]
     context_revision_ref: str
     action_id: str
-    usage_requirements: frozenset[str]
     writer_seed: int | None
     model_ref: str | None
     behavior_policy_ref: str | None
@@ -86,9 +84,6 @@ class SamplerInput:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "tools", tuple(freeze(self.tools)))
         object.__setattr__(self, "rendering", freeze(self.rendering))
-        object.__setattr__(self, "usage_requirements", frozenset(self.usage_requirements))
-        if self.usage_requirements - {"completion_tokens", "total_tokens"}:
-            raise ValueError("sampler usage requirements are unsupported")
 
 
 @dataclass(frozen=True)
@@ -142,6 +137,19 @@ class StepResult:
     directive: Directive
 
 
+@dataclass(frozen=True)
+class _CheckpointHead:
+    checkpoint: CheckpointV1
+    commit_id: str | None
+    is_published_head: bool
+
+
+@dataclass(frozen=True)
+class _CommitBase:
+    view: LineageView
+    head: _CheckpointHead
+
+
 class RolloutEnvironment:
     """Own entry, verification, producer derivation, persistence, and publication."""
 
@@ -166,6 +174,7 @@ class RolloutEnvironment:
             admission_policy
         ).identity()
         self.reader = StoreArtifactReader(store)
+        self.commit_observer: Callable[[StepResult], None] | None = None
 
     @operation_scoped
     def enter(self, node_id: str, params: EntryParamsV1) -> RuntimeHandle:
@@ -188,13 +197,27 @@ class RolloutEnvironment:
         return self._open(checkpoint_id)
 
     @operation_scoped
+    def open_head(self, lineage_id: str) -> RuntimeHandle:
+        """Resume the verified lineage head through its published commit."""
+        commit_id = self.store.read_head(lineage_id)
+        if commit_id is None:
+            entry_checkpoint = self.store.entry_checkpoint(lineage_id)
+            if entry_checkpoint is None:
+                raise ConcurrentUpdateError("lineage has no published head or entry checkpoint")
+            return self._open(entry_checkpoint)
+        commit = self.store.load_commit(commit_id)
+        checkpoint = self.store.load_checkpoint(commit.checkpoint)
+        if checkpoint.state.position["lineage_id"] != lineage_id:
+            raise ProjectionError("published head belongs to another lineage")
+        return self._open(commit.checkpoint)
+
+    @operation_scoped
     def verify(self, runtime: RuntimeHandle) -> LineageView:
-        view, _, _ = self._verify(runtime)
-        return view
+        return self._verify(runtime)
 
     @operation_scoped
     def port_input(self, view: LineageView, directive: Directive) -> PortInput | None:
-        checkpoint, _, _ = self._checked_head(view.checkpoint_id)
+        checkpoint = self._published_checkpoint(view.checkpoint_id)
         if view.state != checkpoint.state:
             raise WriterRuntimeError("port view state differs from its checkpoint")
         if self.gate.view(self.store, view.checkpoint_id) != view:
@@ -211,7 +234,6 @@ class RolloutEnvironment:
                 rendering=view.context.rendering,
                 context_revision_ref=view.context.revision_ref,
                 action_id=writer_action_id(view),
-                usage_requirements=sampling_usage_requirements(view.budget),
                 writer_seed=None if member is None else member.writer_seed,
                 model_ref=policy.get("model_ref"),
                 behavior_policy_ref=policy.get("behavior_policy_ref"),
@@ -247,7 +269,10 @@ class RolloutEnvironment:
 
     @operation_scoped
     def commit(self, runtime: RuntimeHandle, input_record: InputRecord) -> StepResult:
-        return self._commit(runtime, input_record)
+        result = self._commit(runtime, input_record)
+        if self.commit_observer is not None:
+            self.commit_observer(result)
+        return result
 
     @operation_scoped
     def start_member(self, entry_checkpoint_id: str, start: MemberStartV1) -> RuntimeHandle:
@@ -257,7 +282,7 @@ class RolloutEnvironment:
         return self._commit(runtime, start).runtime
 
     def _open(self, checkpoint_id: str) -> RuntimeHandle:
-        self._checked_head(checkpoint_id)
+        self._published_checkpoint(checkpoint_id)
         view = self.gate.view(self.store, checkpoint_id)
         runtime = self._runtime(view)
         self._check_session_seals(runtime.state)
@@ -270,14 +295,19 @@ class RolloutEnvironment:
         )
         return RuntimeHandle(view.checkpoint_id, view.state, context)
 
-    def _verify(
-        self, runtime: RuntimeHandle, *, allow_stale: bool = False
-    ) -> tuple[LineageView, str | None, bool]:
+    def _verify(self, runtime: RuntimeHandle) -> LineageView:
         if not isinstance(runtime, RuntimeHandle):
             raise TypeError("runtime must be a RolloutEnvironment RuntimeHandle")
-        checkpoint, head, is_head = self._checked_head(
-            runtime.checkpoint_id, allow_stale=allow_stale
-        )
+        checkpoint = self._published_checkpoint(runtime.checkpoint_id)
+        return self._verified_view(runtime, checkpoint)
+
+    def _verify_commit_base(self, runtime: RuntimeHandle) -> _CommitBase:
+        if not isinstance(runtime, RuntimeHandle):
+            raise TypeError("runtime must be a RolloutEnvironment RuntimeHandle")
+        head = self._inspect_checkpoint(runtime.checkpoint_id)
+        return _CommitBase(self._verified_view(runtime, head.checkpoint), head)
+
+    def _verified_view(self, runtime: RuntimeHandle, checkpoint: CheckpointV1) -> LineageView:
         if checkpoint.state != runtime.state:
             raise WriterRuntimeError("runtime handle state differs from its checkpoint")
         view = self.gate.view(self.store, runtime.checkpoint_id)
@@ -286,11 +316,15 @@ class RolloutEnvironment:
         ):
             raise WriterRuntimeError("runtime handle context differs from its verified checkpoint")
         self._check_session_seals(runtime.state)
-        return view, head, is_head
+        return view
 
-    def _checked_head(
-        self, checkpoint_id: str, *, allow_stale: bool = False
-    ) -> tuple[CheckpointV1, str | None, bool]:
+    def _published_checkpoint(self, checkpoint_id: str) -> CheckpointV1:
+        checked = self._inspect_checkpoint(checkpoint_id)
+        if not checked.is_published_head:
+            raise ConcurrentUpdateError("checkpoint is not the current published lineage head")
+        return checked.checkpoint
+
+    def _inspect_checkpoint(self, checkpoint_id: str) -> _CheckpointHead:
         try:
             checkpoint = self.store.load_checkpoint(checkpoint_id)
         except MissingReferenceError as exc:
@@ -308,9 +342,7 @@ class RolloutEnvironment:
             is_head = not checkpoint.parents
         else:
             is_head = self.store.load_commit(head).checkpoint == checkpoint_id
-        if not is_head and not allow_stale:
-            raise ConcurrentUpdateError("checkpoint is not the current published lineage head")
-        return checkpoint, head, is_head
+        return _CheckpointHead(checkpoint, head, is_head)
 
     def _check_session_seals(self, state: EnvironmentStateV1) -> None:
         if self.session is None:
@@ -337,7 +369,9 @@ class RolloutEnvironment:
             raise mismatch_error(f"{path}.admission_policy_ref: differs from environment policy")
 
     def _commit(self, runtime: RuntimeHandle, input_record: InputRecord) -> StepResult:
-        view, head, base_is_head = self._verify(runtime, allow_stale=True)
+        base = self._verify_commit_base(runtime)
+        view = base.view
+        head, base_is_head = base.head.commit_id, base.head.is_published_head
         transition = self._derive(view, input_record)
         lineage = transition.state.position["lineage_id"]
         if lineage == view.state.position["lineage_id"] and not base_is_head:

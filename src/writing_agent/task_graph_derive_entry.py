@@ -91,24 +91,20 @@ def params_of(state: EnvironmentStateV1, reader: ArtifactReader) -> EntryParamsV
 
 
 def _initial_requirements(node: AdmittedNodeV1, reader: ArtifactReader) -> dict[str, Any]:
-    if node.author_packet is not None:
-        active = dict(node.author_packet.requirements)
+    source_ref = node.contract.entry_contract.requirement_version
+    if source_ref is not None:
+        source = reader.artifact(source_ref, private=True)
+        if not isinstance(source, Mapping) or not isinstance(source.get("requirements"), Mapping):
+            raise ValueError("initial requirement version must contain a requirements map")
+        requirements = source["requirements"]
+        if any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in requirements.items()
+        ):
+            raise ValueError("initial requirements must map strings to strings")
+        active = dict(requirements)
     else:
-        source_ref = node.contract.entry_contract.requirement_version
-        active: dict[str, str] = {}
-        if source_ref is not None:
-            source = reader.artifact(source_ref, private=True)
-            if not isinstance(source, Mapping) or not isinstance(
-                source.get("requirements"), Mapping
-            ):
-                raise ValueError("initial requirement version must contain a requirements map")
-            requirements = source["requirements"]
-            if any(
-                not isinstance(key, str) or not isinstance(value, str)
-                for key, value in requirements.items()
-            ):
-                raise ValueError("initial requirements must map strings to strings")
-            active = dict(requirements)
+        active = {} if node.author_packet is None else dict(node.author_packet.requirements)
     return {
         "record_type": "RequirementLedgerV1",
         "schema": 1,
@@ -214,6 +210,8 @@ def derive_entry(
         "read_tokens": contract.budget_contract.max_read_tokens,
         "storage_bytes": contract.budget_contract.max_total_bytes,
     }
+    if contract.budget_contract.max_generated_tokens is not None:
+        budget_limits["generated_tokens"] = contract.budget_contract.max_generated_tokens
     if contract.interaction_contract.mode == "scripted_author":
         budget_limits["author_calls"] = contract.budget_contract.max_author_calls
     budget = {

@@ -29,6 +29,7 @@ from writing_agent.task_graph_records import (
 from writing_agent.task_graph_scripted import (
     ScriptCoverageError,
     resolve_script_reply,
+    scripted_author_reply,
     validate_ask_semantics,
 )
 from writing_agent.task_graph_transition import (
@@ -43,17 +44,11 @@ def derive_author_request(
     view: LineageView, step: EnvironmentStepV1, reader: ArtifactReader
 ) -> Transition:
     """Derive the private request and charge its author-call budget."""
-    directive = step.directive
     next_directive = next_step(view)
-    if (
-        set(directive) != {"kind", "source"}
-        or directive["kind"] != "request_author"
-        or next_directive.kind != "request_author"
-        or next_directive.source != directive["source"]
-    ):
+    if next_directive.kind != "request_author" or step != EnvironmentStepV1.of(next_directive):
         raise ProjectionError("author request differs from the directive")
 
-    source = directive["source"]
+    source = next_directive.source
     prereqs = _prerequisite_results(view, reader)
 
     if source == "writer_request":
@@ -198,6 +193,14 @@ def derive_author_reply(
 
     decisions = reader.artifact(view.state.decisions_ref)
     disclosures = reader.artifact(view.state.disclosures_ref)
+    try:
+        expected = scripted_author_reply(
+            script, {**request, "request_ref": request_ref}, request_ref, decisions, disclosures
+        )
+    except (KeyError, TypeError, ValueError, ScriptCoverageError) as exc:
+        raise ProjectionError("author request is not covered by the admitted script") from exc
+    if canonical_bytes(reply.to_wire()) != canonical_bytes(expected.to_wire()):
+        raise ProjectionError("author reply differs from the admitted script")
     if request["source"] == "mandatory_feedback":
         cursor = view.state.continuation["feedback_cursor"]
         if cursor >= len(view.mode.feedback_rules):
@@ -209,16 +212,13 @@ def derive_author_reply(
             or request["call_id"] is not None
             or request["arguments"] is not None
             or request["decision_ids"]
-            or reply.decision_ids
-            or reply.selected_proposals
-            or reply.utterance != rule["utterance"]
         ):
             raise ProjectionError("author reply differs from mandatory feedback")
         expected_decisions = decisions
         expected_disclosures = disclosures
     else:
         try:
-            expected_decisions, expected_disclosures, expected_reply = resolve_script_reply(
+            expected_decisions, expected_disclosures, _expected_reply = resolve_script_reply(
                 script,
                 {**request, "request_ref": request_ref},
                 decisions,
@@ -228,19 +228,6 @@ def derive_author_reply(
             raise ProjectionError("script cannot answer the recorded author request") from exc
         except (KeyError, TypeError, ValueError) as exc:
             raise ProjectionError("author request is not covered by the admitted script") from exc
-        selected = {
-            decision_id: ([] if proposal_id is None else [proposal_id])
-            for decision_id, proposal_id in expected_reply["selected_proposals"].items()
-        }
-        expected = AuthorReplyV1(
-            request_ref=expected_reply["request_ref"],
-            status="answered",
-            utterance=expected_reply["utterance"],
-            decision_ids=expected_reply["decision_ids"],
-            selected_proposals=selected,
-        )
-        if canonical_bytes(reply.to_wire()) != canonical_bytes(expected.to_wire()):
-            raise ProjectionError("author reply differs from the admitted script")
 
     return _derive_answered_reply(
         view,

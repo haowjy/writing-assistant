@@ -5,27 +5,43 @@ from __future__ import annotations
 import shutil
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from tests.task_graph_rollout_fixtures import (
+    AUTHOR_PACKET_CANARY,
     CANARIES,
+    EVALUATOR_PACKET_CANARY,
+    LEDGER_CANARY,
     PortCallCounter,
     build_rollout_fixture,
+    ports_disabled,
     run_slice,
 )
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_controller import next_step
-from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError
+from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError, ProjectionError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1
 from writing_agent.task_graph_gate import LineageGate
-from writing_agent.task_graph_gatherers import CheckRunner, SamplingRunner
-from writing_agent.task_graph_local import ScriptedSampleBackend
+from writing_agent.task_graph_gatherers import CheckRunner
 from writing_agent.task_graph_ports import SampleResult
-from writing_agent.task_graph_records import ContextOperationInputV1
+from writing_agent.task_graph_records import ContextOperationInputV1, SampledMessageV1, WriterTurnV1
 from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_rollout_env import CheckInput, RolloutEnvironment
 from writing_agent.task_graph_store import TaskGraphStore
+
+
+def _artifact_count(store: TaskGraphStore) -> int:
+    return sum(path.is_file() for path in store.root.rglob("*"))
+
+
+def _lineage_events(fixture):
+    commit_id = fixture.store.read_head(fixture.lineage_id)
+    events = []
+    while commit_id is not None:
+        commit = fixture.store.load_commit(commit_id)
+        events.extend(fixture.store.load_event(ref) for ref in commit.events)
+        commit_id = commit.parent_commit
+    return list(reversed(events))
 
 
 class RolloutDriverTests(unittest.TestCase):
@@ -36,20 +52,12 @@ class RolloutDriverTests(unittest.TestCase):
 
     def test_phase5_scripted_slice_runs_to_reward_with_checkpoint_order(self):
         fixture = build_rollout_fixture(self.root / "slice")
-        final, checkpoints = run_slice(
-            fixture,
-            max_steps=40,
-        )
+        final = run_slice(fixture)
+        checkpoints = fixture.checkpoint_ids
         self.assertEqual(len(checkpoints), 14)
         self.assertEqual(len(set(checkpoints)), len(checkpoints))
         self.assertEqual(checkpoints[-1], final.checkpoint_id)
-        events = []
-        commit = fixture.store.read_head("rollout-fixture")
-        while commit is not None:
-            record = fixture.store.load_commit(commit)
-            events.extend(record.events)
-            commit = record.parent_commit
-        event_kinds = [fixture.store.load_event(identity).kind for identity in reversed(events)]
+        event_kinds = [event.kind for event in _lineage_events(fixture)]
         self.assertEqual(
             event_kinds,
             [
@@ -75,77 +83,101 @@ class RolloutDriverTests(unittest.TestCase):
             {"sampling": 4, "tools": 2, "author": 1, "evaluator": 1},
         )
 
-    def test_sampler_inputs_exclude_all_private_canaries(self):
+    def test_sampler_inputs_exclude_private_canaries_and_are_all_captured(self):
         fixture = build_rollout_fixture(self.root / "privacy")
-        sampler_inputs = []
-        driver = fixture.driver(alternatives=lambda directive, port: sampler_inputs.append(port))
-        final = driver.run(fixture.runtime, max_steps=40)
+        final = run_slice(fixture)
         self.assertEqual(final.state.position["phase"], "terminal")
-        captured = repr(sampler_inputs) + repr(fixture.gatherers.sampler.backend.prepared_inputs)
+        self.assertEqual(len(fixture.sampler_inputs), 4)
+        captured = repr(fixture.sampler_inputs) + repr(
+            fixture.gatherers.sampler.backend.prepared_inputs
+        )
         for canary in CANARIES.values():
             self.assertNotIn(canary, captured)
+        author_packet = fixture.entry.graph.node(fixture.entry.node_id).author_packet
+        self.assertNotIn(LEDGER_CANARY, repr(author_packet))
+        self.assertNotIn(
+            EVALUATOR_PACKET_CANARY,
+            repr(fixture.entry.graph.node(fixture.entry.node_id).contract.completion_contract),
+        )
+        for body in fixture.entry.reader.public.values():
+            self.assertNotIn(EVALUATOR_PACKET_CANARY, repr(body))
+        self.assertIn(AUTHOR_PACKET_CANARY, repr(author_packet))
 
-    def test_context_operation_runs_only_when_returned_by_the_alternatives_callback(self):
+    def test_context_operation_runs_only_when_offered_and_callback_is_not_overoffered(self):
         fixture = build_rollout_fixture(self.root / "context-alternative")
         policy_ref = fixture.store.put_artifact(ContextPolicyV1("drop").to_dict())
         selected = False
+        offered = []
 
         def alternatives(directive, _port):
             nonlocal selected
+            offered.append(directive.kind)
             if directive.kind == "sample_writer" and not selected:
                 selected = True
                 return ContextOperationInputV1(policy_ref)
             return None
 
-        final = fixture.driver(alternatives=alternatives).run(fixture.runtime, max_steps=40)
+        result = fixture.driver(alternatives=alternatives).run(fixture.runtime, max_steps=40)
         self.assertTrue(selected)
         self.assertEqual(
-            fixture.store.load_event(final.state.history["head"]).kind, "reward_recorded"
+            [kind for kind in offered],
+            [
+                next_step(fixture.gate.view(fixture.store, checkpoint)).kind
+                for checkpoint in fixture.checkpoint_ids[:-1]
+                if next_step(fixture.gate.view(fixture.store, checkpoint)).alternatives
+            ],
         )
+        self.assertEqual(result.directive.kind, "done")
+        self.assertEqual(
+            fixture.store.load_event(result.runtime.state.history["head"]).kind,
+            "reward_recorded",
+        )
+        operations = [
+            event for event in _lineage_events(fixture) if event.kind == "context_changed"
+        ]
+        self.assertEqual(len(operations), 1)
+        payload = fixture.store.get_artifact(operations[0].payload_ref)
+        self.assertEqual(payload["record_type"], "ContextOperationInputV1")
         self.assertEqual(fixture.counter.counts["sampling"], 4)
 
-    def test_open_and_gate_replay_every_checkpoint_with_raising_ports(self):
+    def test_open_and_gate_replay_every_checkpoint_with_all_ports_disabled(self):
         fixture = build_rollout_fixture(self.root / "source")
-        final, checkpoints = run_slice(fixture)
+        final = run_slice(fixture)
         copied_store = self.root / "fresh-store"
         shutil.copytree(fixture.store.root, copied_store)
-        gate = LineageGate()
-        store = TaskGraphStore(copied_store, verifier=gate)
-        env = RolloutEnvironment(store, fixture.entry.graph, None, gate, fixture.entry.graph.policy)
-        replay_runtime = env.open(final.checkpoint_id)
-        self.assertEqual(replay_runtime.checkpoint_id, final.checkpoint_id)
-        for checkpoint_id in checkpoints:
-            self.assertEqual(gate.view(store, checkpoint_id).checkpoint_id, checkpoint_id)
         counter = PortCallCounter(raising=True)
-        gatherers = fixture.recovery_gatherers(
-            replay_runtime, store=store, raising=True, counter=counter
-        )
-        RolloutDriver(env, gatherers).run(replay_runtime, max_steps=0)
+        with ports_disabled():
+            gate = LineageGate()
+            store = TaskGraphStore(copied_store, verifier=gate)
+            env = RolloutEnvironment(
+                store, fixture.entry.graph, None, gate, fixture.entry.graph.policy
+            )
+            replay_runtime = env.open_head(fixture.lineage_id)
+            self.assertEqual(replay_runtime.checkpoint_id, final.checkpoint_id)
+            for checkpoint_id in fixture.checkpoint_ids:
+                self.assertEqual(gate.view(store, checkpoint_id).checkpoint_id, checkpoint_id)
+            gatherers = fixture.recovery_gatherers(
+                replay_runtime, store=store, raising=True, counter=counter
+            )
+            self.assertIsNotNone(gatherers)
         self.assertEqual(counter.total, 0)
 
-    def test_crash_after_each_commit_resumes_to_identical_final_checkpoint(self):
+    def test_crash_after_each_commit_resumes_from_open_head_on_fresh_store(self):
         baseline = build_rollout_fixture(self.root / "baseline")
-        expected_final, expected_ids = run_slice(baseline)
-        lineage = baseline.runtime.state.position["lineage_id"]
-        for stop_after in range(1, len(expected_ids)):
+        expected = run_slice(baseline)
+        for stop_after in range(1, len(baseline.checkpoint_ids)):
             with self.subTest(commit=stop_after):
                 fixture = build_rollout_fixture(self.root / f"crash-{stop_after}")
                 original_commit = fixture.env.commit
-                captured = {}
                 count = 0
 
                 def crash_after_commit(
-                    runtime,
-                    input_record,
-                    _commit=original_commit,
-                    _captured=captured,
-                    _stop_after=stop_after,
+                    runtime, input_record, original_commit=original_commit, stop_after=stop_after
                 ):
                     nonlocal count
-                    result = _commit(runtime, input_record)
+                    result = original_commit(runtime, input_record)
                     count += 1
-                    _captured["runtime"] = result.runtime
-                    if count == _stop_after:
+                    if count == stop_after:
                         raise RuntimeError("simulated process death")
                     return result
 
@@ -153,9 +185,10 @@ class RolloutDriverTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "simulated process death"):
                     fixture.driver().run(fixture.runtime, max_steps=40)
                 fixture.env.commit = original_commit
-                stopped = captured["runtime"]
-                head = fixture.store.read_head(lineage)
-                self.assertEqual(fixture.store.load_commit(head).checkpoint, stopped.checkpoint_id)
+                head = fixture.store.read_head(fixture.lineage_id)
+                self.assertEqual(
+                    fixture.store.load_commit(head).checkpoint, fixture.checkpoint_ids[-1]
+                )
 
                 fresh_gate = LineageGate()
                 fresh_store = TaskGraphStore(fixture.store.root, verifier=fresh_gate)
@@ -166,14 +199,108 @@ class RolloutDriverTests(unittest.TestCase):
                     fresh_gate,
                     fixture.entry.graph.policy,
                 )
-                resumed = fresh_env.open(stopped.checkpoint_id)
+                resumed = fresh_env.open_head(fixture.lineage_id)
                 gatherers = fixture.recovery_gatherers(resumed, store=fresh_store)
                 actual = RolloutDriver(fresh_env, gatherers).run(resumed, max_steps=40)
-                self.assertEqual(actual.checkpoint_id, expected_final.checkpoint_id)
+                self.assertEqual(actual.runtime.checkpoint_id, expected.checkpoint_id)
+
+    def test_crash_inside_commit_recovers_every_stage_and_selected_commits(self):
+        class SimulatedCrash(RuntimeError):
+            pass
+
+        expected_fixture = build_rollout_fixture(self.root / "crash-baseline")
+        expected = run_slice(expected_fixture)
+        stages = (
+            "before_immutable_writes",
+            "after_immutable_writes",
+            "before_head_publication",
+            "after_head_publication",
+            "record_published",
+        )
+        for commit_number in (1, 3, 5, 11):
+            for stage in stages:
+                with self.subTest(commit=commit_number, stage=stage):
+                    fixture = build_rollout_fixture(self.root / f"inside-{commit_number}-{stage}")
+                    publish = fixture.store.publish
+                    record_published = fixture.gate.record_published
+                    state = {"publications": 0}
+
+                    def crash_publish(
+                        *args,
+                        _commit_number=commit_number,
+                        _stage=stage,
+                        _publish=publish,
+                        _state=state,
+                        **kwargs,
+                    ):
+                        _state["publications"] += 1
+                        if (
+                            _state["publications"] == _commit_number
+                            and _stage != "record_published"
+                        ):
+
+                            def fail_at(fault_stage, _stage=_stage):
+                                if fault_stage == _stage:
+                                    raise SimulatedCrash(_stage)
+
+                            kwargs["fault"] = fail_at
+                        return _publish(*args, **kwargs)
+
+                    def crash_record(
+                        store,
+                        commit_id,
+                        _commit_number=commit_number,
+                        _stage=stage,
+                        _record_published=record_published,
+                        _state=state,
+                    ):
+                        if (
+                            _state["publications"] == _commit_number
+                            and _stage == "record_published"
+                        ):
+                            raise SimulatedCrash(_stage)
+                        return _record_published(store, commit_id)
+
+                    fixture.store.publish = crash_publish
+                    fixture.gate.record_published = crash_record
+                    with self.assertRaises(SimulatedCrash):
+                        fixture.driver().run(fixture.runtime, max_steps=40)
+                    fixture.store.publish = publish
+                    fixture.gate.record_published = record_published
+
+                    gate = LineageGate()
+                    store = TaskGraphStore(fixture.store.root, verifier=gate)
+                    env = RolloutEnvironment(
+                        store, fixture.entry.graph, None, gate, fixture.entry.graph.policy
+                    )
+                    resumed = env.open_head(fixture.lineage_id)
+                    result = RolloutDriver(
+                        env, fixture.recovery_gatherers(resumed, store=store)
+                    ).run(resumed, max_steps=40)
+                    self.assertEqual(result.runtime.checkpoint_id, expected.checkpoint_id)
+                    self.assertEqual(
+                        store.read_head(fixture.lineage_id),
+                        fixture.store.read_head(fixture.lineage_id),
+                    )
+
+    def test_feedback_fixture_runs_mandatory_reply_and_requirement_update(self):
+        fixture = build_rollout_fixture(self.root / "feedback", mode="feedback")
+        result = run_slice(fixture)
+        events = _lineage_events(fixture)
+        requests = []
+        for event in events:
+            if event.kind == "author_turn":
+                reply = fixture.store.get_artifact(event.payload_ref)
+                requests.append(fixture.store.get_artifact(reply["request_ref"], private=True))
+        self.assertIn("mandatory_feedback", [request["source"] for request in requests])
+        ledger = fixture.store.get_artifact(result.state.requirements_ref, private=True)
+        self.assertEqual(ledger["active"], {"revised": "Revise for " + LEDGER_CANARY})
+        self.assertEqual(ledger["superseded"], {"baseline": LEDGER_CANARY})
+        self.assertEqual(fixture.counter.counts["author"], 2)
 
     def test_none_mode_writer_only_node_reaches_reward(self):
         fixture = build_rollout_fixture(self.root / "none", mode="none")
-        final, _ = run_slice(fixture)
+        final = run_slice(fixture)
         self.assertEqual(final.state.position["phase"], "terminal")
         self.assertEqual(
             fixture.store.get_artifact(final.state.outcome_ref)["reward_status"], "available"
@@ -181,49 +308,91 @@ class RolloutDriverTests(unittest.TestCase):
         self.assertEqual(fixture.counter.counts["author"], 0)
         self.assertEqual(fixture.counter.counts["tools"], 0)
 
-    def test_max_steps_is_an_operational_guard(self):
+    def test_run_result_distinguishes_halt_from_done(self):
+        done_fixture = build_rollout_fixture(self.root / "done")
+        done = done_fixture.driver().run(done_fixture.runtime, max_steps=40)
+        self.assertEqual(done.directive.kind, "done")
+
+        halt_fixture = build_rollout_fixture(self.root / "halt", mode="halt")
+        halted = halt_fixture.driver().run(halt_fixture.runtime, max_steps=40)
+        self.assertEqual(halted.directive.kind, "halt")
+        self.assertNotEqual(halted.runtime.checkpoint_id, done.runtime.checkpoint_id)
+
+    def test_max_steps_is_operational_and_writes_nothing(self):
         fixture = build_rollout_fixture(self.root / "budget")
+        before = _artifact_count(fixture.store)
+        head = fixture.store.read_head(fixture.lineage_id)
         with self.assertRaises(DriverBudgetError) as caught:
             fixture.driver().run(fixture.runtime, max_steps=0)
         self.assertEqual(caught.exception.max_steps, 0)
-        self.assertIsNone(fixture.store.read_head("rollout-fixture"))
+        self.assertEqual(caught.exception.runtime, fixture.runtime)
+        self.assertEqual(fixture.counter.total, 0)
+        self.assertEqual(_artifact_count(fixture.store), before)
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
 
 
 class GathererContractTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.fixture = build_rollout_fixture(Path(self.temporary.name) / "fixture")
-        self.view = self.fixture.env.verify(self.fixture.runtime)
-        self.port = self.fixture.env.port_input(self.view, next_step(self.view))
+        self.root = Path(self.temporary.name)
 
-    def test_sampling_rejects_invalid_role_content_and_missing_budget_usage(self):
-        self.assertEqual(self.port.__class__.__name__, "SamplerInput")
-        for result, port in (
-            (
-                SampleResult({"role": "user", "content": "bad", "tool_calls": []}),
-                self.port,
-            ),
-            (
-                SampleResult({"role": "assistant", "content": [], "tool_calls": []}),
-                self.port,
-            ),
+    def test_adapter_contract_cases_through_driver_do_not_move_head(self):
+        for result, mode in (
+            (SampleResult({"role": "user", "content": "bad", "tool_calls": []}), "none"),
+            (SampleResult({"role": "assistant", "content": [], "tool_calls": []}), "none"),
             (
                 SampleResult({"role": "assistant", "content": "ok", "tool_calls": []}),
-                replace(self.port, usage_requirements=frozenset({"completion_tokens"})),
+                "token_limited",
             ),
         ):
-            with self.subTest(port=port), self.assertRaises(AdapterContractError):
-                SamplingRunner(
-                    self.fixture.store,
-                    ScriptedSampleBackend((result,)),
-                ).turn(port)
-        self.assertIsNone(self.fixture.store.read_head("rollout-fixture"))
+            with self.subTest(result=result, mode=mode):
+                fixture = build_rollout_fixture(
+                    self.root / f"adapter-{mode}-{len(list(self.root.iterdir()))}",
+                    mode=mode,
+                    sample_results=(result,),
+                )
+                old_head = fixture.store.read_head(fixture.lineage_id)
+                with self.assertRaises(AdapterContractError):
+                    fixture.driver().run(fixture.runtime, max_steps=1)
+                self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
+
+    def test_non_text_content_as_gatherer_vs_alternative_is_asymmetric(self):
+        bad_sample = SampleResult({"role": "assistant", "content": [], "tool_calls": []})
+        fixture = build_rollout_fixture(
+            self.root / "asymmetry-gatherer", mode="none", sample_results=(bad_sample,)
+        )
+        old_head = fixture.store.read_head(fixture.lineage_id)
+        with self.assertRaises(AdapterContractError):
+            fixture.driver().run(fixture.runtime, max_steps=1)
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
+
+        fixture = build_rollout_fixture(self.root / "asymmetry-alternative", mode="none")
+        view = fixture.env.verify(fixture.runtime)
+        port = fixture.env.port_input(view, next_step(view))
+        turn = WriterTurnV1(
+            action_id=port.action_id,
+            context_revision_ref=port.context_revision_ref,
+            request_ref=None,
+            prepared_request_ref=None,
+            raw_output_ref=None,
+            usage={},
+            adapter_trace=None,
+            message=SampledMessageV1(content=[], tool_calls_was_list=True, calls=[]),
+        )
+        old_head = fixture.store.read_head(fixture.lineage_id)
+        driver = fixture.driver(
+            alternatives=lambda directive, _port: (
+                turn if directive.kind == "sample_writer" else None
+            )
+        )
+        with self.assertRaises(ProjectionError):
+            driver.run(fixture.runtime, max_steps=1)
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
 
     def test_evaluator_family_mismatch_is_rejected_before_dispatch(self):
-        check = next(
-            iter(self.fixture.entry.graph.node(self.fixture.entry.node_id).checks.values())
-        )
+        fixture = build_rollout_fixture(self.root / "evaluator")
+        check = next(iter(fixture.entry.graph.node(fixture.entry.node_id).checks.values()))
 
         class WrongFamilyEvaluator:
             family = "fixture-file-count-v1"
@@ -234,13 +403,21 @@ class GathererContractTests(unittest.TestCase):
                 return EvaluationEvidenceV1(self.family, "pass", {})
 
         evaluator = WrongFamilyEvaluator()
-        runner = CheckRunner(self.fixture.store, evaluator, {check.identity(): check})
+        packet = fixture.entry.graph.node(fixture.entry.node_id).evaluator_packet
+        packet_ref = packet.identity()
+        runner = CheckRunner(
+            fixture.store,
+            fixture.env.reader,
+            evaluator,
+            {check.identity(): check},
+        )
         request = {
             "check_contract_hash": check.identity(),
             "check_id": check.id,
-            "evaluator_packet_ref": "not-dispatched",
+            "evaluator_packet_ref": packet_ref,
+            "target_checkpoint": fixture.runtime.checkpoint_id,
         }
-        port = CheckInput("request-ref", request, {}, {"packet": "private"})
+        port = CheckInput("request-ref", request, {}, packet.to_dict())
         with self.assertRaises(AdapterContractError):
             runner.result(port)
         self.assertEqual(evaluator.calls, 0)

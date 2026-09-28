@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from writing_agent.task_graph import canonical_bytes, canonical_json, validate_hash
 from writing_agent.task_graph_errors import (
@@ -20,6 +20,37 @@ from writing_agent.task_graph_errors import (
 from writing_agent.task_graph_records import WriterRequestV1, WriterTurnV1
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
+
+
+class ArtifactSink(Protocol):
+    """The two artifact writes needed by sampling adapters."""
+
+    def put_artifact(self, value: Any, *, private: bool = False) -> str: ...
+
+    def put_bytes_artifact(self, value: bytes) -> str: ...
+
+
+def persist_logprob_trace(
+    store: ArtifactSink, result: Any, trace: dict[str, Any]
+) -> dict[str, Any]:
+    """Validate and persist aligned binary logprobs into their shared trace shape."""
+    if result.logprobs is None:
+        return trace
+    if "per_token_logprobs_ref" in trace or "per_token_logprobs" in trace:
+        raise ValueError("sample supplied duplicate logprob evidence")
+    tokens = trace.get("generated_token_ids")
+    if (
+        not isinstance(tokens, list)
+        or any(type(token) is not int or token < 0 for token in tokens)
+        or len(tokens) != result.logprobs.shape[0]
+    ):
+        raise ValueError("binary logprobs do not align with sampled tokens")
+    trace["per_token_logprobs_ref"] = store.put_bytes_artifact(result.logprobs.data)
+    trace["per_token_logprobs_codec"] = result.logprobs.codec
+    trace["per_token_logprobs_shape"] = list(result.logprobs.shape)
+    return trace
+
+
 _ACTION_RECORD_FIELDS = {
     "record_type",
     "action_id",

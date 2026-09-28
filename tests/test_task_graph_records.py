@@ -169,6 +169,9 @@ EXPECTED_REFS = {
 
 EXPECTED_NON_EDGE_HASHES = {
     "GroupMemberSeedsV1": frozenset({"group_id"}),
+    "WriterTurnV1": frozenset(
+        {"adapter_trace.context_content_hash", "adapter_trace.context_revision_ref"}
+    ),
     "GroupSpecV1": frozenset(
         """group_id environment.entry_state_hash environment.entry_tree_hash
         environment.instance_hash environment.graph_hash environment.node_contract_hash

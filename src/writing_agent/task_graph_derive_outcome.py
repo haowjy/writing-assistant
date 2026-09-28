@@ -44,14 +44,7 @@ def _step(view: LineageView, step: EnvironmentStepV1, kind: str) -> Directive:
     if not isinstance(step, EnvironmentStepV1):
         raise ProjectionError("outcome derive requires an environment step")
     directive = next_step(view)
-    expected = {"kind": kind}
-    if kind == "commit_transition":
-        expected["edge_id"] = directive.edge_id
-    elif kind == "seal_outcome":
-        expected.update(task_status=directive.task_status, stop_reason=directive.stop_reason)
-    elif kind == "stop_exhausted":
-        expected["stop_reason"] = directive.stop_reason
-    if directive.kind != kind or step.directive != expected:
+    if directive.kind != kind or step != EnvironmentStepV1.of(directive):
         raise ProjectionError("environment step differs from the current directive")
     return directive
 

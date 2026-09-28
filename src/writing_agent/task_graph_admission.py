@@ -553,6 +553,21 @@ def _validate_scripted_author(
         *(rule["value"] for rule in script.answers.values()),
         *(rule["utterance"] for rule in script.feedback),
     ]
+    source_ref = contract.entry_contract.requirement_version
+    initial_requirements = dict(packet.requirements)
+    if source_ref is not None:
+        source = _resolve_plain(resolver, source_ref, private=True)
+        if not isinstance(source, Mapping) or not isinstance(source.get("requirements"), Mapping):
+            raise AdmissionError(
+                "requirement_update", "initial requirement version must contain a requirements map"
+            )
+        initial_requirements = source["requirements"]
+        if any(
+            not isinstance(key, str) or not key or not isinstance(value, str) or not value
+            for key, value in initial_requirements.items()
+        ):
+            raise AdmissionError("requirement_update", "initial requirements are malformed")
+        private_values.extend((*initial_requirements.keys(), *initial_requirements.values()))
     if tuple(rule["id"] for rule in script.feedback) != policy.mandatory_feedback or (
         policy.mandatory_feedback != interaction.mandatory_feedback
     ):
@@ -583,9 +598,9 @@ def _validate_scripted_author(
             private_values.append(update.id)
             private_values.append(update.replacement)
             if (
-                update.supersedes not in packet.requirements
+                update.supersedes not in initial_requirements
                 or update.supersedes in superseded_ids
-                or update.id in packet.requirements
+                or update.id in initial_requirements
                 or update.id in replacement_ids
             ):
                 raise AdmissionError("requirement_update", "unauthorized superseded requirement")

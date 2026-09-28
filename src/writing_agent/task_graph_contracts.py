@@ -153,6 +153,7 @@ class _Contract:
 
     schema: int = 1
     ARTIFACT_TYPE: ClassVar[str]
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
 
     def __post_init__(self) -> None:
         if type(self.schema) is not int or self.schema != 1:
@@ -168,7 +169,11 @@ class _Contract:
     def to_dict(self) -> dict[str, Any]:
         return {
             "artifact_type": self.ARTIFACT_TYPE,
-            **{field.name: thaw(getattr(self, field.name)) for field in fields(self)},
+            **{
+                field.name: thaw(getattr(self, field.name))
+                for field in fields(self)
+                if field.name not in self.OMIT_NONE_FIELDS or getattr(self, field.name) is not None
+            },
         }
 
     def identity(self) -> str:
@@ -179,7 +184,8 @@ class _Contract:
         if not isinstance(value, Mapping):
             raise TypeError(f"{cls.ARTIFACT_TYPE} must be an object")
         expected = {field.name for field in fields(cls)} | {"artifact_type"}
-        if set(value) != expected:
+        present = set(value)
+        if present != expected and present != expected - cls.OMIT_NONE_FIELDS:
             missing = sorted(expected - set(value))
             unknown = sorted(set(value) - expected)
             raise ValueError(
@@ -187,7 +193,7 @@ class _Contract:
             )
         if value["artifact_type"] != cls.ARTIFACT_TYPE:
             raise ValueError(f"expected {cls.ARTIFACT_TYPE}")
-        kwargs = {key: value[key] for key in expected - {"artifact_type"}}
+        kwargs = {key: value[key] for key in expected - {"artifact_type"} if key in value}
         result = cls(**kwargs)
         if result.to_dict() != dict(value):
             raise ValueError(f"{cls.ARTIFACT_TYPE} is not in canonical typed form")
@@ -299,7 +305,9 @@ class BudgetContractV1(_Contract):
     max_author_calls: int = 0
     max_graph_hops: int = 0
     max_visits: int = 0
+    max_generated_tokens: int | None = None
     ARTIFACT_TYPE: ClassVar[str] = "BudgetContractV1"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"max_generated_tokens"})
 
     def validate(self) -> None:
         _nonnegative(self.max_steps, "max_steps", positive=True)
@@ -309,13 +317,18 @@ class BudgetContractV1(_Contract):
         _nonnegative(self.max_author_calls, "max_author_calls")
         _nonnegative(self.max_graph_hops, "max_graph_hops", positive=True)
         _nonnegative(self.max_visits, "max_visits", positive=True)
+        if self.max_generated_tokens is not None:
+            _nonnegative(self.max_generated_tokens, "max_generated_tokens")
 
     def legacy_agent_budgets(self) -> dict[str, int]:
-        return {
+        values = {
             "max_steps": self.max_steps,
             "max_tool_calls": self.max_tool_calls,
             "max_read_tokens": self.max_read_tokens,
         }
+        if self.max_generated_tokens is not None:
+            values["max_generated_tokens"] = self.max_generated_tokens
+        return values
 
 
 @dataclass(frozen=True)
