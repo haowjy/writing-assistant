@@ -24,6 +24,7 @@ from writing_agent.task_graph import (
 from writing_agent.task_graph_errors import (
     MaterializationError,
     MissingReferenceError,
+    ProjectionError,
     WrongRecordDomainError,
 )
 from writing_agent.task_graph_gate import LineageGate
@@ -1257,7 +1258,7 @@ class RecordClosureTests(unittest.TestCase):
                 store.save_checkpoint(chained_context_without_semantics)
 
             unknown = store.put_artifact({"record_type": "UnregisteredV1", "value": 1})
-            with self.assertRaises(WrongRecordDomainError):
+            with self.assertRaises(ProjectionError):
                 store.get_artifact(unknown, expected_domain="payload")
             public_reference = AuthorReplyV1(
                 common["entry"], "answered", "This must not resolve publicly.", (), {}

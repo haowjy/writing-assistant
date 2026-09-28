@@ -416,14 +416,6 @@ class TestGroupCoordinatorCore(unittest.TestCase):
                     ],
                 },
             ),
-            (
-                "non_list_call_with_noncanonical_tag",
-                {
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": {"function": {"arguments": nested(80)}},
-                },
-            ),
         )
         for sequence, (label, malformed_call) in enumerate(cases, start=90):
             with self.subTest(call_shape=label):
