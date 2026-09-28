@@ -13,33 +13,45 @@ retains its smoke-evaluation and training-format workflows.
 - [task_graph.py](../writing_agent/task_graph.py) owns immutable task-graph value records
   and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
   owns private content-addressed persistence, reference closure, checkpoint
-  materialization/restore/branch/diff, recorded Phase 2 effect replay, and the atomic
-  mutable lineage head. [task_graph_contracts.py](../writing_agent/task_graph_contracts.py)
-  adds detailed execution contracts as immutable artifacts referenced by the frozen
-  Phase 1 node shape; [task_graph_admission.py](../writing_agent/task_graph_admission.py)
-  resolves their public/private closure and rejects an unsound graph before sampling.
-  During the transition-seam rollout, [task_graph_records.py](../writing_agent/task_graph_records.py)
-  owns the new strict input-record codecs and `REFS` registry; [task_graph_wire.py](../writing_agent/task_graph_wire.py)
-  supplies their shared L0 field vocabulary, validator, edge walker, and record base. The
-  store follows those typed edges and stores chained contexts separately; it selects the new
-  context kind only when the checkpoint's versions artifact pins `transition_semantics`.
-  Existing runtime codecs and
-  the legacy `contexts/` directory remain unchanged during coexistence.
+  materialization/restore/branch/diff, and the atomic mutable lineage head; its recorded
+  Phase 2 effect replay and semantic hook are legacy until S7.
+  [task_graph_contracts.py](../writing_agent/task_graph_contracts.py) adds detailed
+  execution contracts as immutable artifacts referenced by the frozen Phase 1 node shape;
+  [task_graph_admission.py](../writing_agent/task_graph_admission.py) resolves their
+  public/private closure and rejects an unsound graph before sampling.
+- **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
+  is the field-spec vocabulary, strict decoder and `WireRecord` base;
+  [task_graph_records.py](../writing_agent/task_graph_records.py),
+  [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) and
+  [task_graph_payloads.py](../writing_agent/task_graph_payloads.py) declare the records,
+  whose `REFS` derive from their annotations. The store follows those typed edges and stores
+  chained contexts separately, selecting them only when the checkpoint's versions artifact
+  pins `transition_semantics`; legacy codecs and the `contexts/` directory are unchanged.
+  [task_graph_calls.py](../writing_agent/task_graph_calls.py) owns sampled-message intake,
+  call parsing and the tool effect contract.
   [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
-  transition/view types and mismatch-path helper; [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py)
-  derives a node's entry state and deterministic root artifacts from its admitted contract,
-  pinned parameters, and a read-only artifact reader.
-  [task_graph_controller.py](../writing_agent/task_graph_controller.py) is the pure,
-  deterministic directive boundary. It does not step a writer, execute checks, accept
-  author transition/completion claims, or mutate runtime state.
-  The derive modules delegate event, state, checkpoint, artifact, and context-append
-  construction to [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
-  [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles those derive registries,
-  re-admits from the versions-pinned policy, and folds typed events through the store's
-  optional verifier port. Its checkpoint-keyed view cache skips derives only; store closure
-  still re-reads and hashes persisted bytes on every operation. Stores without a verifier
-  retain the legacy patch reducer and semantic hook during coexistence.
-- [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
+  view/transition types. [task_graph_controller.py](../writing_agent/task_graph_controller.py)
+  is the pure directive boundary (`next_step`, `select_edge`); it does not step a writer,
+  execute checks, accept author transition/completion claims, or mutate runtime state.
+  [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py) derives a node's
+  entry state and root artifacts; the writer, author, outcome and context derive modules
+  build each step through
+  [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
+  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) wraps the
+  compaction rules unchanged, derives member starts from persisted group specs, and takes
+  named seed contexts from view ancestry rather than replay.
+  [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles the derive
+  registries, re-admits from the versions-pinned policy, and folds typed events through
+  the store's optional verifier port. Its checkpoint-keyed view cache skips derives only;
+  store closure still re-reads and hashes persisted bytes on every operation. Stores
+  without a verifier retain the legacy patch reducer and semantic hook during coexistence.
+  See [transition-seam.md](transition-seam.md) for how to add a record or a
+  derive, the layer order, and the rationale.
+- **Legacy runtime (until S7).** The modules in this bullet are the old runtime. They stay
+  the behavior oracle until the S7 parity probe, which deletes the writer, the scripted
+  runtime classes, checks, terminal, author validation, projection, and the old replay
+  and environment batch. Do not extend them or move new-core logic into them.
+  [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
   handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)
   stages typed record/log/effect/context batches and owns semantic prepublication,
@@ -49,9 +61,24 @@ retains its smoke-evaluation and training-format workflows.
   visible contributions for publication and recovery. The thin
   [task_graph_projection.py](../writing_agent/task_graph_projection.py) entry
   materializes/verifies writer context; it never renders the private log wholesale.
-  [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
-  codecs and binding checks for prepared requests, sampling and adapter evidence,
-  plus the current evaluation-only eligibility decision; the persisted V1 wires
+  [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
+  owns exact scripted author requests/replies, disclosure and authorized requirement
+  updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
+  checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
+  applies terminal guards and publishes immutable outcome/reward evidence. All three
+  use the same semantic replay walk before publication and during recovery;
+  [task_graph_author_validation.py](../writing_agent/task_graph_author_validation.py)
+  holds the author-side replay rules. The writer publishes a `context_changed` operation
+  only at a drained `ready_writer` boundary; the semantic replay validates its selection
+  and budget before publication and on recovery. The immutable admitted writer entry
+  activates that semantic walk even for the first context operation, a retyped child
+  runtime log, or a multi-event batch; generic Phase 2 lineages without a typed entry
+  retain their generic reducer. See [writer stepping](../../docs/task-graph-writer.md)
+  for the entry budget artifact, restore API, and the Phase 4 boundary.
+- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
+  codecs and binding checks for prepared requests, sampling and adapter evidence
+  (including the `WriterTurnV1` binding the writer derive calls), plus the current
+  evaluation-only eligibility decision; the persisted V1 wires
   retain their approved identities. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
@@ -80,27 +107,13 @@ retains its smoke-evaluation and training-format workflows.
   builds author requests and replies, disclosure and authorized requirement updates. The
   [scripted policy module](../writing_agent/task_graph_scripted.py) retains pure script-policy
   helpers and the legacy runtime until retirement.
-  [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
-  checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
-  applies terminal guards and publishes immutable outcome/reward evidence. All three
-  use the same semantic replay walk before publication and during recovery;
-  [task_graph_author_validation.py](../writing_agent/task_graph_author_validation.py)
-  holds the author-side replay rules. See
-  [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
-  restore API, and the Phase 4 boundary.
   [task_graph_compaction.py](../writing_agent/task_graph_compaction.py) owns the
   fixed visible-message summary, complete-exchange selection, immutable context
-  operation evidence, and context byte accounting. The writer publishes a
-  `context_changed` operation only at a drained `ready_writer` boundary; the
-  semantic replay validates its selection and budget before publication and on recovery.
-  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) wraps
-  those pure rules for the transition seam and derives member starts from persisted
-  group specs; named seed contexts come from verified view ancestry rather than replay.
-  The immutable admitted writer entry activates that semantic walk even for the
-  first context operation, a retyped child runtime log, or a multi-event batch;
-  generic Phase 2 lineages without a typed entry retain their generic reducer.
+  operation evidence, and context byte accounting.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
-  defines the sealed entry/policy and exact credit records;
+  resolves the sealed group environment and defines the exact member-result, decision,
+  advantage and credit records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their
+  binding rules live in `task_graph_record_contracts.py`.
   [task_graph_group.py](../writing_agent/task_graph_group.py) creates isolated
   seeded branches, applies the same complete member-result admission to collection
   and reopened finalization (including sealed start receipts and sampled stops),
@@ -140,15 +153,65 @@ Task-graph immutable objects can exist before publication, but only canonical
 only `head_commit`; expected-head is a compare-and-swap request. A transaction writes
 and flushes immutable events, a full checkpoint, and its commit before atomically
 replacing the head under the lineage lock. Unreachable files are harmless orphans.
-Restore always creates a new private directory and returns a trusted runtime handle;
-it never rewinds an event log. The Phase 2 replay reducer accepts only persisted
-`Phase2RecordedEffectV1` payloads and makes no model, network, or tool calls.
-Publication reduces that supported event batch from the actual parent checkpoint and
-requires typed reference closure after every intermediate effect as well as exact
-complete-state equality before writing or moving authority. The effect's
+Restore always creates a new private directory and returns a trusted runtime handle; it
+never rewinds an event log.
+
+Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
+and loaded, active, and completed sets. Closure-validated immutable objects are reused
+only within the outermost store or role operation; each later operation re-reads and
+re-hashes them. Artifact reads return deep JSON-shaped copies, so caller mutation cannot
+alter a verified value. Checkpoint/commit/event depth is traversed iteratively; supplemental
+and imported references cannot bypass the validators for their resolved record domain.
+There is no process-global validation cache. Immutable-name and ref-name retries repeat
+their containing-directory durability barrier even when equal bytes or the matching
+head are already visible; identical `branch` retries use that same head-repair path.
+Every non-null authority head must target a checkpoint in its named lineage. A first
+commit may explicitly start from a checkpoint in another lineage, but later commit
+ancestry may not cross lineages.
+
+Catalog records carry normalized content in `text`; local imports also preserve raw
+bytes and a text file, with hashes for both representations. Content from the imported
+file replaces any stale text supplied in metadata. Profile and overlap consumers use
+the same canonical text.
+
+Compiled releases separate visible packages from private labels. Runtime workspaces
+contain only initial files supplied by the visible package. These path-constrained
+file tools are not an OS sandbox; no arbitrary shell is exposed to candidates.
+Store roots and workspace destinations reject lexical `..`, static symlink ancestry,
+and any tree overlap before creation, then use the one checked absolute path. A store
+root's parent must already be a real private directory; initialization creates only the
+root and its fixed children and repeats each containing-directory fsync on retry.
+Concurrent hostile path replacement remains outside this trusted-harness threat model.
+
+Resume identity covers visible inputs, experimental observation metadata (including
+builder identity and condition), model configuration, and package source hashes.
+Identical KB content from different builders retains separate attempts and attribution. Label changes permit rescoring without generation. Completed failures
+are reused unless the caller explicitly requests a retry. Interrupted attempts
+remain on disk; retries start a clean workspace. The runner is serial and assumes
+one writer per run directory. Reports select the latest attempt, including interruptions, per
+identity and keep attempt history available. No automatic transport retries occur.
+
+A final response ends one user turn; declared follow-ups continue within the same
+step/tool budget. Each turn retains its workspace snapshot. The read budget counts
+returned observation text using the recorded tokenizer (whitespace estimates by
+default); rejected reads do not expose their content. Storage is measured in UTF-8
+bytes. Provider usage retains nested detail fields: do not sum a detail into its
+parent total a second time.
+
+### Legacy task-graph runtime (until S7)
+
+These paragraphs describe the old runtime, which remains the behavior oracle until the
+S7 parity probe deletes it. The transition seam replaces patch effects, the runtime log,
+multi-event commits and the semantic replay walk with typed inputs and one derive per
+input kind; see [transition-seam.md](transition-seam.md).
+
+The Phase 2 replay reducer accepts only persisted `Phase2RecordedEffectV1` payloads and makes no model, network, or
+tool calls. Publication reduces that supported event batch from the actual parent
+checkpoint and requires typed reference closure after every intermediate effect as well
+as exact complete-state equality before writing or moving authority. The effect's
 `before_state_ref` is a state-identity assertion, not a persisted-object edge.
-Unsupported transition envelopes fail at the reducer seam. Branch initialization is
-the same recorded parent-to-child transition, not a pre-mutated state.
+Unsupported transition envelopes fail at the reducer seam. Branch initialization is the
+same recorded parent-to-child transition, not a pre-mutated state.
 
 Phase 4 publishes each `writer_action` or `tool_result` with a following
 `context_changed` event in **one** commit. The source event's recorded effect updates
@@ -211,48 +274,6 @@ Known zero token capacity rejects request preparation and can be sealed as a cla
 terminal stop. Already-sampled token overrun commits usage/output evidence and a
 terminal budget stop without tool execution. Exact pre-sampling context-token capacity
 and non-whitespace read counting are not supported and fail at runtime initialization.
-
-Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
-and loaded, active, and completed sets. Closure-validated immutable objects are reused
-only within the outermost store or role operation; each later operation re-reads and
-re-hashes them. Artifact reads return deep JSON-shaped copies, so caller mutation cannot
-alter a verified value. Checkpoint/commit/event depth is traversed iteratively; supplemental
-and imported references cannot bypass the validators for their resolved record domain.
-There is no process-global validation cache. Immutable-name and ref-name retries repeat
-their containing-directory durability barrier even when equal bytes or the matching
-head are already visible; identical `branch` retries use that same head-repair path.
-Every non-null authority head must target a checkpoint in its named lineage. A first
-commit may explicitly start from a checkpoint in another lineage, but later commit
-ancestry may not cross lineages.
-
-Catalog records carry normalized content in `text`; local imports also preserve raw
-bytes and a text file, with hashes for both representations. Content from the imported
-file replaces any stale text supplied in metadata. Profile and overlap consumers use
-the same canonical text.
-
-Compiled releases separate visible packages from private labels. Runtime workspaces
-contain only initial files supplied by the visible package. These path-constrained
-file tools are not an OS sandbox; no arbitrary shell is exposed to candidates.
-Store roots and workspace destinations reject lexical `..`, static symlink ancestry,
-and any tree overlap before creation, then use the one checked absolute path. A store
-root's parent must already be a real private directory; initialization creates only the
-root and its fixed children and repeats each containing-directory fsync on retry.
-Concurrent hostile path replacement remains outside this trusted-harness threat model.
-
-Resume identity covers visible inputs, experimental observation metadata (including
-builder identity and condition), model configuration, and package source hashes.
-Identical KB content from different builders retains separate attempts and attribution. Label changes permit rescoring without generation. Completed failures
-are reused unless the caller explicitly requests a retry. Interrupted attempts
-remain on disk; retries start a clean workspace. The runner is serial and assumes
-one writer per run directory. Reports select the latest attempt, including interruptions, per
-identity and keep attempt history available. No automatic transport retries occur.
-
-A final response ends one user turn; declared follow-ups continue within the same
-step/tool budget. Each turn retains its workspace snapshot. The read budget counts
-returned observation text using the recorded tokenizer (whitespace estimates by
-default); rejected reads do not expose their content. Storage is measured in UTF-8
-bytes. Provider usage retains nested detail fields: do not sum a detail into its
-parent total a second time.
 
 ## Scoring contracts
 
@@ -336,18 +357,17 @@ versions, and checks resolve through explicitly private references. Guards are l
 to the `GuardContractV1` vocabulary and competing exits require unique numeric
 precedence. The graph has an immutable hop bound and every node an immutable visit
 bound. Admission validates tools, writer families, interaction coverage, check scope
-and controller/check versions without invoking a model. Phase 3 supports only `none`
-and fixed `scripted` interaction: `simulated_author` and mandatory feedback fail closed
-until their role-specific packet, policy, binding, and feedback-rule contracts exist.
+and controller/check versions without invoking a model. Admission supports `none` and
+fixed `scripted_author` interaction. `simulated_author` fails closed until its
+role-specific packet, policy and binding contracts exist, and mandatory feedback is
+admitted only on `scripted_author` nodes. Any writer node that declares a typed
+evaluator packet, interactive or not, has that packet and its reward contract resolved;
+a `legacy-evaluation-package` body is not resolved as a typed packet.
 Check admission uses exact evaluator-version-specific program schemas; semantic-v1 is
 not an admitted evaluator. Mapping and store-backed admission share the same typed
-closure and visibility rules. `task_graph_controller.py` exposes pure `next_step` and
-`select_edge` decisions over structured lineage facts; it does not step a writer or execute
-checks. Author text is audit input and is never inspected for routing. A terminal check batch
-with no required `each_turn`/`node_exit_candidate` check halts as `no_admitted_evaluation`,
-matching the legacy terminal refusal rather than treating an empty required set as a pass.
-Outcome records keep task, execution, stop, reward, and training-eligibility state
-independent.
+closure and visibility rules. Author text is audit input and is never inspected for
+routing (controller rules: [transition-seam.md](transition-seam.md)). Outcome records keep
+task, execution, stop, reward, and training-eligibility state independent.
 
 The scripted-author slice admits only a terminal edge guaranteed when required
 completion checks pass: an unconditional guard, a fixed completion predicate, or
