@@ -188,6 +188,52 @@ class PersistedForgeTests(unittest.TestCase):
                 self.assertIn(expected_path, str(rejected.exception))
                 self.assertEqual(target.store.read_head(target.lineage_id), before)
 
+    def test_unpinned_transition_semantics_are_refused_by_open_and_read_head(self):
+        cases = (
+            ("missing", lambda body: body.pop("transition_semantics")),
+            (
+                "unsupported",
+                lambda body: body.__setitem__("transition_semantics", "task-graph-derive-v0"),
+            ),
+        )
+        for name, mutate_versions in cases:
+            with self.subTest(case=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                donor = build_rollout_fixture(root / "donor")
+                target = build_rollout_fixture(root / "target")
+                parent_id = donor.runtime.checkpoint_id
+                result = donor.env.commit(donor.runtime, _writer_turn(donor))
+                event = donor.store.load_event(result.event_id)
+                _copy_immutables(donor.store.root, target.store.root)
+
+                versions = target.store.get_artifact(result.runtime.state.versions_ref)
+                mutate_versions(versions)
+                versions_ref = _rewrite_payload(target, versions)
+                state = replace(result.runtime.state, versions_ref=versions_ref)
+                _forged_commit(target, parent_id, event, state)
+
+                gate = LineageGate()
+                store = TaskGraphStore(target.store.root, verifier=gate)
+                env = RolloutEnvironment(
+                    store,
+                    target.entry.graph,
+                    None,
+                    gate,
+                    target.entry.graph.policy,
+                )
+                authority = store._ref_path(target.lineage_id)
+                authority_bytes = authority.read_bytes()
+                bare_store = TaskGraphStore(target.store.root)
+                actions = (env.open_head, bare_store.read_head)
+                for action in actions:
+                    with self.assertRaises(ProjectionError) as rejected:
+                        action(target.lineage_id)
+                    self.assertIn(
+                        "state.versions_ref.transition_semantics",
+                        str(rejected.exception),
+                    )
+                    self.assertEqual(authority.read_bytes(), authority_bytes)
+
     def test_byte_tamper_after_warm_view_is_corrupt_and_does_not_move_head(self):
         with tempfile.TemporaryDirectory() as directory:
             fixture = build_rollout_fixture(Path(directory) / "store")

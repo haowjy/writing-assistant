@@ -103,7 +103,7 @@ def _encode_value(
 
 
 def _bounded_call(value: Any) -> bool:
-    """Bound one raw call before encoding, matching the legacy evidence boundary."""
+    """Keep one adapter call within the finite canonical-intake limits."""
     stack = [(value, 0)]
     remaining_bytes = _MAX_CALL_EVIDENCE_BYTES
     remaining_nodes = _MAX_INTAKE_NODES

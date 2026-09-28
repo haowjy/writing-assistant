@@ -8,6 +8,7 @@ from dataclasses import fields, replace
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.task_graph import (
     EnvironmentStateV1,
     EventV1,
@@ -1456,22 +1457,17 @@ class RecordClosureTests(unittest.TestCase):
 
     def test_forged_typed_artifact_reports_its_own_codec_path(self):
         with tempfile.TemporaryDirectory() as temporary:
-            store = TaskGraphStore(Path(temporary) / "store")
-            outcome = OutcomeV1(
-                1,
-                "unknown",
-                "running",
-                None,
-                "pending",
-                "pending",
-                None,
-                None,
-                (),
-                None,
-                None,
-                None,
-                None,
-            ).to_wire()
+            fixture = make_entry_fixture()
+            store = TaskGraphStore(Path(temporary) / "store", verifier=LineageGate())
+            for value in fixture.reader.public.values():
+                store.put_artifact(value)
+            for value in fixture.reader.private.values():
+                store.put_artifact(value, private=True)
+            store.persist(fixture.graph.instance)
+            for artifact in fixture.artifacts:
+                store.persist_artifact(artifact)
+
+            outcome = store.get_artifact(fixture.state.outcome_ref)
             outcome["forged_field"] = "not codec-owned"
             identity = domain_hash("payload", outcome)
             store._artifact_path(identity, False).write_bytes(
@@ -1480,8 +1476,10 @@ class RecordClosureTests(unittest.TestCase):
                 )
             )
 
-            with self.assertRaisesRegex(ProjectionError, "artifact.forged_field"):
-                store.get_artifact(identity, expected_domain="payload")
+            with self.assertRaises(ProjectionError) as rejected:
+                store.save_checkpoint(replace(fixture.state, outcome_ref=identity))
+
+            self.assertIn("state.outcome_ref.forged_field", str(rejected.exception))
 
 
 if __name__ == "__main__":
