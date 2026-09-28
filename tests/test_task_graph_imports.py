@@ -202,6 +202,13 @@ def strongly_connected_components(graph: dict[str, set[str]]) -> list[tuple[str,
 
 
 class TaskGraphImportTests(unittest.TestCase):
+    def test_new_core_does_not_import_legacy_checks(self) -> None:
+        graph = build_import_graph()
+        legacy_checks = "writing_agent.task_graph_checks"
+        for module in NEW_SEAM_MODULES:
+            with self.subTest(module=module):
+                self.assertNotIn(legacy_checks, graph[module])
+
     def test_future_gatherers_cannot_import_transition_views(self) -> None:
         graph = build_import_graph()
         pattern = next(iter(FORBIDDEN_IMPORT_PATTERNS))

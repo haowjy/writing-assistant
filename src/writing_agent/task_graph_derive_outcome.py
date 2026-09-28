@@ -7,9 +7,8 @@ from dataclasses import replace
 from typing import Any
 
 from writing_agent.task_graph_accounting import exhausted_stop_reason
-from writing_agent.task_graph_checks import applicable_checks
 from writing_agent.task_graph_contracts import CheckContractV1
-from writing_agent.task_graph_controller import Directive, next_step, select_edge
+from writing_agent.task_graph_controller import Directive, applicable_checks, next_step, select_edge
 from writing_agent.task_graph_derive_common import (
     DeriveKey,
     build_transition,
@@ -90,14 +89,7 @@ def derive_check_request(
     view: LineageView, step: EnvironmentStepV1, reader: ArtifactReader
 ) -> Transition:
     _step(view, step, "request_checks")
-    if view.node.interaction_policy is None:
-        checks = tuple(
-            check
-            for check in view.node.checks.values()
-            if check.applicability in {"each_turn", "node_exit_candidate"}
-        )
-    else:
-        checks = applicable_checks(view.node, view.state.continuation["feedback_cursor"])
+    checks = applicable_checks(view, view.state.continuation["feedback_cursor"])
     packet_ref = view.node.contract.completion_contract.evaluation_packet_ref
     if not checks or packet_ref is None:
         raise ProjectionError("no admitted checks are applicable")
