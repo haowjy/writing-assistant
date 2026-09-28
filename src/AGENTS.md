@@ -15,8 +15,10 @@ under study. Report agent behavior and prose quality separately.
 The task-graph runtime is mid-rewrite. A new core (typed input records and one pure derive
 per input kind) is being built beside the old runtime, which stays as the behavior oracle
 until a single switch deletes it. Put new task-graph behavior in the new core, never in
-old-runtime modules, and keep its imports downward. Size budgets apply to total
-`task_graph*` source, not to single files. Read
-[.context/transition-seam.md](.context/transition-seam.md) before adding a record or derive.
+old-runtime modules, and keep its imports downward. New-core code steps a lineage only
+through `RolloutEnvironment`, and gives ports only the typed inputs it builds from
+published views, never a `LineageView`. Size budgets apply to total `task_graph*` source,
+not to single files. Read [.context/transition-seam.md](.context/transition-seam.md)
+before adding a record, a derive, or code that calls the gate or the environment.
 
 See [.context/CONTEXT.md](.context/CONTEXT.md) for implementation contracts and limits.
