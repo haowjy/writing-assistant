@@ -117,6 +117,29 @@ class DeriveEntryTests(unittest.TestCase):
             external_source_ref="5b916b97b4b82b3ad735d65c81d26640a01ba8f2990686ff7db16f7d92149382",
         )
 
+    def test_initial_requirements_reject_empty_keys_and_values(self) -> None:
+        for requirements in ({"": "private text"}, {"canon": ""}):
+            with self.subTest(requirements=requirements):
+                fixture = make_entry_fixture()
+                source_ref = fixture.reader.add({"requirements": requirements}, private=True)
+                node = fixture.graph.node(fixture.node_id)
+                contract = replace(
+                    node.contract,
+                    entry=replace(node.contract.entry_contract, requirement_version=source_ref),
+                )
+                graph = replace(
+                    fixture.graph,
+                    nodes={
+                        **fixture.graph.nodes,
+                        fixture.node_id: replace(node, contract=contract),
+                    },
+                )
+
+                with self.assertRaisesRegex(
+                    ValueError, "initial requirements must map nonempty strings to nonempty strings"
+                ):
+                    derive_entry(graph, fixture.node_id, fixture.params, fixture.reader)
+
     def test_entry_prompt_stays_byte_identical_to_legacy_prompt(self) -> None:
         from writing_agent.task_graph_derive_entry import SYSTEM_PROMPT
 

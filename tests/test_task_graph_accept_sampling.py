@@ -23,7 +23,7 @@ from writing_agent.task_graph_local import (
 )
 from writing_agent.task_graph_ports import PortDescriptorV1, RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import GroupMemberSpecV1, GroupSpecV1
-from writing_agent.task_graph_records import MemberStartV1
+from writing_agent.task_graph_records import MemberStartV1, WriterRequestV1
 from writing_agent.task_graph_rollout_env import RolloutEnvironment
 
 
@@ -146,7 +146,7 @@ class SamplingAcceptanceTests(unittest.TestCase):
                         parent_checkpoint=fixture.runtime.checkpoint_id,
                     )
                 expected_path = (
-                    "artifact.record_type"
+                    "event.payload_ref"
                     if name in {"inline-logprobs", "negative-token-id", "malformed-usage"}
                     else "input.usage.completion_tokens"
                 )
@@ -219,6 +219,50 @@ class SamplingAcceptanceTests(unittest.TestCase):
         with self.assertRaises(ProjectionError) as caught:
             fixture.store.publish(fixture.lineage_id, head, (event,), state)
         self.assertIn("input.prepared_request_ref", str(caught.exception))
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
+
+    def test_fresh_verified_request_cannot_relabel_an_old_payload(self) -> None:
+        fixture = build_rollout_fixture(self.root / "fresh-stale-request-gate")
+        first_view = fixture.env.verify(fixture.runtime)
+        old_port = fixture.env.port_input(first_view, next_step(first_view))
+        old_turn = fixture.gatherers.sampler.turn(old_port)
+        first = fixture.env.commit(fixture.runtime, old_turn)
+        tool_view = fixture.env.verify(first.runtime)
+        observation = fixture.gatherers.tools.observe(
+            fixture.env.port_input(tool_view, next_step(tool_view))
+        )
+        second = fixture.env.commit(first.runtime, observation)
+
+        view = fixture.env.verify(second.runtime)
+        current_port = fixture.env.port_input(view, next_step(view))
+        fresh_request = WriterRequestV1(
+            context_revision_ref=current_port.context_revision_ref,
+            payload_ref=old_turn.request_ref,
+            verified_messages=True,
+        )
+        request_ref = fixture.store.put_artifact(fresh_request.to_wire())
+        forged = replace(
+            old_turn,
+            action_id=current_port.action_id,
+            context_revision_ref=current_port.context_revision_ref,
+            prepared_request_ref=request_ref,
+        )
+        honest = fixture.gatherers.sampler.turn(current_port)
+        honest_transition = derive_input(view, honest, fixture.env.reader)
+        for artifact in honest_transition.artifacts:
+            fixture.store.persist_artifact(artifact)
+        fixture.store.persist(honest_transition.event)
+        forged_payload_ref = fixture.store.put_artifact(forged.to_wire())
+        event = replace(honest_transition.event, id=None, payload_ref=forged_payload_ref)
+        state = replace(
+            honest_transition.state,
+            history={**honest_transition.state.history, "head": event.id},
+        )
+        head = fixture.store.read_head(fixture.lineage_id)
+
+        with self.assertRaises(ProjectionError) as rejected:
+            fixture.store.publish(fixture.lineage_id, head, (event,), state)
+        self.assertIn("input.request_ref", str(rejected.exception))
         self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
 
     def test_manifest_change_after_bind_and_claim_relabelling_are_rejected(self) -> None:
