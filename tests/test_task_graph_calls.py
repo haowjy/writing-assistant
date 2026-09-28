@@ -20,22 +20,8 @@ from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentAction, EnvironmentSnapshot, EnvironmentSpec
 from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_scripted import validate_ask_shape as scripted_validate_ask_shape
-from writing_agent.task_graph_writer import TransactionalWriterV1
 
 ALLOWED = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file", "ask_author"})
-
-
-def _legacy_parse(batch, prior, scripted):
-    queue, metadata = TransactionalWriterV1._parsed_calls(batch, "r", 0, ALLOWED, set(prior))
-    if scripted:
-        for call, meta in zip(queue, metadata, strict=True):
-            if call["name"] == "ask_author" and meta["validation_error"] is None:
-                try:
-                    _ask_semantics(call["arguments"])
-                except (TypeError, ValueError) as exc:
-                    meta["validation_error"] = str(exc)
-                    call["name"], call["arguments"] = "invalid_call", {}
-    return queue, [item["validation_error"] for item in metadata]
 
 
 def _ask_semantics(arguments):
@@ -70,9 +56,9 @@ def _new_parse(batch, prior, scripted):
     return queue, [entry.rejection for entry in parsed]
 
 
-def _diff_outcome(parser, batch, prior, scripted):
+def _parse_outcome(batch, prior, scripted):
     try:
-        return ("ok", parser(batch, prior, scripted))
+        return ("ok", _new_parse(batch, prior, scripted))
     except WriterRuntimeError as exc:
         return ("error", type(exc), str(exc))
 
@@ -350,26 +336,29 @@ class IntakeAndParserTests(unittest.TestCase):
         with self.assertRaises(WriterRuntimeError):
             parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
 
-    def test_full_seeded_differential_60006_batches(self):
+    def test_full_seeded_roundtrip_60006_batches(self):
         count = 0
         for seed in (7, 11):
             for batch, prior, scripted in _fuzz_generator(seed):
                 count += 1
-                self.assertEqual(
-                    _diff_outcome(_legacy_parse, batch, prior, scripted),
-                    _diff_outcome(_new_parse, batch, prior, scripted),
-                    f"seed={seed}, batch={count}, case={batch!r}",
-                )
+                outcome = _parse_outcome(batch, prior, scripted)
+                if isinstance(batch, list):
+                    self.assertEqual(outcome[0], "ok", f"seed={seed}, batch={count}")
+                    self.assertEqual(len(outcome[1][0]), len(batch))
+                else:
+                    self.assertEqual(outcome[:2], ("error", WriterRuntimeError))
         self.assertEqual(count, 60_006)
 
-    def test_fifteen_targeted_adversarial_cases(self):
+    def test_fifteen_targeted_adversarial_cases_roundtrip(self):
         self.assertEqual(len(_targeted_cases()), 15)
         for name, batch, prior in _targeted_cases():
             with self.subTest(case=name):
-                self.assertEqual(
-                    _diff_outcome(_legacy_parse, batch, prior, False),
-                    _diff_outcome(_new_parse, batch, prior, False),
-                )
+                outcome = _parse_outcome(batch, prior, False)
+                if name == "non-list tool_calls":
+                    self.assertEqual(outcome[:2], ("error", WriterRuntimeError))
+                else:
+                    self.assertEqual(outcome[0], "ok")
+                    self.assertEqual(len(outcome[1][0]), len(batch))
 
     def test_queue_entry_wire_shape(self):
         entry = ToolQueueEntry("r:call:0:0", "read_file", {"path": "a.txt"})

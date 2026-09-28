@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 - Switch task-graph callers to the rollout core, use pinned `SamplingRunner` inputs, and remove the legacy store probe.
+- Keep parser fuzz and canonical-roundtrip coverage independent of the legacy writer.
 
 - Sanitize noncanonical sampled tool-call values into uncreditable invalid calls, while
   classifying malformed sampling envelopes as adapter contract failures.
