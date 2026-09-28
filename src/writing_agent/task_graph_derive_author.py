@@ -9,7 +9,6 @@ from typing import Any
 
 from writing_agent.task_graph import MessageV1, canonical_bytes, canonical_json, domain_hash, thaw
 from writing_agent.task_graph_accounting import charge_tool_attempt
-from writing_agent.task_graph_checks import applicable_checks
 from writing_agent.task_graph_contracts import RequirementUpdateV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_common import (
@@ -45,25 +44,17 @@ def derive_author_request(
 ) -> Transition:
     """Derive the private request and charge its author-call budget."""
     directive = step.directive
+    next_directive = next_step(view)
     if (
         set(directive) != {"kind", "source"}
         or directive["kind"] != "request_author"
-        or next_step(view).kind != "request_author"
-        or next_step(view).source != directive["source"]
+        or next_directive.kind != "request_author"
+        or next_directive.source != directive["source"]
     ):
         raise ProjectionError("author request differs from the directive")
-    if view.mode.interaction != "scripted_author" or not view.mode.ask_semantics:
-        raise ProjectionError("lineage does not authorize author requests")
 
     source = directive["source"]
-    prereqs = {}
-    for check in view.outcome.checks:
-        result_ref = check["result_ref"]
-        if result_ref is None:
-            continue
-        request = reader.artifact(check["request_ref"], private=True)
-        result = reader.artifact(result_ref)
-        prereqs[request["check_id"]] = {"result_ref": result_ref, "status": result["status"]}
+    prereqs = _prerequisite_results(view, reader)
 
     if source == "writer_request":
         continuation = view.state.continuation
@@ -104,19 +95,6 @@ def derive_author_request(
         if cursor >= len(rules) or view.state.continuation["check_requests"]:
             raise ProjectionError("mandatory feedback is not ready")
         rule = rules[cursor]
-        expected_phase = "awaiting_checks" if applicable_checks(view.node, cursor) else "checking"
-        if view.state.position["phase"] != expected_phase:
-            raise ProjectionError("mandatory feedback skipped its progress checks")
-        if any(
-            prereqs.get(check_id, {}).get("status") != "pass"
-            for check_id in rule["prerequisite_check_ids"]
-        ):
-            raise ProjectionError("mandatory feedback prerequisites did not pass")
-        consumed, limits = view.budget["consumed"], view.budget["limits"]
-        if any(
-            consumed.get(key, 0) >= limits.get(key, 0) for key in ("author_calls", "writer_turns")
-        ):
-            raise ProjectionError("mandatory feedback budget is exhausted")
         request_fields = {
             "action_id": None,
             "call_id": None,
@@ -127,13 +105,7 @@ def derive_author_request(
     else:  # The input codec closes this; keep the derive fail-closed too.
         raise ProjectionError("unsupported author request source")
 
-    consumed = view.budget["consumed"]
-    limits = view.budget["limits"]
-    author_calls = consumed.get("author_calls", 0)
-    if author_calls >= limits.get("author_calls", 0):
-        raise ProjectionError("author-call budget is exhausted")
-    if author_calls >= view.node.contract.budget_contract.max_author_calls:
-        raise ProjectionError("author-call contract budget is exhausted")
+    author_calls = view.budget["consumed"].get("author_calls", 0)
     request = {
         "record_type": "AuthorRequestV1",
         "schema": 1,
@@ -150,8 +122,6 @@ def derive_author_request(
         or request["author_packet_ref"] != view.node.contract.interaction_contract.author_packet_ref
     ):
         raise ProjectionError("author request differs from the admitted role contract")
-    if request["requirement_version"] != view.state.requirements_ref:
-        raise ProjectionError("author request must use the private active requirements")
     request_artifact = payload_artifact(request, "private")
     request_ref = request_artifact.ref
 
@@ -176,6 +146,19 @@ def derive_author_request(
         artifacts=(request_artifact, payload_artifact(budget)),
         budget=budget,
     )
+
+
+def _prerequisite_results(view: LineageView, reader: ArtifactReader) -> dict[str, dict[str, Any]]:
+    """Freeze completed check refs and statuses into the author request payload."""
+    results = {}
+    for check in view.outcome.checks:
+        result_ref = check["result_ref"]
+        if result_ref is None:
+            continue
+        request = reader.artifact(check["request_ref"], private=True)
+        result = reader.artifact(result_ref)
+        results[request["check_id"]] = {"result_ref": result_ref, "status": result["status"]}
+    return results
 
 
 def derive_author_reply(

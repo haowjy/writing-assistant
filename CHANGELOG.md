@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Route derive check selection through the controller, remove redundant author-request
+  validation, and reuse the verified raw-call index when deriving writer turns.
+
 - Add the single-step rollout environment for verified commits, typed port inputs, and
   post-publication view caching.
 

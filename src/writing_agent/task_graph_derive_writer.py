@@ -57,50 +57,8 @@ READ_BUDGET_EXCEEDED = "Read-token budget exceeded"
 
 def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Transition:
     """Derive the one event, state and context caused by a sampled writer turn."""
-    directive = _directive(view)
-    if directive.kind != "sample_writer":
-        raise ProjectionError("writer turn is not the next legal step")
-    if not isinstance(turn, WriterTurnV1):
-        raise ProjectionError("writer turn input must use its strict wire codec")
-
-    action_ordinal = len(view.state.history["action_ids"])
-    action_id = f"{view.state.position['lineage_id']}:action:{action_ordinal}"
-    if turn.action_id != action_id or turn.context_revision_ref != view.context.revision_ref:
-        raise ProjectionError("writer turn is not bound to the active action and context")
-
-    try:
-        decode_and_bind_sampling(WriterTurnSamplingBindingV1(turn, view.context, reader))
-    except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
-        raise AdapterContractProjectionError("writer sampling evidence is invalid") from exc
-
-    if view.group is not None:
-        spec = view.group
-        lineage_id = view.state.position["lineage_id"]
-        member = next((item for item in spec.members if item.member_id == lineage_id), None)
-        if member is None:
-            raise ProjectionError("writer lineage is absent from its sealed group spec")
-        try:
-            model = reader.artifact(spec.policy["model_ref"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("sealed group model is unavailable") from exc
-        if not isinstance(model, Mapping) or not isinstance(model.get("model_id"), str):
-            raise ProjectionError("sealed group model has no model ID")
-        claims = turn.adapter_trace
-        bind_group_sampling_claims(
-            spec.policy,
-            member.writer_seed,
-            claims or {},
-            claims or {},
-            model_id=model["model_id"],
-            context_content_hash=view.context.content_ref,
-            context_revision_ref=view.context.revision_ref,
-            rendering=view.context.rendering,
-        )
-
-    content = turn.message.content
-    if content is not None and not isinstance(content, str):
-        raise ProjectionError("sampled assistant content must be text or null")
-    content = "" if content is None else content
+    action_ordinal, action_id, content = _validate_writer_turn(view, turn)
+    _bind_writer_turn(view, turn, reader)
 
     usage = turn.usage
     next_budget, exceeded = sampled_usage_charge(dict(view.budget), usage)
@@ -148,51 +106,14 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         )
         return result_view
 
-    ask_semantics = validate_ask_semantics if view.mode.ask_semantics else None
-    ordinal = turn.action_id.removeprefix(f"{view.state.position['lineage_id']}:action:")
-    if not ordinal.isdecimal():
-        raise ProjectionError("sampled action ID has an invalid ordinal")
-    id_prefix = f"{view.state.position['lineage_id']}:call:{ordinal}"
-    if not turn.message.tool_calls_was_list:
-        queue = [
-            ToolQueueEntry(f"{id_prefix}:0", "invalid_call", {}, "tool_calls must be an array")
-        ]
-    else:
-        prior: set[str] = set()
-        for sample in view.samples:
-            if sample.action_id == turn.action_id:
-                break
-            if sample.outcome != "action":
-                continue
-            try:
-                raw = reader.artifact(sample.turn_ref)
-                previous = raw if isinstance(raw, WriterTurnV1) else WriterTurnV1.from_dict(raw)
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ProjectionError("writer sample history cannot be decoded") from exc
-            if previous.message.tool_calls_was_list:
-                prior.update(_raw_call_ids(previous))
-        if view.mode.ask_semantics:
-            if ask_semantics is None:
-                raise ProjectionError("ask semantics are required for this writer turn")
-            decisions = reader.artifact(view.state.decisions_ref)
-
-            def ask(arguments):
-                ask_semantics(arguments, view.node, decisions)
-
-        else:
-            ask = None
-        try:
-            queue = parse_calls(
-                turn.message,
-                id_prefix=id_prefix,
-                allowed=frozenset(view.node.contract.entry_contract.tool_allowlist),
-                prior_raw_ids=frozenset(prior),
-                ask_semantics=ask,
-            )
-        except WriterRuntimeError as exc:
-            raise AdapterContractProjectionError(
-                "sampled calls violate the canonical call envelope"
-            ) from exc
+    id_prefix = f"{view.state.position['lineage_id']}:call:{action_ordinal}"
+    queue = _build_tool_queue(
+        view,
+        turn,
+        reader,
+        id_prefix=id_prefix,
+        prior_raw_ids=view.raw_call_ids,
+    )
 
     limits = next_budget["limits"]
     if ("generated_tokens" in limits and "completion_tokens" not in usage) or (
@@ -202,29 +123,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     ):
         raise AdapterContractProjectionError("token-limited writer turn lacks usage evidence")
 
-    parts: list[dict[str, Any]] = []
-    if content:
-        parts.append({"type": "text", "text": content})
-    for index, call in enumerate(queue):
-        raw = (
-            turn.message.calls[index]["value"]
-            if turn.message.tool_calls_was_list and index < len(turn.message.calls)
-            else turn.message.calls
-        )
-        if call.rejection is not None:
-            parts.append({"type": "invalid_tool_call", "id": call.call_id, "raw": raw})
-        else:
-            parts.append(
-                {
-                    "type": "tool_call",
-                    "id": call.call_id,
-                    "name": call.name,
-                    "arguments": call.arguments,
-                }
-            )
-    assistant = MessageV1(
-        role="assistant", content=tuple(parts), origin=action_id, loss_eligible=True
-    )
+    assistant = _build_assistant_message(turn, action_id, content, queue)
     event = new_event(
         view,
         turn_ref,
@@ -283,6 +182,116 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         samples=(*view.samples, SampleRef(action_id, event.id, turn_ref, "action")),
     )
     return result_view
+
+
+def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, str, str]:
+    directive = _directive(view)
+    if directive.kind != "sample_writer":
+        raise ProjectionError("writer turn is not the next legal step")
+    if not isinstance(turn, WriterTurnV1):
+        raise ProjectionError("writer turn input must use its strict wire codec")
+
+    ordinal = len(view.state.history["action_ids"])
+    action_id = f"{view.state.position['lineage_id']}:action:{ordinal}"
+    if turn.action_id != action_id or turn.context_revision_ref != view.context.revision_ref:
+        raise ProjectionError("writer turn is not bound to the active action and context")
+    content = turn.message.content
+    if content is not None and not isinstance(content, str):
+        raise ProjectionError("sampled assistant content must be text or null")
+    return ordinal, action_id, "" if content is None else content
+
+
+def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> None:
+    try:
+        decode_and_bind_sampling(WriterTurnSamplingBindingV1(turn, view.context, reader))
+    except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
+        raise AdapterContractProjectionError("writer sampling evidence is invalid") from exc
+
+    if view.group is None:
+        return
+    spec = view.group
+    lineage_id = view.state.position["lineage_id"]
+    member = next((item for item in spec.members if item.member_id == lineage_id), None)
+    if member is None:
+        raise ProjectionError("writer lineage is absent from its sealed group spec")
+    try:
+        model = reader.artifact(spec.policy["model_ref"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError("sealed group model is unavailable") from exc
+    if not isinstance(model, Mapping) or not isinstance(model.get("model_id"), str):
+        raise ProjectionError("sealed group model has no model ID")
+    claims = turn.adapter_trace
+    bind_group_sampling_claims(
+        spec.policy,
+        member.writer_seed,
+        claims or {},
+        claims or {},
+        model_id=model["model_id"],
+        context_content_hash=view.context.content_ref,
+        context_revision_ref=view.context.revision_ref,
+        rendering=view.context.rendering,
+    )
+
+
+def _build_tool_queue(
+    view: LineageView,
+    turn: WriterTurnV1,
+    reader: Any,
+    *,
+    id_prefix: str,
+    prior_raw_ids: frozenset[str],
+) -> list[ToolQueueEntry]:
+    if not turn.message.tool_calls_was_list:
+        return [ToolQueueEntry(f"{id_prefix}:0", "invalid_call", {}, "tool_calls must be an array")]
+
+    ask = None
+    if view.mode.ask_semantics:
+        decisions = reader.artifact(view.state.decisions_ref)
+
+        def ask(arguments):
+            validate_ask_semantics(arguments, view.node, decisions)
+
+    try:
+        return parse_calls(
+            turn.message,
+            id_prefix=id_prefix,
+            allowed=frozenset(view.node.contract.entry_contract.tool_allowlist),
+            prior_raw_ids=prior_raw_ids,
+            ask_semantics=ask,
+        )
+    except WriterRuntimeError as exc:
+        raise AdapterContractProjectionError(
+            "sampled calls violate the canonical call envelope"
+        ) from exc
+
+
+def _build_assistant_message(
+    turn: WriterTurnV1,
+    action_id: str,
+    content: str,
+    queue: list[ToolQueueEntry],
+) -> MessageV1:
+    parts: list[dict[str, Any]] = []
+    if content:
+        parts.append({"type": "text", "text": content})
+    for index, call in enumerate(queue):
+        raw = (
+            turn.message.calls[index]["value"]
+            if turn.message.tool_calls_was_list and index < len(turn.message.calls)
+            else turn.message.calls
+        )
+        if call.rejection is not None:
+            parts.append({"type": "invalid_tool_call", "id": call.call_id, "raw": raw})
+        else:
+            parts.append(
+                {
+                    "type": "tool_call",
+                    "id": call.call_id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                }
+            )
+    return MessageV1(role="assistant", content=tuple(parts), origin=action_id, loss_eligible=True)
 
 
 def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -> Transition:

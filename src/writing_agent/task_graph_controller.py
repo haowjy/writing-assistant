@@ -127,7 +127,7 @@ def next_step(view: Any) -> Directive:
     feedback_cursor = view.state.continuation["feedback_cursor"]
     feedback_remaining = feedback_cursor < len(view.mode.feedback_rules)
     if phase == "checking":
-        checks = _applicable_checks(view, feedback_cursor)
+        checks = applicable_checks(view, feedback_cursor)
         if checks and view.mode.evaluation:
             return Directive("request_checks")
         if not checks and feedback_remaining:
@@ -193,7 +193,8 @@ def _interaction_complete(view: Any) -> bool:
     return view.state.continuation["feedback_cursor"] >= len(view.mode.feedback_rules)
 
 
-def _applicable_checks(view: Any, feedback_cursor: int) -> tuple:
+def applicable_checks(view: Any, feedback_cursor: int) -> tuple:
+    """Return the checks required before the current feedback or terminal boundary."""
     feedback = view.mode.feedback_rules
     if feedback_cursor < len(feedback):
         scope = f"before_feedback:{feedback[feedback_cursor]['id']}"
@@ -228,4 +229,4 @@ def _required_terminal_checks(view: Any) -> tuple:
     )
 
 
-__all__ = ["Directive", "evaluate_guard", "next_step", "select_edge"]
+__all__ = ["Directive", "applicable_checks", "evaluate_guard", "next_step", "select_edge"]

@@ -8,15 +8,17 @@ from dataclasses import replace
 from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.task_graph import CheckpointV1, canonical_bytes, load_canonical_json
 from writing_agent.task_graph_admission import AdmittedNodeV1
+from writing_agent.task_graph_checks import applicable_checks as legacy_applicable_checks
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
+    CheckContractV1,
     DecisionBindingsV1,
     InteractionContractV1,
     InteractionPolicyV1,
     RequirementUpdateV1,
     ScriptedAuthorV1,
 )
-from writing_agent.task_graph_controller import next_step
+from writing_agent.task_graph_controller import applicable_checks, next_step
 from writing_agent.task_graph_derive_author import derive_author_reply, derive_author_request
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_records import (
@@ -391,6 +393,59 @@ class AuthorDeriveTests(unittest.TestCase):
         self.assertEqual(ledger["superseded"], {"r1": CANARY})
         self.assertEqual(transition.state.continuation["feedback_cursor"], 1)
         self.assertEqual(next_step(transition.view).kind, "sample_writer")
+
+    def test_mandatory_feedback_rechecks_are_covered_by_the_directive(self) -> None:
+        fixture, view = _new_view(source="mandatory_feedback", feedback_update=True)
+        for cursor in (0, 1):
+            with self.subTest(applicable_checks_cursor=cursor):
+                self.assertEqual(
+                    applicable_checks(view, cursor), legacy_applicable_checks(view.node, cursor)
+                )
+        step = EnvironmentStepV1(
+            directive={"kind": "request_author", "source": "mandatory_feedback"}
+        )
+
+        invalid_phase_state = view.state.to_dict()
+        invalid_phase_state["position"]["phase"] = "ready_transition"
+        invalid_phase = replace(view, state=type(view.state).from_dict(invalid_phase_state))
+
+        check = CheckContractV1(id="progress", applicability="before_feedback:feedback-1")
+        request_ref = fixture.reader.add({"check_id": "progress"}, private=True)
+        result_ref = fixture.reader.add({"status": "fail"})
+        rule = dict(view.mode.feedback_rules[0])
+        rule["prerequisite_check_ids"] = ("progress",)
+        prerequisite_state = view.state.to_dict()
+        prerequisite_state["position"]["phase"] = "awaiting_checks"
+        prerequisite_view = replace(
+            view,
+            state=type(view.state).from_dict(prerequisite_state),
+            node=replace(view.node, checks={"progress": check}),
+            mode=replace(view.mode, feedback_rules=(rule,)),
+            outcome=replace(
+                view.outcome,
+                checks=({"request_ref": request_ref, "result_ref": result_ref},),
+            ),
+            check_statuses={"progress": "fail"},
+        )
+        self.assertEqual(
+            applicable_checks(prerequisite_view, 0),
+            legacy_applicable_checks(prerequisite_view.node, 0),
+        )
+
+        exhausted_budget = dict(view.budget)
+        exhausted_budget["consumed"] = dict(exhausted_budget["consumed"])
+        exhausted_budget["consumed"]["author_calls"] = exhausted_budget["limits"]["author_calls"]
+        exhausted = replace(view, budget=exhausted_budget)
+
+        for name, forged in (
+            ("phase", invalid_phase),
+            ("prerequisite", prerequisite_view),
+            ("budget", exhausted),
+        ):
+            with self.subTest(recheck=name):
+                self.assertNotEqual(next_step(forged).kind, "request_author")
+                with self.assertRaises(ProjectionError):
+                    derive_author_request(forged, step, fixture.reader)
 
     def test_writer_ack_and_user_context_do_not_disclose_private_requirement(self) -> None:
         fixture, view = _new_view(malicious=True)

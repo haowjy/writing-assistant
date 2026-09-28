@@ -10,6 +10,7 @@ from typing import Any
 from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.task_graph import CheckpointV1, canonical_bytes, domain_hash
 from writing_agent.task_graph_calls import intake_message
+from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_tool_result, derive_writer_turn
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
 from writing_agent.task_graph_record_contracts import (
@@ -455,6 +456,30 @@ class ToolResultDeriveTests(unittest.TestCase):
                 "effect": effect or {},
             }
         return ToolObservationV1(call_id=queued["call_id"], dispatch=value)
+
+    def test_reused_prior_raw_call_id_is_rejected(self):
+        raw_id = "reused-raw-id"
+        first = self._action(call("unavailable_tool", {}, raw_id))
+        rejected = derive_tool_result(
+            first.view,
+            ToolObservationV1(
+                call_id=first.state.continuation["tool_queue"][0]["call_id"],
+                dispatch=None,
+            ),
+            self.reader,
+        )
+        self.assertIn(raw_id, rejected.view.raw_call_ids)
+        self.assertEqual(next_step(rejected.view).kind, "sample_writer")
+
+        repeated = make_turn(
+            rejected.view,
+            content="",
+            calls=(call("write_file", {"path": "draft.txt", "content": "next\n"}, raw_id),),
+        )
+        transition = derive_writer_turn(rejected.view, repeated, self.reader)
+        queued = transition.state.continuation["tool_queue"][0]
+        self.assertEqual(queued["name"], "invalid_call")
+        self.assertEqual(queued["rejection"], "Duplicate tool call id")
 
     def test_tool_result_success_and_read_overrun_fixed_points(self):
         action = self._action(call("write_file", {"path": "draft.txt", "content": "revised\n"}))
