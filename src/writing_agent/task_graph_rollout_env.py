@@ -15,6 +15,7 @@ from writing_agent.task_graph import (
     freeze,
     load_canonical_json,
 )
+from writing_agent.task_graph_accounting import tool_error
 from writing_agent.task_graph_admission import (
     AdmissionPolicyV1 as AdmissionPolicy,
 )
@@ -71,6 +72,7 @@ class SamplerInput:
     rendering: Mapping[str, Any]
     context_revision_ref: str
     action_id: str
+    usage_requirements: frozenset[str]
     writer_seed: int | None
     model_ref: str | None
     behavior_policy_ref: str | None
@@ -82,6 +84,9 @@ class SamplerInput:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "tools", tuple(freeze(self.tools)))
         object.__setattr__(self, "rendering", freeze(self.rendering))
+        object.__setattr__(self, "usage_requirements", frozenset(self.usage_requirements))
+        if self.usage_requirements - {"completion_tokens", "total_tokens"}:
+            raise ValueError("sampler usage requirements are unsupported")
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,7 @@ class ToolInput:
     files: Mapping[str, str]
     queue_entry: Mapping[str, Any]
     tool_spec: ToolSpec
+    dispatch_permitted: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "files", freeze(self.files))
@@ -97,6 +103,7 @@ class ToolInput:
 
 @dataclass(frozen=True)
 class AuthorInput:
+    request_ref: str
     request: Mapping[str, Any]
     script: Any
     decisions: Mapping[str, Any]
@@ -109,6 +116,7 @@ class AuthorInput:
 
 @dataclass(frozen=True)
 class CheckInput:
+    request_ref: str
     request: Mapping[str, Any]
     files: Mapping[str, str]
     evaluator_packet: Mapping[str, Any] | None
@@ -206,6 +214,14 @@ class RolloutEnvironment:
                     f"{view.state.position['lineage_id']}:action:"
                     f"{len(view.state.history['action_ids'])}"
                 ),
+                usage_requirements=frozenset(
+                    field
+                    for limit, field in (
+                        ("generated_tokens", "completion_tokens"),
+                        ("total_tokens", "total_tokens"),
+                    )
+                    if limit in view.budget["limits"]
+                ),
                 writer_seed=None if member is None else member.writer_seed,
                 model_ref=policy.get("model_ref"),
                 behavior_policy_ref=policy.get("behavior_policy_ref"),
@@ -218,11 +234,17 @@ class RolloutEnvironment:
             queue = view.state.continuation["tool_queue"]
             if cursor is None or not 0 <= cursor < len(queue):
                 raise ProjectionError("tool directive has no queued call")
-            return ToolInput(view.state.files, queue[cursor], view.tool_spec)
+            queue_entry = queue[cursor]
+            dispatch_permitted = (
+                tool_error(dict(view.budget), queue_entry.get("rejection"), queue_entry["name"])
+                is None
+            )
+            return ToolInput(view.state.files, queue_entry, view.tool_spec, dispatch_permitted)
         if directive.kind == "await_author_reply":
             request_ref = view.state.continuation["author_request"]
             request = self.reader.artifact(request_ref, private=True)
             return AuthorInput(
+                request_ref,
                 request,
                 view.node.script,
                 self.reader.artifact(view.state.decisions_ref),
@@ -233,7 +255,7 @@ class RolloutEnvironment:
             request = self.reader.artifact(request_ref, private=True)
             packet_ref = request["evaluator_packet_ref"]
             packet = None if packet_ref is None else self.reader.artifact(packet_ref, private=True)
-            return CheckInput(request, view.state.files, packet)
+            return CheckInput(request_ref, request, view.state.files, packet)
         raise ValueError(f"directive {directive.kind!r} has no external port")
 
     @operation_scoped

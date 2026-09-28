@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Add typed port gatherers and a synchronous rollout driver that resumes from published heads.
+
 - Dispatch store semantics from the lineage's pinned transition version; only cache gate-owned
   views after publication, reject malformed typed payloads at write time, and pin each rollout's
   admission policy.

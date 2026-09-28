@@ -26,11 +26,13 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_controller",
     "writing_agent.task_graph_gate",
     "writing_agent.task_graph_rollout_env",
+    "writing_agent.task_graph_gatherers",
+    "writing_agent.task_graph_rollout",
 }
 FORBIDDEN_IMPORT_PATTERNS = {
-    re.compile(r"^writing_agent\.task_graph_gatherers(?:\..+)?$"): frozenset(
+    re.compile(r"^writing_agent\.task_graph_(?:gatherers|rollout)(?:\..+)?$"): frozenset(
         {"writing_agent.task_graph_transition"}
-    )
+    ),
 }
 LAYER_RANKS = {
     **{
@@ -60,6 +62,8 @@ LAYER_RANKS = {
     "writing_agent.task_graph_group_contract": 4,
     "writing_agent.task_graph_gate": 4,
     "writing_agent.task_graph_rollout_env": 5,
+    "writing_agent.task_graph_gatherers": 6,
+    "writing_agent.task_graph_rollout": 6,
 }
 
 
@@ -209,10 +213,13 @@ class TaskGraphImportTests(unittest.TestCase):
             with self.subTest(module=module):
                 self.assertNotIn(legacy_checks, graph[module])
 
-    def test_future_gatherers_cannot_import_transition_views(self) -> None:
+    def test_gatherers_and_driver_cannot_import_transition_views(self) -> None:
         graph = build_import_graph()
         pattern = next(iter(FORBIDDEN_IMPORT_PATTERNS))
-        self.assertEqual(pattern.pattern, r"^writing_agent\.task_graph_gatherers(?:\..+)?$")
+        self.assertEqual(
+            pattern.pattern,
+            r"^writing_agent\.task_graph_(?:gatherers|rollout)(?:\..+)?$",
+        )
         self.assertIn("writing_agent.task_graph_transition", FORBIDDEN_IMPORT_PATTERNS[pattern])
         for module in graph:
             if pattern.fullmatch(module):

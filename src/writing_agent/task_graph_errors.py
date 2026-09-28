@@ -53,11 +53,20 @@ class AdapterContractError(RuntimeError):
     """An adapter returned output that violates its declared contract."""
 
 
+class DriverBudgetError(RuntimeError):
+    """The rollout driver reached its operational step limit before halting."""
+
+    def __init__(self, max_steps: int) -> None:
+        self.max_steps = max_steps
+        super().__init__(f"rollout driver exceeded max_steps={max_steps}")
+
+
 __all__ = [
     "AdapterContractError",
     "AdapterContractProjectionError",
     "ConcurrentUpdateError",
     "CorruptRecordError",
+    "DriverBudgetError",
     "MaterializationError",
     "MissingReferenceError",
     "ProjectionError",

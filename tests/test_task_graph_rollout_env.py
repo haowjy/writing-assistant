@@ -672,6 +672,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
                 "rendering",
                 "context_revision_ref",
                 "action_id",
+                "usage_requirements",
                 "writer_seed",
                 "model_ref",
                 "behavior_policy_ref",
@@ -681,14 +682,16 @@ class RolloutEnvironmentTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            {field.name for field in fields(ToolInput)}, {"files", "queue_entry", "tool_spec"}
+            {field.name for field in fields(ToolInput)},
+            {"files", "queue_entry", "tool_spec", "dispatch_permitted"},
         )
         self.assertEqual(
             {field.name for field in fields(AuthorInput)},
-            {"request", "script", "decisions", "disclosures"},
+            {"request_ref", "request", "script", "decisions", "disclosures"},
         )
         self.assertEqual(
-            {field.name for field in fields(CheckInput)}, {"request", "files", "evaluator_packet"}
+            {field.name for field in fields(CheckInput)},
+            {"request_ref", "request", "files", "evaluator_packet"},
         )
 
     def test_start_member_publishes_the_sealed_member_start(self):
