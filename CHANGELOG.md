@@ -4,6 +4,9 @@
 
 - Move group member starts and result/credit collection onto verified rollout views.
 
+- Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;
+  retain the observation and error-classification findings as expected failures.
+
 - Document the driver, gatherer, replay, and cross-lane fixture extension contracts.
 
 - Expose shared rollout fixture hooks for ports, alternatives, feedback, sessions, checkpoint
