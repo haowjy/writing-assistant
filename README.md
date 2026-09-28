@@ -33,10 +33,13 @@ stale decisions, no-tool responses, and draft/canon separation. It checks the ha
 it does not evaluate a model.
 The CLI exits nonzero if any task fails.
 
-The checkpointed task-graph runtime is opt-in and does not replace this CLI path.
-See [transactional writer stepping](docs/task-graph-writer.md) and the
-[deterministic scripted-author slice](docs/task-graph-scripted.md) for its direct
-Python API, offline replay, and current limits.
+The checkpointed task-graph runtime is opt-in and does not replace this CLI path. Its
+verified core records one typed input event per commit and derives state for both producers
+and replay; it uses neither a separate runtime log nor a legacy patch reducer. Start with the
+[writer runtime](docs/task-graph-writer.md), then see the
+[scripted-author lifecycle](docs/task-graph-scripted.md),
+[context operations](docs/task-graph-compaction.md), and
+[deterministic groups](docs/task-graph-groups.md).
 
 ## Layout
 
