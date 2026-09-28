@@ -17,6 +17,9 @@
 
 - Resolve sample context and message references in one verified-ancestry index per collection.
 
+- Decode context-operation source events through the evidence reader's event codec and preserve
+  context-storage accounting after the rollout view freezes nested budget mappings.
+
 - Move group member starts and result/credit collection onto verified rollout views.
 
 - Close the seam acceptance findings: X3 is documented as a trusted-adapter limit, hash-correct
