@@ -60,15 +60,15 @@ the exact sealed group `adapter_ref`. The writer, scripted author, checks, termi
 and context operations share that session and its internal local transaction
 publisher. A descriptor change after binding rejects before an effect.
 
-`RuntimeRunner` prepares verified current messages, passes `PreparedSamplingInput`
-to a `SampleBackend`, and submits its `SampleResult` through the same writer. The
-input carries the complete canonical immutable request JSON (including per-call
-options) whose hash is the persisted request reference; messages derive from that
-same value. Changing an option changes both delivered input and request identity. The
-offline scripted backend and an independent backend can use this path; no default
-adapter invokes a live model. The scripted backend hashes its exact sample sequence
-into its descriptor, so different scripts cannot share a sealed manifest. Canonical
-sampling records and native-ineligible
+On the transition-seam path, `RolloutDriver` invokes `SamplingRunner` with the
+verified sampler input. The gatherer persists a message-only request and carries
+the pinned seed, model, behavior policy, decoding, tokenizer, and template references
+in `PreparedSamplingInput`; decoding options are resolved through `decoding_ref`, not
+added as caller-supplied request extras. The gatherer returns a typed `WriterTurnV1`,
+which only `RolloutEnvironment` can commit. The offline scripted backend and an
+independent backend can use this path; no default adapter invokes a live model. The
+scripted backend hashes its exact sample sequence into its descriptor, so different
+scripts cannot share a sealed manifest. Canonical sampling records and native-ineligible
 policy remain noninjectable. `ExecutionEnvironment` receives typed specs, handles,
 snapshots, and actions and returns typed observations, snapshots, and infrastructure
 classification; it has no store, CAS, or staging-path contract. The local

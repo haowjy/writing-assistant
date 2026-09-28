@@ -958,9 +958,9 @@ class TransactionalWriterV1:
             and metadata["validation_error"] is None
             and predispatch_error is None
         ):
-            from writing_agent.task_graph_scripted import ScriptedAuthorRuntimeV1
+            from writing_agent.task_graph_scripted import request_legacy_author_turn
 
-            return ScriptedAuthorRuntimeV1(self).request(runtime, call, action)
+            return request_legacy_author_turn(self, runtime, call, action)
         observation: dict[str, Any]
         files = dict(state.files)
         read_charge = 0

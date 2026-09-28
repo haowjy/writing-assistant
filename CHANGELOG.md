@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Switch task-graph callers to the rollout core, use pinned `SamplingRunner` inputs, and remove the legacy store probe.
+
 - Sanitize noncanonical sampled tool-call values into uncreditable invalid calls, while
   classifying malformed sampling envelopes as adapter contract failures.
 - Preserve read-token and context-storage charges across recursively frozen view mappings.

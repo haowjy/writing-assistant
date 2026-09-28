@@ -35,6 +35,7 @@ from writing_agent.task_graph_contracts import (
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_entry import derive_entry
 from writing_agent.task_graph_errors import DriverBudgetError
+from writing_agent.task_graph_evaluation import FAMILIES
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_gatherers import (
     CheckRunner,
@@ -226,31 +227,54 @@ class RolloutFixture:
         self.checkpoint_ids.append(result.runtime.checkpoint_id)
 
 
-def _entry_fixture(mode: str) -> EntryFixture:
+def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
     if mode == "halt":
         return make_entry_fixture()
     fixture = make_outcome_fixture()
     node = fixture.graph.node(fixture.node_id)
-    check = replace(
-        node.checks["nonempty"],
-        spec={**node.checks["nonempty"].spec, "private_fixture_canary": EVALUATOR_PACKET_CANARY},
+    base_check = node.checks["nonempty"]
+    family = FAMILIES[evaluator_family]
+    check = (
+        base_check
+        if evaluator_family == "deterministic-file-v1"
+        else replace(
+            base_check,
+            evaluator_version=family.check_version,
+            spec={
+                "id": base_check.id,
+                "metric": "Q1",
+                "kind": family.program_kind,
+                "method": family.program_method,
+                "required": True,
+            },
+        )
+    )
+    canary_check = replace(
+        base_check,
+        spec={**base_check.spec, "private_fixture_canary": EVALUATOR_PACKET_CANARY},
     )
     packet = replace(node.evaluator_packet, check_ids=(check.id,))
+    contract = (
+        node.contract
+        if evaluator_family == "deterministic-file-v1"
+        else replace(node.contract, mandatory_checks=(check.identity(),))
+    )
     fixture.reader.private.update(
         {
             check.identity(): check.to_dict(),
+            canary_check.identity(): canary_check.to_dict(),
             packet.identity(): packet.to_dict(),
         }
     )
-    entry_contract = node.contract.entry_contract
+    entry_contract = contract.entry_contract
     requirement_ref = None
     if mode in {"slice", "feedback"}:
         requirement_ref = fixture.reader.add(
             {"requirements": {"baseline": LEDGER_CANARY}}, private=True
         )
         entry_contract = replace(entry_contract, requirement_version=requirement_ref)
-    interaction = node.contract.interaction_contract
-    budgets = node.contract.budget_contract
+    interaction = contract.interaction_contract
+    budgets = contract.budget_contract
     if mode in {"slice", "feedback"}:
         author_packet = AuthorPacketV1(
             preferences={"choice_key_91": "amber", "private_key_91": AUTHOR_PACKET_CANARY},
@@ -303,18 +327,18 @@ def _entry_fixture(mode: str) -> EntryFixture:
             mandatory_feedback=tuple(item["id"] for item in feedback),
         )
         entry = replace(
-            node.contract,
+            contract,
             entry=entry_contract,
             interaction=interaction,
             budgets=replace(budgets, max_author_calls=2),
         )
     elif mode == "token_limited":
         entry = replace(
-            node.contract,
+            contract,
             budgets=replace(budgets, max_generated_tokens=100),
         )
     else:
-        entry = replace(node.contract, entry=entry_contract)
+        entry = replace(contract, entry=entry_contract)
     fixture.reader.public[entry.identity()] = entry.to_dict()
     spec = replace(node.spec, entry_contract=entry.identity())
     graph = admit_graph(
@@ -390,6 +414,7 @@ def build_rollout_fixture(
     mode: str = "slice",
     raising_ports: bool = False,
     sample_results: tuple[SampleResult, ...] | None = None,
+    evaluator_family: str = "deterministic-file-v1",
     session=None,
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
@@ -397,7 +422,9 @@ def build_rollout_fixture(
         raise ValueError("unsupported rollout fixture mode")
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)
-    entry = _entry_fixture(mode)
+    if evaluator_family not in FAMILIES:
+        raise ValueError("unsupported evaluator family")
+    entry = _entry_fixture(mode, evaluator_family)
     if sample_results is None:
         sample_results = (
             _scripted_samples()

@@ -163,8 +163,8 @@ copy can drift from the derive, or classify the same failure differently.
 
 **Gatherers keep only what a derive cannot check.** These are the assistant role, the
 `SampleResult` type, non-text assistant content, binary-logprob/token alignment before the
-bytes are written (`persist_logprob_trace`, shared with the legacy `RuntimeRunner.sample`),
-evaluator family before dispatch, and the tool `dispatch_permitted` branch. Tool effects and
+bytes are written (`persist_logprob_trace`), evaluator family before dispatch, and the tool
+`dispatch_permitted` branch. Tool effects and
 evaluation evidence are checked by the producer-path derives, which map adapter violations
 to `AdapterContractError`; the gate sees them as `ProjectionError` on replay.
 
@@ -352,5 +352,5 @@ has not been amended, so trust the code:
   context for every lineage whenever each claim is present.
 - **Runtime session seals use the verified group view.** `RuntimeSession.require_member_seal`
   compares `view.group` and its adapter manifest pin; it does not infer group membership from
-  the lineage name or read `groups/` files. The legacy `RuntimeRunner` remains on its own
-  writer path until S7.2; it is not the source of member-policy verification.
+  the lineage name or read `groups/` files. `RolloutEnvironment` is the only caller of this
+  seal check; legacy runtime tests do not supply the new-core member view.

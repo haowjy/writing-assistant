@@ -58,10 +58,10 @@ retains its smoke-evaluation and training-format workflows.
   [transition-seam.md](transition-seam.md) for how to add a record or a derive and for the
   layer order. See [gate-and-rollout.md](gate-and-rollout.md) for the gate, environment,
   driver and gatherer contracts, error classes, rule owners and resume path.
-- **Legacy runtime (until S7).** The modules in this bullet are the old runtime. They stay
-  the behavior oracle until the S7 parity probe, which deletes the writer, the scripted
-  runtime classes, checks, terminal, author validation, projection, and the old replay
-  and environment batch. Do not extend them or move new-core logic into them.
+- **Legacy runtime (until S7.3).** These modules remain importable for the behavior-oracle
+  tests; current callers use the new core. S7.3 removes the writer, scripted runtime classes,
+  checks, terminal, author validation, projection, and old replay and environment batch. Do not
+  extend them or move new-core logic into them.
   [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
   writer/text-tool stepper over an admitted ready-writer entry and trusted restored
   handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)
@@ -210,10 +210,10 @@ default); rejected reads do not expose their content. Storage is measured in UTF
 bytes. Provider usage retains nested detail fields: do not sum a detail into its
 parent total a second time.
 
-### Legacy task-graph runtime (until S7)
+### Legacy task-graph runtime (until S7.3)
 
-These paragraphs describe the old runtime, which remains the behavior oracle until the
-S7 parity probe deletes it. The transition seam replaces patch effects, the runtime log,
+These paragraphs describe the old runtime, which remains the behavior oracle for its
+legacy tests until S7.3 deletes it. The transition seam replaces patch effects, the runtime log,
 multi-event commits and the semantic replay walk with typed inputs and one derive per
 input kind; see [transition-seam.md](transition-seam.md).
 

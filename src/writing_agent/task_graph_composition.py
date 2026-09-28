@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
 
-from writing_agent.task_graph import EnvironmentStateV1, canonical_json
+from writing_agent.task_graph import EnvironmentStateV1
 from writing_agent.task_graph_environment import EnvironmentTransactionService
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
@@ -15,11 +14,8 @@ from writing_agent.task_graph_local import (
     ScriptedSampleBackend,
 )
 from writing_agent.task_graph_ports import (
-    PreparedSamplingInput,
     RuntimeDependenciesV1,
-    SampleResult,
 )
-from writing_agent.task_graph_sampling import persist_logprob_trace
 from writing_agent.task_graph_transition import LineageView
 
 
@@ -98,56 +94,3 @@ def local_unbound_session(store, rollout_id, entry_checkpoint_id) -> RuntimeSess
         DeterministicEvaluator(),
     )
     return RuntimeSession.create(store, rollout_id, entry_checkpoint_id, dependencies)
-
-
-class RuntimeRunner:
-    """Prepare the current projected context, invoke a backend, commit its sample."""
-
-    def __init__(self, writer, session: RuntimeSession):
-        if writer.session is not session:
-            raise ValueError("runner and writer must share the same runtime session")
-        if session.sealed_adapter_ref is None:
-            raise ValueError("sampling runner requires a bound runtime session")
-        self.writer = writer
-        self.session = session
-
-    def sample(self, runtime, *, request_extras: dict[str, Any] | None = None):
-        self.session.require_seal(self.session.sealed_adapter_ref)
-        self.writer.validate_runtime(runtime)
-        request = {
-            "messages": [message.to_dict() for message in runtime.context.messages],
-            **(request_extras or {}),
-        }
-        request_json = canonical_json(request)
-        request = json.loads(request_json)
-        prepared_ref = self.writer.prepare_verified_messages(runtime, request)
-        prepared = self.writer.store.get_artifact(prepared_ref, expected_domain="payload")
-        input_value = PreparedSamplingInput(
-            request_ref=prepared["payload_ref"],
-            prepared_request_ref=prepared_ref,
-            context_content_hash=runtime.context.content_hash,
-            context_revision_ref=runtime.context.identity(),
-            writer_seed=None,
-            model_ref=None,
-            behavior_policy_ref=None,
-            decoding_ref=None,
-            tokenizer_ref=None,
-            template_ref=None,
-            messages_json=canonical_json(request["messages"]),
-            tools_json=canonical_json(runtime.context.tools),
-            rendering_json=canonical_json(runtime.context.rendering),
-            request_json=request_json,
-        )
-        result = self.session.dependencies.sampling.sample(input_value)
-        if not isinstance(result, SampleResult):
-            raise TypeError("sample backend must return SampleResult")
-        trace = dict(result.trace or {})
-        persist_logprob_trace(self.writer.store, result, trace)
-        return self.writer.submit_action(
-            runtime,
-            result.message,
-            prepared_request_ref=prepared_ref,
-            raw_output=result.raw_output,
-            usage=result.usage,
-            trace=trace or None,
-        )

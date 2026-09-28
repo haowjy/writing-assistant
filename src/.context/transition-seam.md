@@ -4,13 +4,15 @@ The task-graph runtime is being rebuilt as a new core beside the old one. The ne
 stores each step's typed **input** record as the event payload. One pure **derive** per input
 kind computes the event, the next state and the new artifacts, and the producer and replay
 share it. The old runtime (writer, scripted runtime classes, checks, terminal,
-author validation, projection, the old replay and environment batch) stays importable and
-tested as the behavior oracle until the S7 parity check, which deletes it. Do not extend it.
+author validation, projection, the old replay and environment batch) remains importable for
+the behavior-oracle tests. Current callers use the new core; S7.3 removes the old runtime.
+Do not extend it.
 
 This checkout contains the wire records, calls, transition types, `derive_entry`, the
 controller, four derive modules, `LineageGate`, `RolloutEnvironment`, the gatherers and
 `RolloutDriver`. For a lineage pinned to `task-graph-derive-v1`, `store.publish` and
-`store.restore` run the gate. The old runtime remains the behavior oracle until S7.2.
+`store.restore` run the gate. The old role classes remain only for their behavior-oracle tests
+until S7.3 removes the legacy runtime.
 
 This file covers records, derives and the layer order. How the gate, the environment, the
 driver and the gatherers run a lineage (error classes, publication, rule owners, resume)

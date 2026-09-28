@@ -9,7 +9,6 @@ from fractions import Fraction
 from pathlib import Path
 from unittest.mock import patch
 
-from tests import test_task_graph_scripted as legacy_scripted_tests
 from tests.task_graph_rollout_fixtures import (
     build_rollout_fixture,
     make_gatherers,
@@ -18,7 +17,6 @@ from tests.task_graph_rollout_fixtures import (
 )
 from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json
 from writing_agent.task_graph_calls import intake_message
-from writing_agent.task_graph_compaction import ContextPolicyV1 as LegacyContextPolicyV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_writer_turn
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
@@ -30,7 +28,6 @@ from writing_agent.task_graph_group import (
     GroupExecutionFailureV1,
     GroupMemberResultV1,
     GroupScriptedTerminalV1,
-    GroupSpecV1,
 )
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
@@ -699,7 +696,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         with self.assertRaises(GroupError):
             self.coordinator.finalize(real)
 
-    def test_group_receipt_write_is_atomic_and_pre_s1_specs_still_resume(self):
+    def test_group_receipt_write_is_atomic_and_corrupt_receipts_fail_closed(self):
         spec = self.group()
         self.assertEqual(self.store.get_artifact(spec.identity()), spec.to_wire())
         spec_path = self.coordinator.groups_root / spec.group_id / "spec.json"
@@ -716,36 +713,9 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         self.coordinator._receipt(receipt, {"schema": 1})
         self.assertEqual(receipt.read_bytes(), b'{"schema":1}')
 
-        # The legacy bridge is intentionally retained until the S7 caller switch.
-        from tests import test_task_graph_scripted as scripted
-
-        legacy = scripted.ScriptedFixture()
-        legacy.setUp()
-        self.addCleanup(legacy.doCleanups)
-        old = GroupCoordinatorV1(legacy.store, self.root / "old-runtime")
-        receipt_bytes = (Path(__file__).parent / "fixtures" / "pre_s1_group_spec.json").read_bytes()
-        old_spec = GroupSpecV1.from_json(receipt_bytes)
-        path = old.groups_root / old_spec.group_id / "spec.json"
-        path.parent.mkdir(parents=True)
-        path.write_bytes(receipt_bytes)
-        context_policy = ContextPolicyV1("drop").to_wire()
-
-        def get_artifact(identity):
-            return (
-                context_policy
-                if identity == old_spec.policy["context_policy_ref"]
-                else {"pin": identity}
-            )
-
-        with (
-            patch.object(old, "_entry_contract", return_value=(old_spec.environment, {})),
-            patch.object(legacy.store, "get_artifact", side_effect=get_artifact),
-        ):
-            self.assertEqual(old.resume(old_spec.group_id).to_dict(), old_spec.to_dict())
-
 
 class GroupCoordinatorTests:
-    """Legacy entry fixture retained for derive tests that share its group inputs."""
+    """New-core entry fixture retained for derive tests that share its group inputs."""
 
     def __init__(self, _method_name=None):
         self.cleanups = []
@@ -759,15 +729,15 @@ class GroupCoordinatorTests:
             function(*args, **kwargs)
 
     def setUp(self):
-        fixture = legacy_scripted_tests.ScriptedFixture()
-        fixture.setUp()
-        self.addCleanup(fixture.doCleanups)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        fixture = build_rollout_fixture(Path(temporary.name) / "fixture", mode="slice")
+        self.fixture = fixture
         self.root = fixture.root
         self.store = fixture.store
-        self.start = fixture.start
+        self.start = fixture.runtime.checkpoint_id
         self.runtime = fixture.runtime
-        self.writer = fixture.writer
-        self.coordinator = GroupCoordinatorV1(self.store, self.root / "group-workers")
+        self.coordinator = GroupCoordinatorV1(fixture.env, self.root / "group-workers")
         rendering = self.runtime.context.rendering
         self.policy = {
             field: self.store.put_artifact({"pin": field})
@@ -779,10 +749,10 @@ class GroupCoordinatorTests:
             template_ref=rendering["template_ref"],
             rng_derivation_version="sha256-domain-v1",
         )
-        context_policy = LegacyContextPolicyV1(
+        context_policy = ContextPolicyV1(
             "compact", summarizer_version="visible-text-v1", max_summary_chars=20
         )
-        self.policy["context_policy_ref"] = self.store.put_artifact(context_policy.to_dict())
+        self.policy["context_policy_ref"] = self.store.put_artifact(context_policy.to_wire())
 
     def group(self, sequence=0, mode="real"):
         return self.coordinator.seal(

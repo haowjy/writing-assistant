@@ -145,6 +145,66 @@ def scripted_author_reply(script, request, request_ref, decisions, disclosures) 
     )
 
 
+def _legacy_author_node(writer, runtime):
+    node, budget = writer.validate_runtime(runtime)
+    if node.contract.interaction_contract.mode != "scripted_author":
+        raise WriterRuntimeError("not an admitted scripted-author node")
+    if runtime.state.author_packet_ref != node.contract.interaction_contract.author_packet_ref:
+        raise WriterRuntimeError("runtime author packet differs from admitted author packet")
+    return node, budget
+
+
+def request_legacy_author_turn(writer, runtime, call, action):
+    """Commit an old-runtime author request without routing through the role wrapper."""
+    node, budget = _legacy_author_node(writer, runtime)
+    state = runtime.state
+    if state.position["phase"] != "ready_writer" or state.continuation["author_request"]:
+        raise WriterRuntimeError("author request requires a ready, unanswered control call")
+    if budget["consumed"].get("author_calls", 0) >= node.contract.budget_contract.max_author_calls:
+        raise WriterRuntimeError("author-call budget exhausted")
+    if budget["consumed"].get("tool_calls", 0) >= budget["limits"]["tool_calls"]:
+        raise WriterRuntimeError("tool-call budget exhausted")
+    decisions = writer.store.get_artifact(state.decisions_ref, expected_domain="payload")
+    validate_ask_semantics(call["arguments"], node, decisions)
+    request_id = f"{writer.rollout_id}:author:{budget['consumed'].get('author_calls', 0)}"
+    ids = call["arguments"]["decision_ids"]
+    ordered = [item["id"] for item in node.interaction_policy.public_decisions if item["id"] in ids]
+    request = {
+        "record_type": "AuthorRequestV1",
+        "schema": 1,
+        "request_id": request_id,
+        "source": "writer_request",
+        "action_id": action["action_id"],
+        "call_id": call["call_id"],
+        "feedback_id": None,
+        "arguments": call["arguments"],
+        "decision_ids": ordered,
+        "prerequisite_results": frozen_prerequisite_results(writer.store, state),
+        "requirement_version": state.requirements_ref,
+        "script_ref": node.contract.interaction_contract.script_ref,
+        "author_packet_ref": state.author_packet_ref,
+    }
+    request_ref = writer.store.put_artifact(request, private=True)
+    next_budget = json.loads(canonical_json(budget))
+    next_budget["consumed"]["author_calls"] = next_budget["consumed"].get("author_calls", 0) + 1
+    budget_ref = writer.store.put_artifact(next_budget)
+    position = state.to_dict()["position"]
+    position["phase"] = "awaiting_author"
+    continuation = state.to_dict()["continuation"]
+    continuation["author_request"] = request_ref
+    return writer.publication.publish_record(
+        runtime,
+        "external_requested",
+        "environment",
+        record_ref=request_ref,
+        changes={"position": position, "continuation": continuation, "budgets_ref": budget_ref},
+        audience=("controller", "trainer"),
+        extra_refs=(budget_ref,),
+        restore_prefix="scripted",
+        result_effect=True,
+    )
+
+
 class ScriptedAuthorRuntimeV1:
     def __init__(self, writer, dependencies=None):
         self.writer = writer
@@ -155,68 +215,12 @@ class ScriptedAuthorRuntimeV1:
         self.store = writer.store
 
     def _node(self, runtime):
-        node, budget = self.writer.validate_runtime(runtime)
-        if node.contract.interaction_contract.mode != "scripted_author":
-            raise WriterRuntimeError("not an admitted scripted-author node")
-        if runtime.state.author_packet_ref != node.contract.interaction_contract.author_packet_ref:
-            raise WriterRuntimeError("runtime author packet differs from admitted author packet")
-        return node, budget
+        return _legacy_author_node(self.writer, runtime)
 
     @operation_scoped
     def request(self, runtime, call, action):
         """Commit the request after its writer action, before resolving a reply."""
-        node, budget = self._node(runtime)
-        state = runtime.state
-        if state.position["phase"] != "ready_writer" or state.continuation["author_request"]:
-            raise WriterRuntimeError("author request requires a ready, unanswered control call")
-        if (
-            budget["consumed"].get("author_calls", 0)
-            >= node.contract.budget_contract.max_author_calls
-        ):
-            raise WriterRuntimeError("author-call budget exhausted")
-        if budget["consumed"].get("tool_calls", 0) >= budget["limits"]["tool_calls"]:
-            raise WriterRuntimeError("tool-call budget exhausted")
-        decisions = self.store.get_artifact(state.decisions_ref, expected_domain="payload")
-        validate_ask_semantics(call["arguments"], node, decisions)
-        request_id = f"{self.writer.rollout_id}:author:{budget['consumed'].get('author_calls', 0)}"
-        ids = call["arguments"]["decision_ids"]
-        ordered = [
-            item["id"] for item in node.interaction_policy.public_decisions if item["id"] in ids
-        ]
-        request = {
-            "record_type": "AuthorRequestV1",
-            "schema": 1,
-            "request_id": request_id,
-            "source": "writer_request",
-            "action_id": action["action_id"],
-            "call_id": call["call_id"],
-            "feedback_id": None,
-            "arguments": call["arguments"],
-            "decision_ids": ordered,
-            "prerequisite_results": frozen_prerequisite_results(self.store, state),
-            "requirement_version": state.requirements_ref,
-            "script_ref": node.contract.interaction_contract.script_ref,
-            "author_packet_ref": state.author_packet_ref,
-        }
-        request_ref = self.store.put_artifact(request, private=True)
-        next_budget = json.loads(canonical_json(budget))
-        next_budget["consumed"]["author_calls"] = next_budget["consumed"].get("author_calls", 0) + 1
-        budget_ref = self.store.put_artifact(next_budget)
-        position = state.to_dict()["position"]
-        position["phase"] = "awaiting_author"
-        continuation = state.to_dict()["continuation"]
-        continuation["author_request"] = request_ref
-        return self.publication.publish_record(
-            runtime,
-            "external_requested",
-            "environment",
-            record_ref=request_ref,
-            changes={"position": position, "continuation": continuation, "budgets_ref": budget_ref},
-            audience=("controller", "trainer"),
-            extra_refs=(budget_ref,),
-            restore_prefix="scripted",
-            result_effect=True,
-        )
+        return request_legacy_author_turn(self.writer, runtime, call, action)
 
     @operation_scoped
     def reply(self, runtime):

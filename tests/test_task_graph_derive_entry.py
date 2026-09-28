@@ -195,7 +195,7 @@ class DeriveEntryTests(unittest.TestCase):
             ),
         )
 
-    def test_scripted_and_group_entries_have_only_their_explicit_deltas(self) -> None:
+    def test_scripted_entry_delta_and_group_entry_fixed_point(self) -> None:
         from tests.test_task_graph_scripted import ScriptedFixture
 
         scripted = ScriptedFixture()
@@ -250,18 +250,14 @@ class DeriveEntryTests(unittest.TestCase):
         group = GroupCoordinatorTests("test_full_contract_drift_and_start_isolation")
         group.setUp()
         self.addCleanup(group.doCleanups)
-        self._assert_legacy_difference_paths(
-            group.writer.graph,
-            group.runtime.state,
-            group.runtime.state.position["node_id"],
-            group,
-            (
-                "state.context_ref",
-                "state.external_inputs_ref",
-                "state.outcome_ref",
-                "state.versions_ref",
-            ),
+        group_entry = derive_entry(
+            group.fixture.entry.graph,
+            group.fixture.entry.node_id,
+            group.fixture.entry.params,
+            StoreReader(group.store),
         )
+        self.assertEqual(group_entry.state, group.runtime.state)
+        self.assertEqual(group_entry.state, group.fixture.entry.state)
 
     def _assert_legacy_difference_paths(self, graph, old, node_id, fixture, expected_paths):
         entry = derive_entry(

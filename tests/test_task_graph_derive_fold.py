@@ -288,7 +288,7 @@ class DeriveFoldTests(unittest.TestCase):
         operation = ContextOperationInputV1(policy_ref=context_fixture.reader.add(policy.to_wire()))
         _apply(self, derive_context_operation, context_view, operation, context_fixture.reader)
 
-        from tests.test_task_graph_derive_context import _legacy_group_entry_view, _StoreReader
+        from tests.test_task_graph_derive_context import _group_entry_view, _StoreReader
         from tests.test_task_graph_group import GroupCoordinatorTests
 
         group_test = GroupCoordinatorTests("test_full_contract_drift_and_start_isolation")
@@ -297,7 +297,7 @@ class DeriveFoldTests(unittest.TestCase):
             spec = group_test.group()
             reader = _StoreReader(group_test.store)
             reader.public[spec.identity()] = spec.to_wire()
-            group_view = _legacy_group_entry_view(group_test)
+            group_view = _group_entry_view(group_test)
             start = MemberStartV1(group_spec_ref=spec.identity(), ordinal=0)
             transition = derive_member_start(group_view, start, reader)
             roundtrip = MemberStartV1.from_json(start.to_json())

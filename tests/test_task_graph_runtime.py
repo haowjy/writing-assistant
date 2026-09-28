@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.task_graph_rollout_fixtures import build_rollout_fixture
 from writing_agent.legacy_graph import compile_legacy_scenario
 from writing_agent.suite import compile_legacy_graph, run_selected
 from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash
@@ -14,6 +15,7 @@ from writing_agent.task_graph_admission import (
     StoreArtifactResolver,
     admit_graph,
 )
+from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_store import TaskGraphStore
 
 FIXTURE = Path(__file__).parent / "fixtures/legacy_graph_adapter.json"
@@ -664,6 +666,28 @@ class LegacyGraphAdapterTest(unittest.TestCase):
             mutate(changed)
             with self.subTest(mutation=mutate):
                 self.assertNotEqual(compile_legacy_scenario(changed).instance.identity(), baseline)
+
+
+class RolloutRuntimeTest(unittest.TestCase):
+    def test_driver_publishes_a_new_core_lineage_that_resumes_from_its_head(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = build_rollout_fixture(
+                Path(temporary) / "rollout",
+                mode="none",
+                sample_results=(
+                    SampleResult({"role": "assistant", "content": "A complete draft."}),
+                ),
+            )
+
+            result = fixture.driver().run(fixture.runtime, max_steps=16)
+            resumed = fixture.env.open_head(fixture.lineage_id)
+
+            self.assertEqual(result.directive.kind, "done")
+            self.assertEqual(resumed.state, result.runtime.state)
+            self.assertEqual(
+                fixture.store.load_checkpoint(resumed.checkpoint_id).state,
+                result.runtime.state,
+            )
 
 
 if __name__ == "__main__":

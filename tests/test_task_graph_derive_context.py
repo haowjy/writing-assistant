@@ -290,7 +290,7 @@ class MemberStartDeriveTests(unittest.TestCase):
         self.spec = self.group_fixture.group()
         self.reader = _StoreReader(self.group_fixture.store)
         self.reader.public[self.spec.identity()] = self.spec.to_wire()
-        self.view = _legacy_group_entry_view(self.group_fixture)
+        self.view = _group_entry_view(self.group_fixture)
 
     def test_member_start_seed_payload_matches_coordinator_and_roundtrips(self):
         spec_ref = self.spec.identity()
@@ -367,32 +367,5 @@ class _StoreReader:
         return self.store.get_artifact(ref, expected_domain=domain, private=private)
 
 
-def _legacy_group_entry_view(fixture) -> LineageView:
-    state = fixture.runtime.state
-    runtime_context = fixture.runtime.context
-    context = _context(
-        runtime_context.messages,
-        runtime_context.tools,
-        runtime_context.rendering,
-        runtime_context.content_hash,
-        state.context_ref,
-    )
-    checkpoint_id = fixture.start
-    node = fixture.writer.graph.node(state.position["node_id"])
-    return LineageView(
-        root_checkpoint_id=checkpoint_id,
-        checkpoint_id=checkpoint_id,
-        head_event_id=state.history["head"],
-        state=state,
-        budget=fixture.store.get_artifact(state.budgets_ref),
-        outcome=None,
-        check_statuses={},
-        context=context,
-        raw_call_ids=frozenset(),
-        call_sources={},
-        samples=(),
-        ancestry=CheckpointChain(checkpoint_id, context),
-        node=node,
-        mode=LineageMode.for_node(node),
-        tool_spec=ToolSpec(128_000, 4096),
-    )
+def _group_entry_view(fixture) -> LineageView:
+    return fixture.fixture.env.verify(fixture.runtime)
