@@ -13,8 +13,9 @@ retains its smoke-evaluation and training-format workflows.
 - [task_graph.py](../writing_agent/task_graph.py) owns immutable task-graph value records
   and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
   owns private content-addressed persistence, reference closure, checkpoint
-  materialization/restore/branch/diff, and the atomic mutable lineage head; its recorded
-  Phase 2 effect replay and semantic hook are legacy until S7.
+  materialization/restore/branch/diff, and the atomic mutable lineage head. Its recorded
+  Phase 2 effect replay and semantic hook are legacy until S7 and run only for lineages
+  that pin no `transition_semantics`.
   [task_graph_contracts.py](../writing_agent/task_graph_contracts.py) adds detailed
   execution contracts as immutable artifacts referenced by the frozen Phase 1 node shape;
   [task_graph_admission.py](../writing_agent/task_graph_admission.py) resolves their
@@ -31,7 +32,8 @@ retains its smoke-evaluation and training-format workflows.
   call parsing and the tool effect contract.
   [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
   view/transition types. [task_graph_controller.py](../writing_agent/task_graph_controller.py)
-  is the pure directive boundary (`next_step`, `select_edge`); it does not step a writer,
+  is the pure directive boundary (`next_step`, `select_edge`, `applicable_checks`); it does
+  not step a writer,
   execute checks, accept author transition/completion claims, or mutate runtime state.
   [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py) derives a node's
   entry state and root artifacts; the writer, author, outcome and context derive modules
@@ -41,12 +43,17 @@ retains its smoke-evaluation and training-format workflows.
   compaction rules unchanged, derives member starts from persisted group specs, and takes
   named seed contexts from view ancestry rather than replay.
   [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles the derive
-  registries, re-admits from the versions-pinned policy, and folds typed events through
-  the store's optional verifier port. Its checkpoint-keyed view cache skips derives only;
-  store closure still re-reads and hashes persisted bytes on every operation. Stores
-  without a verifier retain the legacy patch reducer and semantic hook during coexistence.
-  See [transition-seam.md](transition-seam.md) for how to add a record or a
-  derive, the layer order, and the rationale.
+  registries into the one `derive_input` dispatch, re-admits from the versions-pinned
+  policy, and folds typed events as the store's verifier port. The store picks the gate or
+  the legacy reducer from each lineage's pinned `transition_semantics`, never from whether
+  a verifier is configured: a v1 lineage fails closed without one. The gate's
+  checkpoint-keyed view cache holds only published views and skips derives only; store
+  closure still re-reads and hashes persisted bytes on every operation.
+  [task_graph_rollout_env.py](../writing_agent/task_graph_rollout_env.py) is the producer:
+  entry, cold open, per-step verification, derive-persist-publish commits, member starts,
+  and the typed port inputs that are the privacy boundary. See
+  [transition-seam.md](transition-seam.md) for how to add a record or a derive, the gate
+  and environment contracts, the layer order, and the rationale.
 - **Legacy runtime (until S7).** The modules in this bullet are the old runtime. They stay
   the behavior oracle until the S7 parity probe, which deletes the writer, the scripted
   runtime classes, checks, terminal, author validation, projection, and the old replay
@@ -166,8 +173,9 @@ There is no process-global validation cache. Immutable-name and ref-name retries
 their containing-directory durability barrier even when equal bytes or the matching
 head are already visible; identical `branch` retries use that same head-repair path.
 Every non-null authority head must target a checkpoint in its named lineage. A first
-commit may explicitly start from a checkpoint in another lineage, but later commit
-ancestry may not cross lineages.
+commit must start from a parentless checkpoint, which may belong to another lineage (a
+group member starts from the shared entry); later commit ancestry may not cross lineages.
+Only `branch` starts from a mid-lineage checkpoint, and a store with a verifier refuses it.
 
 Catalog records carry normalized content in `text`; local imports also preserve raw
 bytes and a text file, with hashes for both representations. Content from the imported
