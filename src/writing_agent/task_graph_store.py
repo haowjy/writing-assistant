@@ -31,8 +31,6 @@ from typing import Any, Protocol
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
@@ -65,6 +63,8 @@ from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_records import (
     RECORD_TYPES,
+    ContextContentV1,
+    ContextRevisionV1,
     materialize_context_nodes,
     record_reference_edges,
     record_reference_paths,
@@ -280,10 +280,6 @@ class TaskGraphStore:
     @operation_scoped
     def persist(self, record: Any) -> str:
         """Persist one typed immutable record, plus context content when needed."""
-        if isinstance(record, ContextContentV1):
-            return self._write_record(record, "context_content")
-        if isinstance(record, ContextRevisionV1):
-            return self._write_record(record, "context_revisions")
         if isinstance(record, MessageV1):
             return self.put_artifact(record.to_dict(), domain="message")
         for record_type, directory in self._RECORD_DIRS.items():
@@ -734,11 +730,7 @@ class TaskGraphStore:
 
     def _write_record(self, record: Any, directory: str) -> str:
         identity = record.identity()
-        wire = (
-            record.to_wire()
-            if isinstance(record, (WireRecord, ContextContentV1, ContextRevisionV1))
-            else record
-        )
+        wire = record.to_wire() if isinstance(record, WireRecord) else record
         self._write_immutable(self._record_path(directory, identity), canonical_bytes(wire))
         return identity
 
@@ -802,8 +794,8 @@ class TaskGraphStore:
         try:
             record = record_type.from_json(raw)
         except (TypeError, ValueError) as exc:
-            raise WrongRecordDomainError(
-                f"{identity} is not a valid {record_type.__name__}"
+            raise CorruptRecordError(
+                f"stored {record_type.__name__} is invalid: {identity}"
             ) from exc
         if record.identity() != identity:
             raise CorruptRecordError(f"stored {record_type.__name__} hash mismatch")
@@ -1217,33 +1209,11 @@ class _ClosureValidator:
                 for index, identity in enumerate(value.caused_by)
             )
             return edges
-        if kind == "context_revision":
+        if kind in {"context_revision", "context_node"}:
             return [
-                self._remember("context_node", value.content_ref, "context_revision.content_ref"),
-                *(
-                    [self._remember("event", value.event_head, "context_revision.event_head")]
-                    if value.event_head is not None
-                    else []
-                ),
-                *(
-                    self._remember("event", identity, f"context_revision.provenance_refs[{index}]")
-                    for index, identity in enumerate(value.provenance_refs)
-                ),
+                self._remember(edge, identity, f"{kind}.{field_path}")
+                for field_path, edge, identity in value._wire_edges
             ]
-        if kind == "context_node":
-            edges = []
-            if value.parent_ref is not None:
-                edges.append(
-                    self._remember("context_node", value.parent_ref, "context_node.parent_ref")
-                )
-            if value.rendering is not None:
-                edges.extend(
-                    self._remember(
-                        "artifact", value.rendering[name], f"context_node.rendering.{name}"
-                    )
-                    for name in ("template_ref", "tokenizer_ref", "tool_schema_ref")
-                )
-            return edges
         if kind in {"artifact", "private"}:
             if value.domain == "payload" and isinstance(value.value, Mapping):
                 if "record_type" in value.value:

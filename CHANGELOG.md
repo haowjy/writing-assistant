@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Restore context records as strict `WireRecord`s, derive their closure edges from one field declaration,
+  and unify runtime, evaluator, and group payload codecs with their record classes. Classify malformed
+  on-disk records as corruption.
 - Unify task-graph writer, scripted-author, check, context, and group execution behind one
   verified rollout core. The driver gathers typed, allowlisted inputs; one pure derive per
   input produces one event and complete successor state for both publication and replay.

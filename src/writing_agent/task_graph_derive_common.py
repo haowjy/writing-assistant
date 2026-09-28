@@ -8,8 +8,6 @@ from typing import Any
 
 from writing_agent.task_graph import (
     CheckpointV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EventV1,
     MaterializedContextV1,
     MessageV1,
@@ -22,7 +20,7 @@ from writing_agent.task_graph import (
 )
 from writing_agent.task_graph_accounting import charge_context_append
 from writing_agent.task_graph_errors import ProjectionError
-from writing_agent.task_graph_records import RECORD_TYPES
+from writing_agent.task_graph_records import RECORD_TYPES, ContextContentV1, ContextRevisionV1
 from writing_agent.task_graph_transition import (
     ArtifactReader,
     CheckpointChain,
@@ -182,7 +180,7 @@ def build_transition(
 
 def payload_artifact(value: Any, kind: str = "artifact") -> DerivedArtifact:
     """Create one identity-checked derived artifact from a typed record or payload body."""
-    if isinstance(value, (WireRecord, Record, ContextContentV1, ContextRevisionV1)):
+    if isinstance(value, (WireRecord, Record)):
         if kind in {"context_node", "context_revision"}:
             return DerivedArtifact(value.identity(), value, kind, "record")
         body = value.to_wire() if isinstance(value, WireRecord) else value.to_dict()

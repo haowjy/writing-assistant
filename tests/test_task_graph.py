@@ -6,8 +6,6 @@ from writing_agent.task_graph import (
     EVENT_KINDS,
     CheckpointV1,
     CommitV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
@@ -23,6 +21,7 @@ from writing_agent.task_graph import (
     tree_hash,
     validate_file_tree,
 )
+from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1
 
 H = "0" * 64
 FIXTURE = json.loads((Path(__file__).parent / "fixtures/task_graph_hashes.json").read_text())

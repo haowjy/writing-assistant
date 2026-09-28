@@ -9,8 +9,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_agent.task_graph import (
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
@@ -19,6 +17,7 @@ from writing_agent.task_graph import (
     canonical_bytes,
     domain_hash,
     tree_hash,
+    validate_hash,
 )
 from writing_agent.task_graph_errors import (
     MaterializationError,
@@ -40,7 +39,9 @@ from writing_agent.task_graph_records import (
     RECORD_TYPES,
     AdmissionPolicyV1,
     AuthorReplyV1,
+    ContextContentV1,
     ContextOperationInputV1,
+    ContextRevisionV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
     ExternalInputsV1,
@@ -50,7 +51,6 @@ from writing_agent.task_graph_records import (
     ToolObservationV1,
     WriterRequestV1,
     WriterTurnV1,
-    is_sha256_string,
     materialize_context_nodes,
     record_reference_edges,
 )
@@ -61,6 +61,14 @@ H = "a" * 64
 P = "b" * 64
 Q = "c" * 64
 R = "d" * 64
+
+
+def _is_sha256(value):
+    try:
+        validate_hash(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 EXPECTED_REFS = {
@@ -822,7 +830,8 @@ class RecordCodecTests(unittest.TestCase):
                 non_edges[record.RECORD_TYPE or type(record).__name__] = paths
             examples.append((type(record).__name__, spec, record.to_wire()))
         for name, body in shared_payload_examples().items():
-            spec = RECORD_TYPES[name].fields
+            codec = RECORD_TYPES[name]
+            spec = codec.FIELD_SPEC if isinstance(codec, type) else codec.fields
             non_edges_for_codec = frozenset(
                 path for path, edge in _hash_specs(spec) if edge is None
             )
@@ -834,7 +843,7 @@ class RecordCodecTests(unittest.TestCase):
         for name, spec, body in examples:
             declared_paths = tuple(_hash_specs(spec))
             for path, value in _walk(body):
-                if not is_sha256_string(value):
+                if not _is_sha256(value):
                     continue
                 self.assertTrue(
                     any(edge_path_matches(template, path) for template, _ in declared_paths),
@@ -1335,14 +1344,14 @@ class RecordClosureTests(unittest.TestCase):
                         (kind, value)
                         for path, kind in RECORD_EDGES[record_type].items()
                         for found_path, value in _walk(body)
-                        if found_path == path and is_sha256_string(value)
+                        if found_path == path and _is_sha256(value)
                     )
                     self.assertEqual(edges, expected_edges)
                     for path in declared_paths:
                         if not any(
                             path in leaf_path or path.replace("[]", "") in leaf_path
                             for leaf_path, value in _walk(body)
-                            if is_sha256_string(value)
+                            if _is_sha256(value)
                         ):
                             continue
                         bad = dict(body)

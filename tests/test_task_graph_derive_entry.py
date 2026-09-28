@@ -9,8 +9,6 @@ from tempfile import TemporaryDirectory
 
 from tests.task_graph_fixtures import make_entry_fixture
 from writing_agent.task_graph import (
-    ContextContentV1,
-    ContextRevisionV1,
     MessageV1,
     canonical_bytes,
     load_canonical_json,
@@ -18,6 +16,7 @@ from writing_agent.task_graph import (
 from writing_agent.task_graph_derive_entry import derive_entry, params_of
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_gate import StoreArtifactReader as StoreReader
+from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import first_difference
 

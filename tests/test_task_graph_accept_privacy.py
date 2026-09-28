@@ -16,9 +16,10 @@ from tests.task_graph_rollout_fixtures import (
     make_gatherers,
     run_slice,
 )
-from writing_agent.task_graph import ContextContentV1, ContextRevisionV1, MessageV1
+from writing_agent.task_graph import MessageV1
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1
 
 
 class PrivacyAcceptanceTests(unittest.TestCase):

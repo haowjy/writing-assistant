@@ -12,8 +12,6 @@ from unittest import mock
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
@@ -27,6 +25,7 @@ from writing_agent.task_graph import (
 )
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
+from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1, OutcomeV1
 from writing_agent.task_graph_store import (
     ConcurrentUpdateError,
     CorruptRecordError,
@@ -439,6 +438,67 @@ class TaskGraphStoreTest(unittest.TestCase):
         context_path.write_bytes(b"not-json")
         with self.assertRaises(CorruptRecordError):
             self.store.load_context_revision(self.fixture.context.identity())
+
+    def test_event_record_byte_flip_is_corrupt_record(self):
+        event = EventV1(
+            lineage_id="flipped-event",
+            kind="tool_result",
+            audience=("controller",),
+            payload_ref=self.fixture.common["entry"],
+            versions_ref=self.fixture.common["versions"],
+            provenance_ref=self.fixture.common["provenance"],
+        )
+        identity = self.store.persist(event)
+        path = self.store.root / "events" / f"{identity}.json"
+        damaged = bytearray(path.read_bytes())
+        marker = damaged.index(b"tool_result")
+        damaged[marker] = ord("x")
+        path.write_bytes(damaged)
+
+        with self.assertRaises(CorruptRecordError):
+            self.store.load_event(identity)
+
+    def test_hash_correct_forged_event_payload_is_projection_error(self):
+        outcome = OutcomeV1(
+            1,
+            "unknown",
+            "running",
+            None,
+            "pending",
+            "pending",
+            None,
+            None,
+            (),
+            None,
+            None,
+            None,
+            None,
+        ).to_wire()
+        outcome["forged_field"] = "not codec-owned"
+        payload_ref = domain_hash("payload", outcome)
+        self.store._write_immutable(
+            self.store._artifact_path(payload_ref, False),
+            canonical_bytes(
+                {
+                    "schema": 1,
+                    "domain": "payload",
+                    "encoding": "json",
+                    "body": outcome,
+                }
+            ),
+        )
+        event = EventV1(
+            lineage_id="forged-event",
+            kind="tool_result",
+            audience=("controller",),
+            payload_ref=payload_ref,
+            versions_ref=self.fixture.common["versions"],
+            provenance_ref=self.fixture.common["provenance"],
+        )
+        identity = self.store.persist(event)
+
+        with self.assertRaisesRegex(ProjectionError, "event.payload_ref.forged_field"):
+            self.store.load_event(identity)
 
     def test_stored_symlink_and_unsafe_path_are_rejected(self):
         checkpoint, _ = self.fixture.root()

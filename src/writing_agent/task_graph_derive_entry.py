@@ -8,8 +8,6 @@ from typing import Any
 
 from writing_agent.task_graph import (
     CheckpointV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     MessageV1,
     Phase,
@@ -27,6 +25,8 @@ from writing_agent.task_graph_contracts import (
     writer_tool_schemas,
 )
 from writing_agent.task_graph_records import (
+    ContextContentV1,
+    ContextRevisionV1,
     ExternalInputsV1,
     OutcomeV1,
 )
