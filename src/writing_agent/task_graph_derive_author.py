@@ -7,7 +7,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from writing_agent.task_graph import MessageV1, canonical_bytes, canonical_json, domain_hash, thaw
+from writing_agent.task_graph import (
+    MessageV1,
+    canonical_bytes,
+    canonical_json,
+    domain_hash,
+    latest_action_id,
+    thaw,
+)
 from writing_agent.task_graph_accounting import charge_tool_attempt
 from writing_agent.task_graph_contracts import RequirementUpdateV1
 from writing_agent.task_graph_controller import next_step
@@ -63,8 +70,10 @@ def derive_author_request(
             call["name"] != "ask_author"
             or call_source is None
             or call_source.queue_index != cursor
-            or not view.state.history["action_ids"]
-            or call_source.action_id != view.state.history["action_ids"][-1]
+            or call_source.action_id
+            != latest_action_id(
+                view.state.position["lineage_id"], view.state.history["action_count"]
+            )
         ):
             raise ProjectionError("writer author request does not bind the pending call")
         arguments = thaw(call["arguments"])
@@ -266,11 +275,6 @@ def _derive_answered_reply(
         if call_charge != 1:
             raise ProjectionError("author acknowledgement exceeded the tool-call budget")
         continuation["next_call"] += 1
-        ack_id = (
-            f"{view.state.position['lineage_id']}:tool_result:"
-            f"{len(view.state.history['tool_result_ids'])}"
-        )
-        tool_results = [*view.state.history["tool_result_ids"], ack_id]
         acknowledgement = MessageV1(
             role="tool",
             call_id=request["call_id"],
@@ -287,7 +291,7 @@ def _derive_answered_reply(
                 },
             ),
         )
-        history_changes = {"tool_result_ids": tool_results}
+        history_changes = {"tool_result_count": view.state.history["tool_result_count"] + 1}
         messages = (acknowledgement, _author_message(request, reply.utterance))
         artifacts.extend(
             (

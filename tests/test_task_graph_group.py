@@ -511,8 +511,6 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             turn = WriterTurnV1(
                 action_id=port.action_id,
                 context_revision_ref=port.context_revision_ref,
-                request_ref=None,
-                prepared_request_ref=None,
                 raw_output_ref=None,
                 usage={},
                 adapter_trace=trace,
@@ -530,8 +528,6 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             turn = WriterTurnV1(
                 action_id=port.action_id,
                 context_revision_ref=port.context_revision_ref,
-                request_ref=None,
-                prepared_request_ref=None,
                 raw_output_ref=None,
                 usage={},
                 adapter_trace={field: value},
@@ -571,8 +567,6 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             turn = WriterTurnV1(
                 action_id=port.action_id,
                 context_revision_ref=port.context_revision_ref,
-                request_ref=None,
-                prepared_request_ref=None,
                 raw_output_ref=None,
                 usage={},
                 adapter_trace={field: value_for(spec)},

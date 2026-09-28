@@ -131,8 +131,8 @@ class StoreFixture:
             "seq": seq,
             "branch_base": branch_base,
             "imported_refs": (),
-            "action_ids": (),
-            "tool_result_ids": (),
+            "action_count": 0,
+            "tool_result_count": 0,
         }
         history.update(history_changes or {})
         position = {
@@ -314,7 +314,7 @@ class TaskGraphStoreTest(unittest.TestCase):
             lineage=lineage,
             file_delta={"draft.txt": {"before": before.files["draft.txt"], "after": text}},
             set_values={"position": {**before.position, "lineage_id": lineage}},
-            history_set={"tool_result_ids": (*before.history["tool_result_ids"], f"{lineage}:r")},
+            history_set={"tool_result_count": before.history["tool_result_count"] + 1},
         )
         commit = self.store.publish(
             lineage,

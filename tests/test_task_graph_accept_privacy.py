@@ -112,7 +112,6 @@ class PrivacyAcceptanceTests(unittest.TestCase):
         writer_requests = repr(
             [
                 {
-                    "request": request.request(),
                     "messages_json": request.messages_json,
                     "tools_json": request.tools_json,
                     "rendering_json": request.rendering_json,

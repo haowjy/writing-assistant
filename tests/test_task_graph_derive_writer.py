@@ -19,11 +19,7 @@ from writing_agent.task_graph_record_contracts import (
     _group_hash,
     _group_seed,
 )
-from writing_agent.task_graph_records import (
-    ToolObservationV1,
-    WriterRequestV1,
-    WriterTurnV1,
-)
+from writing_agent.task_graph_records import ToolObservationV1, WriterTurnV1
 from writing_agent.task_graph_sampling import bind_group_sampling_claims
 from writing_agent.task_graph_transition import (
     CallSource,
@@ -57,10 +53,8 @@ def make_turn(
     elif calls is not None:
         raw_message["tool_calls"] = calls
     return WriterTurnV1(
-        action_id=f"{view.state.position['lineage_id']}:action:{len(view.state.history['action_ids'])}",
+        action_id=f"{view.state.position['lineage_id']}:action:{view.state.history['action_count']}",
         context_revision_ref=view.context.revision_ref,
-        request_ref=None,
-        prepared_request_ref=None,
         raw_output_ref=None,
         usage={} if usage is None else usage,
         adapter_trace=adapter_trace,
@@ -559,7 +553,12 @@ class ToolResultDeriveTests(unittest.TestCase):
         state_body = self.root_view.state.to_dict()
         state_body["position"]["phase"] = "ready_writer"
         state_body["continuation"]["tool_queue"] = [
-            {"call_id": "ask-1", "name": "ask_author", "arguments": {}}
+            {
+                "call_id": "ask-1",
+                "name": "ask_author",
+                "arguments": {},
+                "rejection": None,
+            }
         ]
         state = type(self.root_view.state).from_dict(state_body)
         budget = json.loads(canonical_bytes(self.root_view.budget))
@@ -678,40 +677,6 @@ class SamplingCodecTests(unittest.TestCase):
         bad = WriterTurnV1.from_dict(bad_wire)
         with self.assertRaises(ProjectionError):
             derive_writer_turn(self.view, bad, self.reader)
-
-    def test_prepared_writer_request_binds_payload_and_current_messages(self):
-        payload = {"messages": [message.to_dict() for message in self.view.context.messages]}
-        payload_ref = self.reader.add(payload)
-        prepared = WriterRequestV1(
-            context_revision_ref=self.view.context.revision_ref,
-            payload_ref=payload_ref,
-            verified_messages=True,
-        )
-        prepared_ref = self.reader.add(prepared.to_wire())
-        turn = replace(
-            make_turn(self.view), request_ref=payload_ref, prepared_request_ref=prepared_ref
-        )
-        self.assertEqual(
-            derive_writer_turn(self.view, turn, self.reader).event.kind, "writer_action"
-        )
-
-        stale_payload_ref = self.reader.add({"messages": []})
-        stale = WriterRequestV1(
-            context_revision_ref=self.view.context.revision_ref,
-            payload_ref=stale_payload_ref,
-            verified_messages=True,
-        )
-        stale_ref = self.reader.add(stale.to_wire())
-        with self.assertRaises(ProjectionError):
-            derive_writer_turn(
-                self.view,
-                replace(
-                    make_turn(self.view),
-                    request_ref=stale_payload_ref,
-                    prepared_request_ref=stale_ref,
-                ),
-                self.reader,
-            )
 
 
 if __name__ == "__main__":

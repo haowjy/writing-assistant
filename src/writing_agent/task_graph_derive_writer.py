@@ -6,7 +6,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from writing_agent.task_graph import MessageV1, canonical_bytes, domain_hash
+from writing_agent.task_graph import (
+    MessageV1,
+    action_id_for_ordinal,
+    canonical_bytes,
+    domain_hash,
+)
 from writing_agent.task_graph_accounting import (
     observation_read_tokens,
     sampled_usage_charge,
@@ -56,7 +61,9 @@ READ_BUDGET_EXCEEDED = "Read-token budget exceeded"
 
 def writer_action_id(view: LineageView) -> str:
     """Return the action identity bound to the view's next writer turn."""
-    return f"{view.state.position['lineage_id']}:action:{len(view.state.history['action_ids'])}"
+    return action_id_for_ordinal(
+        view.state.position["lineage_id"], view.state.history["action_count"]
+    )
 
 
 def group_member(view: LineageView):
@@ -186,7 +193,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         context_ref=revision.ref,
         continuation=continuation,
         position={"phase": phase},
-        history={"action_ids": (*view.state.history["action_ids"], action_id)},
+        history={"action_count": view.state.history["action_count"] + 1},
     )
     sources = dict(view.call_sources)
     for index, call in enumerate(queue):
@@ -224,7 +231,7 @@ def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, s
     if not isinstance(turn, WriterTurnV1):
         raise ProjectionError("writer turn input must use its strict wire codec")
 
-    ordinal = len(view.state.history["action_ids"])
+    ordinal = view.state.history["action_count"]
     action_id = writer_action_id(view)
     if turn.action_id != action_id or turn.context_revision_ref != view.context.revision_ref:
         raise ProjectionError("writer turn is not bound to the active action and context")
@@ -414,10 +421,6 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
     next_budget, _charge = tool_result_charge(
         view.budget, view.state.files, files_after, read_charge
     )
-    result_id = (
-        f"{view.state.position['lineage_id']}:tool_result:"
-        f"{len(view.state.history['tool_result_ids'])}"
-    )
     message = MessageV1(
         role="tool",
         call_id=obs.call_id,
@@ -455,7 +458,7 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
         budgets_ref=budget_ref,
         context_ref=revision.ref,
         continuation=next_continuation,
-        history={"tool_result_ids": (*view.state.history["tool_result_ids"], result_id)},
+        history={"tool_result_count": view.state.history["tool_result_count"] + 1},
     )
     artifacts = (
         observation_artifact,

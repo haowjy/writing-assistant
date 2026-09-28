@@ -168,16 +168,23 @@ def _new_view(
             "option_refs": option_refs,
         }
         continuation.update(
-            tool_queue=({"call_id": call_id, "name": "ask_author", "arguments": args},),
+            tool_queue=(
+                {
+                    "call_id": call_id,
+                    "name": "ask_author",
+                    "arguments": args,
+                    "rejection": None,
+                },
+            ),
             next_call=0,
             author_request=None,
         )
         history = dict(state.history)
-        history["action_ids"] = (action_id,)
+        history["action_count"] = 1
     else:
         continuation.update(tool_queue=(), next_call=0, author_request=None)
         history = dict(state.history)
-        history["action_ids"] = ()
+        history["action_count"] = 0
     state = replace(
         state,
         position=position,
@@ -449,7 +456,7 @@ class AuthorDeriveTests(unittest.TestCase):
         transition = derive_author_reply(request_transition.view, reply, fixture.reader)
         self.assertEqual(transition.view.budget["consumed"]["tool_calls"], 1)
         self.assertEqual(transition.view.budget["consumed"]["attempted_tool_calls"], 1)
-        self.assertEqual(transition.state.history["tool_result_ids"][-1].split(":")[-1], "0")
+        self.assertEqual(transition.state.history["tool_result_count"], 1)
         appended = transition.view.context.messages[-2:]
         self.assertEqual(tuple(message.role for message in appended), ("tool", "user"))
         self.assertNotIn(CANARY, canonical_bytes(appended).decode())

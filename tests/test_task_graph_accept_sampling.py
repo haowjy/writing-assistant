@@ -24,7 +24,7 @@ from writing_agent.task_graph_local import (
 )
 from writing_agent.task_graph_ports import PortDescriptorV1, RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import GroupMemberSpecV1, GroupSpecV1
-from writing_agent.task_graph_records import MemberStartV1, WriterRequestV1
+from writing_agent.task_graph_records import MemberStartV1
 
 
 def _sample(content: str = "A complete draft.", *, usage=None, trace=None) -> SampleResult:
@@ -161,111 +161,6 @@ class SamplingAcceptanceTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(canonical_bytes(envelope))
         return ref
-
-    def test_stale_verified_request_is_rejected_before_an_event_is_recorded(self) -> None:
-        fixture = build_rollout_fixture(self.root / "stale-request")
-        first_view = fixture.env.verify(fixture.runtime)
-        first_port = fixture.env.port_input(first_view, next_step(first_view))
-        stale = fixture.gatherers.sampler.turn(first_port)
-        first = fixture.env.commit(fixture.runtime, stale)
-        tool_view = fixture.env.verify(first.runtime)
-        tool_port = fixture.env.port_input(tool_view, next_step(tool_view))
-        observation = fixture.gatherers.tools.observe(tool_port)
-        second = fixture.env.commit(first.runtime, observation)
-        current = fixture.env.verify(second.runtime)
-        current_port = fixture.env.port_input(current, next_step(current))
-        stale_verified_request = replace(
-            stale,
-            action_id=current_port.action_id,
-            context_revision_ref=current_port.context_revision_ref,
-        )
-        before = _event_count(fixture.store)
-        head = fixture.store.read_head(fixture.lineage_id)
-        with self.assertRaises(AdapterContractError):
-            fixture.env.commit(second.runtime, stale_verified_request)
-        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
-        self.assertEqual(_event_count(fixture.store), before)
-
-    def test_stale_request_replay_is_a_gate_projection_error(self) -> None:
-        fixture = build_rollout_fixture(self.root / "stale-request-gate")
-        first_view = fixture.env.verify(fixture.runtime)
-        old_port = fixture.env.port_input(first_view, next_step(first_view))
-        stale = fixture.gatherers.sampler.turn(old_port)
-        first = fixture.env.commit(fixture.runtime, stale)
-        tool_view = fixture.env.verify(first.runtime)
-        observation = fixture.gatherers.tools.observe(
-            fixture.env.port_input(tool_view, next_step(tool_view))
-        )
-        second = fixture.env.commit(first.runtime, observation)
-        view = fixture.env.verify(second.runtime)
-        current_port = fixture.env.port_input(view, next_step(view))
-        honest_current = fixture.gatherers.sampler.turn(current_port)
-        forged = replace(
-            stale,
-            action_id=current_port.action_id,
-            context_revision_ref=current_port.context_revision_ref,
-            adapter_trace=honest_current.adapter_trace,
-        )
-        honest_transition = derive_input(view, honest_current, fixture.env.reader)
-        for artifact in honest_transition.artifacts:
-            fixture.store.persist_artifact(artifact)
-        fixture.store.persist(honest_transition.event)
-        payload_ref = fixture.store.put_artifact(forged.to_wire())
-        event = replace(honest_transition.event, payload_ref=payload_ref, id=None)
-        state = replace(
-            honest_transition.state,
-            history={**honest_transition.state.history, "head": event.id},
-        )
-        head = fixture.store.read_head(fixture.lineage_id)
-        with self.assertRaises(ProjectionError) as caught:
-            fixture.store.publish(fixture.lineage_id, head, (event,), state)
-        self.assertIn("input.prepared_request_ref", str(caught.exception))
-        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
-
-    def test_fresh_verified_request_cannot_relabel_an_old_payload(self) -> None:
-        fixture = build_rollout_fixture(self.root / "fresh-stale-request-gate")
-        first_view = fixture.env.verify(fixture.runtime)
-        old_port = fixture.env.port_input(first_view, next_step(first_view))
-        old_turn = fixture.gatherers.sampler.turn(old_port)
-        first = fixture.env.commit(fixture.runtime, old_turn)
-        tool_view = fixture.env.verify(first.runtime)
-        observation = fixture.gatherers.tools.observe(
-            fixture.env.port_input(tool_view, next_step(tool_view))
-        )
-        second = fixture.env.commit(first.runtime, observation)
-
-        view = fixture.env.verify(second.runtime)
-        current_port = fixture.env.port_input(view, next_step(view))
-        fresh_request = WriterRequestV1(
-            context_revision_ref=current_port.context_revision_ref,
-            payload_ref=old_turn.request_ref,
-            verified_messages=True,
-        )
-        request_ref = fixture.store.put_artifact(fresh_request.to_wire())
-        honest = fixture.gatherers.sampler.turn(current_port)
-        forged = replace(
-            old_turn,
-            action_id=current_port.action_id,
-            context_revision_ref=current_port.context_revision_ref,
-            prepared_request_ref=request_ref,
-            adapter_trace=honest.adapter_trace,
-        )
-        honest_transition = derive_input(view, honest, fixture.env.reader)
-        for artifact in honest_transition.artifacts:
-            fixture.store.persist_artifact(artifact)
-        fixture.store.persist(honest_transition.event)
-        forged_payload_ref = fixture.store.put_artifact(forged.to_wire())
-        event = replace(honest_transition.event, id=None, payload_ref=forged_payload_ref)
-        state = replace(
-            honest_transition.state,
-            history={**honest_transition.state.history, "head": event.id},
-        )
-        head = fixture.store.read_head(fixture.lineage_id)
-
-        with self.assertRaises(ProjectionError) as rejected:
-            fixture.store.publish(fixture.lineage_id, head, (event,), state)
-        self.assertIn("input.request_ref", str(rejected.exception))
-        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
 
     def test_manifest_change_after_bind_and_claim_relabelling_are_rejected(self) -> None:
         fixture = build_rollout_fixture(self.root / "manifest-session")

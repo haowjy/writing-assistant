@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
 
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_calls import intake_message
@@ -36,7 +35,6 @@ from writing_agent.task_graph_records import (
     AuthorReplyV1,
     EvaluatorResultV1,
     ToolObservationV1,
-    WriterRequestV1,
     WriterTurnV1,
 )
 from writing_agent.task_graph_sampling import ArtifactSink, persist_logprob_trace
@@ -61,17 +59,7 @@ class SamplingRunner:
             raise TypeError("sampling runner requires SamplerInput")
         if self.input_observer is not None:
             self.input_observer(port)
-        request: dict[str, Any] = {
-            "messages": [message.to_dict() for message in port.messages],
-        }
-        request_json = canonical_json(request)
-        request_ref = self.artifacts.put_artifact(request)
-        prepared_ref = self.artifacts.put_artifact(
-            WriterRequestV1(port.context_revision_ref, request_ref, True).to_wire()
-        )
         prepared = PreparedSamplingInput(
-            request_ref=request_ref,
-            prepared_request_ref=prepared_ref,
             context_content_hash=port.context_content_hash,
             context_revision_ref=port.context_revision_ref,
             writer_seed=port.writer_seed,
@@ -80,10 +68,9 @@ class SamplingRunner:
             decoding_ref=port.decoding_ref,
             tokenizer_ref=port.tokenizer_ref,
             template_ref=port.template_ref,
-            messages_json=canonical_json(request["messages"]),
+            messages_json=canonical_json([message.to_dict() for message in port.messages]),
             tools_json=canonical_json(port.tools),
             rendering_json=canonical_json(port.rendering),
-            request_json=request_json,
         )
         result = self.backend.sample(prepared)
         if not isinstance(result, SampleResult):
@@ -114,8 +101,6 @@ class SamplingRunner:
             turn = WriterTurnV1(
                 action_id=port.action_id,
                 context_revision_ref=port.context_revision_ref,
-                request_ref=request_ref,
-                prepared_request_ref=prepared_ref,
                 raw_output_ref=raw_output_ref,
                 usage=usage,
                 adapter_trace=trace or None,

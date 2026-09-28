@@ -103,25 +103,19 @@ def logical_id(value: str, label: str = "logical id") -> str:
     return value
 
 
-def _action_id(value: str) -> str:
-    """Validate a stable logical action identifier, not an event hash."""
-    value = logical_id(value, "action id")
-    if _HASH_RE.fullmatch(value):
-        raise ValueError("action id must be logical, not a SHA-256 hash")
-    return value
+def action_id_for_ordinal(lineage_id: str, ordinal: int) -> str:
+    """Return the deterministic action identity for one lineage ordinal."""
+    logical_id(lineage_id, "lineage id")
+    if type(ordinal) is not int or ordinal < 0:
+        raise ValueError("action ordinal must be a nonnegative integer")
+    return f"{lineage_id}:action:{ordinal}"
 
 
-def _tool_result_id(value: str) -> str:
-    """Validate a stable logical tool-result identifier, not an event hash.
-
-    Tool results are indexed by their logical result ID (the call/ordinal
-    identity assigned by the rollout).  The result event's SHA-256 is a
-    separate reference and must not be substituted here.
-    """
-    value = logical_id(value, "tool result id")
-    if _HASH_RE.fullmatch(value):
-        raise ValueError("tool result id must be logical, not a SHA-256 hash")
-    return value
+def latest_action_id(lineage_id: str, action_count: int) -> str | None:
+    """Return the latest action identity, or None when no writer turn exists."""
+    if type(action_count) is not int or action_count < 0:
+        raise ValueError("action count must be a nonnegative integer")
+    return None if action_count == 0 else action_id_for_ordinal(lineage_id, action_count - 1)
 
 
 def _json_value(value: Any) -> Any:
@@ -883,7 +877,7 @@ class EnvironmentStateV1(Record):
         }
     )
     HISTORY_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"head", "seq", "branch_base", "imported_refs", "action_ids", "tool_result_ids"}
+        {"head", "seq", "branch_base", "imported_refs", "action_count", "tool_result_count"}
     )
     CONTINUATION_FIELDS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -957,8 +951,9 @@ class EnvironmentStateV1(Record):
             raise ValueError("nonempty history must have a positive sequence")
         validate_hash(self.history["branch_base"], optional=True)
         _hash_tuple(self.history["imported_refs"])
-        _logical_tuple(self.history["action_ids"], _action_id, "action_ids")
-        _logical_tuple(self.history["tool_result_ids"], _tool_result_id, "tool_result_ids")
+        for field in ("action_count", "tool_result_count"):
+            if type(self.history[field]) is not int or self.history[field] < 0:
+                raise ValueError(f"{field} must be a nonnegative integer")
         next_call = self.continuation["next_call"]
         if type(next_call) is not int or next_call < 0:
             raise ValueError("invalid continuation cursor")
@@ -971,12 +966,8 @@ class EnvironmentStateV1(Record):
         for call in queue:
             if not isinstance(call, Mapping):
                 raise TypeError("tool_queue entries must be objects")
-            legacy_fields = {"call_id", "name", "arguments"}
-            rejection_fields = {*legacy_fields, "rejection"}
-            if frozenset(call) not in {
-                frozenset(legacy_fields),
-                frozenset(rejection_fields),
-            }:
+            required_fields = {"call_id", "name", "arguments", "rejection"}
+            if frozenset(call) != frozenset(required_fields):
                 raise ValueError("invalid tool call shape")
             call_id = logical_id(call["call_id"], "tool call id")
             if call_id in call_ids:
@@ -985,16 +976,15 @@ class EnvironmentStateV1(Record):
             logical_id(call["name"], "tool name")
             if not isinstance(call["arguments"], Mapping):
                 raise TypeError("tool arguments must be an object")
-            if "rejection" in call:
-                rejection = call["rejection"]
-                if rejection is not None and not isinstance(rejection, str):
-                    raise TypeError("tool rejection must be text or null")
-                if rejection is not None and (
-                    call["name"] != "invalid_call" or call["arguments"] != {}
-                ):
-                    raise ValueError("rejected calls must use invalid_call and empty arguments")
-                if rejection is None and call["name"] == "invalid_call":
-                    raise ValueError("invalid_call requires a rejection")
+            rejection = call["rejection"]
+            if rejection is not None and not isinstance(rejection, str):
+                raise TypeError("tool rejection must be text or null")
+            if rejection is not None and (
+                call["name"] != "invalid_call" or call["arguments"] != {}
+            ):
+                raise ValueError("rejected calls must use invalid_call and empty arguments")
+            if rejection is None and call["name"] == "invalid_call":
+                raise ValueError("invalid_call requires a rejection")
         validate_hash(self.continuation["author_request"], optional=True)
         refs = self.continuation["check_requests"]
         if not isinstance(refs, tuple):

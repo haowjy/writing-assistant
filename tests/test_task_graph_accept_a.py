@@ -89,8 +89,6 @@ class WriterAndToolInputForgeryTests(unittest.TestCase):
         cases = (
             ("action_id", ProjectionError),
             ("context_revision_ref", ProjectionError),
-            ("request_ref", AdapterContractError),
-            ("prepared_request_ref", ProjectionError),
         )
         for field, error_type in cases:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
@@ -193,7 +191,7 @@ class PublishedEventAndStateForgeryTests(unittest.TestCase):
             return replace(state, continuation=continuation)
 
         def action_history(state):
-            history = {**state.history, "action_ids": ("forged:action:99",)}
+            history = {**state.history, "action_count": state.history["action_count"] + 1}
             return replace(state, history=history)
 
         def files(state):
@@ -307,14 +305,14 @@ class PublishedEventAndStateForgeryTests(unittest.TestCase):
             ),
             (
                 "action_history",
-                "state.history.action_ids[0]",
+                "state.history.action_count",
                 lambda target, state: action_history(state),
             ),
             (
                 "tool_result_history",
-                "state.history.tool_result_ids[0]",
+                "state.history.tool_result_count",
                 lambda target, state: changed_history(
-                    state, "tool_result_ids", ("forged:tool_result:99",)
+                    state, "tool_result_count", state.history["tool_result_count"] + 1
                 ),
             ),
             (

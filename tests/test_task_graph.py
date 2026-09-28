@@ -49,8 +49,8 @@ class TaskGraphRecordsTest(unittest.TestCase):
                 "seq": 0,
                 "branch_base": None,
                 "imported_refs": (),
-                "action_ids": (),
-                "tool_result_ids": (),
+                "action_count": 0,
+                "tool_result_count": 0,
             },
             context_ref=H,
             requirements_ref=H,
@@ -358,14 +358,19 @@ class TaskGraphRecordsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ContextRevisionV1.from_dict({**context.to_dict(), "content_hash": None})
 
-    def test_history_uses_logical_ids_and_queue_call_ids_are_unique(self):
+    def test_history_uses_nonnegative_counts_and_queue_rejection_is_required(self):
         state = self.state()
         history = {
             **state.history,
-            "action_ids": ("r1:action:0",),
-            "tool_result_ids": ("r1:tool_result:0",),
+            "action_count": 1,
+            "tool_result_count": 1,
         }
-        call = {"call_id": "call-1", "name": "write_file", "arguments": {}}
+        call = {
+            "call_id": "call-1",
+            "name": "write_file",
+            "arguments": {},
+            "rejection": None,
+        }
         valid = EnvironmentStateV1(
             **{
                 **state.to_dict(),
@@ -373,14 +378,16 @@ class TaskGraphRecordsTest(unittest.TestCase):
                 "continuation": {**state.continuation, "tool_queue": (call,)},
             }
         )
-        self.assertEqual(valid.history["action_ids"], ("r1:action:0",))
-        legacy_invalid = {"call_id": "call-2", "name": "invalid_call", "arguments": {}}
-        EnvironmentStateV1(
-            **{
-                **state.to_dict(),
-                "continuation": {**state.continuation, "tool_queue": (legacy_invalid,)},
-            }
-        )
+        self.assertEqual(valid.history["action_count"], 1)
+        self.assertEqual(valid.history["tool_result_count"], 1)
+        legacy = {"call_id": "call-2", "name": "write_file", "arguments": {}}
+        with self.assertRaises(ValueError):
+            EnvironmentStateV1(
+                **{
+                    **state.to_dict(),
+                    "continuation": {**state.continuation, "tool_queue": (legacy,)},
+                }
+            )
         rejected = {
             "call_id": "call-3",
             "name": "invalid_call",
@@ -407,18 +414,18 @@ class TaskGraphRecordsTest(unittest.TestCase):
                     }
                 )
         with self.assertRaises(ValueError):
-            EnvironmentStateV1(**{**state.to_dict(), "history": {**history, "action_ids": (H,)}})
-        with self.assertRaises(ValueError):
-            EnvironmentStateV1(
-                **{**state.to_dict(), "history": {**history, "tool_result_ids": (H,)}}
-            )
-        with self.assertRaises(ValueError):
             EnvironmentStateV1(
                 **{
                     **state.to_dict(),
                     "continuation": {**state.continuation, "tool_queue": (call, call)},
                 }
             )
+        for field in ("action_count", "tool_result_count"):
+            for malformed in (-1, True, "1"):
+                with self.subTest(field=field, malformed=malformed), self.assertRaises(ValueError):
+                    EnvironmentStateV1(
+                        **{**state.to_dict(), "history": {**history, field: malformed}}
+                    )
 
     def test_acyclic_record_round_trip(self):
         message = MessageV1(content=("hello",), origin="author")
