@@ -17,7 +17,6 @@ from tests.task_graph_rollout_fixtures import (
     run_slice,
 )
 from writing_agent.task_graph import ContextContentV1, ContextRevisionV1, MessageV1
-from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import ProjectionError
 
 
@@ -31,15 +30,16 @@ class PrivacyAcceptanceTests(unittest.TestCase):
         fixture = build_rollout_fixture(self.root / "feedback", mode="feedback")
         ports = []
         requests = []
-        old_port_input = fixture.env.port_input
+        old_step_input = fixture.env.step_input
 
-        def capture_port_input(view, directive):
-            port = old_port_input(view, directive)
+        def capture_step_input(runtime):
+            result = old_step_input(runtime)
+            port = result[2]
             if port is not None:
                 ports.append(port)
-            return port
+            return result
 
-        fixture.env.port_input = capture_port_input
+        fixture.env.step_input = capture_step_input
 
         backend = fixture.gatherers.sampler.backend
 
@@ -158,8 +158,7 @@ class PrivacyAcceptanceTests(unittest.TestCase):
 
         def request_after_open() -> None:
             opened = fixture.env.open(forged_root)
-            view = fixture.env.verify(opened)
-            built_requests.append(fixture.env.port_input(view, next_step(view)))
+            built_requests.append(fixture.env.step_input(opened)[2])
 
         with self.assertRaises(ProjectionError) as caught:
             request_after_open()

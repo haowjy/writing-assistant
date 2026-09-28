@@ -32,8 +32,7 @@ def _call(name: str, arguments: dict[str, Any], raw_id: str = "accept-a") -> dic
 
 def _writer_turn(fixture, runtime=None) -> WriterTurnV1:
     runtime = fixture.runtime if runtime is None else runtime
-    view = fixture.env.verify(runtime)
-    port = fixture.env.port_input(view, next_step(view))
+    port = fixture.env.step_input(runtime)[2]
     return make_gatherers(fixture).sampler.turn(port)
 
 
@@ -143,8 +142,7 @@ class WriterAndToolInputForgeryTests(unittest.TestCase):
                     )
                 fixture = build_rollout_fixture(Path(directory) / "store", **options)
                 runtime = run_slice(fixture, until=lambda step: step.kind == "execute_tool")
-                view = fixture.env.verify(runtime)
-                port = fixture.env.port_input(view, next_step(view))
+                port = fixture.env.step_input(runtime)[2]
                 valid = fixture.gatherers.tools.observe(port)
                 published_before = fixture.store.read_head(fixture.lineage_id)
                 dispatch = dict(valid.dispatch)
@@ -413,7 +411,7 @@ class PublishedEventAndStateForgeryTests(unittest.TestCase):
                         fixture, until=lambda step: step.kind == "await_author_reply"
                     )
                     view = fixture.env.verify(runtime)
-                    port = fixture.env.port_input(view, next_step(view))
+                    port = fixture.env.step_input(runtime)[2]
                     reply = fixture.gatherers.author.reply(port)
                     inputs = (
                         replace(reply, utterance="The author script never said this."),
@@ -424,7 +422,7 @@ class PublishedEventAndStateForgeryTests(unittest.TestCase):
                         fixture, until=lambda step: step.kind == "await_check_result"
                     )
                     view = fixture.env.verify(runtime)
-                    port = fixture.env.port_input(view, next_step(view))
+                    port = fixture.env.step_input(runtime)[2]
                     result = fixture.gatherers.evaluator.result(port)
                     inputs = (
                         replace(result, status="fail" if result.status == "pass" else "pass"),

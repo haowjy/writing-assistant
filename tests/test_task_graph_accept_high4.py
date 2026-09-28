@@ -8,7 +8,6 @@ from dataclasses import replace
 from pathlib import Path
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, make_gatherers, run_slice
-from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError, ProjectionError
 from writing_agent.task_graph_gate import derive_input
 from writing_agent.task_graph_ports import EnvironmentResult, EnvironmentSnapshot, SampleResult
@@ -137,7 +136,7 @@ class HighFourAcceptanceTests(unittest.TestCase):
             with self.subTest(case=name):
                 fixture, runtime = self.at_tool(tool_name, arguments, f"gate-{name}")
                 view = fixture.env.verify(runtime)
-                port = fixture.env.port_input(view, next_step(view))
+                port = fixture.env.step_input(runtime)[2]
                 honest = fixture.gatherers.tools.observe(port)
                 transition = derive_input(view, honest, fixture.env.reader)
                 before_files = dict(port.files)
@@ -217,7 +216,7 @@ class HighFourAcceptanceTests(unittest.TestCase):
     def test_X6_parentless_midrun_root_is_rejected_by_entry_fixed_point(self) -> None:
         fixture = build_rollout_fixture(self.root / "X6-parentless", mode="none")
         view = fixture.env.verify(fixture.runtime)
-        port = fixture.env.port_input(view, next_step(view))
+        port = fixture.env.step_input(fixture.runtime)[2]
         turn = fixture.gatherers.sampler.turn(port)
         transition = derive_input(view, turn, fixture.env.reader)
         for artifact in transition.artifacts:

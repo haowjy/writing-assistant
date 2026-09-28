@@ -13,7 +13,12 @@ from unittest.mock import patch
 from tests.task_graph_fixtures import make_entry_fixture, make_outcome_fixture
 from tests.test_task_graph_derive_author import _answer_rule, _answered_reply
 from tests.test_task_graph_derive_writer import call, make_turn
-from writing_agent.task_graph import EventV1, domain_hash, load_canonical_json
+from writing_agent.task_graph import (
+    EventV1,
+    MaterializedContextV1,
+    domain_hash,
+    load_canonical_json,
+)
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_composition import RuntimeSession
@@ -30,6 +35,7 @@ from writing_agent.task_graph_environment import (
     AuthorInput,
     CheckInput,
     RolloutEnvironment,
+    RuntimeHandle,
     SamplerInput,
     ToolInput,
 )
@@ -390,8 +396,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.fixture.graph.policy,
         )
         runtime = environment.open(self.entry)
-        view = environment.verify(runtime)
-        self.assertIsInstance(environment.port_input(view, next_step(view)), SamplerInput)
+        self.assertIsInstance(environment.step_input(runtime)[2], SamplerInput)
 
         backend.descriptor = PortDescriptorV1("sampling", "altered-backend", "1")
         with self.assertRaises(AdapterContractError):
@@ -537,9 +542,9 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.assertEqual(first_checkpoint.artifact_refs, ())
 
             before_verify = counts.copy()
-            verified = self.environment.verify(first.runtime)
+            self.environment.verify(first.runtime)
             self.assertEqual(counts, before_verify)
-            port = self.environment.port_input(verified, first.directive)
+            port = self.environment.step_input(first.runtime)[2]
             self.assertIsInstance(port, ToolInput)
             queued = port.queue_entry
             observation = ToolObservationV1(
@@ -636,7 +641,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         )
         requested = env.commit(writer_step.runtime, request_author)
         author_view = env.verify(requested.runtime)
-        author_port = env.port_input(author_view, requested.directive)
+        author_port = env.step_input(requested.runtime)[2]
         self.assertIsInstance(author_port, AuthorInput)
         request_ref = requested.runtime.state.continuation["author_request"]
         fixture.reader.private[request_ref] = env.reader.artifact(request_ref, private=True)
@@ -663,8 +668,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             event_kind="external_requested",
         )
         requested_checks = env.commit(final.runtime, request_checks)
-        check_view = env.verify(requested_checks.runtime)
-        check_port = env.port_input(check_view, requested_checks.directive)
+        check_port = env.step_input(requested_checks.runtime)[2]
         self.assertIsInstance(check_port, CheckInput)
         check = fixture.graph.node(fixture.node_id).checks[check_port.request["check_id"]]
         family = next(
@@ -760,7 +764,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         private_ledger = store.get_artifact(runtime.state.requirements_ref, private=True)
         self.assertIn(CANARY, repr(private_ledger))
         view = env.verify(runtime)
-        sampler = env.port_input(view, next_step(view))
+        sampler = env.step_input(runtime)[2]
         self.assertIsInstance(sampler, SamplerInput)
         self.assertNotIn(CANARY, repr(sampler))
 
@@ -770,8 +774,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             calls=(call("read_file", {"path": "draft.txt"}, "private-safe-read"),),
         )
         writer_step = env.commit(runtime, turn)
-        tool_view = env.verify(writer_step.runtime)
-        tool_input = env.port_input(tool_view, writer_step.directive)
+        tool_input = env.step_input(writer_step.runtime)[2]
         self.assertIsInstance(tool_input, ToolInput)
         self.assertNotIn(CANARY, repr(tool_input))
         self.assertEqual(
@@ -823,8 +826,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         )
         self.assertEqual(started.state.position["lineage_id"], spec.members[0].member_id)
         self.assertEqual(self.store.read_head(spec.members[0].member_id) is not None, True)
-        view = self.environment.verify(started)
-        sampler = self.environment.port_input(view, next_step(view))
+        sampler = self.environment.step_input(started)[2]
         self.assertIsInstance(sampler, SamplerInput)
         self.assertEqual(sampler.writer_seed, spec.members[0].writer_seed)
         self.assertEqual(sampler.model_ref, spec.policy["model_ref"])
@@ -899,30 +901,23 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.environment.open_head(self.fixture.params.lineage_id)
         self.assertEqual(self.environment.open(self.entry).checkpoint_id, self.entry)
 
-    def test_candidate_view_cannot_reach_a_port(self):
+    def test_step_input_rejects_an_unpublished_candidate(self):
         view = self.environment.verify(self.runtime)
         transition = DERIVE["WriterTurnV1"](
             view, make_turn(view, content="draft"), self.environment.reader
         )
+        context = transition.view.context
+        candidate = RuntimeHandle(
+            transition.view.checkpoint_id,
+            transition.state,
+            MaterializedContextV1(context.messages, context.tools, context.rendering),
+        )
         with self.assertRaises(ConcurrentUpdateError):
-            self.environment.port_input(transition.view, next_step(transition.view))
+            self.environment.step_input(candidate)
 
     def test_head_and_caller_error_classes_are_consistent(self):
         view = self.environment.verify(self.runtime)
-        candidate = DERIVE["WriterTurnV1"](
-            view, make_turn(view, content="candidate"), self.environment.reader
-        ).view
-        sibling = DERIVE["WriterTurnV1"](
-            view, make_turn(view, content="sibling"), self.environment.reader
-        )
-        for artifact in sibling.artifacts:
-            self.store.persist_artifact(artifact)
-        self.store.persist(sibling.event)
-        sibling_checkpoint = self.store.save_checkpoint(sibling.state, parent=view.checkpoint_id)
-        self.assertEqual(sibling_checkpoint, sibling.view.checkpoint_id)
-
         foreign_env, foreign_runtime = self._enter_alternate_policy("policy-port")
-        foreign_view = foreign_env.verify(foreign_runtime)
         wrong_state = replace(
             self.runtime,
             state=replace(
@@ -936,18 +931,8 @@ class RolloutEnvironmentTests(unittest.TestCase):
         )
         cases = (
             (
-                "unpersisted candidate",
-                lambda: self.environment.port_input(candidate, next_step(candidate)),
-                ConcurrentUpdateError,
-            ),
-            (
-                "persisted sibling",
-                lambda: self.environment.port_input(sibling.view, next_step(sibling.view)),
-                ConcurrentUpdateError,
-            ),
-            (
                 "foreign admission policy",
-                lambda: self.environment.port_input(foreign_view, next_step(foreign_view)),
+                lambda: self.environment.step_input(foreign_runtime),
                 WriterRuntimeError,
             ),
             (
@@ -966,13 +951,8 @@ class RolloutEnvironmentTests(unittest.TestCase):
                 action()
 
         committed = self.environment.commit(self.runtime, make_turn(view, content="winner"))
-        stale_cases = (
-            ("stale handle", lambda: self.environment.verify(self.runtime)),
-            ("stale view", lambda: self.environment.port_input(view, next_step(view))),
-        )
-        for label, action in stale_cases:
-            with self.subTest(case=label), self.assertRaises(ConcurrentUpdateError):
-                action()
+        with self.assertRaises(ConcurrentUpdateError):
+            self.environment.step_input(self.runtime)
         self.assertEqual(
             self.store.read_head(view.state.position["lineage_id"]), committed.commit_id
         )
@@ -1071,7 +1051,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
             self.entry, MemberStartV1(group_spec_ref=group_spec_ref, ordinal=0)
         )
         view = self.environment.verify(runtime)
-        port = self.environment.port_input(view, next_step(view))
+        port = self.environment.step_input(runtime)[2]
         expected = {
             "seed": port.writer_seed,
             "model": "pinned-model",
@@ -1228,7 +1208,7 @@ class RolloutEnvironmentTests(unittest.TestCase):
         self.assertEqual(scopes, 3)
         view = self.environment.verify(reopened)
         self.assertEqual(scopes, 4)
-        self.environment.port_input(view, next_step(view))
+        self.environment.step_input(reopened)
         self.assertEqual(scopes, 5)
         self.environment.commit(reopened, make_turn(view, content="one scope"))
         self.assertEqual(scopes, 6)

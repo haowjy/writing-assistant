@@ -64,7 +64,7 @@ class AuthorityAcceptanceTests(unittest.TestCase):
         author = self.fixture("author-text")
         runtime = run_slice(author, until=lambda directive: directive.kind == "await_author_reply")
         view = author.env.verify(runtime)
-        port = author.env.port_input(view, next_step(view))
+        port = author.env.step_input(runtime)[2]
         forged = AuthorReplyV1(
             request_ref=port.request_ref,
             status="answered",
@@ -82,7 +82,7 @@ class AuthorityAcceptanceTests(unittest.TestCase):
     def test_environment_cannot_publish_a_forged_transition_or_terminal_state(self) -> None:
         fixture = self.fixture("event-state", mode="none")
         view = fixture.env.verify(fixture.runtime)
-        port = fixture.env.port_input(view, next_step(view))
+        port = fixture.env.step_input(fixture.runtime)[2]
         turn = fixture.gatherers.sampler.turn(port)
         transition = derive_input(view, turn, fixture.env.reader)
 
@@ -117,7 +117,7 @@ class AuthorityAcceptanceTests(unittest.TestCase):
                 fixture = self.fixture(f"evaluator-{forgery}")
                 runtime = self.at_check_result(fixture)
                 view = fixture.env.verify(runtime)
-                port = fixture.env.port_input(view, next_step(view))
+                port = fixture.env.step_input(runtime)[2]
                 honest = fixture.gatherers.evaluator.result(port)
                 if forgery == "status":
                     forged = replace(honest, status="fail" if honest.status == "pass" else "pass")

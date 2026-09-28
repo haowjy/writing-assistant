@@ -9,6 +9,7 @@
   `task-graph-derive-v1`, and resume published runs through verified heads.
 - Remove the store's workspace restore/materialize/diff helpers; checkpoint persistence stays
   structural and publication or gate views perform semantic verification.
+- Use `step_input` as the sole verified environment-to-port path.
 - Store context as immutable content chains and source-linked revisions. Ordinary message
   appends belong to their source event; explicit carry, seed, drop, and compact operations
   derive directly from the active view and account for context budgets.

@@ -469,8 +469,7 @@ class GathererContractTests(unittest.TestCase):
             fixture.driver().run(fixture.runtime, max_steps=1)
         except DriverBudgetError as exc:
             runtime = exc.runtime
-        view = fixture.env.verify(runtime)
-        port = fixture.env.port_input(view, next_step(view))
+        port = fixture.env.step_input(runtime)[2]
         self.assertIsNotNone(port)
 
         class OversizeToolProvider:
@@ -490,8 +489,7 @@ class GathererContractTests(unittest.TestCase):
     def test_evaluator_evidence_rejection_remains_adapter_error_at_derive(self):
         fixture = build_rollout_fixture(self.root / "bad-evidence", mode="slice")
         runtime = run_slice(fixture, until=lambda directive: directive.kind == "await_check_result")
-        view = fixture.env.verify(runtime)
-        port = fixture.env.port_input(view, next_step(view))
+        port = fixture.env.step_input(runtime)[2]
 
         class InvalidEvidenceEvaluator:
             family = "deterministic-file-v1"
@@ -516,8 +514,7 @@ class GathererContractTests(unittest.TestCase):
         self.assertEqual(fixture.store.read_head(fixture.lineage_id), old_head)
 
         fixture = build_rollout_fixture(self.root / "asymmetry-alternative", mode="none")
-        view = fixture.env.verify(fixture.runtime)
-        port = fixture.env.port_input(view, next_step(view))
+        port = fixture.env.step_input(fixture.runtime)[2]
         turn = WriterTurnV1(
             action_id=port.action_id,
             context_revision_ref=port.context_revision_ref,
