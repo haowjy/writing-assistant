@@ -1579,14 +1579,15 @@ class _ClosureValidator:
                 if "record_type" in value.value:
                     record_type = value.value["record_type"]
                     if not isinstance(record_type, str):
-                        raise WrongRecordDomainError(
-                            f"unregistered task-graph record_type: {record_type!r}"
+                        raise ProjectionError(
+                            "event.payload_ref.record_type: task-graph record type must be a string"
                         )
                     if record_type in LEGACY_PAYLOAD_RECORD_TYPES:
                         return []
                     if record_type not in RECORD_TYPES:
-                        raise WrongRecordDomainError(
-                            f"unregistered task-graph record_type: {record_type!r}"
+                        raise ProjectionError(
+                            "event.payload_ref.record_type: unregistered task-graph record "
+                            f"type {record_type!r}"
                         )
                     try:
                         edges = list(record_reference_edges(record_type, value.value))
@@ -1610,12 +1611,9 @@ class _ClosureValidator:
                                         break
                         return edges
                     except (TypeError, ValueError) as exc:
-                        error = (
-                            ProjectionError if record_type in RECORD_TYPES else CorruptRecordError
-                        )
-                        raise error(
-                            "artifact.record_type: invalid task-graph payload record: "
-                            f"{record_type}"
+                        raise ProjectionError(
+                            "event.payload_ref: invalid task-graph payload record "
+                            f"{record_type}: {exc}"
                         ) from exc
                 if "artifact_type" in value.value:
                     return self._phase3_contract_edges(value.value, private=value.private)

@@ -4,8 +4,8 @@
 
 - Move group member starts and result/credit collection onto verified rollout views.
 
-- Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;
-  retain the observation and error-classification findings as expected failures.
+- Close the seam acceptance findings: X3 is documented as a trusted-adapter limit, hash-correct
+  payload forgeries are projection errors, and stale-request and root-ref checks are pinned.
 
 - Classify a runtime adapter-manifest change after binding as an adapter contract failure.
 

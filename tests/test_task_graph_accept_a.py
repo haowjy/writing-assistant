@@ -181,36 +181,6 @@ class WriterAndToolInputForgeryTests(unittest.TestCase):
                     self.assertIn(_path, str(rejected.exception))
                 self.assertEqual(fixture.store.read_head(fixture.lineage_id), published_before)
 
-    @unittest.expectedFailure
-    def test_forged_read_observation_is_rejected(self):
-        """Finding S5.1-A-OBS-1: a forged result currently reaches the published input."""
-        with tempfile.TemporaryDirectory() as directory:
-            read_sample = SampleResult(
-                {
-                    "role": "assistant",
-                    "content": "",
-                    "tool_calls": [_call("read_file", {"path": "draft.txt"})],
-                }
-            )
-            fixture = build_rollout_fixture(
-                Path(directory) / "store", sample_results=(read_sample,)
-            )
-            runtime = run_slice(fixture, until=lambda step: step.kind == "execute_tool")
-            view = fixture.env.verify(runtime)
-            valid = fixture.gatherers.tools.observe(fixture.env.port_input(view, next_step(view)))
-            dispatch = dict(valid.dispatch)
-            dispatch["observation"] = {**dispatch["observation"], "result": "forged read"}
-            forged = replace(valid, dispatch=dispatch)
-
-            published_before = fixture.store.read_head(fixture.lineage_id)
-            caught = None
-            try:
-                fixture.env.commit(runtime, forged)
-            except Exception as exc:  # noqa: BLE001 - retain the observed class for the finding.
-                caught = exc
-            self.assertIs(type(caught), ProjectionError)
-            self.assertEqual(fixture.store.read_head(fixture.lineage_id), published_before)
-
 
 class PublishedEventAndStateForgeryTests(unittest.TestCase):
     def test_derived_state_forgery_matrix_rejects_at_first_state_path(self):

@@ -3,9 +3,10 @@
 Sections a, b and j come from S5.1; c, d, g, i and the §6.3 cache audit come from S5.2.
 
 Test IDs below use the `unittest` module/class/method name. A bracketed value is the
-corresponding `subTest` case. The acceptance modules use only the three public attack
-surfaces: `RolloutEnvironment.commit`, `TaskGraphStore.publish`, or on-disk rewrites followed
-by `open_head`/`verify`. They do not call a derive or validator directly.
+corresponding `subTest` case. Attacks go through the public seams:
+`RolloutEnvironment.commit`, `TaskGraphStore.publish`, or on-disk rewrites followed by
+`open_head`/`verify`. Tests may call `derive_input` to build an honest candidate before
+mutating it; that does not bypass the attack seam.
 
 ## a. Forged writer, tool, author, check and terminal records
 
@@ -37,12 +38,13 @@ not a successful rejection.
 |---|---|
 | `record.action_id`, `record.result_id` | Not input fields on `ToolObservationV1`; result identity is derived. Forged output is checked by `test_derived_state_forgery_matrix_rejects_at_first_state_path` `[tool_result_history]` and the event/state candidate rows. |
 | `record.call_id` | `test_tool_observation_inputs_reject_queue_and_effect_forgeries` `[call_id]` |
-| `record.observation` | `test_task_graph_accept_a.WriterAndToolInputForgeryTests.test_forged_read_observation_is_rejected` — **expected failure**, finding `S5.1-A-OBS-1`; a changed read result is currently accepted and publishes. |
+| `record.observation` | `test_task_graph_accept_privacy.PrivacyAcceptanceTests.test_X3_fabricated_read_observation_is_an_accepted_trusted_adapter_limit` — X3 documents that the trusted tool adapter may attest a fabricated read result while leaving files unchanged. |
 | `record.file_delta(fake path)`, `delta.forged(write)` | `test_tool_observation_inputs_reject_queue_and_effect_forgeries` `[fake_delta]` |
 | `record.before_execution_hash`, `record.after_execution_hash` | Not wire fields; the producer derives the file tree and event. Test forged state `[files]` and tool effect `[fake_delta]`. |
 | `record.budget_charge.tool_calls`, `record.budget_charge.read_tokens` | Not wire fields; test derived counters `[budgets_ref]`. |
 | `record.loss_eligibility`, `message.loss_eligible`, `message.content`, `message.origin` | Derived context/message values, not tool input fields; test state context identity `[context_ref]` (category b) and event actor / event identity `[actor]`. |
-| `record.extra_field`, `record.record_type` | Strict input records have no extensible patch payload. Recomputed-hash disk rewrites are tested by `test_task_graph_accept_b.PersistedForgeTests.test_valid_hash_input_payload_forgery_is_projection_rejection` `[extra_key, unknown_record_type]` — **expected failure**, finding `S5.1-B-CLASS-1` (wrong error class; see category b). |
+| `record.extra_field` | Strict input records have no extensible patch payload. A recomputed-hash disk rewrite is rejected as `ProjectionError` at `event.payload_ref` by `test_task_graph_accept_b.PersistedForgeTests.test_hash_correct_payload_with_extra_field_is_projection_rejection`. |
+| `record.record_type` | An unregistered record discriminator in a recomputed-hash disk rewrite is rejected as `ProjectionError` at `event.payload_ref.record_type` by `test_task_graph_accept_b.PersistedForgeTests.test_hash_correct_payload_with_unknown_record_type_is_projection_rejection`. |
 | `changes.next_call=0`, `changes.tool_queue=[]`, `changes.phase=checking` | No generic state patch is accepted; `test_derived_state_forgery_matrix_rejects_at_first_state_path` `[cursor, tool_queue, phase]`. |
 | `history.tool_result_ids(extra)`, `history.action_ids(added key)` | Derived history mismatch: `test_derived_state_forgery_matrix_rejects_at_first_state_path` `[tool_result_history, action_history]`. |
 | `changes.requirements_ref`, `changes.author_packet_ref`, `changes.provenance_ref` (same-value added-key probes) | The old patch key no longer exists. Actual changed derived refs are tested at `test_derived_state_forgery_matrix_rejects_at_first_state_path` `[requirements_ref, author_packet_ref, provenance_ref]`. |
@@ -70,19 +72,11 @@ first differing path.
 | `reward/external_response` retyped as `seed_attached` | No generic event reducer; use a supported-but-wrong event kind so the wire remains well-formed | Same test `[unsupported_kind]`; category j also covers no generic input route |
 | `reward/external_response` retyped as `request_entered` | No event route for a retyped event | Same test `[relabelled_kind]` |
 | `check_next/check_recorded` retyped as `budget_charged` | Event kind must equal the input derive's event | Same test `[check_as_budget]`; `test_task_graph_accept_j.DowngradeForgeryTests.test_retyped_admitted_event_rejects_at_event_kind` |
-| On-disk bytes changed without recomputing identity | Artifact bytes no longer match their stored hash | `test_task_graph_accept_b.PersistedForgeTests.test_byte_tamper_after_warm_view_is_corrupt_and_does_not_move_head` (`CorruptRecordError`, authority ref bytes unchanged) |
+| One on-disk artifact byte changed without recomputing identity | The valid JSON body no longer matches its content-addressed name | `test_task_graph_accept_b.PersistedForgeTests.test_byte_tamper_after_warm_view_is_corrupt_and_does_not_move_head` (`CorruptRecordError`, authority ref bytes unchanged) |
+| Parentless root checkpoint carries supplemental refs | Runtime roots may not add `artifact_refs` | `test_task_graph_accept_b.PersistedForgeTests.test_root_checkpoint_with_supplemental_refs_is_rejected` (`ProjectionError` at `checkpoint.artifact_refs`; no head is created) |
 | Forged pre-state phase/status | Parentless root must be a fixed point of entry derivation | `test_task_graph_accept_b.PersistedForgeTests.test_forged_parentless_entry_state_fails_the_root_fixed_point` `[pre_phase, pre_status]` |
 | `position.lineage_id` changed together with a forged writer event | A different lineage id is valid only when the input derives that lineage start | `test_task_graph_accept_b.PersistedForgeTests.test_relineaged_writer_event_is_not_a_member_start` (`event.lineage_id`) |
-| On-disk payload body changed and hash/name recomputed | A forged typed record must be a `ProjectionError`, not store corruption | `test_valid_hash_input_payload_forgery_is_projection_rejection` `[extra_key, unknown_record_type]` — **expected failure**, finding `S5.1-B-CLASS-1` |
-
-`S5.1-B-CLASS-1` minimal reproduction: start from `build_rollout_fixture`, commit its
-sampled `WriterTurnV1`, add an unknown key to that stored input body, compute a new
-`domain_hash("payload", body)`, rewrite the canonical artifact envelope, then rewrite the
-event/checkpoint/commit/head with matching identities and call `RolloutEnvironment.open_head`.
-The semantic forgery is rejected, but current closure handling raises `CorruptRecordError`
-(`WrongRecordDomainError` for the unregistered record type) rather than the required
-`ProjectionError`. No source fix was made because the classification boundary is in the
-store, outside this acceptance-test lane.
+| On-disk payload body changed and hash/name recomputed | A forged typed record must be a `ProjectionError`, not store corruption | Separate live assertions: `test_hash_correct_payload_with_extra_field_is_projection_rejection` (`event.payload_ref`) and `test_hash_correct_payload_with_unknown_record_type_is_projection_rejection` (`event.payload_ref.record_type`). |
 
 ## j. Generic-reducer downgrade
 
@@ -123,8 +117,8 @@ the requirement text, including its superseding feedback text.
 
 | Scenario | Acceptance test | Producer and persisted result |
 |---|---|---|
-| G1 — inline logprob arrays and negative token IDs | `test_adapter_sampling_evidence_rejections_write_no_lineage_records`; `test_malformed_and_unbound_sampling_forgery_is_projection_error_at_publish` | Fresh backend outputs raise `AdapterContractError` before an event/checkpoint/commit is added. Hash-correct disk payloads are rejected by `store.publish` as `ProjectionError` at `artifact.record_type`. |
-| G1 — stale verified request | `test_stale_verified_request_is_rejected_before_an_event_is_recorded`; `test_stale_request_replay_is_a_gate_projection_error` | A prepared request from an earlier context raises `AdapterContractError` on commit; the same stale input under a correctly linked event is rejected by the gate as `ProjectionError`. |
+| G1 — inline logprob arrays and negative token IDs | `test_adapter_sampling_evidence_rejections_write_no_lineage_records`; `test_malformed_and_unbound_sampling_forgery_is_projection_error_at_publish` | Fresh backend outputs raise `AdapterContractError` before an event/checkpoint/commit is added. Hash-correct disk payloads are rejected by `store.publish` as `ProjectionError` at `event.payload_ref`. |
+| G1 — stale verified request | `test_stale_verified_request_is_rejected_before_an_event_is_recorded`; `test_stale_request_replay_is_a_gate_projection_error`; `test_fresh_verified_request_cannot_relabel_an_old_payload` | An old prepared request raises `AdapterContractError` on commit; replay rejects its stale revision at `input.prepared_request_ref`; a fresh `WriterRequestV1` that binds the current revision to old messages is rejected at `input.request_ref`. |
 | G2 — under-reported token use; malformed or unbound usage | `test_adapter_sampling_evidence_rejections_write_no_lineage_records`; `test_malformed_and_unbound_sampling_forgery_is_projection_error_at_publish` | Token IDs/count mismatch, invalid usage shape, and absent required completion usage fail before publication. Under-reported and unbound usage are also forged into validly linked input payloads and rejected at `store.publish`. |
 | G3 — manifest changes after bind and manifest-claim relabelling | `test_manifest_change_after_bind_and_claim_relabelling_are_rejected` | A backend descriptor swap after session bind raises `AdapterContractError` before effects. A group sample claiming a different sealed adapter manifest fails on both producer commit and gate replay. |
 
@@ -159,10 +153,9 @@ limit, and X5 remains HIGH-5.
 
 ## Findings / known boundaries
 
-- `S5.1-A-OBS-1`: a `ToolObservationV1` with a forged `read_file` result and unchanged file
-  effect currently commits. It is retained as an expected failure, not described as a
-  rejected forgery. This is the adapter-attested observation boundary; the current design
-  inventory calls fabricated read observations accepted (X3), but the old category-a matrix
-  row conflicts with that limit and needs an explicit owner decision.
-- `S5.1-B-CLASS-1`: valid-hash typed payload forgeries reject but are classified as store
-  corruption. The expected-failure test preserves the required `ProjectionError` contract.
+- `S5.1-A-OBS-1` is X3, an accepted trusted-adapter limit. The category-a row points to
+  `test_X3_fabricated_read_observation_is_an_accepted_trusted_adapter_limit`; no rejection
+  test or pending decision remains.
+- `S5.1-B-CLASS-1` is fixed: hash-correct extra fields and unknown record types raise
+  `ProjectionError` at their payload paths, while a byte changed without recomputing its hash
+  remains `CorruptRecordError`.

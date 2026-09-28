@@ -197,11 +197,34 @@ class PersistedForgeTests(unittest.TestCase):
             head_path = fixture.store._ref_path(fixture.lineage_id)
             head_before = head_path.read_bytes()
             budget_path = fixture.store._artifact_path(result.runtime.state.budgets_ref, False)
-            budget_path.write_bytes(b"not canonical bytes")
+            damaged = bytearray(budget_path.read_bytes())
+            marker = b'"writer_turns":'
+            index = damaged.index(marker) + len(marker)
+            self.assertIn(damaged[index], b"0123456789")
+            damaged[index] = ord("9") if damaged[index] != ord("9") else ord("8")
+            budget_path.write_bytes(damaged)
 
             with self.assertRaises(CorruptRecordError):
                 fixture.env.open_head(fixture.lineage_id)
             self.assertEqual(head_path.read_bytes(), head_before)
+
+    def test_root_checkpoint_with_supplemental_refs_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = build_rollout_fixture(Path(directory) / "store")
+            root = fixture.store.load_checkpoint(fixture.runtime.checkpoint_id)
+            forged = CheckpointV1(
+                state=root.state,
+                event_head=root.event_head,
+                artifact_refs=(root.state.versions_ref,),
+            )
+            fixture.store._record_path("checkpoints", forged.identity()).write_bytes(
+                canonical_bytes(forged)
+            )
+
+            with self.assertRaises(ProjectionError) as rejected:
+                fixture.env.open(forged.identity())
+            self.assertIn("checkpoint.artifact_refs", str(rejected.exception))
+            self.assertIsNone(fixture.store.read_head(fixture.lineage_id))
 
     def test_forged_parentless_entry_state_fails_the_root_fixed_point(self):
         mutations = (
@@ -270,51 +293,51 @@ class PersistedForgeTests(unittest.TestCase):
             self.assertIn("event.lineage_id", str(rejected.exception))
             self.assertEqual(head_path.read_bytes(), head_before)
 
-    @unittest.expectedFailure
-    def test_valid_hash_input_payload_forgery_is_projection_rejection(self):
-        """Finding S5.1-B-CLASS-1: typed-payload schema failures surface as corruption."""
-        cases = ("extra_key", "unknown_record_type")
-        for case in cases:
-            with self.subTest(forgery=case), tempfile.TemporaryDirectory() as directory:
-                donor = build_rollout_fixture(Path(directory) / "donor")
-                target = build_rollout_fixture(Path(directory) / "target")
-                parent_id = donor.runtime.checkpoint_id
-                result = donor.env.commit(donor.runtime, _writer_turn(donor))
-                event = donor.store.load_event(result.event_id)
-                _copy_immutables(donor.store.root, target.store.root)
-                payload = dict(donor.store.get_artifact(event.payload_ref))
-                if case == "extra_key":
-                    payload["newly_forged_field"] = "valid-hash"
-                else:
-                    payload["record_type"] = "WriterToolResultV2"
-                forged_payload_ref = _rewrite_payload(target, payload)
-                forged_event = replace(event, id=None, payload_ref=forged_payload_ref)
-                forged_state = replace(
-                    result.runtime.state,
-                    history={**result.runtime.state.history, "head": forged_event.id},
-                )
-                _forged_commit(target, parent_id, forged_event, forged_state)
-                head_path = target.store._ref_path(target.lineage_id)
-                head_before = head_path.read_bytes()
+    def _assert_hash_correct_payload_forgery_rejected(self, case, expected_path):
+        with tempfile.TemporaryDirectory() as directory:
+            donor = build_rollout_fixture(Path(directory) / "donor")
+            target = build_rollout_fixture(Path(directory) / "target")
+            parent_id = donor.runtime.checkpoint_id
+            result = donor.env.commit(donor.runtime, _writer_turn(donor))
+            event = donor.store.load_event(result.event_id)
+            _copy_immutables(donor.store.root, target.store.root)
+            payload = dict(donor.store.get_artifact(event.payload_ref))
+            if case == "extra_key":
+                payload["newly_forged_field"] = "valid-hash"
+            else:
+                payload["record_type"] = "WriterToolResultV2"
+            forged_payload_ref = _rewrite_payload(target, payload)
+            forged_event = replace(event, id=None, payload_ref=forged_payload_ref)
+            forged_state = replace(
+                result.runtime.state,
+                history={**result.runtime.state.history, "head": forged_event.id},
+            )
+            _forged_commit(target, parent_id, forged_event, forged_state)
+            head_path = target.store._ref_path(target.lineage_id)
+            head_before = head_path.read_bytes()
 
-                cold_gate = LineageGate()
-                cold_store = TaskGraphStore(target.store.root, verifier=cold_gate)
-                cold_env = RolloutEnvironment(
-                    cold_store,
-                    target.entry.graph,
-                    None,
-                    cold_gate,
-                    target.entry.graph.policy,
-                )
-                caught = None
-                try:
-                    cold_env.open_head(target.lineage_id)
-                except Exception as exc:  # noqa: BLE001 - retain the observed class for the finding.
-                    caught = exc
-                self.assertIs(type(caught), ProjectionError)
-                if type(caught) is ProjectionError:
-                    self.assertIn("event.payload_ref", str(caught))
-                self.assertEqual(head_path.read_bytes(), head_before)
+            cold_gate = LineageGate()
+            cold_store = TaskGraphStore(target.store.root, verifier=cold_gate)
+            cold_env = RolloutEnvironment(
+                cold_store,
+                target.entry.graph,
+                None,
+                cold_gate,
+                target.entry.graph.policy,
+            )
+            with self.assertRaises(ProjectionError) as rejected:
+                cold_env.open_head(target.lineage_id)
+            self.assertIs(type(rejected.exception), ProjectionError)
+            self.assertIn(expected_path, str(rejected.exception))
+            self.assertEqual(head_path.read_bytes(), head_before)
+
+    def test_hash_correct_payload_with_extra_field_is_projection_rejection(self):
+        self._assert_hash_correct_payload_forgery_rejected("extra_key", "event.payload_ref")
+
+    def test_hash_correct_payload_with_unknown_record_type_is_projection_rejection(self):
+        self._assert_hash_correct_payload_forgery_rejected(
+            "unknown_record_type", "event.payload_ref.record_type"
+        )
 
 
 if __name__ == "__main__":
