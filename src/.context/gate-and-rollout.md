@@ -3,10 +3,11 @@
 This file covers the code that verifies, steps and resumes a new-core lineage: `LineageGate`
 and the store's verifier port, `RolloutEnvironment`, `RolloutDriver` and the gatherers.
 The invariants (I1–I10), the layer order, wire records and derives are in
-[transition-seam.md](transition-seam.md).
+[transition-seam.md](transition-seam.md). How a group starts, collects and credits its
+members is in [group-coordination.md](group-coordination.md).
 
 Read this before writing code that calls the gate, the environment or the driver, and
-before writing a rollout test.
+before writing a rollout or acceptance test.
 
 ## Error classes
 
@@ -16,19 +17,26 @@ Catch the exact class. `CorruptRecordError` and `ConcurrentUpdateError` are both
 
 | Class | Meaning | Raised for | Caller rule |
 |---|---|---|---|
-| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a missing reference named by the input; a directive that differs from `next_step`; invalid caller-authored input (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); persisted adapter violations (`AdapterContractProjectionError` is a subclass); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
-| `CorruptRecordError` | Bytes already on disk fail their checks | Hash mismatch on read, on both the producer path (`commit`) and the gate path. Also two parentless entry checkpoints for one lineage | Stop. The store is damaged; re-deriving will not help. |
-| `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` when no head has been published | Re-open with `open_head(lineage_id)` and continue from its `next_step`. |
+| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a hash-correct payload that its codec rejects, such as an extra field or an unknown `record_type` (reported at `event.payload_ref` with the codec's message); a missing reference named by the input; a directive that differs from `next_step`; a failed derive rule that is not an adapter contract, even on a fresh commit (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); a persisted adapter violation (`AdapterContractProjectionError` is a subclass); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
+| `CorruptRecordError` | Bytes already on disk fail their checks | A byte changed without its hash being recomputed, found on read on both the producer path (`commit`) and the gate path | Stop. The store is damaged; re-deriving will not help. |
+| `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` when no head has been published | Re-open with `open_head(lineage_id)` and continue from its `next_step`. Before the first head, re-run `enter` or `open` the entry checkpoint instead. |
 | `WriterRuntimeError` | The caller has a bug | A handle whose state or context differs from its checkpoint; a checkpoint or view admitted under another graph or admission policy; a port view that differs from the gate's view | Fix the caller. |
-| `AdapterContractError` | A fresh adapter response breaks its contract | Raised by a gatherer (sample message/tool-call-array envelope, assistant role/content, usage/trace shape, logprob alignment), or by `commit` when the derive raises `AdapterContractProjectionError` | Fix the adapter. `commit` wrote nothing and the head did not move. The gatherer may have left orphan evidence artifacts, which are harmless. |
+| `AdapterContractError` | A fresh adapter response breaks its contract | A gatherer check: the sample message and tool-call-array envelope, the assistant role and content, the usage and trace shape, and logprob alignment; the tool response shape; the check contract, evaluator family and packet before `evaluate` runs, and the evidence type after. A session seal failure: the executing manifest differs from the sealed one (for example, it changed after bind) or from the adapter that `view.group` pins. Or `commit`, when a derive raises `AdapterContractProjectionError`: sampling evidence or usage, group pins, a tool effect, or evaluator evidence or status that fails verification | Fix the adapter. `commit` wrote nothing and the head did not move. The gatherer may have left orphan evidence artifacts, which are harmless. |
+| `ExecutionInfrastructureError` | The tool provider's infrastructure failed; no contract was broken | `ToolRunner`, when the provider reports a status other than `ok` | Nothing was committed. Resume from `open_head`. A group records a member that cannot finish with `collect_invalid`, never as a reward. |
 | `DriverBudgetError` | Operational: `max_steps` ran out before `done` or `halt` | `RolloutDriver.run` | Not a task outcome. `err.runtime` is the last committed handle; inspect it, or call `run` on it again. |
 
 A fresh adapter violation and the same bytes replayed from disk get different classes on
 purpose. Replay has no live adapter, so a persisted violation is a forged input.
-The `alternatives` callback is caller-controlled, not an adapter boundary: a
-`ContextOperationInputV1` it returns is caller input. A grouped lineage's foreign
-`input.policy_ref` is therefore a `ProjectionError` at that path on fresh commit and replay,
-not an `AdapterContractError`.
+
+**The class follows the rule that failed, not the author of the input.** `commit` cannot
+tell a gatherer's input from one that the caller's `alternatives` callback returned. A
+derive rule that checks an adapter contract raises `AdapterContractProjectionError`, and
+`commit` reports it as `AdapterContractError`. Every other derive rule raises plain
+`ProjectionError`, on a fresh commit as well as on replay. The context policy is a caller
+rule, because `ContextOperationInputV1` comes only from `alternatives`. A grouped lineage's
+foreign `input.policy_ref` is therefore a `ProjectionError` at that path, whether fresh or
+replayed. A `WriterTurnV1` returned by `alternatives` still meets the writer derive's
+adapter-contract rules, so its pin drift is an `AdapterContractError` on commit.
 
 ## Gate and store verifier port
 
@@ -154,8 +162,9 @@ copy can drift from the derive, or classify the same failure differently.
 |---|---|---|
 | Writer action ID | `task_graph_derive_writer.writer_action_id` | `port_input` fills `SamplerInput.action_id` |
 | Group member lookup | `task_graph_derive_writer.group_member` | `port_input` fills the sealed `writer_seed` |
-| Group sampling pins (seed, model and policy refs) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `port_input` exposes the pins; nothing producer-side checks them |
-| Writer-turn context claims (`context_revision_ref`, `context_content_hash`, rendering) | `_decode_writer_turn_sampling` in `task_graph_sampling`, for every lineage | Nothing producer-side checks them |
+| Group sampling pins (seed, model, `policy_ref` and the sealed policy refs) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `port_input` puts the pins in `SamplerInput`, and `SamplingRunner` passes them to the backend; nothing producer-side checks them |
+| Writer-turn context claims (`context_revision_ref`, `context_content_hash`, rendering) | `_decode_writer_turn_sampling` in `task_graph_sampling`, for every lineage | `port_input` sets the one `context_content_hash` from `view.context.content_ref`; nothing producer-side checks the claims |
+| Whether a message part carries sampled content (MEDIUM-1) | `_build_assistant_message` in `derive_writer` writes the `no-sampled-content` sentinel | Group segment credit skips exactly that sentinel ([group-coordination.md](group-coordination.md)) |
 | Pre-dispatch tool error | `task_graph_derive_writer.tool_dispatch_error` | `port_input` fills `ToolInput.dispatch_permitted` |
 | Usage evidence under a token limit | `sampling_usage_requirements`, inside `derive_writer_turn` | None. `SamplerInput` carries no usage requirement |
 | Scripted author reply (proposals and mandatory feedback) | `task_graph_scripted.scripted_author_reply` | `ScriptedAuthorSource.reply` returns it; `derive_author_reply` compares against it |
@@ -173,7 +182,7 @@ derive's 11 group claim keys. Drift in `policy_ref`, `model` or `context_revisio
 the gatherer and then failed the unwrapped derive call with plain `ProjectionError`. A live
 adapter that drifted therefore looked like a forgery. The same gatherer also wrote an
 unread `sampling_pins` key into the request artifact, which changed every group member's
-`request_ref`. Both are gone. Group pin drift is now `AdapterContractError` from `commit`
+`request_ref`. Both are gone. Group pin drift is `AdapterContractError` from `commit`
 when fresh, and `ProjectionError` under the gate when persisted.
 
 **The non-text-content asymmetry is intended.** Non-text assistant content from a sampler
@@ -220,16 +229,19 @@ head. A parentless checkpoint counts as the head while its lineage has no head y
   checkpoint and its context to equal the verified view's context. It checks the session
   seals and returns `gate.view`, which costs no derive at a cached head.
 - `step_input(runtime)` verifies once and returns `(view, directive, port)` in one operation
-  scope. `RolloutDriver` uses it to avoid repeating verification while building a port.
-- `port_input(view, directive)` requires `view` to be the gate's view of the published head
-  and `directive` to equal `next_step(view)`. It returns the typed port input, or `None`
-  when the directive has no external port.
+  scope. The driver uses it, so a step makes two environment calls (`step_input` and
+  `commit`) and three `gate.view` lookups, including commit validation. Each lookup is a
+  cache hit at a warm head. S7.3's scaling gate measures this path, so do not add a
+  verification call to it.
+- `port_input(view, directive)` is for callers that build a port outside the driver. It
+  requires `view` to be the gate's view of the published head and `directive` to equal
+  `next_step(view)`. It returns the typed port input, or `None` when the directive has no
+  external port.
 - `commit(runtime, input)` derives through `derive_input`, persists, calls `store.publish`
   (which re-derives under the lineage lock), then `gate.record_published`. The returned
   handle and directive come from the published view. A new commit costs two derives
-  (producer and gate) with a warm cache. Retries follow the
-  the publication handoff above. `commit_observer`, if set, sees each
-  `StepResult`.
+  (producer and gate) with a warm cache. Retries follow the publication handoff above.
+  `commit_observer`, if set, sees each `StepResult`.
 - `start_member(entry_checkpoint_id, start)` opens the shared entry checkpoint and commits
   a `MemberStartV1`. This starts a new lineage whose first commit's parent is that entry.
 
@@ -281,9 +293,46 @@ guard; task budgets live in state. Adapter and caller callbacks run outside stor
 [`task_graph_gatherers.py`](../writing_agent/task_graph_gatherers.py) holds
 `SamplingRunner`, `ToolRunner`, `ScriptedAuthorSource` and `CheckRunner`. Each takes only
 its port-input type. `SamplingRunner` and `CheckRunner` get an `ArtifactSink`
-(`put_artifact`, `put_bytes_artifact`), not the store. `CheckRunner` rejects a family mismatch
-before it calls `evaluate`. Neither module may import `task_graph_transition`, where `LineageView` lives
-(import test).
+(`put_artifact`, `put_bytes_artifact`), not the store. `CheckRunner` rejects a family
+mismatch before it calls `evaluate`. `ToolRunner` raises `ExecutionInfrastructureError`
+when the provider's infrastructure fails. Neither module may import
+`task_graph_transition`, where `LineageView` lives (import test).
+
+### Sampling requests
+
+`SamplingRunner.turn` turns a `SamplerInput` into one typed `PreparedSamplingInput`, and
+that is all `SampleBackend.sample` receives. It carries:
+- the request and prepared-request refs, and the canonical messages, tools, rendering and
+  request JSON;
+- the context revision ref and one `context_content_hash`;
+- for a group member, the sealed `writer_seed` and the model, behavior-policy, decoding,
+  tokenizer and template refs. Outside a group these are `None`.
+
+The rules:
+- **There is one content hash: `view.context.content_ref`.** `port_input` sets it, and the
+  derive binds a trace's `context_content_hash` claim to the same value. The gatherer never
+  computes its own. It once hashed messages, tools and rendering with another formula. An
+  adapter that echoed the hash it was given then failed every group sample, and no test
+  noticed, because each test forged the claim from `content_ref`.
+- **Decoding settings come only from `decoding_ref`.** The request JSON holds only the
+  messages, and the new core has no per-call extras channel. The pinned decoding artifact is
+  what the group seals and the derive binds; a second channel would let a member sample
+  under settings that nobody sealed. S7.2 removed `RuntimeRunner` and its
+  `request_extras` channel; `SamplingRunner` is the only sampling path.
+- **A backend reports what it was given.** `ScriptedSampleBackend` puts the supplied seed,
+  the pinned refs and the context claims into its trace. When the pins did not reach the
+  backend, a member was sampled with the backend's default seed, and an honest seed claim
+  failed the group binding.
+- **Context claims are bound for every lineage.** `_decode_writer_turn_sampling` compares a
+  trace's `context_revision_ref`, `context_content_hash` and rendering with the active
+  context whenever each claim is present. This is O2's present-only rule applied to every
+  lineage. When only the group binder checked these claims, a non-group commit with false
+  context claims published. `bind_group_sampling_claims` compares only the sealed policy
+  refs, `policy_ref`, seed and model. Requiring the claims to be present belongs to the
+  HIGH-5 group-binding follow-up.
+- **The member seal reads the verified view.** `RuntimeSession.require_member_seal` checks
+  the lineage against `view.group` and the executing manifest against its `adapter_ref`. It
+  never infers membership from the lineage name or reads `groups/` files.
 
 ## Resume and crashes
 
@@ -329,6 +378,35 @@ stopping at a directive, `make_gatherers` for swapping one port, `commit_observe
 overwriting `env.commit`. Changes to the fixture must be additive and generic. A lane's own
 fixtures (groups, forgeries) go in its own test module.
 
+## Acceptance suite
+
+The `tests/test_task_graph_accept_*` modules port the old runtime's forgery and boundary
+tests to the new core (design §12). Their index is
+[`tests/task_graph_acceptance_map.md`](../../tests/task_graph_acceptance_map.md): one row
+per old test or scenario, naming the new test and the mechanism that rejects it.
+
+**The mechanism rule.** An attack goes through a public seam: `RolloutEnvironment.commit`,
+`TaskGraphStore.publish`, or an on-disk rewrite followed by `open_head` or `verify`. A test
+may call `derive_input` to build an honest candidate before it forges it. It never calls a
+derive or validator to simulate the rejection itself. Each row asserts the exact error
+class and an unchanged head. A gate rejection also asserts the first differing path.
+
+**Accepted limits are asserted, not marked as expected failures.** X3 is one: a trusted
+tool adapter may attest a fabricated read observation while leaving the files unchanged,
+because the tool effect contract does not recompute observations. Its test,
+`test_X3_fabricated_read_observation_is_an_accepted_trusted_adapter_limit`, states that
+boundary. The suite has no `expectedFailure`. A decorator treats "half fixed" and "not fixed"
+alike and hides a regression of the fixed half; S5.1-B-CLASS-1 was masked this way.
+
+**To add a row:**
+1. Put the test in the `accept_*` module for its category.
+2. Attack through one of the seams above, and assert the class, the path and the head.
+3. Add the row to the map's section, with its design reference.
+4. When a finding is a decided limit rather than a bug, name it in the map's "Findings /
+   known boundaries" section and assert the limit.
+5. Run a mutation of the guard the row claims. A row whose guard can be deleted with the
+   suite still green is not coverage.
+
 ## Design deviations
 
 The code differs from the transition-seam design package in these places. The package
@@ -346,11 +424,14 @@ has not been amended, so trust the code:
   handle (§8.2).
 - **`BudgetContractV1.max_generated_tokens`** is new; see O1 in
   [transition-seam.md](transition-seam.md).
-- **`WriterTurnV1.adapter_trace` accepts optional context claims.** The
-  `context_revision_ref` claim is a typed `context_revision` edge. The universal writer-turn
-  decoder binds `context_revision_ref`, `context_content_hash` and rendering to the active
-  context for every lineage whenever each claim is present.
+- **`WriterTurnV1.adapter_trace` accepts optional context claims** (wire-v1). The
+  `context_revision_ref` claim is a typed `context_revision` edge. See "Sampling requests"
+  for how they are bound.
+- **The driver calls `step_input`**, not `verify` and then `port_input` (§8.2).
+- **An `invalid_tool_call` part without sampled content carries a sentinel** as its `raw`,
+  not a call value (§10.1).
+- **Group start receipts are derived from verified ancestry, and collect does not re-check
+  policy** (§12 row h); see [group-coordination.md](group-coordination.md).
 - **Runtime session seals use the verified group view.** `RuntimeSession.require_member_seal`
   compares `view.group` and its adapter manifest pin; it does not infer group membership from
-  the lineage name or read `groups/` files. `RolloutEnvironment` is the only caller of this
-  seal check; legacy runtime tests do not supply the new-core member view.
+  the lineage name or read `groups/` files.

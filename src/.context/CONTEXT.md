@@ -57,7 +57,8 @@ retains its smoke-evaluation and training-format workflows.
   holds the thin port adapters that turn a typed port input into a recorded input. See
   [transition-seam.md](transition-seam.md) for how to add a record or a derive and for the
   layer order. See [gate-and-rollout.md](gate-and-rollout.md) for the gate, environment,
-  driver and gatherer contracts, error classes, rule owners and resume path.
+  driver and gatherer contracts, error classes, rule owners, resume path, sampling requests
+  and the acceptance suite, and [group-coordination.md](group-coordination.md) for groups.
 - **Legacy runtime (until S7.3).** These modules remain importable for the behavior-oracle
   tests; current callers use the new core. S7.3 removes the writer, scripted runtime classes,
   checks, terminal, author validation, projection, and old replay and environment batch. Do not
@@ -122,14 +123,18 @@ retains its smoke-evaluation and training-format workflows.
   fixed visible-message summary, complete-exchange selection, immutable context
   operation evidence, and context byte accounting.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
-  resolves the sealed group environment and defines the exact member-result, decision,
-  advantage and credit records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their
-  binding rules live in `task_graph_record_contracts.py`.
-  [task_graph_group.py](../writing_agent/task_graph_group.py) creates isolated
-  seeded branches, applies the same complete member-result admission to collection
-  and reopened finalization (including sealed start receipts and sampled stops),
-  and computes group advantages plus writer-only segment credit. It never samples
-  models or emits native token masks; see [group coordination](../../docs/task-graph-groups.md).
+  resolves the sealed group environment and defines the member-result, decision,
+  advantage and credit records and the typed scripted-terminal and execution-failure
+  records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their binding rules live in
+  `task_graph_record_contracts.py`.
+  [task_graph_group.py](../writing_agent/task_graph_group.py) starts each member as its own
+  new-core lineage through `RolloutEnvironment.start_member` (a retry resumes through
+  `open_head`). It admits collected results, and results finalized after a reopen, against
+  gate-verified member views. It computes group advantages, and writer-only segment credit
+  from the view's samples. It never samples models or emits native token masks. A
+  coordinator built on a bare store still starts members through a legacy bridge until
+  S7.3. See [group-coordination.md](group-coordination.md), and
+  [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
@@ -179,7 +184,8 @@ head are already visible; identical `branch` retries use that same head-repair p
 Every non-null authority head must target a checkpoint in its named lineage. A first
 commit must start from a parentless checkpoint, which may belong to another lineage (a
 group member starts from the shared entry); later commit ancestry may not cross lineages.
-Only `branch` starts from a mid-lineage checkpoint, and a store with a verifier refuses it.
+Only `branch` starts from a mid-lineage checkpoint, and it refuses a lineage pinned to
+`task-graph-derive-v1`.
 
 Catalog records carry normalized content in `text`; local imports also preserve raw
 bytes and a text file, with hashes for both representations. Content from the imported

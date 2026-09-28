@@ -21,9 +21,14 @@ published views, never a `LineageView`. Each rule the gate enforces has one owne
 derive: producer-side code calls that exported owner and never copies the check. After a
 failure, resume a published lineage only through `open_head`, never from an in-memory handle;
 before the first head, rerun `enter` with the same parameters or open the known entry
-checkpoint. Size budgets apply to total `task_graph*` source, not to single files. Read
+checkpoint. View values are frozen all the way down: read them through `Mapping`, and
+`thaw` them before mutating or serializing. A shallow `dict(...)` copy, or a `dict` type
+check, silently mishandles the nested values. Size budgets apply to total `task_graph*`
+source, not to single files. Read
 [.context/transition-seam.md](.context/transition-seam.md) before adding a record or a
-derive, and [.context/gate-and-rollout.md](.context/gate-and-rollout.md) before writing
-code or tests that call the gate, the environment or the driver.
+derive, [.context/gate-and-rollout.md](.context/gate-and-rollout.md) before writing code or
+tests that call the gate, the environment or the driver, and
+[.context/group-coordination.md](.context/group-coordination.md) before changing how a
+group starts, collects or credits members.
 
 See [.context/CONTEXT.md](.context/CONTEXT.md) for implementation contracts and limits.
