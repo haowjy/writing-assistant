@@ -37,15 +37,14 @@ when the provider's infrastructure fails. Neither module may import
 ### Sampling requests
 
 `SamplingRunner.turn` turns a `SamplerInput` into one typed `PreparedSamplingInput`, and
-that is all `SampleBackend.sample` receives. It carries:
-- the request and prepared-request refs, and the canonical messages, tools, rendering and
-  request JSON;
+that is all `SampleBackend.sample` receives. It carries canonical messages, tools, and
+rendering, but no persisted request body or request-reference pair;
 - the context revision ref and one `context_content_hash`;
 - for a group member, the sealed `writer_seed` and the model, behavior-policy, decoding,
   tokenizer and template refs. Outside a group these are `None`.
 
 The rules:
-- **There is one content hash: `view.context.content_ref`.** `port_input` sets it, and the
+- **There is one content hash: `view.context.content_ref`.** `step_input` supplies it, and the
   derive binds a trace's `context_content_hash` claim to the same value. The gatherer never
   computes its own. It once hashed messages, tools and rendering with another formula. An
   adapter that echoed the hash it was given then failed every group sample, and no test

@@ -13,9 +13,9 @@ For model comparisons, hold tasks and budgets constant unless they are the varia
 under study. Report agent behavior and prose quality separately.
 
 The task-graph runtime uses typed input records and one pure derive per input kind. Put
-runtime behavior in the new core and keep imports downward. Stores require a semantic
-verifier for runtime publication and restore; runtime lineages must pin
-`task-graph-derive-v1`. Code steps a lineage only through `RolloutEnvironment`, and gives
+runtime behavior in the new core and keep imports downward. `TaskGraphStore` requires a
+semantic verifier at construction and uses it for runtime publication; runtime lineages
+must pin `task-graph-derive-v1`. Code steps a lineage only through `RolloutEnvironment`, and gives
 ports only typed inputs built from published views, never a `LineageView`. Each rule the
 gate enforces has one owner in its derive: producer-side code calls that exported owner
 and never copies the check. After a failure, resume a published lineage only through

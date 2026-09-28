@@ -11,7 +11,7 @@ update weights. The separate legacy evaluation and SFT APIs are unchanged.
 Construct the coordinator with the same `RolloutEnvironment` used by the members:
 
 ```python
-coordinator = GroupCoordinatorV1(environment, workers_root)
+coordinator = GroupCoordinatorV1(environment)
 spec = coordinator.seal(
     entry_checkpoint_id,
     policy=policy,
@@ -74,8 +74,9 @@ this limit as evidence that the checkpoint's lineage history was not verified.
 ## Runtime boundary
 
 Group members use the same single-event runtime core as other rollouts: typed inputs derive
-events and complete next state; the store requires the lineage gate for publication and
-restore; the `OutcomeV1` referenced by state holds check, transition, terminal, reward, and
-eligibility references. No separate runtime log is used. See
+events and complete next state; the store requires the lineage gate for publication, and
+saved checkpoints are opened through the verified environment. The `OutcomeV1` referenced by
+state holds check, transition, terminal, reward, and eligibility references. State history
+stores `action_count` and `tool_result_count`. No separate runtime log is used. See
 [context operations](task-graph-compaction.md) for the pinned context policy and safe
 compaction boundary.

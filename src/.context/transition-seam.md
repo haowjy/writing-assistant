@@ -5,10 +5,10 @@ computes the event, next state and new artifacts; the producer and verifier use 
 derive. Context content is stored as a hash chain with typed context revisions, and terminal
 status, reward and eligibility are represented by the `OutcomeV1` record.
 
-The store requires its semantic verifier for publication and restore. Runtime lineages pin
-`task-graph-derive-v1`; missing or unsupported pins are refused. Runtime stepping is owned by
-`RolloutEnvironment`, and `RolloutDriver` obtains each verified directive and typed port
-input through `step_input`. The runtime does not materialize workspaces.
+`TaskGraphStore` requires its semantic verifier at construction and uses it for publication.
+Runtime lineages pin `task-graph-derive-v1`; missing or unsupported pins are refused. Runtime
+stepping is owned by `RolloutEnvironment`, and `RolloutDriver` obtains each verified directive
+and typed port input through `step_input`. The runtime does not materialize workspaces.
 
 This file covers records, derives and layer order. Gate and environment rules are in
 [gate-and-rollout.md](gate-and-rollout.md); the driver, gatherer, resume and acceptance-test
@@ -35,7 +35,7 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 
 | Rank | Modules |
 |---|---|
-| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_operation` |
+| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_operation` |
 | 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
 | 2 | `task_graph_store` |
 | 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
@@ -75,10 +75,16 @@ Choose the module by concern:
 
 | Module | Holds |
 |---|---|
-| `task_graph_records` | New-core input and state records (`WriterTurnV1`, `ToolObservationV1`, `AuthorReplyV1`, `EvaluatorResultV1`, `ContextOperationInputV1`, `EnvironmentStepV1`, `MemberStartV1`, `ExternalInputsV1`, `AdmissionPolicyV1`, `OutcomeV1`), the registries and reference closure |
-| `task_graph` | Core environment records, the chained context records and context materialization |
+| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, `RuntimePortDescriptorV1`, and `RuntimeManifestV1`; registries and reference closure |
+| `task_graph_group_records` | Pure group result and credit `WireRecord` classes (`GroupDecisionV1`, `GroupAdvantageV1`, `GroupSegmentCreditV1`, and related records) |
+| `task_graph` | Core environment records and context materialization |
 | `task_graph_record_contracts` | Sealed contracts with binding rules: `GroupSpecV1`, `GroupMemberSpecV1`, `ContextPolicyV1`, `ExecutionVersionsV1`, `SEMANTICS_V1`, `GroupError`, `CompactionError` |
-| `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, group seeds, and runtime port/manifest descriptors |
+| `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, and group seeds |
+
+`WriterTurnV1` currently contains `action_id`, `context_revision_ref`, `raw_output_ref`,
+`usage`, `adapter_trace`, and `message`; optional trace context claims are bound when present.
+There is no separate writer-request record. `EnvironmentStateV1.history` stores nonnegative
+`action_count` and `tool_result_count`; tool-queue entries require a `rejection` field.
 
 The steps:
 

@@ -10,11 +10,11 @@ retains its smoke-evaluation and training-format workflows.
   isolated workspaces, resume identities, saved results, and fresh-reader conditions.
 - [agent.py](../writing_agent/agent.py) owns the bounded conversation/tool loop;
   [workspace.py](../writing_agent/workspace.py) owns file operations and storage limits.
-- [task_graph.py](../writing_agent/task_graph.py) owns immutable task-graph value records,
-  including context records, and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
-  owns private content-addressed persistence, typed reference closure, explicit checkpoint
-  materialization, verified restore/diff, and the atomic mutable lineage head. Runtime stepping
-  does not materialize a workspace. Runtime lineages must
+- [task_graph.py](../writing_agent/task_graph.py) owns core environment value records and
+  their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
+  owns private content-addressed persistence, typed reference closure, structural checkpoint
+  saving, and the atomic mutable lineage head. A semantic verifier is required at construction;
+  runtime commits publish through it. Runtime stepping does not materialize a workspace. Runtime lineages must
   pin `task-graph-derive-v1`; a lineage without that pin is refused at the versions
   reference, and the store has no patch-effect fallback.
   [task_graph_contracts.py](../writing_agent/task_graph_contracts.py) adds detailed
@@ -23,11 +23,14 @@ retains its smoke-evaluation and training-format workflows.
   public/private closure and rejects an unsound graph before sampling.
 - **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
   is the field-spec vocabulary, strict decoder and `WireRecord` base;
-  [task_graph_records.py](../writing_agent/task_graph_records.py),
-  [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) and
-  [task_graph_payloads.py](../writing_agent/task_graph_payloads.py) declare the records,
-  whose `REFS` derive from their annotations. The store follows those typed edges,
-  including the context graph, in the shared artifact closure.
+  [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
+  context `WireRecord`s, plus runtime port-descriptor and manifest records; context content
+  and revision records live here. Pure group record classes live in
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
+  [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
+  sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
+  provides codecs for shared payload shapes without record classes. Reference edges derive
+  from the field annotations, and the store follows them in shared closure.
   [task_graph_calls.py](../writing_agent/task_graph_calls.py) owns sampled-message intake,
   call parsing and the tool effect contract.
   [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
@@ -39,9 +42,9 @@ retains its smoke-evaluation and training-format workflows.
   entry state and root artifacts; the writer, author, outcome and context derive modules
   build each step through
   [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
-  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) wraps the
-  compaction rules unchanged, derives member starts from persisted group specs, and takes
-  named seed contexts from view ancestry rather than replay.
+  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) calls
+  `require_quiescent`, `select_context`, and `charge_budget` directly, derives member starts
+  from persisted group specs, and takes named seed contexts from view ancestry.
   [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles the derive
   registries into the one `derive_input` dispatch, re-admits from the versions-pinned
   policy, and folds typed events as the store's mandatory verifier. The gate's
@@ -59,7 +62,8 @@ retains its smoke-evaluation and training-format workflows.
   acceptance-test contracts; and [group-coordination.md](group-coordination.md) for groups.
 - **Task-graph runtime.** The transition-seam modules are the runtime. Each commit contains
   one typed input event; the same derive computes the producer transition and verifies it
-  during publication and restore. Context records carry the content chain and revisions;
+  during publication. Cold opens and resumes use `RolloutEnvironment` and the gate's verified
+  view. Context records carry the content chain and revisions;
   `OutcomeV1` carries outcome, reward and eligibility. `RolloutDriver` gets the verified
   directive and typed port input through `step_input`; there is no runtime log or workspace
   materialization. See [transition-seam.md](transition-seam.md),
@@ -144,12 +148,10 @@ Task-graph immutable objects can exist before publication, but only canonical
 `refs/<lineage>.json` head files are lineage authority. Their persisted body contains
 only `head_commit`; expected-head is a compare-and-swap request. A transaction writes
 and flushes immutable events, a full checkpoint, and its commit before atomically
-replacing the head under the lineage lock. Unreachable files are harmless orphans.
-`TaskGraphStore.restore(checkpoint_id, fresh_root)` is an explicitly invoked, verified
-materializing helper that returns the store-level workspace handle; `TaskGraphStore.materialize`
-can materialize files separately. The rollout runtime instead resumes with
-`RolloutEnvironment.open` or `open_head`, whose `RuntimeHandle` has no workspace. Neither
-runtime resume path rewinds an event log.
+replacing the head under the lineage lock. Unreachable files are harmless orphans. Checkpoint
+opening and lineage resume go through `RolloutEnvironment.open` or `open_head`; the verified
+`RuntimeHandle` contains state and context, not a workspace. The environment never rewinds an
+event log.
 
 Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
 and loaded, active, and completed sets. Closure-validated immutable objects are reused
@@ -197,10 +199,13 @@ parent total a second time.
 ## Task-graph runtime
 
 Each runtime commit stores one typed input event and its pure derive produces the successor
-state and artifacts. The same derive verifies the commit during publication and restore. The
-mandatory store verifier refuses publication and restore without a configured verifier; runtime
-lineages also pin `task-graph-derive-v1`. See the rollout and transition-seam context above for
-context-record, outcome, driver, resume, and group contracts.
+state and artifacts. The same derive verifies each commit during publication; opening a saved
+checkpoint re-admits and folds it through the gate. Store construction requires a verifier, and
+runtime lineages pin `task-graph-derive-v1`. `WriterTurnV1` pins `context_revision_ref`; optional
+adapter-trace context claims are bound when present. There is no separate writer-request record.
+`EnvironmentStateV1.history` stores nonnegative `action_count` and `tool_result_count` values.
+See the rollout and transition-seam context above for context-record, outcome, driver, resume,
+and group contracts.
 
 ## Scoring contracts
 

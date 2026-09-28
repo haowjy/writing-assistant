@@ -50,6 +50,12 @@ state holds the evolving check batch/results, transition edge, terminal status, 
 training-eligibility refs. Reward publication advances that record rather than creating a
 parallel terminal/outcome ledger.
 
+`WriterTurnV1` contains `action_id`, `context_revision_ref`, `raw_output_ref`, `usage`,
+`adapter_trace`, and `message`. Optional context claims in `adapter_trace` are bound when
+present; the context revision is the request identity, so there is no separate writer-request
+record or writer-turn request reference. `EnvironmentStateV1.history` stores nonnegative
+`action_count` and `tool_result_count`; tool-queue entries always include `rejection`.
+
 Context follows the same rule. `ContextContentV1` nodes form an immutable content chain; a
 `ContextRevisionV1` names its content head and source event. Ordinary message appends are part
 of the source event's derived state. Only explicit carry, seed, drop, and compact operations
@@ -65,22 +71,17 @@ driver gives only that allowlisted input—not a `LineageView` or store—to the
 port input, it encodes `EnvironmentStepV1.of(directive)`. The driver commits exactly one
 input before asking the controller again.
 
-`port_input(view, directive)` is also available when a caller builds a port outside the
-standard driver loop; it requires the gate's published view and its matching `next_step`.
-
 A writer's tool input contains the current file map and one queued tool call. The rollout
 `RuntimeHandle` owns no workspace and the environment does not materialize one. Callers that
-explicitly need a directory can use the lower-level `TaskGraphStore.materialize` or verified
-`restore(checkpoint_id, fresh_root)` helper; the driver never calls them. The text-tool
-boundary is not an
-OS sandbox; do not expose shell or arbitrary code execution to a writer.
+explicitly need a directory must provide it through the execution port. The text-tool
+boundary is not an OS sandbox; do not expose shell or arbitrary code execution to a writer.
 
 ## Publication and failure boundary
 
-The store requires a `CommitVerifier` for both `publish` and `restore`; `LineageGate.view`
-verifies restored checkpoints. Runtime lineages must pin `task-graph-derive-v1`. A store
-without a verifier refuses publication/restore at `store.verifier`, and an unpinned runtime
-lineage is refused at `state.versions_ref.transition_semantics`.
+`TaskGraphStore` requires a `CommitVerifier` at construction and uses it for publication.
+`RolloutEnvironment.open` and `open_head` verify saved checkpoints through `LineageGate.view`.
+Runtime lineages must pin `task-graph-derive-v1`; an unpinned lineage is refused at
+`state.versions_ref.transition_semantics`.
 
 `commit` derives and persists input artifacts, publishes through the store (which invokes
 the verifier), then returns the verified published handle. Only after publication does the
@@ -93,3 +94,9 @@ head requires reopening through `open_head`.
 For the scripted author contract, request/reply and outcome details see
 [the scripted-author lifecycle](task-graph-scripted.md). For group member starts and
 collection, see [deterministic groups](task-graph-groups.md).
+
+## Wire golden regeneration
+
+To regenerate the explicit wire fixtures, run `uv run python -m tests.task_graph_golden_fixtures`.
+Tests only compare the checked-in files; they never regenerate them. A wire change requires
+an intentional `SEMANTICS_V1` bump and a matching digest update in the pairing test.

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Pin the V1 task-graph wire shapes, binary artifact envelope, and deterministic rollout
+  identities with explicit goldens paired to `task-graph-derive-v1`; align the docs and
+  design notes with the S7.3 runtime and record ownership.
 - Restore context records as strict `WireRecord`s, derive their closure edges from one field declaration,
   and unify runtime, evaluator, and group payload codecs with their record classes. Classify malformed
   on-disk records as corruption.

@@ -18,7 +18,7 @@ Catch the exact class. `CorruptRecordError` and `ConcurrentUpdateError` are both
 
 | Class | Meaning | Raised for | Caller rule |
 |---|---|---|---|
-| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a hash-correct payload that its codec rejects (closure errors report the codec's own field path, for example `artifact.forged_field`); a missing reference named by the input; a directive that differs from `next_step`; a failed derive rule that is not an adapter contract, even on a fresh commit (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); a persisted adapter violation (`AdapterContractProjectionError` is a subclass); a lineage whose versions do not pin `task-graph-derive-v1`; `publish` or `restore` on a store without a verifier (`store.verifier`); `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
+| `ProjectionError` | The candidate or recorded input is invalid: a forgery | A derive or fold mismatch; a closure failure on the candidate's own event, checkpoint or commit; a hash-correct payload that its codec rejects (closure errors report the codec's own field path, for example `artifact.forged_field`); a missing reference named by the input; a directive that differs from `next_step`; a failed derive rule that is not an adapter contract, even on a fresh commit (for example, a context operation from `alternatives` with a foreign `input.policy_ref`); a persisted adapter violation (`AdapterContractProjectionError` is a subclass); a lineage whose versions do not pin `task-graph-derive-v1`; `record_published` for a commit that is not the head | Stop. Do not retry the same input. |
 | `CorruptRecordError` | Bytes already on disk fail their checks | A byte changed without its hash being recomputed, found on read on both the producer path (`commit`) and the gate path | Stop. The store is damaged; re-deriving will not help. |
 | `ConcurrentUpdateError` | The handle or view is not the published head | A stale handle or view, a sibling, a never-persisted candidate, a stale retry with a different input, `enter` on a lineage that already has a head, `open_head` when no head has been published | Re-open with `open_head(lineage_id)` and continue from its `next_step`. Before the first head, re-run `enter` or `open` the entry checkpoint instead. |
 | `WriterRuntimeError` | The caller has a bug | A handle whose state or context differs from its checkpoint; a checkpoint or view admitted under another graph or admission policy; a port view that differs from the gate's view | Fix the caller. |
@@ -43,14 +43,15 @@ adapter-contract rules, so its pin drift is an `AdapterContractError` on commit.
 
 [`task_graph_gate.py`](../writing_agent/task_graph_gate.py) is the one semantic verifier.
 `LineageGate` implements the store's `CommitVerifier` port (`verify_commit`, `view`) and
-adds `record_published`. The store calls `view` during restore.
+adds `record_published`. `RolloutEnvironment.open` and `open_head` use the gate's verified
+view for saved checkpoints.
 
 **One fold.** `view(store, checkpoint_id)` loads the checkpoint chain back to its root,
 then walks forward from the newest cached view (or from the root). Each step derives the
 recorded input through `derive_input`. `_step` checks `event.previous`, `event.seq`, and the
 derived event and state identity against the stored ones (I1, I2). Runtime checkpoints may
 not carry supplemental `artifact_refs`. A mismatch raises `ProjectionError` naming the first
-differing event or state path. The pre-publication check (`verify_commit`) and cold restore
+differing event or state path. The pre-publication check (`verify_commit`) and cold open
 (`view`) run the same `_step`. `verify_commit` rejects a commit of more than one event (I10).
 
 **Root fixed point and re-admission.** With no cached view, the gate re-admits the root's
@@ -62,13 +63,13 @@ content-addressed inputs, so that key is sufficient. The store root is in the ke
 admission also checks that artifacts exist in that store. A lineage can be verified only
 under the policy its root pins, because the policy is part of the root's state identity.
 
-**The store has one runtime path.** `publish` and `restore` require a configured semantic
-verifier; a verifierless store refuses both. Runtime lineages must pin exactly
-`task-graph-derive-v1`. An absent or unsupported pin is refused with
+**The store has one runtime path.** Construction requires a semantic verifier, and runtime
+publication invokes it. Runtime lineages must pin exactly `task-graph-derive-v1`. An absent
+or unsupported pin is refused with
 `ProjectionError("state.versions_ref.transition_semantics: runtime lineages require
 task-graph-derive-v1")`. `save_checkpoint` remains a structural persistence operation;
-the verifier runs when the checkpoint is published or restored. Runtime checkpoints may
-not add `artifact_refs`.
+`RolloutEnvironment.open` verifies a saved checkpoint through the gate. Runtime checkpoints
+may not add `artifact_refs`.
 
 A first commit (`expected_head is None`) must start from a parentless checkpoint. A first
 commit from a mid-lineage checkpoint would leave earlier events out of the commit chain.
@@ -142,18 +143,18 @@ re-entrant scope. Revisit only if measured Phase 9 rollouts are too slow.
 
 ## Rule owners
 
-**A derive owns every rule the gate enforces.** Producer-side code (`port_input`, the
+**A derive owns every rule the gate enforces.** Producer-side code (`step_input`, the
 gatherers, the driver) calls the exported owner and never re-implements the rule. A second
 copy can drift from the derive, or classify the same failure differently.
 
 | Rule | Owner | Producer-side use |
 |---|---|---|
-| Writer action ID | `task_graph_derive_writer.writer_action_id` | `port_input` fills `SamplerInput.action_id` |
-| Group member lookup | `task_graph_derive_writer.group_member` | `port_input` fills the sealed `writer_seed` |
-| Group sampling pins (seed, model, `policy_ref` and the sealed policy refs) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `port_input` puts the pins in `SamplerInput`, and `SamplingRunner` passes them to the backend; nothing producer-side checks them |
-| Writer-turn context claims (`context_revision_ref`, `context_content_hash`, rendering) | `_decode_writer_turn_sampling` in `task_graph_sampling`, for every lineage | `port_input` sets the one `context_content_hash` from `view.context.content_ref`; nothing producer-side checks the claims |
+| Writer action ID | `task_graph_derive_writer.writer_action_id` | `step_input` fills `SamplerInput.action_id` |
+| Group member lookup | `task_graph_derive_writer.group_member` | `step_input` fills the sealed `writer_seed` |
+| Group sampling pins (seed, model, `policy_ref` and the sealed policy refs) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `step_input` puts the pins in `SamplerInput`, and `SamplingRunner` passes them to the backend; nothing producer-side checks them |
+| Writer-turn context claims (`context_revision_ref`, `context_content_hash`, rendering) | `decode_writer_turn_sampling` in `task_graph_sampling`, for every lineage | `step_input` sets the one `context_content_hash` from `view.context.content_ref`; the derive binds each present claim |
 | Whether a message part carries sampled content (MEDIUM-1) | `_build_assistant_message` in `derive_writer` writes the `no-sampled-content` sentinel | Group segment credit skips exactly that sentinel ([group-coordination.md](group-coordination.md)) |
-| Pre-dispatch tool error | `task_graph_derive_writer.tool_dispatch_error` | `port_input` fills `ToolInput.dispatch_permitted` |
+| Pre-dispatch tool error | `task_graph_derive_writer.tool_dispatch_error` | `step_input` fills `ToolInput.dispatch_permitted` |
 | Usage evidence under a token limit | `sampling_usage_requirements`, inside `derive_writer_turn` | None. `SamplerInput` carries no usage requirement |
 | Scripted author reply (proposals and mandatory feedback) | `task_graph_scripted.scripted_author_reply` | `ScriptedAuthorSource.reply` returns it; `derive_author_reply` compares against it |
 | Directive to environment step | `EnvironmentStepV1.of(directive)` | The driver encodes environment steps with it; derives compare `step == EnvironmentStepV1.of(next_step(view))` |
@@ -169,8 +170,8 @@ to `AdapterContractError`; the gate sees them as `ProjectionError` on replay.
 derive's 11 group claim keys. Drift in `policy_ref`, `model` or `context_revision_ref` passed
 the gatherer and then failed the unwrapped derive call with plain `ProjectionError`. A live
 adapter that drifted therefore looked like a forgery. The same gatherer also wrote an
-unread `sampling_pins` key into the request artifact, which changed every group member's
-`request_ref`. Both are gone. Group pin drift is `AdapterContractError` from `commit`
+unread `sampling_pins` key into a copied request artifact, changing each group member's
+sampling identity. The gatherer-side check and copied artifact are gone. Group pin drift is `AdapterContractError` from `commit`
 when fresh, and `ProjectionError` under the gate when persisted.
 
 **The non-text-content asymmetry is intended.** Non-text assistant content from a sampler
@@ -182,7 +183,7 @@ the `alternatives` callback, or replayed from disk, never passes through the gat
 
 [`task_graph_environment.py`](../writing_agent/task_graph_environment.py) is the producer,
 persistence and port-input boundary. Its public methods are `enter`, `open`, `open_head`,
-`verify`, `step_input`, `port_input`, `commit` and `start_member`.
+`verify`, `step_input`, `commit` and `start_member`.
 
 **One store scope per public method.** Each public method is `@operation_scoped`: one outer
 `store.operation()` scope per step, closed when the method returns. Private helpers
@@ -210,7 +211,7 @@ head. A parentless checkpoint counts as the head while its lineage has no head y
   policy, and a lineage that already has a head. It runs `derive_entry`, persists the
   instance and entry artifacts, and saves the parentless root checkpoint. Nothing is
   published until the first `commit`.
-- `open(checkpoint_id)` is a cold restore: head and policy checks, a full gate fold, then a
+- `open(checkpoint_id)` is a cold open: head and policy checks, a full gate fold, then a
   handle built from the verified state and context.
 - `open_head(lineage_id)` is the resume path; see "Resume and crashes" below.
 - `verify(runtime)` checks the head, then requires the handle's state to equal its
@@ -221,10 +222,6 @@ head. A parentless checkpoint counts as the head while its lineage has no head y
   `commit`) and three `gate.view` lookups, including commit validation. Each lookup is a
   cache hit at a warm head. The S7.3 scaling check measures this path; do not add a
   verification call to it.
-- `port_input(view, directive)` is for callers that build a port outside the driver. It
-  requires `view` to be the gate's view of the published head and `directive` to equal
-  `next_step(view)`. It returns the typed port input, or `None` when the directive has no
-  external port.
 - `commit(runtime, input)` derives through `derive_input`, persists, calls `store.publish`
   (which re-derives under the lineage lock), then `gate.record_published`. The returned
   handle and directive come from the published view. A new commit costs two derives
