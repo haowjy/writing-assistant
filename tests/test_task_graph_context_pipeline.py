@@ -7,7 +7,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
+from tests.task_graph_rollout_fixtures import CANARIES, build_rollout_fixture, run_slice
 from writing_agent.task_graph import EventV1
 from writing_agent.task_graph_compaction import ContextPolicyV1
 from writing_agent.task_graph_controller import next_step
@@ -300,6 +300,44 @@ class ContextPipelineTests(unittest.TestCase):
         self.assertEqual(len(seeded.context.messages), len(original_context.messages))
         self.assertTrue(all(not message.loss_eligible for message in seeded.context.messages[2:]))
         self.assertTrue(any(source is not None for source in seeded.context.sources))
+
+    def test_queued_tool_prevents_context_operation_without_publication(self):
+        fixture = self._fixture(
+            "queued-tool",
+            sample_results=(_read_sample("read-queued"),),
+        )
+        runtime = run_slice(fixture, until=lambda directive: directive.kind == "execute_tool")
+        self.assertEqual(next_step(fixture.env.verify(runtime)).kind, "execute_tool")
+
+        policy_ref = fixture.store.put_artifact(ContextPolicyV1("drop").to_wire())
+        before_head = fixture.store.read_head(fixture.lineage_id)
+        before_events = _events(fixture)
+        with self.assertRaisesRegex(ProjectionError, "not an accepted directive alternative"):
+            fixture.env.commit(runtime, ContextOperationInputV1(policy_ref))
+
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), before_head)
+        self.assertEqual(_events(fixture), before_events)
+
+    def test_compaction_summary_excludes_private_feedback_canaries(self):
+        fixture = self._fixture("private-compaction", mode="feedback")
+        for canary in CANARIES.values():
+            self.assertIn(canary, repr(fixture.entry.reader.private))
+
+        flow = _Rollout(fixture)
+        flow.schedule(
+            3,
+            ContextPolicyV1(
+                "compact",
+                summarizer_version="visible-text-v1",
+                max_summary_chars=4000,
+            ),
+        )
+        flow.commit_at(3)
+        _before, after, event, _budget = self._assert_context_commit(flow, 3)
+        self.assertEqual(event.kind, "context_changed")
+        self.assertTrue(any(":context:" in message.origin for message in after.context.messages))
+        for canary in CANARIES.values():
+            self.assertNotIn(canary, repr(after.context.messages))
 
     def test_unicode_summary_preserves_a_complete_retained_tail(self):
         fixture = self._fixture(

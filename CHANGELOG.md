@@ -4,6 +4,7 @@
 
 - Remove the legacy task-graph runtime, move context values into the core, and make the rollout environment the final runtime entry point.
 - Require typed verification for publication and restore; refuse unpinned runtime lineages and report closure errors at codec field paths.
+- Port unmatched-exchange, queued-tool, and private-summary context-operation cases to the new core.
 - Switch task-graph callers to the rollout core, use pinned `SamplingRunner` inputs, and remove the legacy store probe.
 - Keep parser fuzz and canonical-roundtrip coverage independent of the legacy writer.
 

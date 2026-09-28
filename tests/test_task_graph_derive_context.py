@@ -12,7 +12,11 @@ from writing_agent.task_graph import (
     canonical_bytes,
     domain_hash,
 )
-from writing_agent.task_graph_compaction import ContextPolicyV1
+from writing_agent.task_graph_compaction import (
+    CompactionError,
+    ContextPolicyV1,
+    completed_exchanges,
+)
 from writing_agent.task_graph_derive_context import derive_context_operation, derive_member_start
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_records import (
@@ -152,6 +156,17 @@ class ContextDeriveTests(unittest.TestCase):
 
     def _operation(self, policy: ContextPolicyV1) -> ContextOperationInputV1:
         return ContextOperationInputV1(policy_ref=self.reader.add(policy.to_wire()))
+
+    def test_unmatched_tool_observation_is_not_a_complete_exchange(self):
+        unmatched = MessageV1(
+            role="tool",
+            origin="action:missing",
+            call_id="missing-call",
+            content=({"type": "tool_result", "call_id": "missing-call", "content": "x"},),
+        )
+
+        with self.assertRaisesRegex(CompactionError, "unmatched observation"):
+            completed_exchanges((*self.view.context.messages, unmatched))
 
     def test_carry_seed_drop_compact_and_wire_fixed_points(self):
         cases = (
