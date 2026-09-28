@@ -6,6 +6,9 @@
   views after publication, reject malformed typed payloads at write time, and pin each rollout's
   admission policy.
 
+- Validate typed payloads in their canonical wire form so canonicalizable Python inputs still
+  persist while malformed records fail at the write boundary.
+
 - Add the single-step rollout environment for verified commits, typed port inputs, and
   post-publication view caching.
 

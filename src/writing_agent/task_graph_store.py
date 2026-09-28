@@ -251,7 +251,8 @@ class TaskGraphStore:
                 raise ValueError("record_type must be a string")
             if record_type not in LEGACY_PAYLOAD_RECORD_TYPES and record_type in RECORD_TYPES:
                 try:
-                    record_reference_edges(record_type, value)
+                    body = load_canonical_json(canonical_bytes(value))
+                    record_reference_edges(record_type, body)
                 except Exception as exc:
                     raise ValueError(f"invalid task-graph payload record: {record_type}") from exc
         identity = domain_hash(domain, value)
