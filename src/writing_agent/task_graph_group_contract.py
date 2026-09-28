@@ -73,10 +73,30 @@ def validate_group_policy(policy: dict[str, str], rendering: dict[str, str]) -> 
     return dict(policy)
 
 
-def resolve_group_environment(store: TaskGraphStore, checkpoint_id: str) -> dict[str, Any]:
-    """Resolve every equality-critical entry input before admission, not only messages."""
-    checkpoint = store.load_checkpoint(checkpoint_id)
-    state = checkpoint.state
+def resolve_group_environment(
+    store: TaskGraphStore,
+    checkpoint_id: str,
+    *,
+    view: Any = None,
+    instance: Any = None,
+) -> dict[str, Any]:
+    """Resolve the equality-critical entry contract through the active runtime path."""
+    if view is None:
+        checkpoint = store.load_checkpoint(checkpoint_id)
+        state = checkpoint.state
+        instance = store.load_instance(state.instance_ref)
+        graph = admit_graph(instance, StoreArtifactResolver(store))
+        node = graph.node(state.position["node_id"])
+        context = store.load_context(state.context_ref)
+        visible_prefix_hash = context.content_hash
+        context_revision_ref = context.identity()
+        project_writer_context(store, checkpoint_id, checkpoint_id)
+    else:
+        if view.checkpoint_id != checkpoint_id:
+            raise GroupError("verified entry view differs from requested checkpoint")
+        state, node, context = view.state, view.node, view.context
+        visible_prefix_hash = context.content_ref
+        context_revision_ref = context.revision_ref
     if (
         state.position["phase"] != "ready_writer"
         or state.history["action_ids"]
@@ -84,18 +104,14 @@ def resolve_group_environment(store: TaskGraphStore, checkpoint_id: str) -> dict
     ):
         raise GroupError("entry must be an unsampled writer checkpoint")
     require_quiescent(state)
-    instance = store.load_instance(state.instance_ref)
-    graph = admit_graph(instance, StoreArtifactResolver(store))
-    node = graph.node(state.position["node_id"])
-    if node.spec.kind != "writer" or state.position["entry_contract"] != node.spec.entry_contract:
-        raise GroupError("entry does not match admitted writer node")
-    if node.reward_contract is None:
-        raise GroupError("group entry needs an admitted Phase 5 reward contract")
-    context = store.load_context(state.context_ref)
+    if (
+        node.spec.kind != "writer"
+        or state.position["entry_contract"] != node.spec.entry_contract
+        or node.reward_contract is None
+    ):
+        raise GroupError("group entry needs an admitted writer and reward contract")
     if any(message.loss_eligible for message in context.messages):
         raise GroupError("entry context includes a trainable action")
-    # Validate exact visible projection and the complete checkpoint reference closure.
-    project_writer_context(store, checkpoint_id, checkpoint_id)
     budget = store.get_artifact(state.budgets_ref)
     if not isinstance(budget, dict) or not isinstance(budget.get("limits"), dict):
         raise GroupError("entry budget is not complete")
@@ -111,13 +127,12 @@ def resolve_group_environment(store: TaskGraphStore, checkpoint_id: str) -> dict
         "node_contract_hash": contract.identity(),
         "controller_contract_hash": payload_hash(contract.completion),
         "check_contracts_hash": payload_hash([c.to_dict() for c in node.checks.values()]),
-        "reward_contract_hash": node.reward_contract.identity() if node.reward_contract else None,
+        "reward_contract_hash": node.reward_contract.identity(),
         "simulator_contract_hash": node.script.identity() if node.script else None,
-        # Admission resolves these content-addressed refs, including byte artifacts.
         "source_refs_hash": payload_hash(instance.source_refs),
         "request_refs_hash": payload_hash(instance.request_refs),
-        "visible_prefix_hash": context.content_hash,
-        "context_revision_ref": context.identity(),
+        "visible_prefix_hash": visible_prefix_hash,
+        "context_revision_ref": context_revision_ref,
         "context_messages_hash": payload_hash([m.to_dict() for m in context.messages]),
         "rendering_hash": payload_hash(context.rendering),
         "tool_schemas_hash": payload_hash(context.tools),

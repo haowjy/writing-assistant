@@ -15,9 +15,9 @@ from writing_agent.task_graph import (
     MessageV1,
     canonical_bytes,
     load_canonical_json,
-    tree_hash,
     validate_hash,
 )
+from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_group_contract import (
     GroupAdvantageV1,
     GroupDecisionV1,
@@ -30,7 +30,6 @@ from writing_agent.task_graph_group_contract import (
     validate_group_policy,
 )
 from writing_agent.task_graph_operation import operation_scoped
-from writing_agent.task_graph_projection import project_writer_context
 from writing_agent.task_graph_record_contracts import (
     POLICY_FIELDS,
     ContextPolicyV1,
@@ -38,25 +37,36 @@ from writing_agent.task_graph_record_contracts import (
     GroupMemberSpecV1,
     GroupSpecV1,
 )
+from writing_agent.task_graph_records import ContextOperationInputV1, MemberStartV1, WriterTurnV1
+from writing_agent.task_graph_rollout_env import RolloutEnvironment
+from writing_agent.task_graph_rollout_env import RuntimeHandle as RolloutRuntimeHandle
 from writing_agent.task_graph_sampling import (
-    ProjectionError,
-    SamplingEvidenceV1,
-    TrainingEligibilityBindingV1,
     bind_group_sampling_claims,
-    decode_and_bind_sampling,
 )
-from writing_agent.task_graph_store import RuntimeHandle, TaskGraphStore
+from writing_agent.task_graph_store import RuntimeHandle as LegacyRuntimeHandle
+from writing_agent.task_graph_store import TaskGraphStore
 
 
 class GroupCoordinatorV1:
     """A serializable fake runner's admission, start, collection and finalization API."""
 
-    def __init__(self, store: TaskGraphStore, workers_root: Path | str, *, session=None):
-        self.store = store
-        self.session = session
+    def __init__(
+        self,
+        store_or_environment: TaskGraphStore | RolloutEnvironment,
+        workers_root: Path | str,
+        *,
+        session=None,
+    ):
+        self.environment = (
+            store_or_environment if isinstance(store_or_environment, RolloutEnvironment) else None
+        )
+        self.store = (
+            self.environment.store if self.environment is not None else store_or_environment
+        )
+        self.session = session or (None if self.environment is None else self.environment.session)
         self.workers_root = Path(workers_root).resolve()
         self.workers_root.mkdir(parents=True, exist_ok=True)
-        self.groups_root = store.root / "groups"
+        self.groups_root = self.store.root / "groups"
         self.groups_root.mkdir(mode=0o700, exist_ok=True)
 
     @contextmanager
@@ -81,12 +91,7 @@ class GroupCoordinatorV1:
         member_count: int,
         runner_mode: str = "real",
     ) -> GroupSpecV1:
-        environment = resolve_group_environment(self.store, entry_checkpoint_id)
-        rendering = dict(
-            self.store.load_context(
-                self.store.load_checkpoint(entry_checkpoint_id).state.context_ref
-            ).rendering
-        )
+        environment, rendering = self._entry_contract(entry_checkpoint_id)
         policy = validate_group_policy(policy, rendering)
         if self.session is not None:
             self.session.require_seal(policy["adapter_ref"])
@@ -155,6 +160,22 @@ class GroupCoordinatorV1:
         finally:
             os.unlink(temporary)
 
+    def _entry_contract(self, checkpoint_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        if self.environment is None:
+            state = self.store.load_checkpoint(checkpoint_id).state
+            rendering = self.store.load_context(state.context_ref).rendering
+            return resolve_group_environment(self.store, checkpoint_id), dict(rendering)
+        view = self.environment.verify(self.environment.open(checkpoint_id))
+        return (
+            resolve_group_environment(
+                self.store,
+                checkpoint_id,
+                view=view,
+                instance=self.environment.graph.instance,
+            ),
+            dict(view.context.rendering),
+        )
+
     @operation_scoped
     def resume(self, group_id: str) -> GroupSpecV1:
         validate_hash(group_id)
@@ -165,10 +186,8 @@ class GroupCoordinatorV1:
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(spec.policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(spec.policy["context_policy_ref"]))
-        if (
-            resolve_group_environment(self.store, spec.environment["entry_checkpoint_id"])
-            != spec.environment
-        ):
+        current, _ = self._entry_contract(spec.environment["entry_checkpoint_id"])
+        if current != spec.environment:
             raise GroupError("sealed entry contract drifted")
         return spec
 
@@ -177,30 +196,69 @@ class GroupCoordinatorV1:
     ) -> None:
         if self.session is not None:
             self.session.require_seal(spec.policy["adapter_ref"])
-        candidate = resolve_group_environment(self.store, checkpoint_id)
+        candidate, rendering = self._entry_contract(checkpoint_id)
         if canonical_bytes(candidate) != canonical_bytes(spec.environment):
             raise GroupError("member entry differs from full sealed environment contract")
-        rendering = dict(
-            self.store.load_context(
-                self.store.load_checkpoint(checkpoint_id).state.context_ref
-            ).rendering
-        )
         if canonical_bytes(validate_group_policy(policy, rendering)) != canonical_bytes(
             spec.policy
         ):
             raise GroupError("member policy contract drifted")
 
     @operation_scoped
-    def start(self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]) -> RuntimeHandle:
-        """Idempotently publish one fresh branch and restore its private workspace."""
+    def start(
+        self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]
+    ) -> RolloutRuntimeHandle | LegacyRuntimeHandle:
+        """Start a member from its sealed slot, resuming a published head on retry."""
         if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
             raise GroupError("invalid member ordinal")
+        if self.environment is None:
+            return self._start_legacy(spec, ordinal, policy=policy)
+
+        self.resume(spec.group_id)
+        member = spec.members[ordinal]
+        self.assert_start_contract(spec, spec.environment["entry_checkpoint_id"], policy)
+        parent_id = spec.environment["entry_checkpoint_id"]
+        head = self.store.read_head(member.member_id)
+        receipt_path = self.groups_root / spec.group_id / f"start-{ordinal}.json"
+        if head is not None and receipt_path.exists():
+            receipt = self._start_receipt(spec, ordinal)
+            child_id, commit = receipt["start_checkpoint_id"], receipt["commit_id"]
+            runtime = self.environment.open_head(member.member_id)
+        elif head is None:
+            runtime = self.environment.start_member(
+                parent_id, MemberStartV1(spec.identity(), ordinal)
+            )
+            child_id = runtime.checkpoint_id
+            commit = self.store.read_head(member.member_id)
+        else:
+            runtime = self.environment.open_head(member.member_id)
+            child_id = runtime.checkpoint_id
+            commit = head
+        view = self.environment.verify(runtime)
+        self._assert_member_view(spec, member, view)
+        if commit is None:
+            raise GroupError("member start was not published")
+        with self._locked(spec.group_id) as directory:
+            self._receipt(
+                directory / f"start-{ordinal}.json",
+                {
+                    "member_id": member.member_id,
+                    "parent_checkpoint_id": parent_id,
+                    "start_checkpoint_id": child_id,
+                    "commit_id": commit,
+                },
+            )
+        return runtime
+
+    def _start_legacy(
+        self, spec: GroupSpecV1, ordinal: int, *, policy: dict[str, str]
+    ) -> LegacyRuntimeHandle:
+        """Temporary old-runtime bridge; S7.2 retargets its remaining caller."""
         self.resume(spec.group_id)
         member = spec.members[ordinal]
         self.assert_start_contract(spec, spec.environment["entry_checkpoint_id"], policy)
         parent_id = spec.environment["entry_checkpoint_id"]
         parent = self.store.load_checkpoint(parent_id)
-        parent_bytes = (self.store.root / "checkpoints" / f"{parent_id}.json").read_bytes()
         seed_ref = self.store.put_artifact(
             {
                 "record_type": "GroupMemberSeedsV1",
@@ -243,10 +301,6 @@ class GroupCoordinatorV1:
             parent_id, member.member_id, (event,), next_state, artifact_refs=(effect_ref, seed_ref)
         )
         child_id = self.store.load_commit(commit).checkpoint
-        if (self.store.root / "checkpoints" / f"{parent_id}.json").read_bytes() != parent_bytes:
-            raise GroupError("sealed parent checkpoint changed during branch")
-        if self.store.load_checkpoint(child_id).state.files != parent.state.files:
-            raise GroupError("member branch did not restore identical files")
         with self._locked(spec.group_id) as directory:
             self._receipt(
                 directory / f"start-{ordinal}.json",
@@ -259,42 +313,16 @@ class GroupCoordinatorV1:
             )
         destination = self.workers_root / member.member_id
         if destination.exists():
-            # A resume materialization is disposable, but a caller must not reuse a
-            # possibly modified workspace. The caller removes it explicitly first.
             raise GroupError("member workspace exists; remove disposable copy before restoring")
-        runtime = self.store.restore(child_id, destination)
-        if (
-            tree_hash(
-                {
-                    p.relative_to(destination).as_posix(): p.read_text(encoding="utf-8")
-                    for p in destination.rglob("*")
-                    if p.is_file()
-                }
-            )
-            != parent.state.tree_hash
-        ):
-            raise GroupError("materialized member workspace differs from sealed parent")
-        return runtime
+        return self.store.restore(child_id, destination)
 
-    @operation_scoped
-    def restore_member(self, spec: GroupSpecV1, ordinal: int, destination: Path) -> RuntimeHandle:
-        if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
-            raise GroupError("invalid member ordinal")
-        receipt = self._start_receipt(spec, ordinal)
-        head = self.store.read_head(spec.members[ordinal].member_id)
-        if head is None:
-            raise GroupError("member branch has no authoritative head")
-        checkpoint_id = self.store.load_commit(head).checkpoint
-        # The current head may be a partially completed rollout, but must still
-        # descend from the exact sealed member start.
-        cursor = self.store.load_checkpoint(checkpoint_id)
-        while cursor.identity() != receipt["start_checkpoint_id"]:
-            if not cursor.parents:
-                raise GroupError("member head escaped its sealed branch")
-            cursor = self.store.load_checkpoint(cursor.parents[0])
-        return self.store.restore(checkpoint_id, destination)
+    def _assert_member_view(self, spec, member, view) -> None:
+        if view.state.position["lineage_id"] != member.member_id or view.group != spec:
+            raise GroupError("verified member view differs from its sealed start")
 
     def _start_receipt(self, spec: GroupSpecV1, ordinal: int) -> dict:
+        if self.environment is None:
+            raise GroupError("member receipt verification requires a RolloutEnvironment")
         body = load_canonical_json(
             (self.groups_root / spec.group_id / f"start-{ordinal}.json").read_bytes()
         )
@@ -314,26 +342,14 @@ class GroupCoordinatorV1:
         if commit.checkpoint != body["start_checkpoint_id"] or commit.parent_commit is not None:
             raise GroupError("member start receipt misbinds branch commit")
         member = spec.members[ordinal]
-        parent = self.store.load_checkpoint(body["parent_checkpoint_id"])
-        seeds = self.store.get_artifact(child.state.rng_ref)
-        if (
-            seeds
-            != {
-                "record_type": "GroupMemberSeedsV1",
-                "group_id": spec.group_id,
-                "member_id": member.member_id,
-                "derivation": member.seed_provenance,
-                "writer_seed": member.writer_seed,
-                "environment_seed": member.environment_seed,
-                "parent_rng_ref": parent.state.rng_ref,
-            }
-            or child.state.files != parent.state.files
-            or child.state.context_ref != parent.state.context_ref
-        ):
-            raise GroupError("member start is not an exact isolated sealed branch")
-        project_writer_context(
-            self.store, body["parent_checkpoint_id"], body["start_checkpoint_id"]
-        )
+        runtime = self.environment.open_head(member.member_id)
+        view = self.environment.verify(runtime)
+        self._assert_member_view(spec, member, view)
+        chain = view.ancestry
+        while chain is not None and chain.checkpoint_id != body["start_checkpoint_id"]:
+            chain = chain.parent
+        if chain is None:
+            raise GroupError("member start receipt differs from verified lineage")
         return body
 
     @operation_scoped
@@ -341,7 +357,7 @@ class GroupCoordinatorV1:
         if self.session is not None:
             self.session.require_seal(spec.policy["adapter_ref"])
         self._assert_sealed_spec(spec)
-        ordinal = self._admit_result(spec, result)
+        ordinal, _ = self._admit_result(spec, result)
         ref = self.store.put_artifact(result.to_dict())
         with self._locked(spec.group_id) as directory:
             path = directory / f"result-{ordinal}.json"
@@ -479,37 +495,19 @@ class GroupCoordinatorV1:
         if result.fixture_ref:
             return self.store.get_artifact(result.fixture_ref)["reward_status"]
         if result.availability_ref:
-            return self.store.get_artifact(result.availability_ref)["reward_status"]
+            reward = self.store.get_artifact(result.availability_ref)
+            if reward.get("record_type") != "RewardV1":
+                raise GroupError("member reward reference is not RewardV1")
+            return "available"
         return "pending"
 
     def _assert_sealed_spec(self, spec: GroupSpecV1) -> None:
         if canonical_bytes(self.resume(spec.group_id).to_dict()) != canonical_bytes(spec.to_dict()):
             raise GroupError("group spec differs from its sealed receipt")
 
-    def _sampled_trace_ref(self, entry: dict) -> str | None:
-        """Only known sampled log records may carry a trace; unknown carriers fail closed."""
-        ref = entry["record_ref"]
-        private = self.store.artifact_visibilities(ref) == frozenset({"private"})
-        record = self.store.get_artifact(ref, private=private)
-        if not isinstance(record, dict):
-            raise GroupError("runtime log record is not an object")
-        expected = {
-            "writer_action": "WriterActionV1",
-            "budget_charged": "WriterSampledBudgetStopV1",
-        }.get(entry["kind"])
-        if expected is not None:
-            if record.get("record_type") != expected or not isinstance(
-                record.get("trace_ref"), str
-            ):
-                raise GroupError("sampled runtime log lacks its expected trace")
-            return record["trace_ref"]
-        if "trace_ref" in record:
-            raise GroupError("unknown trace-bearing runtime log kind")
-        return None
-
     def _admit_result(
         self, spec: GroupSpecV1, result: GroupMemberResultV1, expected_ordinal: int | None = None
-    ) -> int:
+    ) -> tuple[int, Any | None]:
         """One immutable admission boundary for live collection and offline recovery."""
         ordinal = next((m.ordinal for m in spec.members if m.member_id == result.member_id), None)
         if (
@@ -551,9 +549,9 @@ class GroupCoordinatorV1:
                     raise GroupError("scripted reward is not a canonical exact fraction")
             elif fixture.get("reward") is not None:
                 raise GroupError("unavailable scripted reward includes a number")
-            return ordinal
+            return ordinal, None
         if result.execution_status == "pending":
-            return ordinal
+            return ordinal, None
         if result.execution_status == "infrastructure_invalid":
             failure = self.store.get_artifact(result.failure_ref)
             if (
@@ -572,102 +570,96 @@ class GroupCoordinatorV1:
                 raise GroupError("infrastructure failure record is misbound")
             if failure["evidence_ref"] is not None:
                 self.store.get_artifact(failure["evidence_ref"])
-            return ordinal
+            return ordinal, None
+
+        view = self._verified_member_view(spec, ordinal)
         final = self.store.load_checkpoint(result.final_checkpoint_id)
         if final.state.position["lineage_id"] != result.member_id:
             raise GroupError("terminal checkpoint belongs to another member")
-        cursor = final
-        while cursor.identity() != result.start_checkpoint_id:
-            if not cursor.parents:
-                raise GroupError("terminal checkpoint is not descended from member start")
-            cursor = self.store.load_checkpoint(cursor.parents[0])
-        project_writer_context(self.store, result.start_checkpoint_id, result.final_checkpoint_id)
-        # Phase 6 context operations carry their own immutable policy witness.
-        # A worker cannot silently swap that recipe after group admission.
-        log = self.store.get_artifact(final.state.external_inputs_ref)
-        if isinstance(log, dict) and log.get("record_type") == "WriterRuntimeLogV1":
-            member = spec.members[ordinal]
-            model = self.store.get_artifact(spec.policy["model_ref"])
-            for entry in log["entries"]:
-                trace_ref = self._sampled_trace_ref(entry)
-                if trace_ref is not None:
-                    trace = self.store.get_artifact(trace_ref)
-                    try:
-                        SamplingEvidenceV1.from_wire(trace)
-                    except ProjectionError as exc:
-                        raise GroupError(str(exc)) from exc
-                    if trace.get("seed") is not None and (
-                        type(trace["seed"]) is not int or trace["seed"] != member.writer_seed
-                    ):
-                        raise GroupError("writer sample used a different sampling stream")
-                    if trace.get("model") is not None and (
-                        not isinstance(model, dict) or trace["model"] != model.get("model_id")
-                    ):
-                        raise GroupError("writer sample used a different model")
-                    try:
-                        bind_group_sampling_claims(
-                            spec.policy, member.writer_seed, trace, trace.get("adapter_trace")
-                        )
-                    except ProjectionError as exc:
-                        raise GroupError(str(exc)) from exc
-                    if trace.get("exact_request_ref") is not None:
-                        try:
-                            bind_group_sampling_claims(
-                                spec.policy,
-                                member.writer_seed,
-                                trace,
-                                self.store.get_artifact(trace["exact_request_ref"]),
-                            )
-                        except ProjectionError as exc:
-                            raise GroupError(str(exc)) from exc
-                if entry["kind"] != "context_changed":
-                    continue
-                operation = self.store.get_artifact(entry["record_ref"])
-                if (
-                    operation.get("record_type") == "ContextOperationV1"
-                    and operation.get("policy_ref") != spec.policy["context_policy_ref"]
-                ):
-                    raise GroupError("member context policy drifted after start")
-        published_outcome = result.availability_ref or result.terminal_outcome_ref
-        if final.state.outcome_ref != published_outcome:
-            raise GroupError("terminal/reward artifact is not published by final checkpoint")
-        outcome = self.store.get_artifact(result.terminal_outcome_ref)
-        if (
-            outcome.get("record_type") != "TerminalOutcomeV1"
-            or outcome.get("execution_status") != "valid"
-            or final.state.position["phase"] != "terminal"
-        ):
-            raise GroupError("result lacks valid immutable terminal outcome")
-        if result.availability_ref:
-            availability = self.store.get_artifact(result.availability_ref)
+        self._check_member_policy_bindings(spec, ordinal, view)
+        outcome = view.outcome
+        if outcome.execution_status != "valid" or view.state.position["phase"] != "terminal":
+            raise GroupError("result lacks a valid terminal outcome")
+        if outcome.reward_status == "available":
+            if not result.availability_ref or outcome.reward_ref != result.availability_ref:
+                raise GroupError("result reward differs from the verified outcome")
+            reward = self.store.get_artifact(result.availability_ref)
             if (
-                availability.get("record_type") != "RewardAvailabilityV1"
-                or availability.get("terminal_outcome_ref") != result.terminal_outcome_ref
-                or availability.get("reward_status") not in {"available", "pending", "unavailable"}
+                reward.get("record_type") != "RewardV1"
+                or result.terminal_outcome_ref != reward.get("terminal_outcome_ref")
+                or reward.get("reward_contract_ref") != spec.environment["reward_contract_hash"]
+                or type(reward.get("numerator")) is not int
+                or type(reward.get("normalization")) is not int
+                or reward["normalization"] <= 0
+                or reward.get("eligibility_ref") != outcome.eligibility_ref
             ):
-                raise GroupError("reward availability is misbound")
-            if availability.get("reward_status") == "available":
-                reward = self.store.get_artifact(availability["reward_ref"])
-                eligibility = self.store.get_artifact(availability["eligibility_ref"])
-                try:
-                    decode_and_bind_sampling(
-                        TrainingEligibilityBindingV1(eligibility, result.terminal_outcome_ref)
-                    )
-                except ProjectionError as exc:
-                    raise GroupError("reward/eligibility contract is misbound") from exc
-                if (
-                    reward.get("record_type") != "RewardV1"
-                    or reward.get("terminal_outcome_ref") != result.terminal_outcome_ref
-                    or reward.get("eligibility_ref") != availability["eligibility_ref"]
-                    or reward.get("reward_contract_ref") != spec.environment["reward_contract_hash"]
-                    or reward.get("candidate_checkpoint") != outcome.get("candidate_checkpoint")
-                    or reward.get("check_result_refs") != outcome.get("check_result_refs")
-                    or type(reward.get("numerator")) is not int
-                    or type(reward.get("normalization")) is not int
-                    or reward["normalization"] <= 0
-                ):
-                    raise GroupError("reward/eligibility contract or arithmetic is misbound")
-        return ordinal
+                raise GroupError("reward is not bound to the verified outcome")
+            terminal = self.store.get_artifact(result.terminal_outcome_ref)
+            eligibility = self.store.get_artifact(outcome.eligibility_ref)
+            if (
+                terminal.get("record_type") != "OutcomeV1"
+                or terminal.get("reward_status") != "pending"
+                or terminal.get("execution_status") != "valid"
+                or eligibility.get("record_type") != "TrainingEligibilityV1"
+                or eligibility.get("terminal_outcome_ref") != result.terminal_outcome_ref
+                or eligibility.get("status") != outcome.training_eligibility
+            ):
+                raise GroupError("training eligibility is not bound to the reward outcome")
+        elif (
+            result.availability_ref is not None
+            or result.terminal_outcome_ref != view.state.outcome_ref
+        ):
+            raise GroupError("result outcome differs from the verified head view")
+        return ordinal, view
+
+    def _verified_member_view(self, spec: GroupSpecV1, ordinal: int):
+        if self.environment is None:
+            raise GroupError("real group collection requires a RolloutEnvironment")
+        member = spec.members[ordinal]
+        runtime = self.environment.open_head(member.member_id)
+        view = self.environment.verify(runtime)
+        self._assert_member_view(spec, member, view)
+        return view
+
+    def _check_member_policy_bindings(self, spec: GroupSpecV1, ordinal: int, view) -> None:
+        member = spec.members[ordinal]
+        model = self.store.get_artifact(spec.policy["model_ref"])
+        if not isinstance(model, dict) or not isinstance(model.get("model_id"), str):
+            raise ProjectionError("sealed group model has no model ID")
+        for sample in view.samples:
+            turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
+            context = self._context_for_revision(view, turn.context_revision_ref)
+            trace = turn.adapter_trace or {}
+            bind_group_sampling_claims(
+                spec.policy,
+                member.writer_seed,
+                trace,
+                trace,
+                model_id=model["model_id"],
+                context_content_hash=context.content_ref,
+                context_revision_ref=context.revision_ref,
+                rendering=context.rendering,
+            )
+
+        event_id = view.head_event_id
+        while event_id is not None:
+            event = self.store.load_event(event_id)
+            if event.kind == "context_changed":
+                operation = ContextOperationInputV1.from_dict(
+                    self.store.get_artifact(event.payload_ref)
+                )
+                if operation.policy_ref != spec.policy["context_policy_ref"]:
+                    raise ProjectionError("member context policy differs from the group spec")
+            event_id = event.previous
+
+    @staticmethod
+    def _context_for_revision(view, revision_ref: str):
+        chain = view.ancestry
+        while chain is not None:
+            if chain.context.revision_ref == revision_ref:
+                return chain.context
+            chain = chain.parent
+        raise ProjectionError("sample context is absent from the verified member view")
 
     @operation_scoped
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
@@ -676,21 +668,24 @@ class GroupCoordinatorV1:
         self._assert_sealed_spec(spec)
         result_refs: list[str | None] = []
         results: list[GroupMemberResultV1 | None] = []
+        views = []
         directory = self.groups_root / spec.group_id
         for member in spec.members:
             path = directory / f"result-{member.ordinal}.json"
             if not path.exists():
                 result_refs.append(None)
                 results.append(None)
+                views.append(None)
                 continue
             receipt = load_canonical_json(path.read_bytes())
             if not isinstance(receipt, dict) or set(receipt) != {"result_ref"}:
                 raise GroupError("result receipt has invalid schema")
             ref = receipt["result_ref"]
             result = GroupMemberResultV1.from_dict(self.store.get_artifact(ref))
-            self._admit_result(spec, result, member.ordinal)
+            _, view = self._admit_result(spec, result, member.ordinal)
             result_refs.append(ref)
             results.append(result)
+            views.append(view)
         if any(r is not None and r.execution_status == "infrastructure_invalid" for r in results):
             status, reason = "invalid", "infrastructure_invalid_member"
         elif any(r is None or r.execution_status == "pending" for r in results):
@@ -707,10 +702,9 @@ class GroupCoordinatorV1:
                     continue
                 if result.availability_ref is None:
                     break
-                availability = self.store.get_artifact(result.availability_ref)
-                if availability.get("reward_status") != "available":
-                    break
-                reward = self.store.get_artifact(availability["reward_ref"])
+                reward = self.store.get_artifact(result.availability_ref)
+                if reward.get("record_type") != "RewardV1":
+                    raise GroupError("member reward reference is not RewardV1")
                 rewards.append(Fraction(reward["numerator"], reward["normalization"]))
             if len(rewards) != len(results):
                 status, reason = "pending", "reward_pending_or_unavailable"
@@ -739,7 +733,9 @@ class GroupCoordinatorV1:
                     advantage_ref = self.store.put_artifact(advantage.to_dict())
                     advantage_refs.append(advantage_ref)
                     if result.fixture_ref is None:
-                        credit_refs.extend(self._segment_credits(spec, result, advantage_ref))
+                        credit_refs.extend(
+                            self._segment_credits(spec, result, advantage_ref, views[ordinal])
+                        )
                 decision = GroupDecisionV1(
                     group_id=spec.group_id,
                     status=status,
@@ -760,72 +756,60 @@ class GroupCoordinatorV1:
         return decision
 
     def _segment_credits(
-        self, spec: GroupSpecV1, result: GroupMemberResultV1, advantage_ref: str
+        self,
+        spec: GroupSpecV1,
+        result: GroupMemberResultV1,
+        advantage_ref: str,
+        view,
     ) -> list[str]:
-        """Bind credit to original sampled action traces, never the compacted tail."""
-        final = self.store.load_checkpoint(result.final_checkpoint_id)
-        start = self.store.load_checkpoint(result.start_checkpoint_id)
-        events = []
-        cursor = final.event_head
-        while cursor != start.event_head:
-            event = self.store.load_event(cursor)
-            events.append(event)
-            cursor = event.previous
-            if cursor is None:
-                raise GroupError("action history does not reach member start")
+        """Emit segment targets from the gate-verified sample index, not runtime logs."""
+        if view is None:
+            raise GroupError("real segment credit requires a verified member view")
         refs = []
-        action_index = 0
-        for event in reversed(events):
-            if event.kind != "writer_action":
+        for sample in view.samples:
+            if sample.outcome != "action":
                 continue
-            if event.rollout_id != result.member_id:
-                raise GroupError("writer action belongs to another member")
-            action_index += 1
-            log = self.store.get_artifact(final.state.external_inputs_ref)
-            entry = next((e for e in log.get("entries", []) if e.get("seq") == event.seq), None)
-            if entry is None:
-                raise GroupError("writer action missing immutable log entry")
-            action = self.store.get_artifact(entry["record_ref"])
-            trace = self.store.get_artifact(action["trace_ref"])
-            try:
-                sampled = SamplingEvidenceV1.from_wire(trace)
-            except ProjectionError as exc:
-                raise GroupError("invalid writer action trace") from exc
-            if action.get("record_type") != "WriterActionV1" or sampled.action_id != action.get(
-                "action_id"
-            ):
-                raise GroupError("invalid writer action trace")
-            message = MessageV1.from_dict(
-                self.store.get_artifact(entry["message_ref"], expected_domain="message")
-            )
-            if message.role != "assistant" or message.origin != action["action_id"]:
-                raise GroupError("credit target is not the owning writer message")
+            turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
+            message = self._message_for_sample(view, sample.event_id)
+            if message.role != "assistant" or message.origin != sample.action_id:
+                raise GroupError("sample does not own its derived assistant message")
+            message_ref = self.store.persist(message)
+            context = self._context_for_revision(view, turn.context_revision_ref)
 
             segments = []
             for index, part in enumerate(message.content):
-                kind = {"text": "assistant_text", "tool_call": "tool_syntax"}.get(part["type"])
-                if kind is not None and action["loss_eligibility"].get(kind) is True:
+                kind = {
+                    "text": "assistant_text",
+                    "tool_call": "tool_syntax",
+                    "invalid_tool_call": "tool_syntax",
+                }.get(part["type"])
+                if kind is not None:
                     segments.append((kind, index, payload_hash(part)))
-            if action["loss_eligibility"].get("assistant_ending") is True:
-                segments.append(("assistant_ending", None, None))
+            segments.append(("assistant_ending", None, None))
             for kind, part_index, content_hash in segments:
                 credit = GroupSegmentCreditV1(
                     group_id=spec.group_id,
                     member_id=result.member_id,
-                    action_id=action["action_id"],
-                    action_ref=entry["record_ref"],
-                    message_ref=entry["message_ref"],
-                    trace_ref=action["trace_ref"],
-                    original_context_ref=trace["context_revision_ref"],
-                    original_context_content_hash=trace["context_content_hash"],
+                    action_id=sample.action_id,
+                    action_ref=sample.event_id,
+                    message_ref=message_ref,
+                    trace_ref=sample.turn_ref,
+                    original_context_ref=turn.context_revision_ref,
+                    original_context_content_hash=context.content_ref,
                     advantage_ref=advantage_ref,
                     segment_kind=kind,
                     part_index=part_index,
                     segment_content_hash=content_hash,
                 )
                 refs.append(self.store.put_artifact(credit.to_dict()))
-        if action_index != len(final.state.history["action_ids"]) - len(
-            start.state.history["action_ids"]
-        ):
-            raise GroupError("writer action history count differs from immutable events")
         return refs
+
+    @staticmethod
+    def _message_for_sample(view, event_id: str) -> MessageV1:
+        chain = view.ancestry
+        while chain is not None:
+            for source, message in zip(chain.context.sources, chain.context.messages, strict=True):
+                if source == event_id:
+                    return message
+            chain = chain.parent
+        raise GroupError("sample event has no verified assistant message")

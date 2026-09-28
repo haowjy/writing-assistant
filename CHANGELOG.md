@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Move group member starts and result/credit collection onto verified rollout views.
+
 - Document the driver, gatherer, replay, and cross-lane fixture extension contracts.
 
 - Expose shared rollout fixture hooks for ports, alternatives, feedback, sessions, checkpoint
