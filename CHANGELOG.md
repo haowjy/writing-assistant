@@ -9,6 +9,14 @@
 - Remove the unpublished-entry checkpoint scan, return verified dispatch inputs in one scope,
   and check runtime member seals against the verified group view.
 
+- Exclude intake placeholders from group segment credit using the derive's per-part decision.
+
+- Derive idempotent member-start receipts from verified ancestry so retries survive progress.
+
+- Remove redundant collect-time policy walks and decode scripted group results through wire schemas.
+
+- Resolve sample context and message references in one verified-ancestry index per collection.
+
 - Move group member starts and result/credit collection onto verified rollout views.
 
 - Port writer, tool, integrity, and downgrade forgeries through the rollout acceptance seam;

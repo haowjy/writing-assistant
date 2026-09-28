@@ -313,7 +313,27 @@ def _build_assistant_message(
             else turn.message.calls
         )
         if call.rejection is not None:
-            parts.append({"type": "invalid_tool_call", "id": call.call_id, "raw": raw})
+            part = {"type": "invalid_tool_call", "id": call.call_id}
+            if turn.message.tool_calls_was_list:
+                carries_sampled_content = (
+                    index < len(turn.message.calls) and turn.message.calls[index]["bounded"]
+                )
+            else:
+
+                def has_noncanonical_tag(value):
+                    if isinstance(value, Mapping):
+                        return "$noncanonical" in value or any(
+                            has_noncanonical_tag(item) for item in value.values()
+                        )
+                    if isinstance(value, (tuple, list)):
+                        return any(has_noncanonical_tag(item) for item in value)
+                    return False
+
+                carries_sampled_content = not has_noncanonical_tag(raw)
+            part["raw"] = (
+                raw if carries_sampled_content else {"$noncanonical": "no-sampled-content"}
+            )
+            parts.append(part)
         else:
             parts.append(
                 {

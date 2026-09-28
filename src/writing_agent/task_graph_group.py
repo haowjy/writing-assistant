@@ -12,16 +12,16 @@ from typing import Any
 
 from writing_agent.task_graph import (
     EventV1,
-    MessageV1,
     canonical_bytes,
     load_canonical_json,
     validate_hash,
 )
-from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_group_contract import (
     GroupAdvantageV1,
     GroupDecisionV1,
+    GroupExecutionFailureV1,
     GroupMemberResultV1,
+    GroupScriptedTerminalV1,
     GroupSegmentCreditV1,
     derive_group_seed,
     fraction_wire,
@@ -37,12 +37,9 @@ from writing_agent.task_graph_record_contracts import (
     GroupMemberSpecV1,
     GroupSpecV1,
 )
-from writing_agent.task_graph_records import ContextOperationInputV1, MemberStartV1, WriterTurnV1
+from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
 from writing_agent.task_graph_rollout_env import RolloutEnvironment
 from writing_agent.task_graph_rollout_env import RuntimeHandle as RolloutRuntimeHandle
-from writing_agent.task_graph_sampling import (
-    bind_group_sampling_claims,
-)
 from writing_agent.task_graph_store import RuntimeHandle as LegacyRuntimeHandle
 from writing_agent.task_graph_store import TaskGraphStore
 
@@ -219,35 +216,15 @@ class GroupCoordinatorV1:
         self.assert_start_contract(spec, spec.environment["entry_checkpoint_id"], policy)
         parent_id = spec.environment["entry_checkpoint_id"]
         head = self.store.read_head(member.member_id)
-        receipt_path = self.groups_root / spec.group_id / f"start-{ordinal}.json"
-        if head is not None and receipt_path.exists():
-            receipt = self._start_receipt(spec, ordinal)
-            child_id, commit = receipt["start_checkpoint_id"], receipt["commit_id"]
-            runtime = self.environment.open_head(member.member_id)
-        elif head is None:
+        if head is None:
             runtime = self.environment.start_member(
                 parent_id, MemberStartV1(spec.identity(), ordinal)
             )
-            child_id = runtime.checkpoint_id
-            commit = self.store.read_head(member.member_id)
         else:
             runtime = self.environment.open_head(member.member_id)
-            child_id = runtime.checkpoint_id
-            commit = head
         view = self.environment.verify(runtime)
         self._assert_member_view(spec, member, view)
-        if commit is None:
-            raise GroupError("member start was not published")
-        with self._locked(spec.group_id) as directory:
-            self._receipt(
-                directory / f"start-{ordinal}.json",
-                {
-                    "member_id": member.member_id,
-                    "parent_checkpoint_id": parent_id,
-                    "start_checkpoint_id": child_id,
-                    "commit_id": commit,
-                },
-            )
+        self._start_receipt(spec, ordinal, view=view)
         return runtime
 
     def _start_legacy(
@@ -320,36 +297,27 @@ class GroupCoordinatorV1:
         if view.state.position["lineage_id"] != member.member_id or view.group != spec:
             raise GroupError("verified member view differs from its sealed start")
 
-    def _start_receipt(self, spec: GroupSpecV1, ordinal: int) -> dict:
+    def _start_receipt(self, spec: GroupSpecV1, ordinal: int, *, view=None) -> dict:
         if self.environment is None:
             raise GroupError("member receipt verification requires a RolloutEnvironment")
-        body = load_canonical_json(
-            (self.groups_root / spec.group_id / f"start-{ordinal}.json").read_bytes()
-        )
-        if (
-            not isinstance(body, dict)
-            or set(body)
-            != {"member_id", "parent_checkpoint_id", "start_checkpoint_id", "commit_id"}
-            or not all(isinstance(body[key], str) for key in body)
-            or body["member_id"] != spec.members[ordinal].member_id
-            or body["parent_checkpoint_id"] != spec.environment["entry_checkpoint_id"]
-        ):
-            raise GroupError("member start receipt is misbound")
-        child = self.store.load_checkpoint(body["start_checkpoint_id"])
-        if child.parents != (body["parent_checkpoint_id"],):
-            raise GroupError("member start is not a child of sealed entry")
-        commit = self.store.load_commit(body["commit_id"])
-        if commit.checkpoint != body["start_checkpoint_id"] or commit.parent_commit is not None:
-            raise GroupError("member start receipt misbinds branch commit")
         member = spec.members[ordinal]
-        runtime = self.environment.open_head(member.member_id)
-        view = self.environment.verify(runtime)
+        if view is None:
+            view = self._verified_member_view(spec, ordinal)
         self._assert_member_view(spec, member, view)
         chain = view.ancestry
-        while chain is not None and chain.checkpoint_id != body["start_checkpoint_id"]:
+        parent_id = spec.environment["entry_checkpoint_id"]
+        while chain is not None and (
+            chain.parent is None or chain.parent.checkpoint_id != parent_id
+        ):
             chain = chain.parent
         if chain is None:
-            raise GroupError("member start receipt differs from verified lineage")
+            raise GroupError("verified member ancestry has no start below the sealed entry")
+        body = {
+            "member_id": member.member_id,
+            "parent_checkpoint_id": parent_id,
+            "start_checkpoint_id": chain.checkpoint_id,
+        }
+        self._receipt(self.groups_root / spec.group_id / f"start-{ordinal}.json", body)
         return body
 
     @operation_scoped
@@ -430,20 +398,19 @@ class GroupCoordinatorV1:
             raise GroupError("scripted reward must be exact, never float")
         start = self._start_receipt(spec, ordinal)["start_checkpoint_id"]
         member = spec.members[ordinal]
-        fixture = {
-            "record_type": "GroupScriptedTerminalV1",
-            "schema": 1,
-            "group_id": spec.group_id,
-            "member_id": member.member_id,
-            "start_checkpoint_id": start,
-            "execution_status": execution_status,
-            "reward_status": reward_status,
-            "reward": fraction_wire(reward)
+        fixture = GroupScriptedTerminalV1(
+            schema=1,
+            group_id=spec.group_id,
+            member_id=member.member_id,
+            start_checkpoint_id=start,
+            execution_status=execution_status,
+            reward_status=reward_status,
+            reward=fraction_wire(reward)
             if reward_status == "available" and reward is not None
             else None,
-            "native_optimizer_eligible": False,
-        }
-        fixture_ref = self.store.put_artifact(fixture)
+            native_optimizer_eligible=False,
+        )
+        fixture_ref = self.store.put_artifact(fixture.to_wire())
         result = GroupMemberResultV1(
             group_id=spec.group_id,
             member_id=member.member_id,
@@ -469,17 +436,15 @@ class GroupCoordinatorV1:
             self.store.get_artifact(evidence_ref)
         start = self._start_receipt(spec, ordinal)["start_checkpoint_id"]
         member = spec.members[ordinal]
-        failure_ref = self.store.put_artifact(
-            {
-                "record_type": "GroupExecutionFailureV1",
-                "schema": 1,
-                "group_id": spec.group_id,
-                "member_id": member.member_id,
-                "start_checkpoint_id": start,
-                "reason": reason,
-                "evidence_ref": evidence_ref,
-            }
+        failure = GroupExecutionFailureV1(
+            schema=1,
+            group_id=spec.group_id,
+            member_id=member.member_id,
+            start_checkpoint_id=start,
+            reason=reason,
+            evidence_ref=evidence_ref,
         )
+        failure_ref = self.store.put_artifact(failure.to_wire())
         return self.collect(
             spec,
             GroupMemberResultV1(
@@ -492,14 +457,33 @@ class GroupCoordinatorV1:
         )
 
     def _reward_status(self, result: GroupMemberResultV1) -> str:
+        if self.reward_of(result) is not None:
+            return "available"
         if result.fixture_ref:
-            return self.store.get_artifact(result.fixture_ref)["reward_status"]
+            return self._scripted_terminal(result.fixture_ref).reward_status
+        return "pending"
+
+    def reward_of(self, result: GroupMemberResultV1) -> Fraction | None:
+        """Read one verified exact reward from either group result path."""
+        if result.fixture_ref:
+            fixture = self._scripted_terminal(result.fixture_ref)
+            return (
+                Fraction(fixture.reward["numerator"], fixture.reward["denominator"])
+                if fixture.reward is not None
+                else None
+            )
         if result.availability_ref:
             reward = self.store.get_artifact(result.availability_ref)
             if reward.get("record_type") != "RewardV1":
                 raise GroupError("member reward reference is not RewardV1")
-            return "available"
-        return "pending"
+            return Fraction(reward["numerator"], reward["normalization"])
+        return None
+
+    def _scripted_terminal(self, fixture_ref: str) -> GroupScriptedTerminalV1:
+        try:
+            return GroupScriptedTerminalV1.from_dict(self.store.get_artifact(fixture_ref))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GroupError("scripted terminal artifact is invalid") from exc
 
     def _assert_sealed_spec(self, spec: GroupSpecV1) -> None:
         if canonical_bytes(self.resume(spec.group_id).to_dict()) != canonical_bytes(spec.to_dict()):
@@ -522,61 +506,38 @@ class GroupCoordinatorV1:
         if result.start_checkpoint_id != start["start_checkpoint_id"]:
             raise GroupError("result start checkpoint is misbound")
         if result.fixture_ref:
-            fixture = self.store.get_artifact(result.fixture_ref)
+            fixture = self._scripted_terminal(result.fixture_ref)
             if (
-                fixture.get("record_type") != "GroupScriptedTerminalV1"
-                or fixture.get("schema") != 1
-                or fixture.get("group_id") != spec.group_id
-                or fixture.get("member_id") != result.member_id
-                or fixture.get("start_checkpoint_id") != result.start_checkpoint_id
-                or fixture.get("execution_status") != result.execution_status
-                or fixture.get("reward_status") not in {"available", "pending", "unavailable"}
-                or fixture.get("native_optimizer_eligible") is not False
+                fixture.group_id != spec.group_id
+                or fixture.member_id != result.member_id
+                or fixture.start_checkpoint_id != result.start_checkpoint_id
+                or fixture.execution_status != result.execution_status
             ):
                 raise GroupError("scripted terminal artifact is misbound")
-            if fixture["reward_status"] == "available":
-                if result.execution_status != "valid":
-                    raise GroupError("invalid scripted execution cannot carry available reward")
-                value = fixture.get("reward")
-                if (
-                    not isinstance(value, dict)
-                    or set(value) != {"numerator", "denominator"}
-                    or type(value["numerator"]) is not int
-                    or type(value["denominator"]) is not int
-                    or value["denominator"] <= 0
-                    or fraction_wire(Fraction(value["numerator"], value["denominator"])) != value
-                ):
-                    raise GroupError("scripted reward is not a canonical exact fraction")
-            elif fixture.get("reward") is not None:
-                raise GroupError("unavailable scripted reward includes a number")
             return ordinal, None
         if result.execution_status == "pending":
             return ordinal, None
         if result.execution_status == "infrastructure_invalid":
-            failure = self.store.get_artifact(result.failure_ref)
-            if (
-                failure.get("record_type") != "GroupExecutionFailureV1"
-                or failure.get("schema") != 1
-                or failure.get("group_id") != spec.group_id
-                or failure.get("member_id") != result.member_id
-                or failure.get("start_checkpoint_id") != result.start_checkpoint_id
-                or not isinstance(failure.get("reason"), str)
-                or not failure["reason"]
-                or (
-                    failure.get("evidence_ref") is not None
-                    and not isinstance(failure["evidence_ref"], str)
+            try:
+                failure = GroupExecutionFailureV1.from_dict(
+                    self.store.get_artifact(result.failure_ref)
                 )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise GroupError("infrastructure failure artifact is invalid") from exc
+            if (
+                failure.group_id != spec.group_id
+                or failure.member_id != result.member_id
+                or failure.start_checkpoint_id != result.start_checkpoint_id
             ):
                 raise GroupError("infrastructure failure record is misbound")
-            if failure["evidence_ref"] is not None:
-                self.store.get_artifact(failure["evidence_ref"])
+            if failure.evidence_ref is not None:
+                self.store.get_artifact(failure.evidence_ref)
             return ordinal, None
 
         view = self._verified_member_view(spec, ordinal)
         final = self.store.load_checkpoint(result.final_checkpoint_id)
         if final.state.position["lineage_id"] != result.member_id:
             raise GroupError("terminal checkpoint belongs to another member")
-        self._check_member_policy_bindings(spec, ordinal, view)
         outcome = view.outcome
         if outcome.execution_status != "valid" or view.state.position["phase"] != "terminal":
             raise GroupError("result lacks a valid terminal outcome")
@@ -621,45 +582,19 @@ class GroupCoordinatorV1:
         self._assert_member_view(spec, member, view)
         return view
 
-    def _check_member_policy_bindings(self, spec: GroupSpecV1, ordinal: int, view) -> None:
-        member = spec.members[ordinal]
-        model = self.store.get_artifact(spec.policy["model_ref"])
-        if not isinstance(model, dict) or not isinstance(model.get("model_id"), str):
-            raise ProjectionError("sealed group model has no model ID")
-        for sample in view.samples:
-            turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
-            context = self._context_for_revision(view, turn.context_revision_ref)
-            trace = turn.adapter_trace or {}
-            bind_group_sampling_claims(
-                spec.policy,
-                member.writer_seed,
-                trace,
-                trace,
-                model_id=model["model_id"],
-                context_content_hash=context.content_ref,
-                context_revision_ref=context.revision_ref,
-                rendering=context.rendering,
-            )
-
-        event_id = view.head_event_id
-        while event_id is not None:
-            event = self.store.load_event(event_id)
-            if event.kind == "context_changed":
-                operation = ContextOperationInputV1.from_dict(
-                    self.store.get_artifact(event.payload_ref)
-                )
-                if operation.policy_ref != spec.policy["context_policy_ref"]:
-                    raise ProjectionError("member context policy differs from the group spec")
-            event_id = event.previous
-
     @staticmethod
-    def _context_for_revision(view, revision_ref: str):
+    def _sample_content_index(view):
+        contexts = {}
+        messages = {}
         chain = view.ancestry
         while chain is not None:
-            if chain.context.revision_ref == revision_ref:
-                return chain.context
+            context = chain.context
+            contexts.setdefault(context.revision_ref, context)
+            for source, message in zip(context.sources, context.messages, strict=True):
+                if source is not None:
+                    messages.setdefault(source, message)
             chain = chain.parent
-        raise ProjectionError("sample context is absent from the verified member view")
+        return contexts, messages
 
     @operation_scoped
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
@@ -693,19 +628,10 @@ class GroupCoordinatorV1:
         else:
             rewards = []
             for result in results:
-                if result.fixture_ref:
-                    fixture = self.store.get_artifact(result.fixture_ref)
-                    if fixture["reward_status"] != "available":
-                        break
-                    value = fixture["reward"]
-                    rewards.append(Fraction(value["numerator"], value["denominator"]))
-                    continue
-                if result.availability_ref is None:
+                reward = self.reward_of(result)
+                if reward is None:
                     break
-                reward = self.store.get_artifact(result.availability_ref)
-                if reward.get("record_type") != "RewardV1":
-                    raise GroupError("member reward reference is not RewardV1")
-                rewards.append(Fraction(reward["numerator"], reward["normalization"]))
+                rewards.append(reward)
             if len(rewards) != len(results):
                 status, reason = "pending", "reward_pending_or_unavailable"
             else:
@@ -766,23 +692,33 @@ class GroupCoordinatorV1:
         if view is None:
             raise GroupError("real segment credit requires a verified member view")
         refs = []
+        contexts, messages = self._sample_content_index(view)
         for sample in view.samples:
             if sample.outcome != "action":
                 continue
             turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
-            message = self._message_for_sample(view, sample.event_id)
+            message = messages.get(sample.event_id)
+            if message is None:
+                raise GroupError("sample event has no verified assistant message")
             if message.role != "assistant" or message.origin != sample.action_id:
                 raise GroupError("sample does not own its derived assistant message")
             message_ref = self.store.persist(message)
-            context = self._context_for_revision(view, turn.context_revision_ref)
+            context = contexts.get(turn.context_revision_ref)
+            if context is None:
+                raise GroupError("sample context is absent from the verified member view")
 
             segments = []
             for index, part in enumerate(message.content):
                 kind = {
                     "text": "assistant_text",
                     "tool_call": "tool_syntax",
-                    "invalid_tool_call": "tool_syntax",
                 }.get(part["type"])
+                if part["type"] == "invalid_tool_call":
+                    kind = (
+                        None
+                        if part["raw"] == {"$noncanonical": "no-sampled-content"}
+                        else "tool_syntax"
+                    )
                 if kind is not None:
                     segments.append((kind, index, payload_hash(part)))
             segments.append(("assistant_ending", None, None))
@@ -803,13 +739,3 @@ class GroupCoordinatorV1:
                 )
                 refs.append(self.store.put_artifact(credit.to_dict()))
         return refs
-
-    @staticmethod
-    def _message_for_sample(view, event_id: str) -> MessageV1:
-        chain = view.ancestry
-        while chain is not None:
-            for source, message in zip(chain.context.sources, chain.context.messages, strict=True):
-                if source == event_id:
-                    return message
-            chain = chain.parent
-        raise GroupError("sample event has no verified assistant message")

@@ -16,7 +16,7 @@ from tests.task_graph_rollout_fixtures import (
     ports_disabled,
     run_slice,
 )
-from writing_agent.task_graph import canonical_bytes, domain_hash
+from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_compaction import ContextPolicyV1 as LegacyContextPolicyV1
 from writing_agent.task_graph_controller import next_step
@@ -27,12 +27,14 @@ from writing_agent.task_graph_group import (
     POLICY_FIELDS,
     GroupCoordinatorV1,
     GroupError,
+    GroupExecutionFailureV1,
     GroupMemberResultV1,
+    GroupScriptedTerminalV1,
     GroupSpecV1,
 )
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
-from writing_agent.task_graph_records import WriterTurnV1
+from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
 from writing_agent.task_graph_rollout_env import RolloutEnvironment
 from writing_agent.task_graph_store import TaskGraphStore
 
@@ -78,6 +80,39 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             member_count=2,
             runner_mode=mode,
         )
+
+    def test_group_terminal_records_roundtrip_with_unchanged_payload_identity(self):
+        fixture = GroupScriptedTerminalV1(
+            schema=1,
+            group_id="a" * 64,
+            member_id="grp-example-00",
+            start_checkpoint_id="b" * 64,
+            execution_status="valid",
+            reward_status="available",
+            reward={"numerator": -3, "denominator": 2},
+            native_optimizer_eligible=False,
+        )
+        failure = GroupExecutionFailureV1(
+            schema=1,
+            group_id="a" * 64,
+            member_id="grp-example-00",
+            start_checkpoint_id="b" * 64,
+            reason="worker_crash",
+            evidence_ref=None,
+        )
+        for record in (fixture, failure):
+            with self.subTest(record=record.RECORD_TYPE):
+                self.assertEqual(type(record).from_dict(record.to_wire()), record)
+                self.assertEqual(record.identity(), self.store.put_artifact(record.to_wire()))
+
+        with self.assertRaises(ValueError):
+            GroupScriptedTerminalV1.from_dict({**fixture.to_wire(), "schema": 2})
+        with self.assertRaises(ValueError):
+            GroupScriptedTerminalV1.from_dict(
+                {**fixture.to_wire(), "reward": {"numerator": -3, "denominator": 0}}
+            )
+        with self.assertRaises(ValueError):
+            GroupExecutionFailureV1.from_dict({**failure.to_wire(), "reason": ""})
 
     def start_members(self, spec):
         return tuple(
@@ -212,6 +247,35 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             )
             self.assertEqual(self.store.read_head(member_id), resumed_head)
 
+    def test_start_retry_after_member_advanced_keeps_receipt_and_allows_collect(self):
+        spec = self.group(sequence=77)
+        member = spec.members[0]
+        runtime = self.env.start_member(
+            spec.environment["entry_checkpoint_id"], MemberStartV1(spec.identity(), 0)
+        )
+        start_checkpoint_id = runtime.checkpoint_id
+        self.fixture.gatherers = make_gatherers(self.fixture)
+        advanced = run_slice(
+            self.fixture,
+            runtime=runtime,
+            until=lambda directive: directive.kind == "execute_tool",
+        )
+        self.assertNotEqual(advanced.checkpoint_id, start_checkpoint_id)
+
+        resumed = self.coordinator.start(spec, 0, policy=self.policy)
+        body = load_canonical_json(
+            (self.coordinator.groups_root / spec.group_id / "start-0.json").read_bytes()
+        )
+        self.assertEqual(body["start_checkpoint_id"], start_checkpoint_id)
+        self.assertEqual(resumed.checkpoint_id, advanced.checkpoint_id)
+        result = GroupMemberResultV1(
+            group_id=spec.group_id,
+            member_id=member.member_id,
+            start_checkpoint_id=start_checkpoint_id,
+        )
+        result_ref = self.coordinator.collect(spec, result)
+        self.assertEqual(self.store.get_artifact(result_ref), result.to_dict())
+
     def test_scripted_pending_tie_invalid_and_exact_advantage_paths(self):
         spec = self.group(mode="fixture")
         self.start_members(spec)
@@ -326,6 +390,56 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         with ports_disabled():
             replayed = offline.finalize(spec)
         self.assertEqual(replayed.identity(), decision.identity())
+
+    def test_noncanonical_tool_call_values_do_not_receive_segment_credit(self):
+        def nested(depth):
+            value = "x"
+            for _ in range(depth):
+                value = [value]
+            return value
+
+        cases = (
+            (
+                "unbounded_list_call",
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "deep",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": {"p": nested(80)},
+                            },
+                        }
+                    ],
+                },
+            ),
+            (
+                "non_list_call_with_noncanonical_tag",
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": {"function": {"arguments": nested(80)}},
+                },
+            ),
+        )
+        for sequence, (label, malformed_call) in enumerate(cases, start=90):
+            with self.subTest(call_shape=label):
+                self.fixture.sample_results = (
+                    SampleResult(malformed_call),
+                    SampleResult(
+                        {"role": "assistant", "content": "The revised draft.", "tool_calls": []}
+                    ),
+                )
+                spec = self.group(sequence=sequence)
+                for ordinal in range(2):
+                    _, result = self.run_member(spec, ordinal)
+                    self.coordinator.collect(spec, result)
+                decision = self.coordinator.finalize(spec)
+                credits = [self.store.get_artifact(ref) for ref in decision.segment_credit_refs]
+                self.assertFalse(any(credit["segment_kind"] == "tool_syntax" for credit in credits))
 
     def test_context_updates_do_not_rebind_sample_credit(self):
         spec = self.group(sequence=23)
