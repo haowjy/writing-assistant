@@ -1,103 +1,58 @@
-# Opt-in scripted-author task-graph slice
+# Scripted-author task-graph lifecycle
 
-This is a deterministic research runtime beside the unchanged legacy runner. It
-accepts only `scripted_author` interaction nodes with role-typed private author
-and evaluator packets, public decision IDs/labels, an exact private answer and
-feedback script, strict deterministic file checks, and integer reward weights.
-`simulated_author`, semantic judges, native optimizer traces, and
-model-backed author replies are not supported here.
-Safe environment-owned context operations are described in
-[task-graph compaction](task-graph-compaction.md).
+The scripted-author path runs on the same typed, verified task-graph core as writer-only
+rollouts. It supports `scripted_author` interaction nodes, role-typed private author and
+evaluator packets, declared public decision IDs and labels, a deterministic answer/feedback
+script, file checks, and integer reward weights. It does not add model-backed author replies,
+semantic judges, native optimizer traces, or training updates.
 
-## Entry and authority
+Build and admit the immutable graph and its artifacts, then create the unsampled root through
+`RolloutEnvironment.enter`. `RolloutDriver.run` obtains a verified view and next directive,
+passes only the matching typed port input to a gatherer, and commits one input/event at a
+time. See [the writer runtime](task-graph-writer.md) for the entry, resume, and publication
+contracts.
 
-Construct the immutable graph and all referenced artifacts, call `admit_graph`,
-then save an unsampled `ready_writer` entry checkpoint. The state must name the
-admitted private `AuthorPacketV1` and initialize `DecisionLedgerV1`,
-`DisclosureLedgerV1`, and `RequirementLedgerV1` artifacts. The entry context
-must use `writer_tool_schemas(entry.tool_allowlist, admitted_node.interaction_policy)`:
-the `ask_author` schema exposes only public IDs and labels, never answer values.
-Decision IDs use bounded ASCII identifier syntax; labels are bounded printable
-text. Admission screens every rendered public ID and label against undisclosed
-private author text. This is
-an exact-byte disclosure guard, not a semantic confidentiality proof.
-The tests in `tests/test_task_graph_scripted.py` show a complete construction.
+## Author exchange
 
-The writer may call `ask_author` with exact `question`, `decision_ids`,
-`proposals`, and `option_refs` fields. It must be the only call in its assistant
-message. Invalid IDs, duplicate IDs, malformed or oversized fields, and unknown
-proposal references become paired writer tool observations; a mixed batch rejects
-all calls before any file operation. A valid action commits first. Its author
-request commits separately with a unique request ID and `awaiting_author` phase.
-`ScriptedAuthorRuntimeV1.reply` resolves the frozen script, commits a tool
-acknowledgement, disclosure, and exactly one explicit user reply in one commit,
-then resumes the same node. A partial, reordered, duplicated, or ackless reply
-cannot publish or restore; the control call must be drained before the request
-clears or reply is visible. A restored
-request does not call a live author. Script selector misses terminalize as
-`simulator_error` with unavailable reward, not as bad writing. Author text such as
-“DONE” never establishes completion.
-Tool-call exhaustion takes precedence over malformed-call and author-call
-exhaustion; otherwise malformed calls take precedence over author exhaustion.
-Each drained error counts one attempted call, but no exhausted tool counter is
-incremented or capped to permit a successful author request.
+The `ask_author` tool schema exposes public decision IDs and labels, never private answer
+values. It must be the only call in the assistant message. Invalid IDs, duplicate IDs,
+malformed or oversized fields, and unknown proposal references become paired writer tool
+observations; a mixed batch rejects before any file operation. A valid call queues a typed
+author request. The script resolves a reply only after the driver reaches its author-reply
+directive.
 
-```python
-writer = TransactionalWriterV1(store, admitted_graph, rollout_id, entry_checkpoint)
-author = ScriptedAuthorRuntimeV1(writer)
-checks = DeterministicChecksV1(writer)
-terminal = ScriptedTerminalV1(writer)
+`ScriptedAuthorSource` returns an `AuthorReplyV1`; `derive_author_reply` applies the exact
+scripted answer and validates it. The single `author_turn` event's derivation commits the
+control-tool acknowledgement, authorized disclosure and requirement changes, user utterance,
+budget, context update, and cleared request together. These facts are derived from one input,
+not appended as a sequence of independently published events. The acknowledgement and user
+message enter the immutable context content/revision records; the runtime keeps no separate
+log. On resume, a persisted request is answered from the frozen script; no live author is
+called. Author text such as “done” never establishes task completion.
 
-action = writer.submit_action(handle, assistant_message)
-request = writer.step_tool(action.runtime)  # phase: awaiting_author
-reply = author.reply(request.runtime)       # phase: ready_writer
-# After an eventual final writer action has entered checking:
-batch = checks.request_checks(final_action.runtime)
-result = checks.check_next(batch.runtime)   # repeat for each outstanding check
-edge = terminal.transition(result.runtime)
-outcome = terminal.terminal_outcome(edge.runtime)
-reward = terminal.reward(outcome.runtime)
-```
+A script selector miss is a simulator-coverage failure with unavailable reward, not bad
+writing. Tool-call exhaustion takes precedence over malformed-call and author-call exhaustion;
+otherwise malformed calls take precedence over author exhaustion. Each drained error counts as
+an attempted call without permitting a successful author request beyond the limit.
 
-If mandatory feedback is declared, after the relevant progress checks call
-`author.request_feedback(handle)` and `author.reply(request.runtime)`. It delivers
-at most one ordered feedback item per completed writer turn, then requires writer
-continuation. A feedback rule may name a private `RequirementUpdateV1`; the
-environment commits its typed supersession separately from the author utterance.
-When its prerequisite fails or the author/writer budget cannot deliver the next
-feedback item, `terminal.stop_incomplete(handle)` seals a valid incomplete outcome;
-checks not run are explicitly `not_run` reward components rather than fabricated
-passes or evaluator outages.
-Reward components must have terminal (`each_turn` or `node_exit_candidate`)
-check evidence; progress-only checks cannot be reward components in this slice.
-Drained writer-turn exhaustion, including after a reply, and measured generated-
-or total-token overruns seal a typed incomplete `TerminalOutcomeV1` bound to a
-frozen checkpoint. `terminal.reward` then publishes the declared incomplete
-score and availability; sampled overruns retain their usage and output evidence.
-The writer sees only the explicit user reply and its own file-tool observations;
-the private packet, check/evaluator material, requirement bytes, and reward do not
-enter writer context.
+## Checks and outcomes
 
-## Frozen checks and reward
+`RolloutDriver` dispatches check requests through the typed evaluator port. The deterministic
+evaluator supports file-target `nonempty`, `contains`, `excludes`, `excludes_all`,
+`word_range`, and `exact` checks in this mode. Results name the frozen candidate and admitted
+check/evaluator packet; the evaluator cannot edit files. Replay re-derives recorded results
+offline and does not call the evaluator.
 
-`request_checks` accepts only a quiescent final-turn checkpoint. That immutable
-checkpoint is the candidate target. Every check request names that target, its
-admitted check and evaluator packet, and the active requirement version. The
-deterministic evaluator supports only file-target `nonempty`, `contains`,
-`excludes`, `excludes_all`, `word_range`, and `exact` in this mode. A result records
-recomputed evidence and cannot edit files. The environment alone applies a
-permitted terminal edge or seals an incomplete outcome. Terminal outcome,
-component reward, reward availability, and training eligibility are separate
-immutable records. Reward uses exact integer numerator/normalization arithmetic;
-training is ineligible until native action-token alignment exists.
+The state points to one evolving `OutcomeV1`: it holds the check batch and results, selected
+transition edge, terminal status, reward ref, and training-eligibility ref as those stages
+complete. Reward arithmetic is exact integer numerator/normalization arithmetic. Evaluation
+cannot rewrite the candidate state. Training eligibility remains separate from reward and is
+not native on-policy eligibility.
 
-Every producer stages its event, invokes `project_writer_context` as the shared
-semantic validator, and then publishes through the compare-and-swap store.
-The store also runs that validator for Phase 5 direct publication before moving
-the head. Restore and offline replay invoke the same validator
-without a model, network call, author provider, or check worker. A failed producer
-may leave unreachable immutable artifacts; it cannot move the lineage head.
-The immutable admitted entry contract anchors Phase 5 authority even if a child
-tries to null its author packet or drop the runtime log. Unknown generic event
-kinds cannot mutate this lineage; generic Phase 2 fixtures remain supported
-outside it.
+The writer sees only its visible messages, file-tool observations, and explicit author
+utterance. The private packet, evaluator material, undisclosed requirements, and reward stay
+outside writer context. Requirements and decisions remain authoritative in their private
+ledgers; any authorized public disclosure is added by the same `author_turn` derive.
+
+For context carry/seed/drop/compaction, see [the context-operation contract](task-graph-compaction.md).
+For sealed member policies and group results, see [deterministic groups](task-graph-groups.md).

@@ -8,31 +8,26 @@ interprets their small vocabulary, while writer and author models never execute 
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from dataclasses import field as dataclass_field
-from types import MappingProxyType
 from typing import Any, ClassVar, Self
 
-from writing_agent.task_graph import domain_hash, validate_hash
+from writing_agent.task_graph import (
+    EXECUTION_STATUSES,
+    TASK_STATUSES,
+    canonical_json,
+    domain_hash,
+    freeze,
+    thaw,
+    validate_hash,
+)
 
 FILE_TOOLS = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file"})
 GRAPH_TOOLS = FILE_TOOLS | {"ask_author"}
 WRITER_FAMILIES = frozenset({"F1", "F2", "F3", "F4", "F5"})
 CHECK_APPLICABILITY = frozenset({"each_turn", "node_exit_candidate"})
-TASK_STATUSES = frozenset({"complete", "accepted_partial", "incomplete", "unknown"})
-EXECUTION_STATUSES = frozenset(
-    {
-        "running",
-        "valid",
-        "interrupted",
-        "environment_error",
-        "backend_error",
-        "simulator_error",
-        "controller_error",
-        "external_cancelled",
-    }
-)
 CHECK_STATUSES = frozenset({"pass", "fail", "unavailable"})
 GUARD_BUDGETS = frozenset(
     {
@@ -48,20 +43,90 @@ GUARD_BUDGETS = frozenset(
 )
 
 
-def _freeze(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return MappingProxyType({key: _freeze(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_freeze(item) for item in value)
-    return value
+def _tool_schema(name: str, description: str, required: list[str], **properties: str) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    key: {"type": "string", "description": value}
+                    for key, value in properties.items()
+                },
+                "required": required,
+                "additionalProperties": False,
+            },
+        },
+    }
 
 
-def _thaw(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _thaw(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(item) for item in value]
-    return value
+TOOL_SCHEMAS = [
+    _tool_schema(
+        "list_dir", "List a workspace directory (up to 500 entries).", [], path="Directory"
+    ),
+    _tool_schema("read_file", "Read a UTF-8 workspace file.", ["path"], path="File"),
+    _tool_schema(
+        "search",
+        "Literal case-insensitive search; up to 100 matches in 1000 files.",
+        ["query"],
+        query="Text",
+        path="File or directory",
+    ),
+    _tool_schema(
+        "write_file",
+        "Create or replace a file. Commit canon only when authorized.",
+        ["path", "content"],
+        path="File",
+        content="Complete text",
+    ),
+    _tool_schema(
+        "patch_file",
+        "Replace one exact text span; fails on ambiguous matches.",
+        ["path", "old", "new"],
+        path="File",
+        old="Unique old text",
+        new="Replacement",
+    ),
+]
+
+ASK_AUTHOR_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "ask_author",
+        "description": "Ask about declared public decision IDs. This must be the only tool call.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string"},
+                "decision_ids": {"type": "array", "items": {"type": "string"}},
+                "proposals": {"type": "array", "items": {"type": "object"}},
+                "option_refs": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["question", "decision_ids", "proposals", "option_refs"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def writer_tool_schemas(allowlist: tuple[str, ...], interaction_policy=None) -> tuple[dict, ...]:
+    """Build the stable tool manifest from an admitted allowlist."""
+    schemas = tuple(schema for schema in TOOL_SCHEMAS if schema["function"]["name"] in allowlist)
+    if "ask_author" not in allowlist:
+        return schemas
+    if interaction_policy is None:
+        raise ValueError("ask_author schema requires admitted public decision declarations")
+    schema = json.loads(canonical_json(ASK_AUTHOR_SCHEMA))
+    declared = interaction_policy.public_decisions
+    schema["function"]["description"] += " Public decisions: " + "; ".join(
+        f"{item['id']}: {item['label']}" for item in declared
+    )
+    schema["function"]["parameters"]["properties"]["decision_ids"]["items"]["enum"] = [
+        item["id"] for item in declared
+    ]
+    return (*schemas, schema)
 
 
 def _nonnegative(value: int, label: str, *, positive: bool = False) -> None:
@@ -83,13 +148,14 @@ class _Contract:
 
     schema: int = 1
     ARTIFACT_TYPE: ClassVar[str]
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
 
     def __post_init__(self) -> None:
         if type(self.schema) is not int or self.schema != 1:
             raise ValueError(f"unsupported {self.ARTIFACT_TYPE} schema")
         for field in fields(self):
             if field.name != "schema":
-                object.__setattr__(self, field.name, _freeze(getattr(self, field.name)))
+                object.__setattr__(self, field.name, freeze(getattr(self, field.name)))
         self.validate()
 
     def validate(self) -> None:
@@ -98,7 +164,11 @@ class _Contract:
     def to_dict(self) -> dict[str, Any]:
         return {
             "artifact_type": self.ARTIFACT_TYPE,
-            **{field.name: _thaw(getattr(self, field.name)) for field in fields(self)},
+            **{
+                field.name: thaw(getattr(self, field.name))
+                for field in fields(self)
+                if field.name not in self.OMIT_NONE_FIELDS or getattr(self, field.name) is not None
+            },
         }
 
     def identity(self) -> str:
@@ -109,7 +179,8 @@ class _Contract:
         if not isinstance(value, Mapping):
             raise TypeError(f"{cls.ARTIFACT_TYPE} must be an object")
         expected = {field.name for field in fields(cls)} | {"artifact_type"}
-        if set(value) != expected:
+        present = set(value)
+        if present != expected and present != expected - cls.OMIT_NONE_FIELDS:
             missing = sorted(expected - set(value))
             unknown = sorted(set(value) - expected)
             raise ValueError(
@@ -117,7 +188,7 @@ class _Contract:
             )
         if value["artifact_type"] != cls.ARTIFACT_TYPE:
             raise ValueError(f"expected {cls.ARTIFACT_TYPE}")
-        kwargs = {key: value[key] for key in expected - {"artifact_type"}}
+        kwargs = {key: value[key] for key in expected - {"artifact_type"} if key in value}
         result = cls(**kwargs)
         if result.to_dict() != dict(value):
             raise ValueError(f"{cls.ARTIFACT_TYPE} is not in canonical typed form")
@@ -229,7 +300,9 @@ class BudgetContractV1(_Contract):
     max_author_calls: int = 0
     max_graph_hops: int = 0
     max_visits: int = 0
+    max_generated_tokens: int | None = None
     ARTIFACT_TYPE: ClassVar[str] = "BudgetContractV1"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"max_generated_tokens"})
 
     def validate(self) -> None:
         _nonnegative(self.max_steps, "max_steps", positive=True)
@@ -239,13 +312,8 @@ class BudgetContractV1(_Contract):
         _nonnegative(self.max_author_calls, "max_author_calls")
         _nonnegative(self.max_graph_hops, "max_graph_hops", positive=True)
         _nonnegative(self.max_visits, "max_visits", positive=True)
-
-    def legacy_agent_budgets(self) -> dict[str, int]:
-        return {
-            "max_steps": self.max_steps,
-            "max_tool_calls": self.max_tool_calls,
-            "max_read_tokens": self.max_read_tokens,
-        }
+        if self.max_generated_tokens is not None:
+            _nonnegative(self.max_generated_tokens, "max_generated_tokens")
 
 
 @dataclass(frozen=True)
@@ -600,19 +668,19 @@ class NodeContractV1(_Contract):
 
     @property
     def entry_contract(self) -> NodeEntryV1:
-        return NodeEntryV1.from_dict(_thaw(self.entry))
+        return NodeEntryV1.from_dict(thaw(self.entry))
 
     @property
     def interaction_contract(self) -> InteractionContractV1:
-        return InteractionContractV1.from_dict(_thaw(self.interaction))
+        return InteractionContractV1.from_dict(thaw(self.interaction))
 
     @property
     def budget_contract(self) -> BudgetContractV1:
-        return BudgetContractV1.from_dict(_thaw(self.budgets))
+        return BudgetContractV1.from_dict(thaw(self.budgets))
 
     @property
     def completion_contract(self) -> CompletionContractV1:
-        return CompletionContractV1.from_dict(_thaw(self.completion))
+        return CompletionContractV1.from_dict(thaw(self.completion))
 
     def validate(self) -> None:
         if not isinstance(self.node_id, str) or not self.node_id:

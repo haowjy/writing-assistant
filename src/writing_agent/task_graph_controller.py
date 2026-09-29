@@ -1,159 +1,52 @@
-"""Deterministic environment-owned routing for admitted task graphs.
-
-The controller consumes trusted state and check results only.  Author utterance text
-is carried for auditability but is deliberately absent from every routing predicate.
-"""
+"""Pure sequencing and guard evaluation for verified task-graph views."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass, field
-from types import MappingProxyType
+from dataclasses import dataclass
+from typing import Any, Literal
 
-from writing_agent.task_graph_admission import AdmissionError, AdmittedGraphV1, AdmittedNodeV1
-from writing_agent.task_graph_contracts import (
-    EXECUTION_STATUSES,
-    TASK_STATUSES,
-    GuardContractV1,
-)
+from writing_agent.task_graph_accounting import exhausted_stop_reason, tool_error
+from writing_agent.task_graph_admission import AdmissionError, AdmittedNodeV1
+from writing_agent.task_graph_contracts import EdgeContractV1, GuardContractV1
 
-REWARD_STATUSES = frozenset({"pending", "available", "unavailable"})
-TRAINING_ELIGIBILITY = frozenset({"pending", "eligible", "ineligible"})
-PHASES = frozenset(
-    {
-        "ready_writer",
-        "checking",
-        "awaiting_author",
-        "awaiting_checks",
-        "ready_transition",
-        "terminal",
-    }
-)
-
-
-@dataclass(frozen=True)
-class OutcomeStatusV1:
-    """Orthogonal outcome axes; no field is inferred from another."""
-
-    task_status: str = "unknown"
-    execution_status: str = "running"
-    stop_reason: str | None = None
-    reward_status: str = "pending"
-    training_eligibility: str = "pending"
-    schema: int = 1
-
-    def __post_init__(self) -> None:
-        if type(self.schema) is not int or self.schema != 1:
-            raise ValueError("unsupported outcome status schema")
-        if self.task_status not in TASK_STATUSES:
-            raise ValueError("unsupported task status")
-        if self.execution_status not in EXECUTION_STATUSES:
-            raise ValueError("unsupported execution status")
-        if self.stop_reason is not None and (
-            not isinstance(self.stop_reason, str) or not self.stop_reason
-        ):
-            raise ValueError("stop_reason must be null or a nonempty string")
-        if self.reward_status not in REWARD_STATUSES:
-            raise ValueError("unsupported reward status")
-        if self.training_eligibility not in TRAINING_ELIGIBILITY:
-            raise ValueError("unsupported training eligibility")
+DirectiveKind = Literal[
+    "sample_writer",
+    "execute_tool",
+    "request_author",
+    "await_author_reply",
+    "request_checks",
+    "await_check_result",
+    "commit_transition",
+    "seal_outcome",
+    "stop_exhausted",
+    "publish_reward",
+    "halt",
+    "done",
+]
+CONTEXT_LIMITS = frozenset({"context_budget", "context_storage_budget"})
+REQUIRED_CHECK_SCOPES = frozenset({"each_turn", "node_exit_candidate"})
 
 
 @dataclass(frozen=True)
-class ControllerViewV1:
-    node_id: str
-    phase: str
-    outcome: OutcomeStatusV1
-    writer_turn_complete: bool = False
-    pending_author_request: str | None = None
-    outstanding_checks: tuple[str, ...] = ()
-    check_status: Mapping[str, str] = field(default_factory=dict)
-    interaction_complete: bool = False
-    continuation_allowed: bool = False
-    budgets_remaining: Mapping[str, int] = field(default_factory=dict)
-    author_utterance: str | None = None
-    schema: int = 1
+class Directive:
+    """The next legal sequencer action, with any caller alternatives."""
 
-    def __post_init__(self) -> None:
-        if type(self.schema) is not int or self.schema != 1:
-            raise ValueError("unsupported controller view schema")
-        if not isinstance(self.node_id, str) or not self.node_id:
-            raise ValueError("node_id is required")
-        if self.phase not in PHASES:
-            raise ValueError("unsupported controller phase")
-        if not isinstance(self.outcome, OutcomeStatusV1):
-            raise TypeError("outcome must be OutcomeStatusV1")
-        for value, label in (
-            (self.writer_turn_complete, "writer_turn_complete"),
-            (self.interaction_complete, "interaction_complete"),
-            (self.continuation_allowed, "continuation_allowed"),
-        ):
-            if type(value) is not bool:
-                raise TypeError(f"{label} must be bool")
-        if self.pending_author_request is not None and (
-            not isinstance(self.pending_author_request, str) or not self.pending_author_request
-        ):
-            raise ValueError("pending_author_request must be null or a nonempty reference")
-        if not isinstance(self.outstanding_checks, tuple) or any(
-            not isinstance(value, str) or not value for value in self.outstanding_checks
-        ):
-            raise TypeError("outstanding_checks must be an array of ids")
-        if len(self.outstanding_checks) != len(set(self.outstanding_checks)):
-            raise ValueError("outstanding_checks must be unique")
-        if not isinstance(self.check_status, Mapping) or any(
-            not isinstance(key, str) or not key or value not in {"pass", "fail", "unavailable"}
-            for key, value in self.check_status.items()
-        ):
-            raise ValueError("check_status must map ids to pass/fail/unavailable")
-        if not isinstance(self.budgets_remaining, Mapping) or any(
-            not isinstance(key, str) or type(value) is not int or value < 0
-            for key, value in self.budgets_remaining.items()
-        ):
-            raise ValueError("budgets_remaining must contain nonnegative integers")
-        if self.author_utterance is not None and not isinstance(self.author_utterance, str):
-            raise TypeError("author_utterance must be text or null")
-        object.__setattr__(self, "check_status", MappingProxyType(dict(self.check_status)))
-        object.__setattr__(
-            self, "budgets_remaining", MappingProxyType(dict(self.budgets_remaining))
-        )
-
-
-@dataclass(frozen=True)
-class ControllerDirectiveV1:
-    kind: str
+    kind: DirectiveKind
+    call_index: int | None = None
+    source: Literal["writer_request", "mandatory_feedback"] | None = None
     edge_id: str | None = None
-    request_ref: str | None = None
-    reason: str | None = None
-    schema: int = 1
-
-    def __post_init__(self) -> None:
-        if type(self.schema) is not int or self.schema != 1:
-            raise ValueError("unsupported controller directive schema")
-        if self.kind not in {
-            "request_author",
-            "continue_writer",
-            "propose_edge",
-            "stop_incomplete",
-            "wait_checks",
-        }:
-            raise ValueError("unsupported controller directive")
-        if self.kind == "propose_edge" and not self.edge_id:
-            raise ValueError("propose_edge requires edge_id")
-        if self.kind != "propose_edge" and self.edge_id is not None:
-            raise ValueError("only propose_edge may name an edge")
-        if self.kind == "request_author" and not self.request_ref:
-            raise ValueError("request_author requires request_ref")
-        if self.kind != "request_author" and self.request_ref is not None:
-            raise ValueError("only request_author may name a request")
+    task_status: str | None = None
+    stop_reason: str | None = None
+    alternatives: frozenset[str] = frozenset()
 
 
 def evaluate_guard(
     guard: GuardContractV1,
-    view: ControllerViewV1,
+    view: Any,
     *,
     task_status: str | None = None,
 ) -> bool:
-    """Evaluate the complete v1 guard vocabulary without generated code or models."""
+    """Evaluate the complete admitted guard vocabulary against structured view fields."""
     status = view.outcome.task_status if task_status is None else task_status
     arguments = guard.arguments
     if guard.kind == "always":
@@ -165,107 +58,175 @@ def evaluate_guard(
     if guard.kind == "execution_status":
         return view.outcome.execution_status == arguments["status"]
     if guard.kind == "check_status":
-        return view.check_status.get(arguments["check_id"]) == arguments["status"]
+        return view.check_statuses.get(arguments["check_id"]) == arguments["status"]
     if guard.kind == "interaction_complete":
-        return view.interaction_complete is arguments["value"]
+        return _interaction_complete(view) is arguments["value"]
     if guard.kind == "budget_remaining":
-        return view.budgets_remaining.get(arguments["budget"], 0) > 0
+        budget = arguments["budget"]
+        limits = view.budget["limits"]
+        consumed = view.budget["consumed"]
+        return limits.get(budget, 0) - consumed.get(budget, 0) > 0
     raise AssertionError(f"admission allowed unknown guard {guard.kind}")
 
 
-class DeterministicControllerV1:
-    VERSION = "deterministic-v1"
+def select_edge(
+    node: AdmittedNodeV1,
+    view: Any,
+    *,
+    task_status: str | None = None,
+) -> EdgeContractV1 | None:
+    """Return the unique highest-priority matching edge, or None when none match."""
+    matching = [
+        edge
+        for edge in node.edges
+        if evaluate_guard(node.guards[edge.edge_id], view, task_status=task_status)
+    ]
+    if not matching:
+        return None
+    priorities = [edge.precedence if edge.precedence is not None else 0 for edge in matching]
+    if len(set(priorities)) != len(priorities):
+        raise AdmissionError("controller_conflict", "matching edges have equal precedence")
+    return matching[priorities.index(min(priorities))]
 
-    def __init__(self, graph: AdmittedGraphV1):
-        if not isinstance(graph, AdmittedGraphV1):
-            raise TypeError("graph must be admitted before controller construction")
-        self.graph = graph
 
-    def next(self, view: ControllerViewV1) -> ControllerDirectiveV1:
-        """Return one directive from trusted state; never parse author prose."""
-        node = self.graph.node(view.node_id)
-        if view.outcome.execution_status not in {"running", "valid"}:
-            return ControllerDirectiveV1(
-                "stop_incomplete",
-                reason=view.outcome.stop_reason or view.outcome.execution_status,
+def next_step(view: Any) -> Directive:
+    """Derive one routing directive solely from the verified structured lineage view."""
+    phase = view.state.position["phase"]
+    if phase == "terminal":
+        if (
+            view.outcome.reward_status == "pending"
+            and view.outcome.execution_status == "valid"
+            and view.mode.reward is not None
+        ):
+            return Directive("publish_reward")
+        return Directive("done")
+
+    if phase == "ready_writer":
+        continuation = view.state.continuation
+        queue = continuation["tool_queue"]
+        call_index = continuation["next_call"]
+        if call_index < len(queue):
+            call = queue[call_index]
+            name = call["name"]
+            pre_dispatch_error = tool_error(view.budget, call.get("rejection"), name)
+            if name == "ask_author" and view.mode.ask_semantics and pre_dispatch_error is None:
+                return Directive("request_author", source="writer_request")
+            return Directive("execute_tool", call_index=call_index)
+
+        reason = exhausted_stop_reason(view.budget)
+        if reason is not None:
+            alternatives = (
+                frozenset({"context_operation"}) if reason in CONTEXT_LIMITS else frozenset()
             )
-        if view.phase == "awaiting_checks" or view.outstanding_checks:
-            return ControllerDirectiveV1("wait_checks")
-        if view.phase == "awaiting_author" or view.pending_author_request is not None:
-            if node.contract.interaction_contract.mode == "none":
-                return ControllerDirectiveV1(
-                    "stop_incomplete", reason="author_interaction_not_permitted"
+            return Directive("stop_exhausted", stop_reason=reason, alternatives=alternatives)
+        return Directive("sample_writer", alternatives=frozenset({"context_operation"}))
+
+    if phase == "awaiting_author":
+        return Directive("await_author_reply")
+
+    feedback_cursor = view.state.continuation["feedback_cursor"]
+    feedback_remaining = feedback_cursor < len(view.mode.feedback_rules)
+    if phase == "checking":
+        checks = applicable_checks(view, feedback_cursor)
+        if checks and view.mode.evaluation:
+            return Directive("request_checks")
+        if not checks and feedback_remaining:
+            if _feedback_budgets_allow(view):
+                return Directive("request_author", source="mandatory_feedback")
+            return Directive(
+                "seal_outcome",
+                task_status="incomplete",
+                stop_reason=_feedback_budget_reason(view),
+            )
+        return Directive("halt", stop_reason="no_admitted_evaluation")
+
+    if phase == "awaiting_checks":
+        if view.state.continuation["check_requests"]:
+            return Directive("await_check_result")
+        if feedback_remaining:
+            rule = view.mode.feedback_rules[feedback_cursor]
+            prerequisites_pass = all(
+                view.check_statuses.get(check_id) == "pass"
+                for check_id in rule["prerequisite_check_ids"]
+            )
+            if not prerequisites_pass:
+                return Directive(
+                    "seal_outcome",
+                    task_status="incomplete",
+                    stop_reason="feedback_prerequisite_failed",
                 )
-            if view.pending_author_request is None:
-                return ControllerDirectiveV1("stop_incomplete", reason="missing_author_request")
-            if view.budgets_remaining.get("author_calls", 0) < 1:
-                return ControllerDirectiveV1("stop_incomplete", reason="author_budget")
-            return ControllerDirectiveV1("request_author", request_ref=view.pending_author_request)
-        if view.phase == "ready_writer":
-            return self._writer_directive(view)
-        if view.phase == "checking":
-            if not view.writer_turn_complete:
-                return self._writer_directive(view)
-            required = node.contract.completion_contract.required_check_ids
-            required_statuses = [view.check_status.get(check_id) for check_id in required]
-            if any(status is None or status == "unavailable" for status in required_statuses):
-                return ControllerDirectiveV1("wait_checks")
-            passed = all(status == "pass" for status in required_statuses)
-            if passed and view.interaction_complete:
-                status = (
-                    "accepted_partial"
-                    if node.contract.completion_contract.accepted_partial
-                    else "complete"
+            if not _feedback_budgets_allow(view):
+                return Directive(
+                    "seal_outcome",
+                    task_status="incomplete",
+                    stop_reason=_feedback_budget_reason(view),
                 )
-                return self._transition(node, view, task_status=status)
-            if self._can_continue(node, view):
-                return ControllerDirectiveV1("continue_writer")
-            return ControllerDirectiveV1(
-                "stop_incomplete",
-                reason="required_check_failed" if not passed else "interaction_incomplete",
-            )
-        if view.phase == "ready_transition":
-            return self._transition(node, view)
-        if view.phase == "terminal":
-            return ControllerDirectiveV1(
-                "stop_incomplete", reason=view.outcome.stop_reason or "already_terminal"
-            )
-        raise AssertionError(f"unhandled admitted phase {view.phase}")
+            return Directive("request_author", source="mandatory_feedback")
 
-    @staticmethod
-    def _writer_directive(view: ControllerViewV1) -> ControllerDirectiveV1:
-        if view.budgets_remaining.get("writer_turns", 0) < 1:
-            return ControllerDirectiveV1("stop_incomplete", reason="writer_budget")
-        return ControllerDirectiveV1("continue_writer")
-
-    @staticmethod
-    def _can_continue(node: AdmittedNodeV1, view: ControllerViewV1) -> bool:
-        return (
-            node.contract.completion_contract.repair_turns > 0
-            and view.continuation_allowed
-            and view.budgets_remaining.get("writer_turns", 0) > 0
+        task_status = (
+            "accepted_partial"
+            if view.node.contract.completion_contract.accepted_partial
+            else "complete"
         )
-
-    @staticmethod
-    def _transition(
-        node: AdmittedNodeV1,
-        view: ControllerViewV1,
-        *,
-        task_status: str | None = None,
-    ) -> ControllerDirectiveV1:
-        matching = [
-            edge
-            for edge in node.edges
-            if evaluate_guard(node.guards[edge.edge_id], view, task_status=task_status)
-        ]
-        if not matching:
-            if DeterministicControllerV1._can_continue(node, view):
-                return ControllerDirectiveV1("continue_writer")
-            return ControllerDirectiveV1("stop_incomplete", reason="no_applicable_edge")
-        # Admission proved unique precedence whenever multiple guards can match.
-        matching.sort(key=lambda edge: edge.precedence or 0)
-        if len(matching) > 1 and matching[0].precedence == matching[1].precedence:
-            raise AdmissionError(
-                "controller_conflict", "admitted guards produced ambiguous precedence"
+        required_checks = _required_terminal_checks(view)
+        if not required_checks:
+            # §8.1's no-admitted-evaluation row governs an empty terminal set.
+            return Directive("halt", stop_reason="no_admitted_evaluation")
+        if not all(view.check_statuses.get(check.id) == "pass" for check in required_checks):
+            return Directive(
+                "seal_outcome", task_status="incomplete", stop_reason="required_check_failed"
             )
-        return ControllerDirectiveV1("propose_edge", edge_id=matching[0].edge_id)
+        edge = select_edge(view.node, view, task_status=task_status)
+        if edge is None:
+            return Directive(
+                "seal_outcome", task_status="incomplete", stop_reason="no_applicable_edge"
+            )
+        return Directive("commit_transition", edge_id=edge.edge_id, task_status=task_status)
+
+    if phase == "ready_transition":
+        return Directive("seal_outcome", task_status=view.outcome.task_status)
+
+    raise AssertionError(f"unhandled admitted phase {phase}")
+
+
+def _interaction_complete(view: Any) -> bool:
+    return view.state.continuation["feedback_cursor"] >= len(view.mode.feedback_rules)
+
+
+def applicable_checks(view: Any, feedback_cursor: int) -> tuple:
+    """Return the checks required before the current feedback or terminal boundary."""
+    feedback = view.mode.feedback_rules
+    if feedback_cursor < len(feedback):
+        scope = f"before_feedback:{feedback[feedback_cursor]['id']}"
+        applicable = {"each_turn", scope}
+    else:
+        applicable = {"each_turn", "node_exit_candidate"}
+    return tuple(check for check in view.node.checks.values() if check.applicability in applicable)
+
+
+def _feedback_budgets_allow(view: Any) -> bool:
+    consumed = view.budget["consumed"]
+    limits = view.budget["limits"]
+    return all(
+        consumed.get(counter, 0) < limits.get(counter, 0)
+        for counter in ("author_calls", "writer_turns")
+    )
+
+
+def _feedback_budget_reason(view: Any) -> str:
+    consumed = view.budget["consumed"]
+    limits = view.budget["limits"]
+    if consumed.get("author_calls", 0) >= limits.get("author_calls", 0):
+        return "author_budget"
+    return "writer_budget"
+
+
+def _required_terminal_checks(view: Any) -> tuple:
+    return tuple(
+        check
+        for check in view.node.checks.values()
+        if check.required and check.applicability in REQUIRED_CHECK_SCOPES
+    )
+
+
+__all__ = ["Directive", "applicable_checks", "evaluate_guard", "next_step", "select_edge"]

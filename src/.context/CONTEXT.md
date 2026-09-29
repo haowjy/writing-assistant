@@ -10,69 +10,111 @@ retains its smoke-evaluation and training-format workflows.
   isolated workspaces, resume identities, saved results, and fresh-reader conditions.
 - [agent.py](../writing_agent/agent.py) owns the bounded conversation/tool loop;
   [workspace.py](../writing_agent/workspace.py) owns file operations and storage limits.
-- [task_graph.py](../writing_agent/task_graph.py) owns immutable task-graph value records
-  and their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
-  owns private content-addressed persistence, reference closure, checkpoint
-  materialization/restore/branch/diff, recorded Phase 2 effect replay, and the atomic
-  mutable lineage head. [task_graph_contracts.py](../writing_agent/task_graph_contracts.py)
-  adds detailed execution contracts as immutable artifacts referenced by the frozen
-  Phase 1 node shape; [task_graph_admission.py](../writing_agent/task_graph_admission.py)
-  resolves their public/private closure and rejects an unsound graph before sampling.
-  [task_graph_controller.py](../writing_agent/task_graph_controller.py) is the pure,
-  deterministic directive boundary. It does not step a writer, execute checks, accept
-  author transition/completion claims, or mutate runtime state.
-- [task_graph_writer.py](../writing_agent/task_graph_writer.py) is the opt-in Phase 4
-  writer/text-tool stepper over an admitted ready-writer entry and trusted restored
-  handle. [task_graph_environment.py](../writing_agent/task_graph_environment.py)
-  stages typed record/log/effect/context batches and owns semantic prepublication,
-  atomic CAS, and fresh restore for writer, author, checks, terminal, and context
-  operations. [task_graph_replay.py](../writing_agent/task_graph_replay.py)
-  owns the typed cursor, closed event handlers, semantic authority, and authorized
-  visible contributions for publication and recovery. The thin
-  [task_graph_projection.py](../writing_agent/task_graph_projection.py) entry
-  materializes/verifies writer context; it never renders the private log wholesale.
-  [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
-  codecs and binding checks for prepared requests, sampling and adapter evidence,
-  plus the current evaluation-only eligibility decision; the persisted V1 wires
-  retain their approved identities. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+- [task_graph.py](../writing_agent/task_graph.py) owns core environment value records and
+  their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
+  owns private content-addressed persistence, typed reference closure, structural checkpoint
+  saving, and the atomic mutable lineage head. A semantic verifier is required at construction;
+  runtime commits publish through it. Runtime stepping does not materialize a workspace. Runtime lineages must
+  pin `task-graph-derive-v1`; a lineage without that pin is refused at the versions
+  reference, and the store has no patch-effect fallback.
+  [task_graph_contracts.py](../writing_agent/task_graph_contracts.py) adds detailed
+  execution contracts as immutable artifacts referenced by the frozen Phase 1 node shape;
+  [task_graph_admission.py](../writing_agent/task_graph_admission.py) resolves their
+  public/private closure and rejects an unsound graph before sampling.
+- **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
+  is the field-spec vocabulary, strict decoder and `WireRecord` base;
+  [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
+  context `WireRecord`s, plus runtime port-descriptor and manifest records; context content
+  and revision records live here. Pure group record classes live in
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
+  [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
+  sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
+  provides codecs for shared payload shapes without record classes. Reference edges derive
+  from the field annotations, and the store follows them in shared closure.
+  [task_graph_calls.py](../writing_agent/task_graph_calls.py) owns sampled-message intake,
+  call parsing and the tool effect contract.
+  [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
+  view/transition types. [task_graph_controller.py](../writing_agent/task_graph_controller.py)
+  is the pure directive boundary (`next_step`, `select_edge`, `applicable_checks`); it does
+  not step a writer,
+  execute checks, accept author transition/completion claims, or mutate runtime state.
+  [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py) derives a node's
+  entry state and root artifacts; the writer, author, outcome and context derive modules
+  build each step through
+  [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
+  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) calls
+  `require_quiescent`, `select_context`, and `charge_budget` directly, derives member starts
+  from persisted group specs, and takes named seed contexts from view ancestry.
+  [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles the derive
+  registries into the one `derive_input` dispatch, re-admits from the versions-pinned
+  policy, and folds typed events as the store's mandatory verifier. The gate's
+  checkpoint-keyed view cache holds only published views and skips derives only; store
+  closure still re-reads and hashes persisted bytes on every operation.
+  [task_graph_environment.py](../writing_agent/task_graph_environment.py) is the producer:
+  entry, cold open, head resume, per-step verification, derive-persist-publish commits,
+  member starts, and the typed port inputs that are the privacy boundary.
+  [task_graph_rollout.py](../writing_agent/task_graph_rollout.py) is the synchronous
+  driver loop, and [task_graph_gatherers.py](../writing_agent/task_graph_gatherers.py)
+  holds the thin port adapters that turn a typed port input into a recorded input. See
+  [transition-seam.md](transition-seam.md) for how to add a record or a derive and for the
+  layer order; [gate-and-rollout.md](gate-and-rollout.md) for gate, store and environment
+  contracts; [rollout-execution.md](rollout-execution.md) for driver, gatherer, resume and
+  acceptance-test contracts; and [group-coordination.md](group-coordination.md) for groups.
+- **Task-graph runtime.** The transition-seam modules are the runtime. Each commit contains
+  one typed input event; the same derive computes the producer transition and verifies it
+  during publication. Cold opens and resumes use `RolloutEnvironment` and the gate's verified
+  view. Context records carry the content chain and revisions;
+  `OutcomeV1` carries outcome, reward and eligibility. `RolloutDriver` gets the verified
+  directive and typed port input through `step_input`; there is no runtime log or workspace
+  materialization. See [transition-seam.md](transition-seam.md),
+  [gate-and-rollout.md](gate-and-rollout.md), and
+  [rollout-execution.md](rollout-execution.md) for the contracts.
+- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
+  writer-turn decoder and sampling-binding checks, plus the current evaluation-only
+  eligibility decision. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
-  [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines the injected
-  sampling, environment, tool and evaluator ports with immutable content-addressed
-  descriptors/manifests; [task_graph_local.py](../writing_agent/task_graph_local.py)
-  composes the current offline implementations. Injection does not override
-  admitted program schemas or semantic replay validation.
-  A capable adapter calls
-  `prepare_request` before sampling to pin caller-owned request/context evidence;
-  that path does not verify payload messages. `prepare_verified_messages` checks a
-  typed payload's message sequence against the current projection at preparation,
-  publication, and recovery. The caller then supplies parsed writer output and any
-  raw-output/trace evidence. Neither module
-  invokes a model. [task_graph_scripted.py](../writing_agent/task_graph_scripted.py)
-  owns exact scripted author requests/replies, disclosure and authorized requirement
-  updates; [task_graph_checks.py](../writing_agent/task_graph_checks.py) freezes and
-  checks candidate checkpoints; [task_graph_terminal.py](../writing_agent/task_graph_terminal.py)
-  applies terminal guards and publishes immutable outcome/reward evidence. All three
-  use the same semantic replay walk before publication and during recovery;
-  [task_graph_author_validation.py](../writing_agent/task_graph_author_validation.py)
-  holds the author-side replay rules. See
-  [writer stepping](../../docs/task-graph-writer.md) for the entry budget artifact,
-  restore API, and the Phase 4 boundary.
+  [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable
+  descriptors and typed sampling, execution-environment, tool-provider, and evaluator
+  ports without importing concrete adapters. [task_graph_composition.py](../writing_agent/task_graph_composition.py)
+  owns the persisted runtime manifest, sealed session, local transaction publisher,
+  and runner that invokes a backend from verified current messages.
+  [task_graph_local.py](../writing_agent/task_graph_local.py) supplies offline scripted
+  sampling and a local workspace environment composed with the text provider. Its
+  staging path never enters a public port. Direct `submit_action` is an explicitly
+  unbound legacy/offline path; a bound session checks descriptor identity and any
+  started group member receipt before effects.
+  [task_graph_evaluation.py](../writing_agent/task_graph_evaluation.py) admits only
+  versioned evidence families with replay-only verifiers. Deterministic and fixture
+  families recompute exactly; transcript-review checks persisted transcript
+  provenance and declared status against frozen inputs and an authorized private
+  evaluator packet, without claiming subjective correctness. Injection does not
+  override admitted schemas, semantic replay, or the native-ineligible decision. `prepare_request` pins caller-owned evidence;
+  `prepare_verified_messages` checks typed messages against the active projection
+  at preparation, publication, and recovery. The sampling decoder alone binds
+  duplicated trace/action/request claims. The bound sampling input carries the
+  complete canonical persisted request/options value; composition stores typed
+  binary logprob output and constructs its ref without backend CAS access. Only the
+  composition runner invokes `SampleBackend`. The [author derive](../writing_agent/task_graph_derive_author.py)
+  builds author requests and replies, disclosure and authorized requirement updates. The
+  [scripted policy module](../writing_agent/task_graph_scripted.py) contains only pure
+  script-policy helpers used by author derives and gatherers.
   [task_graph_compaction.py](../writing_agent/task_graph_compaction.py) owns the
   fixed visible-message summary, complete-exchange selection, immutable context
-  operation evidence, and context byte accounting. The writer publishes a
-  `context_changed` operation only at a drained `ready_writer` boundary; the
-  semantic replay validates its selection and budget before publication and on recovery.
-  The immutable admitted writer entry activates that semantic walk even for the
-  first context operation, a retyped child runtime log, or a multi-event batch;
-  generic Phase 2 lineages without a typed entry retain their generic reducer.
+  operation evidence, and context byte accounting.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
-  defines the sealed entry/policy and exact credit records;
-  [task_graph_group.py](../writing_agent/task_graph_group.py) creates isolated
-  seeded branches, applies the same complete member-result admission to collection
-  and reopened finalization (including sealed start receipts and sampled stops),
-  and computes group advantages plus writer-only segment credit. It never samples
-  models or emits native token masks; see [group coordination](../../docs/task-graph-groups.md).
+  resolves the sealed group environment and defines the member-result, decision,
+  advantage and credit records and the typed scripted-terminal and execution-failure
+  records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their binding rules live in
+  `task_graph_record_contracts.py`.
+  [task_graph_group.py](../writing_agent/task_graph_group.py) starts each member as its own
+  new-core lineage through `RolloutEnvironment.start_member` (a retry resumes through
+  `open_head`). It admits collected results, and results finalized after a reopen, against
+  gate-verified member views. It computes group advantages, and writer-only segment credit
+  from the view's samples. It never samples models or emits native token masks. A
+  coordinator requires a `RolloutEnvironment` and has no bare-store start path. See
+  [group-coordination.md](group-coordination.md), and
+  [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
@@ -106,86 +148,24 @@ Task-graph immutable objects can exist before publication, but only canonical
 `refs/<lineage>.json` head files are lineage authority. Their persisted body contains
 only `head_commit`; expected-head is a compare-and-swap request. A transaction writes
 and flushes immutable events, a full checkpoint, and its commit before atomically
-replacing the head under the lineage lock. Unreachable files are harmless orphans.
-Restore always creates a new private directory and returns a trusted runtime handle;
-it never rewinds an event log. The Phase 2 replay reducer accepts only persisted
-`Phase2RecordedEffectV1` payloads and makes no model, network, or tool calls.
-Publication reduces that supported event batch from the actual parent checkpoint and
-requires typed reference closure after every intermediate effect as well as exact
-complete-state equality before writing or moving authority. The effect's
-`before_state_ref` is a state-identity assertion, not a persisted-object edge.
-Unsupported transition envelopes fail at the reducer seam. Branch initialization is
-the same recorded parent-to-child transition, not a pre-mutated state.
+replacing the head under the lineage lock. Unreachable files are harmless orphans. Checkpoint
+opening and lineage resume go through `RolloutEnvironment.open` or `open_head`; the verified
+`RuntimeHandle` contains state and context, not a workspace. The environment never rewinds an
+event log.
 
-Phase 4 publishes each `writer_action` or `tool_result` with a following
-`context_changed` event in **one** commit. The source event's recorded effect updates
-the queue/files/budgets and metadata index; the second effect updates `context_ref`
-after the revision can name the already-hashed source event. This preserves the
-approved content/provenance split without changing the Phase 2 reducer or any frozen
-identity. A tool-only exhausted turn may append `termination_recorded`; a final
-reply enters `checking`, not automatic task completion. Writer-produced
-`budget_charged` and `termination_recorded` use the explicit `writer_runtime` actor
-and require their runtime-log entry even as a first event; generic Phase 2 events
-retain their ordinary source. Native token loss masks remain unimplemented.
-
-The scripted-author mode is opt-in and separate from the legacy fixed-followup
-compiler. Admission resolves role-typed private author/evaluator packets, the public
-decision policy, exact private script, check programs and reward weights before a
-writer turn. An `ask_author` action is committed before its private request; a
-replayed/restored outstanding request produces the same author reply without a
-provider call. Request and reply boundaries are durable; only the paired tool
-acknowledgement and explicit author utterance enter writer context. Final writer turns freeze an
-immutable candidate before deterministic file checks. Check results name that
-candidate, admitted check and evaluator packet, requirement version and recomputed
-evidence. Environment transition and terminal outcome records remain separate from
-reward availability and training eligibility. `task_graph_replay.py` validates
-every new producer's exact field/actor authority and causal binding both against
-staged events before publication and on restore/replay. The evaluator cannot edit
-files or the terminal task/execution status; reward arithmetic is exact integer
-normalization. Model-backed author, semantic judge, learned/model compaction,
-and native on-policy eligibility are not implemented.
-
-The immutable admitted entry contract, not a child state field or runtime log,
-anchors Phase 5 semantic recovery. Its event dispatch is closed; other generic
-event kinds reject before publication and on restore. A writer-request reply
-commits its exact acknowledgement, disclosure, author turn and final context
-together, with a drained cursor before the request clears. Admission screens
-public decision IDs and labels as disclosure surfaces and allows only bounded
-ASCII IDs. Exact-byte canaries are a guard, not semantic secrecy. Tool and
-author eligibility is decided before dispatch: tool exhaustion wins, then
-malformed syntax, then author exhaustion. Attempted calls charge once; an
-exhausted tool counter never authorizes an acknowledgement. Terminal reward
-components must have terminal check scope. Writer turn and measured token
-exhaustion in this slice produce typed incomplete outcomes with a frozen
-checkpoint and declared reward availability, not legacy untyped stops.
-
-The graph writer uses a separate tool dispatch boundary so expected writer-operational
-path/patch/policy failures can be observed without converting disk, permission or
-corruption failures into writer mistakes. Raw call-array elements normalize to safe
-queue syntax and escaped evidence; each declared malformed call remains paired and
-charged without dispatch. Current lineage authority is checked before staging and
-again by publication CAS. Producer, restore, projection, and replay use one complete
-history-aware Phase 4 semantic walk (including exact per-event state/history ownership,
-legal phases and stop statuses, independently derived action/result ordinals,
-record/trace/prepared/log bindings, origin, execution fingerprints, file delta,
-queue cursor, and budget charges). The producer stages immutable candidates and
-validates them before publication; invalid candidates leave the head unchanged.
-The generic Phase 2 reducer stays unchanged. Argument JSON and
-raw call evidence have size/nesting bounds before decoding or serialization.
-Known zero token capacity rejects request preparation and can be sealed as a classified
-terminal stop. Already-sampled token overrun commits usage/output evidence and a
-terminal budget stop without tool execution. Exact pre-sampling context-token capacity
-and non-whitespace read counting are not supported and fail at runtime initialization.
-
-Reference closure uses one operation-scoped typed traversal with loaded, active, and
-completed sets. Checkpoint/commit/event depth is traversed iteratively; supplemental
+Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
+and loaded, active, and completed sets. Closure-validated immutable objects are reused
+only within the outermost store or role operation; each later operation re-reads and
+re-hashes them. Artifact reads return deep JSON-shaped copies, so caller mutation cannot
+alter a verified value. Checkpoint/commit/event depth is traversed iteratively; supplemental
 and imported references cannot bypass the validators for their resolved record domain.
 There is no process-global validation cache. Immutable-name and ref-name retries repeat
 their containing-directory durability barrier even when equal bytes or the matching
-head are already visible; identical `branch` retries use that same head-repair path.
+head are already visible.
 Every non-null authority head must target a checkpoint in its named lineage. A first
-commit may explicitly start from a checkpoint in another lineage, but later commit
-ancestry may not cross lineages.
+commit must start from a parentless checkpoint, which may belong to another lineage (a
+group member starts from the shared entry); later commit ancestry may not cross lineages.
+There is no mid-lineage branch operation in the runtime API.
 
 Catalog records carry normalized content in `text`; local imports also preserve raw
 bytes and a text file, with hashes for both representations. Content from the imported
@@ -215,6 +195,17 @@ returned observation text using the recorded tokenizer (whitespace estimates by
 default); rejected reads do not expose their content. Storage is measured in UTF-8
 bytes. Provider usage retains nested detail fields: do not sum a detail into its
 parent total a second time.
+
+## Task-graph runtime
+
+Each runtime commit stores one typed input event and its pure derive produces the successor
+state and artifacts. The same derive verifies each commit during publication; opening a saved
+checkpoint re-admits and folds it through the gate. Store construction requires a verifier, and
+runtime lineages pin `task-graph-derive-v1`. `WriterTurnV1` pins `context_revision_ref`; optional
+adapter-trace context claims are bound when present. There is no separate writer-request record.
+`EnvironmentStateV1.history` stores nonnegative `action_count` and `tool_result_count` values.
+See the rollout and transition-seam context above for context-record, outcome, driver, resume,
+and group contracts.
 
 ## Scoring contracts
 
@@ -298,17 +289,17 @@ versions, and checks resolve through explicitly private references. Guards are l
 to the `GuardContractV1` vocabulary and competing exits require unique numeric
 precedence. The graph has an immutable hop bound and every node an immutable visit
 bound. Admission validates tools, writer families, interaction coverage, check scope
-and controller/check versions without invoking a model. Phase 3 supports only `none`
-and fixed `scripted` interaction: `simulated_author` and mandatory feedback fail closed
-until their role-specific packet, policy, binding, and feedback-rule contracts exist.
+and controller/check versions without invoking a model. Admission supports `none` and
+fixed `scripted_author` interaction. `simulated_author` fails closed until its
+role-specific packet, policy and binding contracts exist, and mandatory feedback is
+admitted only on `scripted_author` nodes. Any writer node that declares a typed
+evaluator packet, interactive or not, has that packet and its reward contract resolved;
+a `legacy-evaluation-package` body is not resolved as a typed packet.
 Check admission uses exact evaluator-version-specific program schemas; semantic-v1 is
 not an admitted evaluator. Mapping and store-backed admission share the same typed
-closure and visibility rules. `DeterministicControllerV1`
-returns only `request_author`, `continue_writer`, `propose_edge`, `stop_incomplete`, or
-`wait_checks`; it checks writer exhaustion itself and permits a no-edge continuation
-only when the admitted repair contract, runtime authorization, and remaining writer
-budget all allow it. Author text is audit input and is never inspected for routing. Outcome
-records keep task, execution, stop, reward, and training-eligibility state independent.
+closure and visibility rules. Author text is audit input and is never inspected for
+routing (controller rules: [transition-seam.md](transition-seam.md)). Outcome records keep
+task, execution, stop, reward, and training-eligibility state independent.
 
 The scripted-author slice admits only a terminal edge guaranteed when required
 completion checks pass: an unconditional guard, a fixed completion predicate, or

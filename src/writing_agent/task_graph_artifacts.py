@@ -30,6 +30,7 @@ from writing_agent.task_graph_contracts import (
 class TypedArtifactReference:
     identity: str
     private: bool
+    path: str = ""
 
 
 class TypedArtifactError(ValueError):
@@ -89,19 +90,21 @@ def phase3_typed_artifact_references(
     if isinstance(contract, CheckContractV1):
         return (
             *(
-                TypedArtifactReference(identity, False)
+                TypedArtifactReference(identity, False, "public_evidence_refs[]")
                 for identity in contract.public_evidence_refs
             ),
             *(
-                TypedArtifactReference(identity, True)
+                TypedArtifactReference(identity, True, "private_evidence_refs[]")
                 for identity in contract.private_evidence_refs
             ),
         )
     if isinstance(contract, EvaluatorPacketV1):
-        return (TypedArtifactReference(contract.reward_contract_ref, True),)
+        return (TypedArtifactReference(contract.reward_contract_ref, True, "reward_contract_ref"),)
     if isinstance(contract, ScriptedAuthorV1):
         return tuple(
-            TypedArtifactReference(rule["requirement_update_ref"], True)
+            TypedArtifactReference(
+                rule["requirement_update_ref"], True, "feedback[].requirement_update_ref"
+            )
             for rule in contract.feedback
             if rule["requirement_update_ref"] is not None
         )
@@ -111,26 +114,46 @@ def phase3_typed_artifact_references(
     entry = contract.entry_contract
     interaction = contract.interaction_contract
     references = [
-        TypedArtifactReference(entry.request_ref, False),
-        TypedArtifactReference(entry.files_ref, False),
+        TypedArtifactReference(entry.request_ref, False, "entry.request_ref"),
+        TypedArtifactReference(entry.files_ref, False, "entry.files_ref"),
     ]
     if entry.requirement_version is not None:
-        references.append(TypedArtifactReference(entry.requirement_version, True))
+        references.append(
+            TypedArtifactReference(entry.requirement_version, True, "entry.requirement_version")
+        )
     references.extend(
-        TypedArtifactReference(identity, True)
+        TypedArtifactReference(identity, True, "mandatory_checks[]")
         for identity in (*contract.mandatory_checks, *contract.optional_checks)
     )
     if interaction.script_ref is not None:
-        references.append(TypedArtifactReference(interaction.script_ref, True))
+        references.append(
+            TypedArtifactReference(interaction.script_ref, True, "interaction.script_ref")
+        )
     if interaction.author_packet_ref is not None:
-        references.append(TypedArtifactReference(interaction.author_packet_ref, True))
+        references.append(
+            TypedArtifactReference(
+                interaction.author_packet_ref, True, "interaction.author_packet_ref"
+            )
+        )
     if interaction.interaction_policy_ref is not None:
-        references.append(TypedArtifactReference(interaction.interaction_policy_ref, False))
+        references.append(
+            TypedArtifactReference(
+                interaction.interaction_policy_ref, False, "interaction.interaction_policy_ref"
+            )
+        )
     if interaction.decision_bindings_ref is not None:
-        references.append(TypedArtifactReference(interaction.decision_bindings_ref, True))
+        references.append(
+            TypedArtifactReference(
+                interaction.decision_bindings_ref, True, "interaction.decision_bindings_ref"
+            )
+        )
     completion = contract.completion_contract
     if completion.evaluation_packet_ref is not None:
-        references.append(TypedArtifactReference(completion.evaluation_packet_ref, True))
+        references.append(
+            TypedArtifactReference(
+                completion.evaluation_packet_ref, True, "completion.evaluation_packet_ref"
+            )
+        )
     return tuple(references)
 
 

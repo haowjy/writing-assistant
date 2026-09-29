@@ -6,6 +6,8 @@ Only the harness should have write access while a task runs.
 
 from pathlib import Path
 
+from writing_agent.task_graph_contracts import TOOL_SCHEMAS
+
 
 class Workspace:
     def __init__(
@@ -97,53 +99,6 @@ class Workspace:
             for p in sorted(self.root.rglob("*"))
             if p.is_file()
         }
-
-
-def _schema(name: str, description: str, required: list[str], **properties: str) -> dict:
-    return {
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    key: {"type": "string", "description": value}
-                    for key, value in properties.items()
-                },
-                "required": required,
-                "additionalProperties": False,
-            },
-        },
-    }
-
-
-TOOL_SCHEMAS = [
-    _schema("list_dir", "List a workspace directory (up to 500 entries).", [], path="Directory"),
-    _schema("read_file", "Read a UTF-8 workspace file.", ["path"], path="File"),
-    _schema(
-        "search",
-        "Literal case-insensitive search; up to 100 matches in 1000 files.",
-        ["query"],
-        query="Text",
-        path="File or directory",
-    ),
-    _schema(
-        "write_file",
-        "Create or replace a file. Commit canon only when authorized.",
-        ["path", "content"],
-        path="File",
-        content="Complete text",
-    ),
-    _schema(
-        "patch_file",
-        "Replace one exact text span; fails on ambiguous matches.",
-        ["path", "old", "new"],
-        path="File",
-        old="Unique old text",
-        new="Replacement",
-    ),
-]
 
 
 def dispatch(workspace: Workspace, name: str, arguments: dict) -> dict:

@@ -1,4 +1,3 @@
-import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -7,14 +6,13 @@ from writing_agent.task_graph import (
     EVENT_KINDS,
     CheckpointV1,
     CommitV1,
-    ContextContentV1,
-    ContextRevisionV1,
     EnvironmentStateV1,
     EventV1,
     GraphInstanceV1,
     LineageRefV1,
     MessageV1,
     NodeSpecV1,
+    Phase,
     canonical_json,
     domain_hash,
     domain_hash_bytes,
@@ -23,10 +21,10 @@ from writing_agent.task_graph import (
     tree_hash,
     validate_file_tree,
 )
+from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1
 
 H = "0" * 64
 FIXTURE = json.loads((Path(__file__).parent / "fixtures/task_graph_hashes.json").read_text())
-CHAIN_FIXTURE = json.loads((Path(__file__).parent / "fixtures/task_graph_chain.json").read_text())
 
 
 class TaskGraphRecordsTest(unittest.TestCase):
@@ -50,8 +48,8 @@ class TaskGraphRecordsTest(unittest.TestCase):
                 "seq": 0,
                 "branch_base": None,
                 "imported_refs": (),
-                "action_ids": (),
-                "tool_result_ids": (),
+                "action_count": 0,
+                "tool_result_count": 0,
             },
             context_ref=H,
             requirements_ref=H,
@@ -78,8 +76,16 @@ class TaskGraphRecordsTest(unittest.TestCase):
     def test_canonical_fixture_and_round_trip(self):
         self.assertEqual(canonical_json({"b": "é", "a": [1, True, None]}), FIXTURE["canonical"])
         message = MessageV1(content=("hello",), origin="a")
-        context = ContextRevisionV1(messages=(message,))
-        context_content = ContextContentV1.from_revision(context)
+        rendering = {
+            "projection_version": "v1",
+            "prefix_id": "root",
+            "template_ref": H,
+            "tokenizer_ref": H,
+            "tool_schema_ref": H,
+        }
+        context_content = ContextContentV1(None, (message,), (), rendering)
+        context = ContextRevisionV1(context_content.identity(), None, ())
+        commit = CommitV1(parent_commit=None, events=(H,), checkpoint=H)
         instance = GraphInstanceV1(
             template_ref=H,
             entry_node="n",
@@ -97,16 +103,18 @@ class TaskGraphRecordsTest(unittest.TestCase):
         )
         records = (
             (message, "message"),
-            (context, "context"),
             (context_content, "context_content"),
+            (context, "context"),
             (instance, "instance"),
             (state, "state"),
             (checkpoint, "checkpoint"),
             (event, "event"),
+            (commit, "commit"),
         )
         for record, expected in records:
             self.assertEqual(record.identity(), FIXTURE[expected])
             self.assertEqual(type(record).from_json(record.to_json()), record)
+        self.assertEqual(ContextRevisionV1.from_json(context.to_json()), context)
         self.assertEqual(file_hash("x"), FIXTURE["file"])
         self.assertEqual(tree_hash({"a.txt": "hi"}), FIXTURE["tree"])
 
@@ -191,6 +199,21 @@ class TaskGraphRecordsTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             MessageV1(content=(Mutable([1]),), origin="author")
 
+    def test_transition_phase_and_invalid_tool_call_message_part(self):
+        self.assertEqual(Phase.READY_WRITER.value, "ready_writer")
+        message = MessageV1(
+            role="assistant",
+            content=({"type": "invalid_tool_call", "id": "bad-1", "raw": {"x": 1}},),
+            origin="writer:sample",
+        )
+        self.assertEqual(MessageV1.from_json(message.to_json()), message)
+        for malformed in (
+            {"type": "invalid_tool_call", "id": "bad-1", "raw": {"x": 1}, "extra": 2},
+            {"type": "invalid_tool_call", "id": 1, "raw": {}},
+        ):
+            with self.subTest(part=malformed), self.assertRaises((TypeError, ValueError)):
+                MessageV1(content=(malformed,), origin="writer:sample")
+
     def test_event_allowlist_and_sequence_directions(self):
         kwargs = dict(
             lineage_id="line", audience=("writer",), payload_ref=H, versions_ref=H, provenance_ref=H
@@ -219,6 +242,7 @@ class TaskGraphRecordsTest(unittest.TestCase):
                 "fetch_recorded",
                 "external_response",
                 "budget_charged",
+                "reward_recorded",
             }
         )
         self.assertEqual(EVENT_KINDS, expected)
@@ -230,16 +254,25 @@ class TaskGraphRecordsTest(unittest.TestCase):
 
     def test_context_content_separates_provenance(self):
         message = MessageV1(content=("x",), origin="author")
-        a = ContextRevisionV1(messages=(message,), provenance_refs=())
-        b = ContextRevisionV1(messages=(message,), provenance_refs=(H,))
-        self.assertEqual(a.content_hash, b.content_hash)
+        rendering = {
+            "projection_version": "v1",
+            "prefix_id": "root",
+            "template_ref": H,
+            "tokenizer_ref": H,
+            "tool_schema_ref": H,
+        }
+        node = ContextContentV1(None, (message,), (), rendering)
+        a = ContextRevisionV1(node.identity(), None, ())
+        b = ContextRevisionV1(node.identity(), None, (H,))
+        self.assertEqual(a.content_ref, b.content_ref)
         self.assertNotEqual(a.identity(), b.identity())
         changed = MessageV1(content=("y",), origin="author")
-        self.assertNotEqual(a.content_hash, ContextRevisionV1(messages=(changed,)).content_hash)
-        with_tool = ContextRevisionV1(
-            messages=(message,), tools=({"name": "read_file", "schema": {"type": "object"}},)
+        changed_node = ContextContentV1(None, (changed,), (), rendering)
+        self.assertNotEqual(node.identity(), changed_node.identity())
+        with_tool = ContextContentV1(
+            None, (message,), ({"name": "read_file", "schema": {"type": "object"}},), rendering
         )
-        self.assertNotEqual(a.content_hash, with_tool.content_hash)
+        self.assertNotEqual(node.identity(), with_tool.identity())
 
     def test_utf8_boundary_and_binary_domain(self):
         with self.assertRaises(ValueError):
@@ -323,18 +356,23 @@ class TaskGraphRecordsTest(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             EventV1.from_dict({**event.to_dict(), "id": None})
-        context = ContextRevisionV1(messages=(message,))
+        context = ContextRevisionV1(H, None, ())
         with self.assertRaises(ValueError):
             ContextRevisionV1.from_dict({**context.to_dict(), "content_hash": None})
 
-    def test_history_uses_logical_ids_and_queue_call_ids_are_unique(self):
+    def test_history_uses_nonnegative_counts_and_queue_rejection_is_required(self):
         state = self.state()
         history = {
             **state.history,
-            "action_ids": ("r1:action:0",),
-            "tool_result_ids": ("r1:tool_result:0",),
+            "action_count": 1,
+            "tool_result_count": 1,
         }
-        call = {"call_id": "call-1", "name": "write_file", "arguments": {}}
+        call = {
+            "call_id": "call-1",
+            "name": "write_file",
+            "arguments": {},
+            "rejection": None,
+        }
         valid = EnvironmentStateV1(
             **{
                 **state.to_dict(),
@@ -342,13 +380,41 @@ class TaskGraphRecordsTest(unittest.TestCase):
                 "continuation": {**state.continuation, "tool_queue": (call,)},
             }
         )
-        self.assertEqual(valid.history["action_ids"], ("r1:action:0",))
-        with self.assertRaises(ValueError):
-            EnvironmentStateV1(**{**state.to_dict(), "history": {**history, "action_ids": (H,)}})
+        self.assertEqual(valid.history["action_count"], 1)
+        self.assertEqual(valid.history["tool_result_count"], 1)
+        legacy = {"call_id": "call-2", "name": "write_file", "arguments": {}}
         with self.assertRaises(ValueError):
             EnvironmentStateV1(
-                **{**state.to_dict(), "history": {**history, "tool_result_ids": (H,)}}
+                **{
+                    **state.to_dict(),
+                    "continuation": {**state.continuation, "tool_queue": (legacy,)},
+                }
             )
+        rejected = {
+            "call_id": "call-3",
+            "name": "invalid_call",
+            "arguments": {},
+            "rejection": "bad syntax",
+        }
+        EnvironmentStateV1(
+            **{
+                **state.to_dict(),
+                "continuation": {**state.continuation, "tool_queue": (rejected,)},
+            }
+        )
+        for changed in (
+            {**rejected, "name": "write_file"},
+            {**rejected, "arguments": {"path": "a.txt"}},
+            {**rejected, "rejection": 1},
+            {**rejected, "rejection": None},
+        ):
+            with self.subTest(changed=changed), self.assertRaises((TypeError, ValueError)):
+                EnvironmentStateV1(
+                    **{
+                        **state.to_dict(),
+                        "continuation": {**state.continuation, "tool_queue": (changed,)},
+                    }
+                )
         with self.assertRaises(ValueError):
             EnvironmentStateV1(
                 **{
@@ -356,15 +422,33 @@ class TaskGraphRecordsTest(unittest.TestCase):
                     "continuation": {**state.continuation, "tool_queue": (call, call)},
                 }
             )
+        for field in ("action_count", "tool_result_count"):
+            for malformed in (-1, True, "1"):
+                with self.subTest(field=field, malformed=malformed), self.assertRaises(ValueError):
+                    EnvironmentStateV1(
+                        **{**state.to_dict(), "history": {**history, field: malformed}}
+                    )
 
     def test_acyclic_record_round_trip(self):
         message = MessageV1(content=("hello",), origin="author")
-        context = ContextRevisionV1(messages=(message,))
+        context_node = ContextContentV1(
+            None,
+            (message,),
+            (),
+            {
+                "projection_version": "v1",
+                "prefix_id": "root",
+                "template_ref": H,
+                "tokenizer_ref": H,
+                "tool_schema_ref": H,
+            },
+        )
+        context = ContextRevisionV1(context_node.identity(), None, ())
         event = EventV1(
             lineage_id="line",
             kind="context_changed",
             audience=("writer",),
-            payload_ref=context.identity(),
+            payload_ref=H,
             versions_ref=H,
             provenance_ref=H,
         )
@@ -378,180 +462,8 @@ class TaskGraphRecordsTest(unittest.TestCase):
         )
         checkpoint = CheckpointV1(state=state, event_head=event.identity())
         commit = CommitV1(events=(event.identity(),), checkpoint=checkpoint.identity())
-        for record in (context, event, checkpoint, commit):
+        for record in (context_node, context, event, checkpoint, commit):
             self.assertEqual(type(record).from_json(record.to_json()), record)
-
-    def test_independent_content_event_revision_checkpoint_commit_fixture(self):
-        def independent_hash(domain, body):
-            tag_name = {"context_content": "context-content"}.get(domain, domain)
-            tag = f"task-graph:{tag_name}:v1\0".encode("ascii")
-            return hashlib.sha256(tag + canonical_json(body).encode("utf-8")).hexdigest()
-
-        payloads = CHAIN_FIXTURE["payloads"]
-        for payload in payloads.values():
-            body = load_canonical_json(payload["body"])
-            self.assertEqual(canonical_json(body), payload["body"])
-            self.assertEqual(independent_hash("payload", body), payload["hash"])
-
-        typed_domains = {
-            "pre_action_input": "context_content",
-            "assistant_output": "message",
-            "content_before_observation": "context_content",
-            "revision_before_observation": "context",
-            "event_action": "event",
-            "state_p1": "state",
-            "p1": "checkpoint",
-            "k1": "commit",
-            "content_after_observation": "context_content",
-            "event_result": "event",
-            "revision_after_observation": "context",
-            "state_p2": "state",
-            "p2": "checkpoint",
-            "k2": "commit",
-            "p0": "checkpoint",
-        }
-        for key, domain in typed_domains.items():
-            entry = CHAIN_FIXTURE[key]
-            body = load_canonical_json(entry["body"])
-            identity_body = dict(body)
-            if domain == "event":
-                identity_body.pop("id")
-            self.assertEqual(independent_hash(domain, identity_body), entry["hash"], key)
-
-        scenario = CHAIN_FIXTURE["scenario"]
-        request_payload = load_canonical_json(payloads["request"]["body"])
-        action_payload = load_canonical_json(payloads["action"]["body"])
-        trace_payload = load_canonical_json(payloads["trace"]["body"])
-        result_payload = load_canonical_json(payloads["result"]["body"])
-        budget_before = load_canonical_json(payloads["budget_before"]["body"])
-        budget_after = load_canonical_json(payloads["budget_after"]["body"])
-        execution_before = load_canonical_json(payloads["execution_before"]["body"])
-        execution_after = load_canonical_json(payloads["execution_after"]["body"])
-        self.assertEqual(action_payload["action_id"], scenario["action_id"])
-        self.assertEqual(action_payload["call_ids"], [scenario["call_id"]])
-        self.assertEqual(trace_payload["action_id"], scenario["action_id"])
-        self.assertEqual(result_payload["action_id"], scenario["action_id"])
-        self.assertEqual(result_payload["call_id"], scenario["call_id"])
-        self.assertEqual(result_payload["result_id"], scenario["result_id"])
-
-        pre_input = ContextContentV1.from_json(CHAIN_FIXTURE["pre_action_input"]["body"])
-        assistant_output = MessageV1.from_json(CHAIN_FIXTURE["assistant_output"]["body"])
-        post_action = ContextContentV1.from_json(
-            CHAIN_FIXTURE["content_before_observation"]["body"]
-        )
-        post_result = ContextContentV1.from_json(CHAIN_FIXTURE["content_after_observation"]["body"])
-        self.assertEqual(request_payload["context_ref"], pre_input.identity())
-        self.assertEqual(trace_payload["context_id"], pre_input.identity())
-        self.assertEqual(trace_payload["exact_request_ref"], payloads["request"]["hash"])
-        self.assertNotIn(
-            post_action.identity(),
-            (trace_payload["context_id"], trace_payload["exact_request_ref"]),
-        )
-        self.assertEqual(action_payload["message_ref"], assistant_output.identity())
-        self.assertNotEqual(action_payload["message_ref"], pre_input.identity())
-        self.assertEqual(post_action.messages[-1], assistant_output)
-        self.assertEqual(post_result.messages[:2], post_action.messages)
-        self.assertEqual(
-            result_payload["before_execution_hash"], payloads["execution_before"]["hash"]
-        )
-        self.assertEqual(
-            result_payload["after_execution_hash"], payloads["execution_after"]["hash"]
-        )
-        self.assertEqual(result_payload["budget_before_ref"], payloads["budget_before"]["hash"])
-        self.assertEqual(result_payload["budget_after_ref"], payloads["budget_after"]["hash"])
-        self.assertNotEqual(payloads["budget_before"]["hash"], payloads["budget_after"]["hash"])
-        self.assertEqual(budget_before["consumed"]["tool_calls"], 0)
-        self.assertEqual(budget_after["consumed"]["tool_calls"], 1)
-        self.assertEqual(budget_after["parent_ref"], payloads["budget_before"]["hash"])
-        self.assertEqual(result_payload["budget_charge"], {"tool_calls": 1})
-        self.assertEqual(execution_before["files"], {"a.txt": "hi"})
-        self.assertEqual(execution_after["files"], {"a.txt": "hello"})
-        self.assertEqual(execution_before["budgets"]["tool_calls"], 0)
-        self.assertEqual(execution_after["budgets"]["tool_calls"], 1)
-        tool_call = {
-            "call_id": "call-1",
-            "name": "write_file",
-            "arguments": {"content": "hello", "path": "a.txt"},
-        }
-        self.assertEqual(execution_before["tool_queue"], [tool_call])
-        self.assertEqual(execution_after["tool_queue"], [])
-
-        for alias in ("content", "event", "revision", "state", "checkpoint", "commit"):
-            self.assertNotIn(alias, CHAIN_FIXTURE)
-
-        records = (
-            CheckpointV1.from_json(CHAIN_FIXTURE["p0"]["body"]),
-            ContextContentV1.from_json(CHAIN_FIXTURE["content_before_observation"]["body"]),
-            EventV1.from_json(CHAIN_FIXTURE["event_action"]["body"]),
-            ContextRevisionV1.from_json(CHAIN_FIXTURE["revision_before_observation"]["body"]),
-            EnvironmentStateV1.from_json(CHAIN_FIXTURE["state_p1"]["body"]),
-            CheckpointV1.from_json(CHAIN_FIXTURE["p1"]["body"]),
-            CommitV1.from_json(CHAIN_FIXTURE["k1"]["body"]),
-            ContextContentV1.from_json(CHAIN_FIXTURE["content_after_observation"]["body"]),
-            EventV1.from_json(CHAIN_FIXTURE["event_result"]["body"]),
-            ContextRevisionV1.from_json(CHAIN_FIXTURE["revision_after_observation"]["body"]),
-            EnvironmentStateV1.from_json(CHAIN_FIXTURE["state_p2"]["body"]),
-            CheckpointV1.from_json(CHAIN_FIXTURE["p2"]["body"]),
-            CommitV1.from_json(CHAIN_FIXTURE["k2"]["body"]),
-        )
-        keys = (
-            "p0",
-            "content_before_observation",
-            "event_action",
-            "revision_before_observation",
-            "state_p1",
-            "p1",
-            "k1",
-            "content_after_observation",
-            "event_result",
-            "revision_after_observation",
-            "state_p2",
-            "p2",
-            "k2",
-        )
-        for record, key in zip(records, keys, strict=True):
-            expected = CHAIN_FIXTURE[key]
-            self.assertEqual(record.to_json(), expected["body"])
-            self.assertEqual(record.identity(), expected["hash"])
-        (
-            p0,
-            content1,
-            event1,
-            revision1,
-            state1,
-            p1,
-            k1,
-            content2,
-            event2,
-            revision2,
-            state2,
-            p2,
-            k2,
-        ) = records
-        self.assertEqual(event1.payload_ref, payloads["action"]["hash"])
-        self.assertEqual(event2.payload_ref, payloads["result"]["hash"])
-        self.assertEqual(event2.previous, event1.identity())
-        self.assertNotIn(event2.identity(), content2.to_json())
-        self.assertEqual(revision1.content_hash, content1.identity())
-        self.assertIn(event1.identity(), revision1.provenance_refs)
-        self.assertEqual(revision2.content_hash, content2.identity())
-        self.assertIn(event2.identity(), revision2.provenance_refs)
-        self.assertEqual(state1.context_ref, revision1.identity())
-        self.assertEqual(state2.context_ref, revision2.identity())
-        self.assertEqual(state1.budgets_ref, payloads["budget_before"]["hash"])
-        self.assertEqual(state2.budgets_ref, payloads["budget_after"]["hash"])
-        self.assertIn(payloads["execution_before"]["hash"], p1.artifact_refs)
-        self.assertIn(payloads["execution_after"]["hash"], p2.artifact_refs)
-        self.assertEqual(p1.parents, (p0.identity(),))
-        self.assertEqual(p2.parents, (p1.identity(),))
-        self.assertEqual(k1.parent_commit, None)
-        self.assertEqual(k2.parent_commit, k1.identity())
-        self.assertEqual(k1.checkpoint, p1.identity())
-        self.assertEqual(k2.checkpoint, p2.identity())
-        self.assertTrue(state1.continuation["tool_queue"])
-        self.assertFalse(state2.continuation["tool_queue"])
-        self.assertEqual(state1.history["action_ids"], (scenario["action_id"],))
-        self.assertEqual(state2.history["tool_result_ids"], (scenario["result_id"],))
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from dataclasses import field as dataclass_field
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Any, ClassVar
 
@@ -56,11 +57,36 @@ EVENT_KINDS = frozenset(
         "fetch_recorded",
         "external_response",
         "budget_charged",
+        "reward_recorded",
+    }
+)
+TASK_STATUSES = frozenset({"complete", "accepted_partial", "incomplete", "unknown"})
+EXECUTION_STATUSES = frozenset(
+    {
+        "running",
+        "valid",
+        "interrupted",
+        "environment_error",
+        "backend_error",
+        "simulator_error",
+        "controller_error",
+        "external_cancelled",
     }
 )
 
 
-def _utf8(value: str, label: str = "string") -> str:
+class Phase(StrEnum):
+    """Phases used by the transition-seam controller."""
+
+    READY_WRITER = "ready_writer"
+    CHECKING = "checking"
+    AWAITING_AUTHOR = "awaiting_author"
+    AWAITING_CHECKS = "awaiting_checks"
+    READY_TRANSITION = "ready_transition"
+    TERMINAL = "terminal"
+
+
+def utf8(value: str, label: str = "string") -> str:
     if not isinstance(value, str):
         raise TypeError(f"{label} must be a string")
     try:
@@ -70,64 +96,35 @@ def _utf8(value: str, label: str = "string") -> str:
     return value
 
 
-def _logical_id(value: str, label: str = "logical id") -> str:
-    value = _utf8(value, label)
+def logical_id(value: str, label: str = "logical id") -> str:
+    value = utf8(value, label)
     if not value or any(ch.isspace() or ord(ch) < 0x20 for ch in value):
         raise ValueError(f"invalid {label}")
     return value
 
 
-def _action_id(value: str) -> str:
-    """Validate a stable logical action identifier, not an event hash."""
-    value = _logical_id(value, "action id")
-    if _HASH_RE.fullmatch(value):
-        raise ValueError("action id must be logical, not a SHA-256 hash")
-    return value
+def action_id_for_ordinal(lineage_id: str, ordinal: int) -> str:
+    """Return the deterministic action identity for one lineage ordinal."""
+    logical_id(lineage_id, "lineage id")
+    if type(ordinal) is not int or ordinal < 0:
+        raise ValueError("action ordinal must be a nonnegative integer")
+    return f"{lineage_id}:action:{ordinal}"
 
 
-def _tool_result_id(value: str) -> str:
-    """Validate a stable logical tool-result identifier, not an event hash.
-
-    Tool results are indexed by their logical result ID (the call/ordinal
-    identity assigned by the rollout).  The result event's SHA-256 is a
-    separate reference and must not be substituted here.
-    """
-    value = _logical_id(value, "tool result id")
-    if _HASH_RE.fullmatch(value):
-        raise ValueError("tool result id must be logical, not a SHA-256 hash")
-    return value
-
-
-def _validate_utf8(value: Any) -> None:
-    """Validate every string and object key recursively, without normalizing."""
-    if isinstance(value, str):
-        _utf8(value)
-    elif isinstance(value, Mapping):
-        for key, item in value.items():
-            _utf8(key, "object key")
-            _validate_utf8(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _validate_utf8(item)
-
-
-def _reject_float(value: Any) -> None:
-    if isinstance(value, float):
-        raise ValueError("canonical JSON does not permit floats")
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError("canonical JSON object keys must be strings")
-            _reject_float(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _reject_float(item)
+def latest_action_id(lineage_id: str, action_count: int) -> str | None:
+    """Return the latest action identity, or None when no writer turn exists."""
+    if type(action_count) is not int or action_count < 0:
+        raise ValueError("action count must be a nonnegative integer")
+    return None if action_count == 0 else action_id_for_ordinal(lineage_id, action_count - 1)
 
 
 def _json_value(value: Any) -> Any:
     """Convert frozen records to JSON-compatible values without losing order."""
+    kind = type(value)
+    if kind is str or kind is int or kind is bool or value is None:
+        return value
     if is_dataclass(value):
-        if not isinstance(value, _Record):
+        if not isinstance(value, Record):
             raise TypeError("arbitrary dataclasses are not canonical values")
         return {field.name: _json_value(getattr(value, field.name)) for field in fields(value)}
     if isinstance(value, Mapping):
@@ -167,15 +164,33 @@ def _wire_value(value: Any) -> None:
 
 def canonical_json(value: Any) -> str:
     """Return canonical JSON v1 (compact UTF-8-safe text, without a newline)."""
-    _validate_utf8(value)
-    value = _json_value(value)
-    _reject_float(value)
+    if isinstance(value, Record) and type(value).to_dict is Record.to_dict:
+        return value._canonical().decode("utf-8")
+    text = _dumps(_json_value(value))
+    _strict_utf8(text)
+    return text
+
+
+def _dumps(value: Any) -> str:
     return json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
     )
 
 
+def _strict_utf8(text: str) -> bytes:
+    try:
+        return text.encode("utf-8", "strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError("string must be valid UTF-8") from exc
+
+
+def _no_float(text: str) -> Any:
+    raise ValueError("canonical JSON does not permit floats")
+
+
 def canonical_bytes(value: Any) -> bytes:
+    if isinstance(value, Record) and type(value).to_dict is Record.to_dict:
+        return value._canonical()
     return canonical_json(value).encode("utf-8", "strict")
 
 
@@ -198,14 +213,16 @@ def load_canonical_json(data: str | bytes) -> Any:
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=_pairs_no_duplicates,
+            parse_float=_no_float,
             parse_constant=lambda value: (_ for _ in ()).throw(
                 ValueError(f"invalid constant: {value}")
             ),
         )
     except (UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
         raise ValueError("invalid canonical JSON") from exc
-    _reject_float(value)
-    if canonical_bytes(value) != raw:
+    # json.loads yields only dict/list/str/int/bool/None with string keys and
+    # (with parse_float) no floats, so it can be re-serialized directly.
+    if _strict_utf8(_dumps(value)) != raw:
         raise ValueError("JSON is not canonical JSON v1")
     return value
 
@@ -256,7 +273,7 @@ def validate_hash(value: str, *, optional: bool = False) -> str | None:
 
 def safe_path(path: str) -> str:
     """Validate a canonical relative POSIX path (without normalising it)."""
-    _utf8(path, "path")
+    utf8(path, "path")
     if not isinstance(path, str) or not path or "\\" in path or path.startswith("/"):
         raise ValueError("unsafe relative path")
     pieces = path.split("/")
@@ -307,47 +324,74 @@ def tree_hash(files: Mapping[str, str]) -> str:
     return domain_hash("tree", entries)
 
 
-def _freeze(value: Any) -> Any:
+def freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return MappingProxyType({k: _freeze(v) for k, v in value.items()})
+        return MappingProxyType({k: freeze(v) for k, v in value.items()})
     if isinstance(value, (list, tuple)):
-        return tuple(_freeze(v) for v in value)
+        return tuple(freeze(v) for v in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(freeze(v) for v in value)
     return value
 
 
-def _thaw(value: Any) -> Any:
+def thaw(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {k: _thaw(v) for k, v in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw(v) for v in value]
+        return {key: thaw(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [thaw(item) for item in value]
     return value
 
 
 @dataclass(frozen=True)
-class _Record:
+class Record:
     schema: int = 1
     DOMAIN: ClassVar[str] = "state"
 
     def __post_init__(self) -> None:
         if type(self.schema) is not int or self.schema != CANONICAL_VERSION:
             raise ValueError(f"unsupported {type(self).__name__} schema")
-        _validate_utf8(self.to_dict())
+        # One walk: _json_value rejects floats/unsupported values/non-string
+        # keys; the strict encode of its serialization rejects lone surrogates.
+        _strict_utf8(_dumps(_json_value(self)))
         for field in fields(self):
             if field.name != "schema":
-                object.__setattr__(self, field.name, _freeze(getattr(self, field.name)))
-        _reject_float(self.to_dict())
+                object.__setattr__(self, field.name, freeze(getattr(self, field.name)))
         self.validate()
 
     def validate(self) -> None:
         pass
 
     def to_dict(self) -> dict[str, Any]:
-        return _thaw(_json_value(self))
+        # _json_value already builds fresh dict/list containers.
+        return _json_value(self)
+
+    # Records are frozen after __post_init__ (every field is frozen by freeze
+    # into tuples/MappingProxyType over private dicts, or is itself a frozen
+    # record), so their canonical bytes and identity are pure functions of the
+    # instance. The cache lives in the instance __dict__, outside dataclass
+    # fields, so eq/hash/repr and wire bytes are unchanged.
+    def _canonical(self) -> bytes:
+        memoizable = type(self).to_dict is Record.to_dict
+        cached = self.__dict__.get("_canonical_cache") if memoizable else None
+        if cached is not None:
+            return cached
+        encoded = canonical_json(self.to_dict()).encode("utf-8", "strict")
+        if memoizable:
+            self.__dict__["_canonical_cache"] = encoded
+        return encoded
 
     def to_json(self) -> str:
         return canonical_json(self)
 
     def identity(self) -> str:
+        cached = self.__dict__.get("_identity_cache")
+        if cached is not None:
+            return cached
+        memoizable = type(self).to_dict is Record.to_dict
+        if memoizable and not isinstance(self, (EventV1, LineageRefV1)):
+            cached = hashlib.sha256(_DOMAINS[self.DOMAIN] + self._canonical()).hexdigest()
+            self.__dict__["_identity_cache"] = cached
+            return cached
         body = self.to_dict()
         # EventV1 carries its address for interchange, but an identity never
         # hashes the field that contains that identity.
@@ -356,7 +400,10 @@ class _Record:
         if isinstance(self, LineageRefV1):
             # expected_head is a compare-and-swap request, not lineage authority.
             body.pop("expected_head", None)
-        return domain_hash(self.DOMAIN, body)
+        identity = domain_hash(self.DOMAIN, body)
+        if memoizable:
+            self.__dict__["_identity_cache"] = identity
+        return identity
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]):
@@ -389,7 +436,7 @@ class _Record:
         else:
             raise TypeError("JSON input must be str or bytes")
         record = cls.from_dict(load_canonical_json(raw))
-        if canonical_bytes(record.to_dict()) != raw:
+        if record._canonical() != raw:
             raise ValueError("decoded record did not preserve canonical bytes")
         return record
 
@@ -409,7 +456,7 @@ def _logical_tuple(values: Any, validator, label: str) -> None:
 
 
 @dataclass(frozen=True)
-class NodeSpecV1(_Record):
+class NodeSpecV1(Record):
     id: str = ""
     kind: str = "writer"
     families: tuple[str, ...] = ()
@@ -418,7 +465,7 @@ class NodeSpecV1(_Record):
     DOMAIN: ClassVar[str] = "instance"
 
     def validate(self) -> None:
-        _logical_id(self.id, "node id")
+        logical_id(self.id, "node id")
         if self.kind not in {"writer", "environment"}:
             raise ValueError("invalid node kind")
         if not isinstance(self.families, tuple) or any(
@@ -435,7 +482,7 @@ class NodeSpecV1(_Record):
 
 
 @dataclass(frozen=True)
-class GraphInstanceV1(_Record):
+class GraphInstanceV1(Record):
     template_ref: str = ""
     entry_node: str = ""
     nodes: tuple[NodeSpecV1 | Mapping[str, Any], ...] = ()
@@ -454,7 +501,7 @@ class GraphInstanceV1(_Record):
         super().__post_init__()
 
     def validate(self) -> None:
-        _logical_id(self.entry_node, "entry node")
+        logical_id(self.entry_node, "entry node")
         validate_hash(self.template_ref)
         # Validate the container before iterating: strings/mappings are
         # iterable Python values but are not JSON arrays and must never be
@@ -477,7 +524,7 @@ class GraphInstanceV1(_Record):
 
 
 @dataclass(frozen=True)
-class MessageV1(_Record):
+class MessageV1(Record):
     role: str = "user"
     content: tuple[Any, ...] = ()
     call_id: str | None = None
@@ -501,15 +548,19 @@ class MessageV1(_Record):
                 ):
                     parts.append(item)
                 elif kind == "tool_call" and set(item) == {"type", "id", "name", "arguments"}:
-                    _logical_id(item["id"], "tool call id")
-                    _logical_id(item["name"], "tool name")
+                    logical_id(item["id"], "tool call id")
+                    logical_id(item["name"], "tool name")
                     if not isinstance(item["arguments"], Mapping):
                         raise TypeError("tool call arguments must be an object")
                     parts.append(item)
                 elif kind == "tool_result" and set(item) == {"type", "call_id", "content"}:
-                    _logical_id(item["call_id"], "tool result call id")
+                    logical_id(item["call_id"], "tool result call id")
                     if not isinstance(item["content"], (str, Mapping, list, tuple)):
                         raise TypeError("tool result content has invalid shape")
+                    parts.append(item)
+                elif kind == "invalid_tool_call" and set(item) == {"type", "id", "raw"}:
+                    logical_id(item["id"], "invalid tool call id")
+                    _json_value(item["raw"])
                     parts.append(item)
                 else:
                     raise ValueError("invalid message part shape")
@@ -527,9 +578,9 @@ class MessageV1(_Record):
             raise ValueError("invalid call_id")
         if not self.origin:
             raise ValueError("message origin is required")
-        _logical_id(self.origin, "message origin")
+        logical_id(self.origin, "message origin")
         if self.call_id is not None:
-            _logical_id(self.call_id, "call_id")
+            logical_id(self.call_id, "call_id")
         if self.trust not in {"instructions", "untrusted_data"}:
             raise ValueError("invalid message trust")
         if not isinstance(self.loss_eligible, bool):
@@ -540,7 +591,7 @@ class MessageV1(_Record):
 
 
 @dataclass(frozen=True)
-class EventV1(_Record):
+class EventV1(Record):
     id: str | None = None
     previous: str | None = None
     seq: int = 1
@@ -574,7 +625,7 @@ class EventV1(_Record):
             raise ValueError("an event without a predecessor must have sequence 1")
         if self.previous is not None and self.seq <= 1:
             raise ValueError("an event with a predecessor must have sequence greater than 1")
-        _logical_id(self.lineage_id, "event lineage_id")
+        logical_id(self.lineage_id, "event lineage_id")
         if self.kind not in EVENT_KINDS:
             raise ValueError("unknown event kind")
         if self.actor not in {"writer", "author", "environment", "evaluator", "writer_runtime"}:
@@ -584,7 +635,7 @@ class EventV1(_Record):
             (self.node_visit_id, "node_visit_id"),
         ):
             if value is not None:
-                _logical_id(value, label)
+                logical_id(value, label)
         if (
             not isinstance(self.audience, tuple)
             or not self.audience
@@ -606,151 +657,24 @@ class EventV1(_Record):
         validate_hash(self.provenance_ref)
 
 
-_DEFAULT_RENDERING = MappingProxyType(
-    {
-        "projection_version": "v1",
-        "prefix_id": "root",
-        "template_ref": "0" * 64,
-        "tokenizer_ref": "0" * 64,
-        "tool_schema_ref": "0" * 64,
-    }
-)
-
-
 @dataclass(frozen=True)
-class ContextContentV1(_Record):
-    """Provenance-free writer input identity."""
+class MaterializedContextV1:
+    """Flattened, read-only projection of a chained context revision."""
 
-    messages: tuple[MessageV1 | Mapping[str, Any], ...] = ()
-    tools: tuple[Mapping[str, Any], ...] = ()
-    projection_version: str = "v1"
-    prefix_id: str = "root"
-    template_ref: str = "0" * 64
-    tokenizer_ref: str = "0" * 64
-    tool_schema_ref: str = "0" * 64
-    DOMAIN: ClassVar[str] = "context_content"
+    messages: tuple[MessageV1, ...]
+    tools: tuple[Mapping[str, Any], ...]
+    rendering: Mapping[str, Any]
 
-    @classmethod
-    def from_revision(cls, revision: ContextRevisionV1) -> ContextContentV1:
-        if not isinstance(revision, ContextRevisionV1):
-            raise TypeError("revision must be ContextRevisionV1")
-        pins = revision.rendering
-        return cls(
-            messages=revision.messages,
-            tools=revision.tools,
-            projection_version=pins["projection_version"],
-            prefix_id=pins["prefix_id"],
-            template_ref=pins["template_ref"],
-            tokenizer_ref=pins["tokenizer_ref"],
-            tool_schema_ref=pins["tool_schema_ref"],
-        )
-
-    def __post_init__(self) -> None:
-        messages = tuple(
-            message if isinstance(message, MessageV1) else MessageV1(**dict(message))
-            for message in self.messages
-        )
-        object.__setattr__(self, "messages", messages)
-        super().__post_init__()
-
-    def validate(self) -> None:
-        if not self.messages:
-            raise ValueError("context content requires messages")
-        _utf8(self.projection_version, "projection version")
-        _logical_id(self.prefix_id, "prefix id")
-        validate_hash(self.template_ref)
-        validate_hash(self.tokenizer_ref)
-        validate_hash(self.tool_schema_ref)
-        if not isinstance(self.tools, tuple):
-            raise TypeError("tools must be an array")
-        for tool in self.tools:
-            if not isinstance(tool, Mapping):
-                raise TypeError("tool definitions must be objects")
-
-
-def context_content_hash(
-    messages: tuple[MessageV1 | Mapping[str, Any], ...],
-    *,
-    tools: tuple[Mapping[str, Any], ...] = (),
-    rendering: Mapping[str, str] | None = None,
-) -> str:
-    pins = _DEFAULT_RENDERING if rendering is None else rendering
-    required = {
-        "projection_version",
-        "prefix_id",
-        "template_ref",
-        "tokenizer_ref",
-        "tool_schema_ref",
-    }
-    if not isinstance(pins, Mapping) or set(pins) != required:
-        raise ValueError("rendering must contain exactly the pinned inputs")
-    content = ContextContentV1(
-        messages=messages,
-        tools=tools,
-        projection_version=pins["projection_version"],
-        prefix_id=pins["prefix_id"],
-        template_ref=pins["template_ref"],
-        tokenizer_ref=pins["tokenizer_ref"],
-        tool_schema_ref=pins["tool_schema_ref"],
-    )
-    return content.identity()
-
-
-@dataclass(frozen=True)
-class ContextRevisionV1(_Record):
-    messages: tuple[MessageV1 | Mapping[str, Any], ...] = ()
-    tools: tuple[Mapping[str, Any], ...] = ()
-    content_hash: str | None = None
-    event_head: str | None = None
-    provenance_refs: tuple[str, ...] = ()
-    rendering: Mapping[str, str] = dataclass_field(default_factory=lambda: dict(_DEFAULT_RENDERING))
-    DOMAIN: ClassVar[str] = "context"
-
-    def __post_init__(self) -> None:
-        messages = tuple(
-            message if isinstance(message, MessageV1) else MessageV1(**dict(message))
-            for message in self.messages
-        )
-        object.__setattr__(self, "messages", messages)
-        super().__post_init__()
-
-    def validate(self) -> None:
-        expected = context_content_hash(self.messages, tools=self.tools, rendering=self.rendering)
-        if self.content_hash is None:
-            object.__setattr__(self, "content_hash", expected)
-        elif self.content_hash != expected:
-            raise ValueError("content_hash does not match context content")
-        validate_hash(self.content_hash)
-        validate_hash(self.event_head, optional=True)
-        _hash_tuple(self.provenance_refs)
-        for message in self.messages:
-            if not isinstance(message, MessageV1):
-                MessageV1.from_dict(message)
-        if not isinstance(self.tools, tuple) or any(
-            not isinstance(tool, Mapping) for tool in self.tools
-        ):
-            raise TypeError("tools must be objects")
-        if not isinstance(self.rendering, Mapping):
-            raise TypeError("rendering must be an object")
-        required = {
-            "projection_version",
-            "prefix_id",
-            "template_ref",
-            "tokenizer_ref",
-            "tool_schema_ref",
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "messages": [message.to_dict() for message in self.messages],
+            "tools": thaw(self.tools),
+            "rendering": thaw(self.rendering),
         }
-        if set(self.rendering) != required:
-            raise ValueError("rendering must contain exactly the pinned inputs")
-        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in self.rendering.items()):
-            raise ValueError("rendering values must be strings")
-        _utf8(self.rendering["projection_version"], "projection version")
-        _logical_id(self.rendering["prefix_id"], "prefix id")
-        for key in ("template_ref", "tokenizer_ref", "tool_schema_ref"):
-            validate_hash(self.rendering[key])
 
 
 @dataclass(frozen=True)
-class EnvironmentStateV1(_Record):
+class EnvironmentStateV1(Record):
     instance_ref: str = ""
     position: Mapping[str, Any] = dataclass_field(default_factory=dict)
     files: Mapping[str, str] = dataclass_field(default_factory=dict)
@@ -785,7 +709,7 @@ class EnvironmentStateV1(_Record):
         }
     )
     HISTORY_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"head", "seq", "branch_base", "imported_refs", "action_ids", "tool_result_ids"}
+        {"head", "seq", "branch_base", "imported_refs", "action_count", "tool_result_count"}
     )
     CONTINUATION_FIELDS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -827,16 +751,16 @@ class EnvironmentStateV1(_Record):
         files = validate_file_tree(self.files)
         if self.tree_hash != tree_hash(files):
             raise ValueError("tree_hash does not match files")
-        _logical_id(self.position["node_id"], "node id")
-        _logical_id(self.position["visit_id"], "visit id")
-        _logical_id(self.position["lineage_id"], "position lineage id")
+        logical_id(self.position["node_id"], "node id")
+        logical_id(self.position["visit_id"], "visit id")
+        logical_id(self.position["lineage_id"], "position lineage id")
         validate_hash(self.position["entry_contract"])
         validate_hash(self.position["start_checkpoint"], optional=True)
         loop_counts = self.position["loop_counts"]
         if not isinstance(loop_counts, Mapping):
             raise TypeError("loop_counts must be an object")
         for loop_id, count in loop_counts.items():
-            _logical_id(loop_id, "loop id")
+            logical_id(loop_id, "loop id")
             if type(count) is not int or count < 0:
                 raise ValueError("loop counts must be nonnegative integers")
         phase = self.position.get("phase")
@@ -859,8 +783,9 @@ class EnvironmentStateV1(_Record):
             raise ValueError("nonempty history must have a positive sequence")
         validate_hash(self.history["branch_base"], optional=True)
         _hash_tuple(self.history["imported_refs"])
-        _logical_tuple(self.history["action_ids"], _action_id, "action_ids")
-        _logical_tuple(self.history["tool_result_ids"], _tool_result_id, "tool_result_ids")
+        for field in ("action_count", "tool_result_count"):
+            if type(self.history[field]) is not int or self.history[field] < 0:
+                raise ValueError(f"{field} must be a nonnegative integer")
         next_call = self.continuation["next_call"]
         if type(next_call) is not int or next_call < 0:
             raise ValueError("invalid continuation cursor")
@@ -873,15 +798,25 @@ class EnvironmentStateV1(_Record):
         for call in queue:
             if not isinstance(call, Mapping):
                 raise TypeError("tool_queue entries must be objects")
-            if set(call) != {"call_id", "name", "arguments"}:
+            required_fields = {"call_id", "name", "arguments", "rejection"}
+            if frozenset(call) != frozenset(required_fields):
                 raise ValueError("invalid tool call shape")
-            call_id = _logical_id(call["call_id"], "tool call id")
+            call_id = logical_id(call["call_id"], "tool call id")
             if call_id in call_ids:
                 raise ValueError("continuation tool_queue call IDs must be unique")
             call_ids.add(call_id)
-            _logical_id(call["name"], "tool name")
+            logical_id(call["name"], "tool name")
             if not isinstance(call["arguments"], Mapping):
                 raise TypeError("tool arguments must be an object")
+            rejection = call["rejection"]
+            if rejection is not None and not isinstance(rejection, str):
+                raise TypeError("tool rejection must be text or null")
+            if rejection is not None and (
+                call["name"] != "invalid_call" or call["arguments"] != {}
+            ):
+                raise ValueError("rejected calls must use invalid_call and empty arguments")
+            if rejection is None and call["name"] == "invalid_call":
+                raise ValueError("invalid_call requires a rejection")
         validate_hash(self.continuation["author_request"], optional=True)
         refs = self.continuation["check_requests"]
         if not isinstance(refs, tuple):
@@ -892,7 +827,7 @@ class EnvironmentStateV1(_Record):
             if not isinstance(refs, tuple):
                 raise TypeError(f"{key} must be an array")
             for request_id in refs:
-                _logical_id(request_id, f"{key} id")
+                logical_id(request_id, f"{key} id")
         if (
             type(self.continuation["feedback_cursor"]) is not int
             or self.continuation["feedback_cursor"] < 0
@@ -903,7 +838,7 @@ class EnvironmentStateV1(_Record):
 
 
 @dataclass(frozen=True)
-class CheckpointV1(_Record):
+class CheckpointV1(Record):
     parents: tuple[str, ...] = ()
     state: EnvironmentStateV1 | Mapping[str, Any] = None  # type: ignore[assignment]
     event_head: str | None = None
@@ -932,7 +867,7 @@ class CheckpointV1(_Record):
 
 
 @dataclass(frozen=True)
-class CommitV1(_Record):
+class CommitV1(Record):
     parent_commit: str | None = None
     events: tuple[str, ...] = ()
     checkpoint: str = ""
@@ -945,43 +880,16 @@ class CommitV1(_Record):
 
 
 @dataclass(frozen=True)
-class LineageRefV1(_Record):
+class LineageRefV1(Record):
     lineage_id: str = ""
     head_commit: str | None = None
     expected_head: str | None = None
     DOMAIN: ClassVar[str] = "lineage"
 
     def validate(self) -> None:
-        _logical_id(self.lineage_id, "lineage_id")
+        logical_id(self.lineage_id, "lineage_id")
         validate_hash(self.head_commit, optional=True)
         validate_hash(self.expected_head, optional=True)
-
-
-def record_hash(record: _Record) -> str:
-    if not isinstance(record, _Record):
-        raise TypeError("record_hash expects a task-graph record")
-    return record.identity()
-
-
-# Compatibility aliases for the pre-review prototype; new callers should use
-# the canonical names above.  They are intentionally behavior-identical, not
-# parallel identity implementations.
-canonicalize = canonical_json
-canonical_load = load_canonical_json
-identity_hash = domain_hash
-canonical_hash = domain_hash
-hash_bytes = domain_hash_bytes
-validate_path = safe_path
-hash_file = file_hash
-hash_tree = tree_hash
-GraphInstance = GraphInstanceV1
-Event = EventV1
-Message = MessageV1
-ContextRevision = ContextRevisionV1
-EnvironmentState = EnvironmentStateV1
-Checkpoint = CheckpointV1
-Commit = CommitV1
-LineageRef = LineageRefV1
 
 
 __all__ = [
@@ -993,35 +901,21 @@ __all__ = [
     "load_canonical_json",
     "domain_hash",
     "domain_hash_bytes",
-    "identity_hash",
-    "canonical_hash",
-    "hash_bytes",
-    "record_hash",
     "validate_hash",
+    "utf8",
+    "logical_id",
+    "freeze",
+    "thaw",
+    "Record",
     "safe_path",
-    "validate_path",
     "validate_file_tree",
-    "canonicalize",
-    "canonical_load",
     "file_hash",
     "tree_hash",
-    "hash_file",
-    "hash_tree",
     "GraphInstanceV1",
     "NodeSpecV1",
     "MessageV1",
     "EventV1",
-    "ContextRevisionV1",
-    "ContextContentV1",
-    "context_content_hash",
-    "GraphInstance",
-    "Event",
-    "Message",
-    "ContextRevision",
-    "EnvironmentState",
-    "Checkpoint",
-    "Commit",
-    "LineageRef",
+    "MaterializedContextV1",
     "EnvironmentStateV1",
     "CheckpointV1",
     "CommitV1",

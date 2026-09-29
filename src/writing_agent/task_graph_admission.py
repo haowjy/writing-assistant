@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash, safe_path
+from writing_agent.task_graph import GraphInstanceV1, NodeSpecV1, domain_hash, safe_path, thaw
 from writing_agent.task_graph_artifacts import (
     TypedArtifactError,
     validate_phase3_artifact_closure,
@@ -35,9 +35,12 @@ from writing_agent.task_graph_contracts import (
     ScriptContractV1,
     ScriptedAuthorV1,
 )
+from writing_agent.task_graph_evaluation import FAMILIES
 
 SUPPORTED_CONTROLLER_VERSIONS = frozenset({"deterministic-v1"})
-SUPPORTED_CHECK_VERSIONS = frozenset({"deterministic-v1", "legacy-check-v1"})
+SUPPORTED_CHECK_VERSIONS = frozenset(
+    {"legacy-check-v1", *(family.check_version for family in FAMILIES.values())}
+)
 
 
 class AdmissionError(ValueError):
@@ -92,15 +95,7 @@ class MappingArtifactResolver:
             raise AdmissionError("missing_reference", f"missing artifact {identity}") from exc
         if domain_hash("payload", value) != identity:
             raise AdmissionError("corrupt_reference", f"artifact hash mismatch for {identity}")
-        return _wire_copy(value)
-
-
-def _wire_copy(value: Any) -> Any:
-    if isinstance(value, Mapping):
-        return {key: _wire_copy(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_wire_copy(item) for item in value]
-    return value
+        return thaw(value)
 
 
 class StoreArtifactResolver:
@@ -121,7 +116,7 @@ class StoreArtifactResolver:
             raise AdmissionError(code, f"invalid artifact {identity}: {exc}") from exc
 
     def _load(self, identity: str, private: bool) -> Any:
-        from writing_agent.task_graph_store import MissingReferenceError, StoreError
+        from writing_agent.task_graph_errors import MissingReferenceError, StoreError
 
         required = "private" if private else "public"
         opposite = "public" if private else "private"
@@ -184,6 +179,31 @@ class AdmittedGraphV1:
             return self.nodes[node_id]
         except KeyError as exc:
             raise AdmissionError("unknown_target", f"unknown admitted node {node_id}") from exc
+
+
+def initial_requirements(
+    node: AdmittedNodeV1 | NodeContractV1,
+    reader: Any,
+    *,
+    author_packet: AuthorPacketV1 | None = None,
+) -> dict[str, str]:
+    """Resolve one node's initial requirements for admission and entry derivation."""
+    contract = node.contract if isinstance(node, AdmittedNodeV1) else node
+    packet = node.author_packet if isinstance(node, AdmittedNodeV1) else author_packet
+    packet_requirements = {} if packet is None else dict(packet.requirements)
+    source_ref = contract.entry_contract.requirement_version
+    if source_ref is None:
+        requirements = packet_requirements
+    else:
+        source = (getattr(reader, "resolve", None) or reader.artifact)(source_ref, private=True)
+        if not isinstance(source, Mapping) or not isinstance(source.get("requirements"), Mapping):
+            raise ValueError("initial requirement version must contain a requirements map")
+        requirements = dict(source["requirements"])
+        if packet_requirements and requirements != packet_requirements:
+            raise ValueError("author packet and requirement version requirements disagree")
+    if not all(isinstance(item, str) and item for pair in requirements.items() for item in pair):
+        raise ValueError("initial requirements must map nonempty strings to nonempty strings")
+    return requirements
 
 
 def _contract(
@@ -256,8 +276,6 @@ def admit_graph(
                 f"node {spec.id} files_ref is not declared by the graph instance",
             )
         _resolve_plain(resolver, entry.files_ref, private=False)
-        if entry.requirement_version is not None:
-            _resolve_plain(resolver, entry.requirement_version, private=True)
         if set(entry.tool_allowlist) - policy.allowed_tools:
             raise AdmissionError("invalid_tool", f"node {spec.id} requests a disabled tool")
 
@@ -265,16 +283,34 @@ def admit_graph(
         script = _validate_interaction(resolver, spec, contract, policy)
         checks = _validate_checks(resolver, spec, contract, policy)
         if interaction.mode == "scripted_author" and any(
-            check.evaluator_version != "deterministic-v1"
-            or check.spec.get("kind")
-            not in {"nonempty", "contains", "excludes", "excludes_all", "word_range", "exact"}
-            or "path" not in check.spec
+            (
+                check.evaluator_version == "deterministic-v1"
+                and (
+                    check.spec.get("kind")
+                    not in {
+                        "nonempty",
+                        "contains",
+                        "excludes",
+                        "excludes_all",
+                        "word_range",
+                        "exact",
+                    }
+                    or "path" not in check.spec
+                )
+            )
+            or check.evaluator_version not in {family.check_version for family in FAMILIES.values()}
+            or any(
+                check.evaluator_version == family.check_version
+                and family.program_kind is not None
+                and check.spec.get("kind") != family.program_kind
+                for family in FAMILIES.values()
+            )
             or check.public_evidence_refs
             or check.private_evidence_refs
             for check in checks.values()
         ):
             raise AdmissionError(
-                "unsupported_check", "scripted author permits only strict deterministic file checks"
+                "unsupported_check", "scripted author permits only strict admitted file checks"
             )
         if interaction.mode == "scripted_author" and not any(
             check.required and check.applicability in {"each_turn", "node_exit_candidate"}
@@ -289,30 +325,34 @@ def admit_graph(
                 resolver, spec, contract, script, checks
             )
         evaluator_packet = reward_contract = None
-        if (
-            interaction.mode == "scripted_author"
-            and contract.completion_contract.evaluation_packet_ref is not None
-        ):
-            evaluator_packet = _contract(
-                resolver,
-                contract.completion_contract.evaluation_packet_ref,
-                EvaluatorPacketV1,
-                private=True,
+        evaluation_packet_ref = contract.completion_contract.evaluation_packet_ref
+        if spec.kind == "writer" and evaluation_packet_ref is not None:
+            packet_body = _resolve_plain(resolver, evaluation_packet_ref, private=True)
+            legacy_evaluation = (
+                isinstance(packet_body, Mapping)
+                and packet_body.get("kind") == "legacy-evaluation-package"
             )
-            reward_contract = _contract(
-                resolver, evaluator_packet.reward_contract_ref, RewardContractV1, private=True
-            )
-            if set(evaluator_packet.check_ids) != set(checks):
-                raise AdmissionError("evaluator_coverage", "evaluator packet check IDs differ")
-            if set(reward_contract.components) - set(checks):
-                raise AdmissionError("reward_coverage", "reward names undeclared checks")
-            if any(
-                checks[check_id].applicability not in {"each_turn", "node_exit_candidate"}
-                for check_id in reward_contract.components
-            ):
-                raise AdmissionError(
-                    "reward_coverage", "reward component lacks terminal check evidence"
+            if not legacy_evaluation:
+                evaluator_packet = _contract(
+                    resolver,
+                    evaluation_packet_ref,
+                    EvaluatorPacketV1,
+                    private=True,
                 )
+                reward_contract = _contract(
+                    resolver, evaluator_packet.reward_contract_ref, RewardContractV1, private=True
+                )
+                if set(evaluator_packet.check_ids) != set(checks):
+                    raise AdmissionError("evaluator_coverage", "evaluator packet check IDs differ")
+                if set(reward_contract.components) - set(checks):
+                    raise AdmissionError("reward_coverage", "reward names undeclared checks")
+                if any(
+                    checks[check_id].applicability not in {"each_turn", "node_exit_candidate"}
+                    for check_id in reward_contract.components
+                ):
+                    raise AdmissionError(
+                        "reward_coverage", "reward component lacks terminal check evidence"
+                    )
         edges, guards = _validate_edges(resolver, spec, specs, edge_ids)
         if interaction.mode == "scripted_author" and any(
             edge.effect != "terminate" for edge in edges
@@ -330,7 +370,7 @@ def admit_graph(
             raise AdmissionError(
                 "guard_coverage", "no terminal edge is guaranteed for passing completion checks"
             )
-        admitted[spec.id] = AdmittedNodeV1(
+        node = AdmittedNodeV1(
             spec=spec,
             contract=contract,
             edges=edges,
@@ -343,6 +383,12 @@ def admit_graph(
             evaluator_packet=evaluator_packet,
             reward_contract=reward_contract,
         )
+        if interaction.mode != "scripted_author":
+            try:
+                initial_requirements(node, resolver)
+            except ValueError as exc:
+                raise AdmissionError("requirement_update", str(exc)) from exc
+        admitted[spec.id] = node
         if interaction.mode == "none" and contract.budget_contract.max_author_calls:
             raise AdmissionError(
                 "interaction_budget", f"node {spec.id} has author budget but no interaction"
@@ -515,7 +561,6 @@ def _validate_scripted_author(
         raise AdmissionError("script_coverage", f"node {spec.id} needs exact decision coverage")
     if set(bindings.bindings.values()) - set(packet.preferences):
         raise AdmissionError("script_coverage", "decision binding names missing author preference")
-    public_values = [value for item in policy.public_decisions for value in item.values()]
     if any(
         re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", item["id"]) is None
         for item in policy.public_decisions
@@ -527,15 +572,6 @@ def _validate_scripted_author(
         for item in policy.public_decisions
     ):
         raise AdmissionError("visibility", "public decision label must be bounded printable text")
-    private_values = [
-        *packet.preferences.keys(),
-        *packet.preferences.values(),
-        *packet.requirements.keys(),
-        *packet.requirements.values(),
-        *(rule["utterance"] for rule in script.answers.values()),
-        *(rule["value"] for rule in script.answers.values()),
-        *(rule["utterance"] for rule in script.feedback),
-    ]
     if tuple(rule["id"] for rule in script.feedback) != policy.mandatory_feedback or (
         policy.mandatory_feedback != interaction.mandatory_feedback
     ):
@@ -550,35 +586,47 @@ def _validate_scripted_author(
             raise AdmissionError("script_coverage", "fixed answer differs from author packet")
         if set(rule["prerequisite_check_ids"]) - set(checks):
             raise AdmissionError("script_coverage", "answer prerequisite names unknown check")
+    try:
+        requirements = initial_requirements(contract, resolver, author_packet=packet)
+    except ValueError as exc:
+        raise AdmissionError("requirement_update", str(exc)) from exc
+    private_values = [
+        *packet.preferences.keys(),
+        *packet.preferences.values(),
+        *requirements.keys(),
+        *requirements.values(),
+        *(rule["utterance"] for rule in script.answers.values()),
+        *(rule["value"] for rule in script.answers.values()),
+        *(rule["utterance"] for rule in script.feedback),
+    ]
     superseded_ids: set[str] = set()
     replacement_ids: set[str] = set()
     for feedback in script.feedback:
         available = {
             check.id
             for check in checks.values()
-            if check.applicability in {"each_turn", f"before_feedback:{feedback['id']}"}
+            if check.applicability == "each_turn"
+            or check.applicability == f"before_feedback:{feedback['id']}"
         }
         if set(feedback["prerequisite_check_ids"]) - available:
             raise AdmissionError("script_coverage", "feedback prerequisite names unknown check")
         update_ref = feedback["requirement_update_ref"]
-        if update_ref is not None:
-            update = _contract(resolver, update_ref, RequirementUpdateV1, private=True)
-            private_values.append(update.id)
-            private_values.append(update.replacement)
-            if (
-                update.supersedes not in packet.requirements
-                or update.supersedes in superseded_ids
-                or update.id in packet.requirements
-                or update.id in replacement_ids
-            ):
-                raise AdmissionError("requirement_update", "unauthorized superseded requirement")
-            superseded_ids.add(update.supersedes)
-            replacement_ids.add(update.id)
-    if any(
-        private_text and private_text in public
-        for public in public_values
-        for private_text in private_values
-    ):
+        if update_ref is None:
+            continue
+        update = _contract(resolver, update_ref, RequirementUpdateV1, private=True)
+        private_values.extend((update.id, update.replacement))
+        if (
+            update.supersedes not in requirements
+            or update.supersedes in superseded_ids
+            or update.id in requirements
+            or update.id in replacement_ids
+        ):
+            raise AdmissionError("requirement_update", "unauthorized superseded requirement")
+        superseded_ids.add(update.supersedes)
+        replacement_ids.add(update.id)
+
+    public_values = [value for item in policy.public_decisions for value in item.values()]
+    if any(text and text in public for text in private_values for public in public_values):
         raise AdmissionError(
             "visibility", "public decision vocabulary contains private author text"
         )
@@ -641,6 +689,26 @@ _MECHANICAL_KINDS = _TEXT_TARGET_KINDS | frozenset(
 
 def _validate_check_program(check: CheckContractV1) -> None:
     try:
+        family = next(
+            (
+                family
+                for family in FAMILIES.values()
+                if family.check_version == check.evaluator_version
+            ),
+            None,
+        )
+        if family is not None and family.program_kind is not None:
+            spec = check.spec
+            if (
+                set(spec) != {"id", "metric", "kind", "method", "required"}
+                or spec["id"] != check.id
+                or spec["metric"] not in {f"Q{number}" for number in range(1, 14)}
+                or spec["kind"] != family.program_kind
+                or spec["method"] != family.program_method
+                or spec["required"] is not check.required
+            ):
+                raise ValueError("fixture family requires its exact admitted program")
+            return
         _validate_legacy_check_shape(
             check,
             deterministic_only=check.evaluator_version == "deterministic-v1",
