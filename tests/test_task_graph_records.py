@@ -118,6 +118,7 @@ EXPECTED_REFS = {
     "GroupScriptedTerminalV1": (("start_checkpoint_id", "checkpoint"),),
     "GroupExecutionFailureV1": (
         ("evidence_ref", "artifact"),
+        ("judged_checkpoint_id", "checkpoint"),
         ("start_checkpoint_id", "checkpoint"),
     ),
     "GroupMemberResultV1": (
@@ -930,7 +931,7 @@ class RecordCodecTests(unittest.TestCase):
         for record in record_examples():
             self.assertEqual(
                 {field.name for field in fields(record)},
-                set(record.FIELD_SPEC.required),
+                set(record.FIELD_SPEC.required) | set(record.FIELD_SPEC.optional),
                 type(record).__name__,
             )
             self.assertEqual(

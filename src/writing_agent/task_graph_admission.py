@@ -676,9 +676,15 @@ def _validate_checks(
             "check_contract", f"node {spec.id} completion does not name every mandatory check"
         )
     families = {
-        family.name
-        for family in FAMILIES.values()
-        if any(check.evaluator_version == family.check_version for check in checks.values())
+        next(
+            (
+                family.name
+                for family in FAMILIES.values()
+                if family.check_version == check.evaluator_version
+            ),
+            check.evaluator_version,
+        )
+        for check in checks.values()
     }
     if len(families) > 1:
         raise AdmissionError(

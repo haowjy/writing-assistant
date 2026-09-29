@@ -18,10 +18,12 @@
 - Native group seals require a V2 manifest, all three native sampling capabilities, and
   descriptor pins that match both group policy and entry rendering; existing V1 group
   identities and wire records remain unchanged.
-- Admission rejects a node whose checks require multiple evaluator families.
-- Token-limited entries require a usage-reporting sampler manifest and support total-token caps.
-- Group collection is bound to each member's verified published head; real groups pin a
-  runtime manifest and cannot void a valid terminal reward.
+- Admission rejects nodes mixing evaluator families, with `legacy-check-v1` treated as its own family.
+- Token-limited entries require a sealed usage-reporting sampler before sampling and support
+  total-token caps.
+- Real group member starts and commits require the sealed manifest. Collection binds terminal
+  results to the verified head, resolves rewards published after collection, and records the
+  judged head for infrastructure interruptions.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

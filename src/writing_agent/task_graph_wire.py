@@ -514,6 +514,7 @@ class WireRecord:
 
     RECORD_TYPE: ClassVar[str | None] = None
     EDGE_TYPE: ClassVar[str | None] = None
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
     FIELD_SPEC: ClassVar[Obj] = Obj(MappingProxyType({}))
     REFS: ClassVar[Mapping[str, str]] = MappingProxyType({})
     OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
@@ -532,7 +533,13 @@ class WireRecord:
             if len(args) != 2:
                 raise TypeError(f"{cls.__name__}.{name} must have exactly one wire spec")
             specs[name] = args[1]
-        cls.FIELD_SPEC = Obj(MappingProxyType(specs))
+        omitted = cls.OMIT_NONE_FIELDS
+        if omitted - specs.keys():
+            raise TypeError(f"{cls.__name__}.OMIT_NONE_FIELDS names an unknown field")
+        cls.FIELD_SPEC = Obj(
+            MappingProxyType({name: spec for name, spec in specs.items() if name not in omitted}),
+            MappingProxyType({name: spec for name, spec in specs.items() if name in omitted}),
+        )
         cls.REFS = _derived_refs(cls.FIELD_SPEC)
         registry_name = cls.RECORD_TYPE or cls.EDGE_TYPE or cls.__name__
         if registry_name in _RECORD_CLASSES:
@@ -589,13 +596,12 @@ class WireRecord:
             if value.get("record_type") != cls.RECORD_TYPE:
                 raise ValueError("record_type does not match codec")
             value = {key: item for key, item in value.items() if key != "record_type"}
-        field_names = {item.name for item in fields(cls)}
-        missing = field_names - set(value)
-        if missing and not missing - cls.OMIT_NONE_FIELDS:
-            defaults = {item.name: item.default for item in fields(cls)}
-            if any(defaults[name] is not None for name in missing):
-                raise TypeError("omitted wire fields must default to None")
-            value = {**value, **{name: None for name in missing}}
+        fields_by_name = {item.name: item for item in fields(cls)}
+        missing_optional = (set(fields_by_name) - set(value)) & cls.OMIT_NONE_FIELDS
+        value = {
+            **value,
+            **{name: fields_by_name[name].default for name in missing_optional},
+        }
         edges: list[tuple[str, str, Any]] = []
         normalized = _walk_spec(cls.FIELD_SPEC, value, cls.__name__, edges=edges)
         record = object.__new__(cls)

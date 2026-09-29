@@ -307,6 +307,17 @@ class BudgetContractV1(_Contract):
         {"max_generated_tokens", "max_total_tokens"}
     )
 
+    def usage_charged_limits(self) -> dict[str, int]:
+        """Return budget limits whose admission requires usage evidence."""
+        return {
+            name: limit
+            for name, limit in (
+                ("generated_tokens", self.max_generated_tokens),
+                ("total_tokens", self.max_total_tokens),
+            )
+            if limit is not None
+        }
+
     def validate(self) -> None:
         _nonnegative(self.max_steps, "max_steps", positive=True)
         _nonnegative(self.max_tool_calls, "max_tool_calls")

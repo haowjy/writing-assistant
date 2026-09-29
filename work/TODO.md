@@ -28,11 +28,12 @@ retain the execution boundary in the [suite plan](custom-eval-suite/plan.md).
 Carried from the transition seam (`src/.context/transition-seam.md`). Each item must land
 before group training or the first real model backend relies on it.
 
-- [x] **Group head binding (HIGH-5):** bind collection to the verified published head, require a real-group manifest pin, and refuse voiding a valid terminal reward.
+- [x] **Group head binding (HIGH-5):** require the bound manifest on real-member starts and commits; bind fresh collection to the verified head, record judged heads for interruptions, and refuse voiding a valid terminal reward.
 - [x] **Token-budget admission:** require a usage-reporting sampler capability for token-limited entries and charge total-token limits.
 - [x] **Mixed evaluator families (MEDIUM-3):** admission refuses a node whose checks span evaluator families.
 
-Landed admission guards for evaluator and token budgets, plus verified-head and manifest binding for group results.
+Landed mixed-family and token-usage admission, sealed real-member execution, strict fresh-head
+collection with reward-only resolution, and judged-head interruption records.
 - [ ] **Compaction trigger:** make compaction controller-owned before group training uses it; today the caller triggers it. `task_graph_controller.py`.
 - [ ] **Receipt journal:** record backend receipts before the first paid or remote backend.
 - [ ] **Legacy graph evaluation adapter:** run legacy evaluation scenarios through the rollout core.

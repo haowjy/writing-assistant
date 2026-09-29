@@ -151,7 +151,7 @@ an adapter that needs a directory creates it outside the runtime core. The store
 | Requirements and decisions | Immutable versions for binding requirements, accepted decisions, superseded entries, reveal permissions and disclosure history; author-packet hash and independent source evidence |
 | Continuation | Ordered pending tool calls and next-call cursor, unanswered author request, outstanding check/request IDs with target hashes, applied-response IDs and mandatory-feedback cursor |
 | Execution configuration | Environment, controller, simulator, evaluator, reward, compactor and tool implementation/config hashes; interaction mode and fallback policy |
-| Budgets | Limits **and consumed counters** for turns, model calls, tool calls, returned-read tokens, generated/total tokens, context capacity, author calls, graph hops and wall time; `BudgetContractV1.max_generated_tokens` is optional and omitted when unset; remaining allocation and accounting policy |
+| Budgets | Limits **and consumed counters** for turns, model calls, tool calls, returned-read tokens, generated/total tokens, context capacity, author calls, graph hops and wall time; `BudgetContractV1.max_generated_tokens` and `max_total_tokens` are optional and omitted when unset; token-limited entries require a sealed usage-reporting sampler before sampling; remaining allocation and accounting policy |
 | Randomness | Root seed, RNG algorithm/version and serialized states/counters per writer/controller/simulator/environment stream; rollout stream derivation and sampling parameters |
 | External inputs | Inputs pinned at entry, such as sources and fetched bytes. Nondeterministic model, simulator, tool and checker responses are recorded as typed event payloads (§4), not state. |
 | Outcome | One evolving `OutcomeV1` holds the current check batch/results, transition edge and terminal status and, after publication, reward and training-eligibility references. |
@@ -459,7 +459,8 @@ Version 1 records one `WriterTurnV1` per sampled turn: the parsed message,
 `context_revision_ref`, optional `raw_output_ref`, usage, and adapter trace. The exact
 request is reconstructed from the pinned context and rendering rather than copied into
 the turn. The adapter trace is the sole source of model, seed, token IDs and binary
-logprobs; its optional context claims are bound when present. Phase 8 adds token and mask evidence as
+logprobs; its optional context claims are bound when present, and group members must
+include all active context claims. Phase 8 adds token and mask evidence as
 `WriterTurnV2` behind the same decoder.
 
 The behavior distribution and logprob convention must be explicit: logits before

@@ -36,10 +36,10 @@ from writing_agent.task_graph_group import (
     POLICY_FIELDS,
     GroupCoordinatorV1,
     GroupError,
-    GroupExecutionFailureV1,
     GroupMemberResultV1,
     GroupScriptedTerminalV1,
 )
+from writing_agent.task_graph_group_records import GroupExecutionFailureV1
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
     LocalTextToolProvider,
@@ -254,6 +254,15 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         with self.assertRaises(AdapterContractError):
             self.seal_native(adapter_ref=reference, sequence=120)
 
+    def test_token_limited_run_requires_a_sealed_session_before_port_input(self):
+        fixture = build_rollout_fixture(
+            self.root / "token-limited-no-session", mode="token_limited"
+        )
+        self.assertIsNone(fixture.env.session)
+
+        with self.assertRaises(AdapterContractError):
+            fixture.env.step_input(fixture.runtime)
+
     def test_group_terminal_records_roundtrip_with_unchanged_payload_identity(self):
         fixture = GroupScriptedTerminalV1(
             schema=1,
@@ -452,6 +461,46 @@ class TestGroupCoordinatorCore(unittest.TestCase):
 
         self.assertIsNone(self.store.read_head(spec.members[0].member_id))
 
+    def test_real_group_member_rejects_sessionless_start_and_commit(self):
+        spec = self.group(sequence=91)
+        member = spec.members[0]
+        sessionless = RolloutEnvironment(
+            self.store,
+            self.fixture.entry.graph,
+            None,
+            self.fixture.gate,
+            self.fixture.entry.graph.policy,
+        )
+
+        with self.assertRaises(AdapterContractError):
+            sessionless.start_member(self.entry_id, MemberStartV1(spec.identity(), member.ordinal))
+        self.assertIsNone(self.store.read_head(member.member_id))
+
+        runtime = self.coordinator.start(spec, member.ordinal, policy=self.policy)
+        head = self.store.read_head(member.member_id)
+        view, _directive, port = self.env.step_input(runtime)
+        claims = {
+            "context_revision_ref": view.context.revision_ref,
+            "context_content_hash": view.context.content_ref,
+            "rendering": thaw(view.context.rendering),
+        }
+        turn = WriterTurnV1(
+            action_id=port.action_id,
+            context_revision_ref=port.context_revision_ref,
+            raw_output_ref=None,
+            usage={},
+            adapter_trace=claims,
+            message=intake_message({"role": "assistant", "content": "draft"}),
+        )
+
+        with self.assertRaises(AdapterContractError):
+            sessionless.commit(runtime, turn)
+        with self.assertRaises(AdapterContractError):
+            sessionless.step_input(runtime)
+        self.assertEqual(self.store.read_head(member.member_id), head)
+        self.assertFalse((self.coordinator.groups_root / spec.group_id / "result-0.json").exists())
+        self.assertEqual(self.coordinator.finalize(spec).status, "pending")
+
     def test_orphaned_reward_checkpoint_cannot_be_collected_or_finalize_group(self):
         spec = self.group(sequence=89)
         member = spec.members[0]
@@ -518,6 +567,32 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         self.assertEqual(self.store.read_head(spec.members[0].member_id), published)
         self.assertEqual(self.coordinator.finalize(spec).status, "pending")
 
+    def test_collect_invalid_binds_the_judged_head_before_a_later_valid_terminal(self):
+        spec = self.group(sequence=92)
+        member = spec.members[0]
+        runtime = self.coordinator.start(spec, 0, policy=self.policy)
+        runtime = run_slice(
+            self.fixture,
+            runtime=runtime,
+            until=lambda directive: directive.kind == "execute_tool",
+        )
+        judged_checkpoint_id = runtime.checkpoint_id
+
+        self.coordinator.collect_invalid(spec, 0, reason="worker_interrupted")
+        failure_receipt = load_canonical_json(
+            (self.coordinator.groups_root / spec.group_id / "result-0.json").read_bytes()
+        )
+        failure_result = GroupMemberResultV1.from_dict(
+            self.store.get_artifact(failure_receipt["result_ref"])
+        )
+
+        finished = run_slice(self.fixture, runtime=self.env.open_head(member.member_id))
+        self.assertNotEqual(finished.checkpoint_id, judged_checkpoint_id)
+        self.assertEqual(self.env.verify(finished).outcome.execution_status, "valid")
+        self.assertEqual(self.coordinator.finalize(spec).status, "invalid")
+        failure = self.store.get_artifact(failure_result.failure_ref)
+        self.assertEqual(failure["judged_checkpoint_id"], judged_checkpoint_id)
+
     def test_group_sampling_requires_all_active_context_claims(self):
         required = {
             "context_revision_ref",
@@ -549,6 +624,42 @@ class TestGroupCoordinatorCore(unittest.TestCase):
                     self.env.commit(runtime, turn)
 
                 self.assertEqual(self.store.read_head(spec.members[0].member_id), head)
+
+    def test_pending_reward_resolution_accepts_only_a_reward_recorded_suffix(self):
+        spec = self.group(sequence=93)
+        member0 = spec.members[0]
+        runtime0 = self.coordinator.start(spec, 0, policy=self.policy)
+        runtime0 = run_slice(
+            self.fixture,
+            runtime=runtime0,
+            until=lambda directive: directive.kind == "publish_reward",
+        )
+        pending_view = self.env.verify(runtime0)
+        pending_result = GroupMemberResultV1(
+            group_id=spec.group_id,
+            member_id=member0.member_id,
+            start_checkpoint_id=self.coordinator._start_receipt(spec, 0)["start_checkpoint_id"],
+            final_checkpoint_id=runtime0.checkpoint_id,
+            terminal_outcome_ref=pending_view.state.outcome_ref,
+            execution_status="valid",
+        )
+        self.coordinator.collect(spec, pending_result)
+        _runtime1, result1 = self.run_member(spec, 1)
+        self.coordinator.collect(spec, result1)
+
+        runtime0 = run_slice(self.fixture, runtime=runtime0)
+        resolved_view = self.env.verify(runtime0)
+        self.assertEqual(resolved_view.outcome.reward_status, "available")
+        with self.assertRaises(ConcurrentUpdateError):
+            self.coordinator.collect(spec, pending_result)
+        decision = self.coordinator.finalize(spec)
+        self.assertIn(decision.status, {"ready", "tie"})
+        self.assertEqual(len(decision.advantage_refs), 2)
+
+        self.assertTrue(GroupCoordinatorV1._reward_only_suffix(("reward_recorded",)))
+        self.assertFalse(
+            GroupCoordinatorV1._reward_only_suffix(("reward_recorded", "writer_action"))
+        )
 
     def test_start_retry_after_member_advanced_keeps_receipt_and_allows_collect(self):
         spec = self.group(sequence=77)

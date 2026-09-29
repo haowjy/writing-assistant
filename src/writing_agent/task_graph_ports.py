@@ -348,15 +348,46 @@ class RuntimeDependenciesV1:
         return RuntimeManifestV1(schema=1, ports=ports)
 
 
+def manifest_sampling_capabilities(
+    manifest: RuntimeManifestV1 | RuntimeManifestV2,
+) -> frozenset[str]:
+    """Read the capabilities that both the manifest and sampling port declare."""
+    if not isinstance(manifest, (RuntimeManifestV1, RuntimeManifestV2)):
+        raise AdapterContractError("runtime manifest has an unsupported record type")
+    sampler = next((port for port in manifest.ports if port.role == "sampling"), None)
+    if sampler is None:
+        raise AdapterContractError("runtime manifest has no sampling port")
+    capabilities = sampler.configuration.get("capabilities", ())
+    known = (
+        NATIVE_TRAINING_CAPABILITIES
+        if isinstance(manifest, RuntimeManifestV2)
+        else {USAGE_REPORTING_CAPABILITY}
+    )
+    if (
+        type(capabilities) not in (tuple, list)
+        or any(type(capability) is not str for capability in capabilities)
+        or tuple(capabilities) != tuple(sorted(set(capabilities)))
+        or set(capabilities) - known
+    ):
+        raise AdapterContractError("sampling port capabilities are invalid")
+    port_capabilities = frozenset(capabilities)
+    if isinstance(manifest, RuntimeManifestV1):
+        return port_capabilities
+
+    declared = manifest.capabilities
+    if (
+        type(declared) not in (tuple, list)
+        or any(type(capability) is not str for capability in declared)
+        or tuple(declared) != tuple(sorted(set(declared)))
+        or set(declared) - NATIVE_TRAINING_CAPABILITIES
+    ):
+        raise AdapterContractError("manifest capabilities are invalid")
+    return frozenset(declared) & port_capabilities
+
+
 def manifest_supports_usage_reporting(manifest: RuntimeManifestV1 | RuntimeManifestV2) -> bool:
     """Whether the sealed sampling descriptor promises token usage evidence."""
-    sampler = next(port for port in manifest.ports if port.role == "sampling")
-    capabilities = sampler.configuration.get("capabilities", ())
-    if USAGE_REPORTING_CAPABILITY not in capabilities:
-        return False
-    return not isinstance(manifest, RuntimeManifestV2) or (
-        USAGE_REPORTING_CAPABILITY in manifest.capabilities
-    )
+    return USAGE_REPORTING_CAPABILITY in manifest_sampling_capabilities(manifest)
 
 
 def require_native_manifest_binding(
@@ -371,9 +402,7 @@ def require_native_manifest_binding(
     if not isinstance(manifest, RuntimeManifestV2):
         raise AdapterContractError("native training requires RuntimeManifestV2")
 
-    sampler = next(port for port in manifest.ports if port.role == "sampling")
-    port_capabilities = set(sampler.configuration.get("capabilities", ()))
-    declared_capabilities = set(manifest.capabilities) & port_capabilities
+    declared_capabilities = manifest_sampling_capabilities(manifest)
     if require_capabilities and NATIVE_TRAINING_CAPABILITIES - declared_capabilities:
         raise AdapterContractError("native sampling manifest lacks required capabilities")
     if require_capabilities and manifest.decoding.processors:
