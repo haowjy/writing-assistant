@@ -19,3 +19,15 @@ it becomes near-term work. Detailed acceptance criteria stay in the linked plans
 - [ ] **Community Qwen comparison:** optionally evaluate the [DavidAU TURBO Fable/Cold Fusion derivative](https://huggingface.co/DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF) on project-memory, tools, and prose before considering it as a base. Its card reports multiple training/merge/abliteration steps; reported ARC gains do not establish our target capabilities. The linked repo contains GGUF inference files, not the normal QLoRA training weights. No download or base-model change is approved.
 
 These entries are deferred directions, not scheduled runs or generation jobs.
+
+## Task-graph code health
+
+Deferred from the transition seam's final reviews; none blocks correctness.
+
+- [ ] **Store split:** move `_ClosureValidator` and `_LineageLock` out of `src/writing_agent/task_graph_store.py` (1,352 lines) into `task_graph_closure.py`, as a move.
+- [ ] **Test consolidation:** task-graph tests grew from 8,641 to 15,824 lines; the acceptance suite, the restored guard tests and the per-module tests overlap.
+- [ ] **Structured codec errors:** raise `CodecError(path, detail)` from the wire layer instead of parsing exception text in `_ClosureValidator._codec_field_path`.
+- [ ] **Small duplicates:** one `_json_value`/`_wire_value` (`task_graph.py`, `task_graph_wire.py`); rename one of the two `AdmissionPolicyV1` classes; narrow `StoreArtifactReader.artifact`'s domain multiplexing; tighten `LAYER_RANKS`.
+- [ ] **Redundant checks:** the context check in `decode_writer_turn_sampling` duplicates `_validate_writer_turn`, and the ask-author `latest_action_id` binding is unreachable. Delete them or test them directly.
+- [ ] **Sampler input check:** `SamplingRunner` trusts `port.messages` to match `port.context_revision_ref`; add a content-hash check.
+- [ ] **Measure cold resume:** only the warm path is measured; cold `open_head` folds O(seq) derives. Mutant M12b (an author request needs its reply) is not caught by any test.
