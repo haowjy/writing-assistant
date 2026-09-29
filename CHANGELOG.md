@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add a one-shot generic stage supervisor with process-group timeouts, resource ceilings,
+  and atomic per-stage status and resource records.
+
 - Set only validated W&B environment bindings, and only after runtime admission succeeds.
 
 - Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
