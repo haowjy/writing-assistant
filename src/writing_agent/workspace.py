@@ -14,6 +14,31 @@ class WorkspaceInfrastructureError(RuntimeError):
     """Host filesystem failure, not a candidate tool mistake."""
 
 
+def is_candidate_filesystem_error(workspace: "Workspace", arguments: dict, error: OSError) -> bool:
+    """Return whether a filesystem failure is explained by a requested workspace path."""
+    if error.errno in {errno.ENOENT, errno.ENOTDIR, errno.EISDIR, errno.ENAMETOOLONG}:
+        return True
+    if error.errno != errno.EEXIST:
+        return False
+
+    path = arguments.get("path")
+    if not isinstance(path, str):
+        return False
+    try:
+        target = workspace.resolve(path)
+    except (OSError, ValueError):
+        return False
+
+    ancestor = target.parent
+    while ancestor != workspace.root:
+        if ancestor.is_file():
+            return True
+        if not ancestor.is_relative_to(workspace.root):
+            return False
+        ancestor = ancestor.parent
+    return False
+
+
 class Workspace:
     def __init__(
         self,
@@ -126,7 +151,7 @@ def dispatch(workspace: Workspace, name: str, arguments: dict) -> dict:
     try:
         return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
     except OSError as exc:
-        if exc.errno in {errno.ENOENT, errno.ENOTDIR, errno.EISDIR}:
+        if is_candidate_filesystem_error(workspace, arguments, exc):
             return {"ok": False, "valid": True, "error": str(exc)}
         raise WorkspaceInfrastructureError(
             f"Workspace filesystem failed: {type(exc).__name__}: {exc}"

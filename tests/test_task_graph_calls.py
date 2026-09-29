@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import random
 import unittest
+from unittest.mock import patch
 
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_calls import (
@@ -20,6 +21,7 @@ from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentAction, EnvironmentSnapshot, EnvironmentSpec
 from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_scripted import validate_ask_shape as scripted_validate_ask_shape
+from writing_agent.workspace import Workspace
 
 ALLOWED = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file", "ask_author"})
 
@@ -452,6 +454,35 @@ class ToolEffectTests(unittest.TestCase):
             "patch_file", {"path": "draft.txt", "old": "beta", "new": "gamma"}, before
         )
         self.assertEqual(patch_after["draft.txt"], "alpha gamma\n")
+
+    def test_local_provider_reports_file_ancestor_conflict_as_tool_error(self):
+        before = {"occupied.txt": "not a directory"}
+
+        result, after = self._local_case(
+            "write_file",
+            {"path": "occupied.txt/child.txt", "content": "draft"},
+            before,
+        )
+
+        self.assertEqual((result.observation["ok"], result.observation["valid"]), (False, True))
+        self.assertEqual(after, before)
+
+    def test_local_provider_reports_overlong_path_as_tool_error(self):
+        before = {"draft.txt": "kept"}
+
+        result, after = self._local_case(
+            "write_file",
+            {"path": "x" * 5000, "content": "draft"},
+            before,
+        )
+
+        self.assertEqual((result.observation["ok"], result.observation["valid"]), (False, True))
+        self.assertEqual(after, before)
+
+    def test_local_provider_does_not_hide_host_filesystem_errors(self):
+        with patch.object(Workspace, "write_file", side_effect=OSError(5, "disk failed")):
+            with self.assertRaises(OSError):
+                self._local_case("write_file", {"path": "draft.txt", "content": "draft"}, {})
 
     def test_generated_local_write_patch_and_read_snapshots(self):
         rng = random.Random(5_120)

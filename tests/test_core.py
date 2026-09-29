@@ -58,6 +58,26 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.workspace.write_file("huge", "x" * 128_001)
 
+    def test_write_below_file_path_is_a_recoverable_tool_error(self):
+        self.workspace.write_file("occupied", "not a directory")
+
+        result = dispatch(
+            self.workspace,
+            "write_file",
+            {"path": "occupied/child.txt", "content": "draft"},
+        )
+
+        self.assertEqual((result["ok"], result["valid"]), (False, True))
+
+    def test_overlong_path_is_a_recoverable_tool_error(self):
+        result = dispatch(
+            self.workspace,
+            "write_file",
+            {"path": "x" * 5000, "content": "draft"},
+        )
+
+        self.assertEqual((result["ok"], result["valid"]), (False, True))
+
 
 class AgentTests(unittest.TestCase):
     def test_invalid_arguments_are_observed_and_recoverable(self):

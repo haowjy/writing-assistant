@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Classify filesystem path mistakes consistently in both dispatchers: missing, invalid,
+  overlong, or file-ancestor paths are recoverable tool errors; host faults remain
+  infrastructure failures.
+
 - Replace the task-graph runtime with one verified rollout core: one pure derive per input,
   one event and one checkpoint per commit, the same derive for publication and replay.
   The old writer, scripted-author, checks, terminal, replay and runtime-log paths are gone.
