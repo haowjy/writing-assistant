@@ -332,6 +332,18 @@ class TestGroupCoordinatorCore(unittest.TestCase):
                 runner_mode="real",
             )
 
+    def test_real_group_start_rejects_an_unbound_session_before_publishing_member(self):
+        spec = self.group(sequence=88)
+        other_backend = ScriptedSampleBackend(self.fixture.sample_results)
+        other_backend.descriptor = PortDescriptorV1("sampling", "other-group-session", "1")
+        other_session = self.runtime_session(self.fixture, backend=other_backend)
+        self.env.session = other_session
+
+        with self.assertRaises(AdapterContractError):
+            self.coordinator.start(spec, 0, policy=self.policy)
+
+        self.assertIsNone(self.store.read_head(spec.members[0].member_id))
+
     def test_orphaned_reward_checkpoint_cannot_be_collected_or_finalize_group(self):
         spec = self.group(sequence=89)
         member = spec.members[0]
