@@ -22,3 +22,16 @@ retain the execution boundary in the [suite plan](custom-eval-suite/plan.md).
 - [ ] Complete the [automatic external checks](external-benchmarks/plan.md): IFEval and the 32-task HumanEval+ diagnostic are queued on E2B-IT. These follow the approved 32-output prose baseline.
 
 - [ ] Review the [completed Astra custom50 judgments](custom-eval-suite/astra-grading.md), especially ambiguous interpretations and optional checks. Human calibration remains unvalidated.
+
+## Task-graph environment: before Phase 8 training
+
+Carried from the transition seam (`src/.context/transition-seam.md`). Each item must land
+before group training or the first real model backend relies on it.
+
+- [ ] **Group head binding (HIGH-5):** bind group collection to the head, the sealed manifest, and `collect_invalid` to the head's `OutcomeV1`. `src/writing_agent/task_graph_group.py`.
+- [ ] **Token-budget admission:** add a usage-reporting capability to `RuntimeManifestV1`; refuse at seal or bind a manifest without it when the entry budget sets `max_generated_tokens`; wire `total_tokens` like `generated_tokens`. `task_graph_admission.py`, `task_graph_ports.py`.
+- [ ] **Mixed evaluator families (MEDIUM-3):** admission refuses a graph that mixes evaluator families. `task_graph_admission.py`.
+- [ ] **Compaction trigger:** make compaction controller-owned before group training uses it; today the caller triggers it. `task_graph_controller.py`.
+- [ ] **Receipt journal:** record backend receipts before the first paid or remote backend.
+- [ ] **Legacy graph evaluation adapter:** run legacy evaluation scenarios through the rollout core.
+- [ ] **Non-derivable requests:** a backend whose exact request is not derivable from the pinned context and trace pins adds its own writer-turn field (the seam removed `request_ref`). `task_graph_records.py`, `task_graph_derive_writer.py`.

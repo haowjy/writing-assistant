@@ -6,7 +6,7 @@ to the source texts. This repository does not vendor model weights or book corpo
 `scripts/organize_sources.py` turns those downloads into the catalog.
 `src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
 residue. Supervised training is `scripts/train_sft.py`; the reward function is
-`src/writing_agent/reward.py`. There is no GRPO trainer yet.
+`src/writing_agent/reward.py`. There is no GRPO trainer yet; the [deterministic group coordinator](docs/task-graph-groups.md) only prepares offline comparison and segment-credit artifacts.
 
 This research harness also runs tool-use evaluations and prepares conversational
 training data for [creative-writing agents](wiki/project-goals.md).
@@ -32,6 +32,14 @@ The smoke run replays five scripted examples covering retrieval, local revision,
 stale decisions, no-tool responses, and draft/canon separation. It checks the harness;
 it does not evaluate a model.
 The CLI exits nonzero if any task fails.
+
+The checkpointed task-graph runtime is opt-in and does not replace this CLI path. Its
+verified core records one typed input event per commit and derives state for both producers
+and replay; it uses neither a separate runtime log nor a legacy patch reducer. Start with the
+[writer runtime](docs/task-graph-writer.md), then see the
+[scripted-author lifecycle](docs/task-graph-scripted.md),
+[context operations](docs/task-graph-compaction.md), and
+[deterministic groups](docs/task-graph-groups.md).
 
 ## Layout
 

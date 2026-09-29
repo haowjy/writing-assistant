@@ -133,6 +133,13 @@ def load_scenarios(directory: Path, ids: list[str] | None = None) -> list[dict]:
     return selected
 
 
+def compile_legacy_graph(scenario: dict):
+    """Opt in to the graph adapter without changing the legacy execution path."""
+    from writing_agent.legacy_graph import compile_legacy_scenario
+
+    return compile_legacy_scenario(scenario)
+
+
 def run_selected(
     scenarios: list[dict],
     model: dict,
