@@ -38,7 +38,7 @@ from writing_agent.task_graph import (
     thaw,
     validate_hash,
 )
-from writing_agent.task_graph_closure import _ClosureValidator, _LineageLock
+from writing_agent.task_graph_closure import ClosureValidator, LineageLock
 from writing_agent.task_graph_errors import (
     ConcurrentUpdateError,
     CorruptRecordError,
@@ -59,6 +59,9 @@ from writing_agent.task_graph_records import (
 from writing_agent.task_graph_wire import WireRecord
 
 _LINEAGE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+_ClosureValidator = ClosureValidator
+_LineageLock = LineageLock
 
 
 class CommitVerifier(Protocol):

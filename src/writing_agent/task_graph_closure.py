@@ -48,7 +48,7 @@ class _Artifact:
     private: bool
 
 
-class _ClosureValidator:
+class ClosureValidator:
     """One linear, typed closure traversal for a public store operation.
 
     Loaded objects, active nodes, and completed nodes live only for this operation.
@@ -76,7 +76,7 @@ class _ClosureValidator:
         "private": "private",
     }
 
-    def __init__(self, store: Any, parent: _ClosureValidator | None = None) -> None:
+    def __init__(self, store: Any, parent: ClosureValidator | None = None) -> None:
         self.store = store
         self.parent = parent
         self.loaded: dict[tuple[str, str], Any] = {}
@@ -319,7 +319,7 @@ class _ClosureValidator:
         if kind in {"artifact", "private"}:
             return "artifacts" if kind == "artifact" else "private"
         try:
-            return _ClosureValidator._RECORDS[kind][1]
+            return ClosureValidator._RECORDS[kind][1]
         except KeyError as exc:
             raise AssertionError(f"unknown closure node kind: {kind}") from exc
 
@@ -659,7 +659,7 @@ class _ClosureValidator:
             raise CorruptRecordError("commit events do not end at the checkpoint event cursor")
 
 
-class _LineageLock:
+class LineageLock:
     def __init__(self, store: Any, lineage_id: str) -> None:
         self.store = store
         self.lineage_id = lineage_id
@@ -697,3 +697,6 @@ class _LineageLock:
             self.stream.close()
         finally:
             self.thread_lock.release()
+
+
+__all__ = ["ClosureValidator", "LineageLock"]

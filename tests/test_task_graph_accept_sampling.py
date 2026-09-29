@@ -263,13 +263,17 @@ class SamplingAcceptanceTests(unittest.TestCase):
         changed_manifest["ports"] = [dict(port) for port in changed_manifest["ports"]]
         changed_manifest["ports"][0]["implementation"] += "-changed"
         swapped_ref = fixture.store.put_artifact(changed_manifest)
-        forged = replace(sampled, adapter_trace={"adapter_ref": swapped_ref})
+        claims = {**sampled.adapter_trace, "adapter_ref": swapped_ref}
+        forged = replace(sampled, adapter_trace=claims)
         before = _event_count(fixture.store)
         with self.assertRaises(AdapterContractError):
             replay_env.commit(member_runtime, forged)
         self.assertEqual(_event_count(fixture.store), before)
 
-        honest = replace(sampled, adapter_trace={"adapter_ref": session.manifest_ref})
+        honest = replace(
+            sampled,
+            adapter_trace={**sampled.adapter_trace, "adapter_ref": session.manifest_ref},
+        )
         honest_transition = derive_input(view, honest, replay_env.reader)
         for artifact in honest_transition.artifacts:
             fixture.store.persist_artifact(artifact)

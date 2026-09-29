@@ -923,7 +923,9 @@ class GroupCoordinatorTests:
         self.store = fixture.store
         self.start = fixture.runtime.checkpoint_id
         self.runtime = fixture.runtime
-        self.coordinator = GroupCoordinatorV1(fixture.env)
+        self.session = TestGroupCoordinatorCore.runtime_session(fixture)
+        fixture.env.session = self.session
+        self.coordinator = GroupCoordinatorV1(fixture.env, session=self.session)
         rendering = self.runtime.context.rendering
         self.policy = {
             field: self.store.put_artifact({"pin": field})
@@ -939,6 +941,7 @@ class GroupCoordinatorTests:
             "compact", summarizer_version="visible-text-v1", max_summary_chars=20
         )
         self.policy["context_policy_ref"] = self.store.put_artifact(context_policy.to_wire())
+        self.policy["adapter_ref"] = self.session.manifest_ref
 
     def group(self, sequence=0, mode="real"):
         return self.coordinator.seal(
