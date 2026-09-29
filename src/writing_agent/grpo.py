@@ -327,8 +327,7 @@ def train_grpo(
         if not required_env["WANDB_ENTITY"] or not required_env["WANDB_PROJECT"]:
             raise ValueError("W&B reporting requires explicit entity and project bindings")
         if any(
-            str(wandb_environment.get(k, "")).lower() != v.lower()
-            for k, v in required_env.items()
+            str(wandb_environment.get(k, "")).lower() != v.lower() for k, v in required_env.items()
         ):
             raise ValueError("W&B environment does not satisfy the frozen privacy/run binding")
         for key, expected in required_env.items():
@@ -341,10 +340,8 @@ def train_grpo(
         active_run = getattr(active_wandb, "run", None) if active_wandb else None
         if active_run is not None and (
             getattr(active_run, "id", None) != wandb_run_name
-            or getattr(active_run, "entity", None)
-            != wandb_environment.get("WANDB_ENTITY")
-            or getattr(active_run, "project", None)
-            != wandb_environment.get("WANDB_PROJECT")
+            or getattr(active_run, "entity", None) != wandb_environment.get("WANDB_ENTITY")
+            or getattr(active_run, "project", None) != wandb_environment.get("WANDB_PROJECT")
         ):
             raise ValueError("A different W&B run is already active")
         for key, value in wandb_environment.items():
@@ -409,9 +406,7 @@ def train_grpo(
         "backend_implementation": fingerprint(
             inspect.getsource(backend_factory or NativeRolloutBackend)
         ),
-        "rollout_implementation": fingerprint(
-            inspect.getsource(rollout_factory or RolloutGroups)
-        ),
+        "rollout_implementation": fingerprint(inspect.getsource(rollout_factory or RolloutGroups)),
         "logging": {
             "report_to": report_to,
             "wandb_run_name": wandb_run_name,
