@@ -100,10 +100,11 @@ and the checkpoint's pinned templates. The installed Transformers parser handles
 nested values and multiline strings; we do not use the guide's demonstration regex
 as a general file-content parser.
 
-## Evaluation during future training
+## Evaluation during training
 
-Training is not implemented here. The evaluation interface supports these two
-integration points:
+[GRPO training and checkpoint recovery](grpo.md) are separate from evaluation;
+the trainer never launches benchmarks or judges automatically. The evaluation
+interface supports these two integration points:
 
 1. **Saved checkpoint evaluation:** a training job finishes a checkpoint save and
    queues its path plus global step and run ID. A separate evaluation process calls

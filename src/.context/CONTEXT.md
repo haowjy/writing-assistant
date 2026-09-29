@@ -112,7 +112,9 @@ retains its smoke-evaluation and training-format workflows.
   `open_head`). It admits collected results, and results finalized after a reopen, against
   gate-verified member views. It computes group advantages, and writer-only segment credit
   from the view's samples. It never samples models or emits native token masks. A
-  coordinator requires a `RolloutEnvironment` and has no bare-store start path. See
+  coordinator requires a `RolloutEnvironment` and has no bare-store start path. It is
+  not the trainer; Phase 8 connects it to the standalone DAPO trainer through
+  `TaskGraphRollouts`. See
   [group-coordination.md](group-coordination.md), and
   [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
@@ -259,7 +261,9 @@ has a single KV head, so 128K costs about 1.9 GB. `inference.kv_cache_bytes` com
 that from a checkpoint config, and `scripts/probe_context_budget.py` also measures the
 attention step cost. FlashAttention is unavailable for this model because the
 full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
-memory-efficient SDPA is the only O(n) path and the cost of length is time, not memory.
+SDPA is the configured alternative. These inference cache/attention estimates do not
+establish GRPO training fit: dense logits, activations and backward buffers also grow
+with trajectory length.
 `SFTSettings.max_length` is an acceptance bound that rejects overflow and never pads, so
 widening it costs nothing until long trajectories exist to fill it; a long window is a
 data problem before it is a compute problem.
@@ -405,7 +409,57 @@ assistant text/tool calls/endings, and mask embedded observations. Preparation
 rejects overlength data, reasoning fields, special-token input, and known evaluation
 source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
-the trainer. GPU training and checkpoint restore remain unverified.
+the trainer. SFT GPU training and checkpoint restore remain unverified.
+
+`grpo_runtime.py` owns explicit TRL implementation admission. Legacy TRL 1.13
+remains the default; opt-in `trl-6c5f135-streaming` verifies the exact approved
+TRL/Liger Python source trees before model loading or caller mutation and binds
+them into experiment identity. It admits dense Gemma4 only and disables unrelated
+Liger model replacements through public configuration. The maintained FP32
+streaming softcap is an accepted numerical variant, not native BF16 parity.
+See [GRPO usage](../../docs/grpo.md) for qualification scope and source pins.
+
+`grpo.py` connects fresh task groups to TRL's public rollout callback; it does not
+reuse SFT preparation or implement another RL loss. `grpo_rollout.py` owns append-only
+sampled tokens and external suffix masks. Do not rebuild training actions by rendering
+parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
+Training identity includes private scoring labels, unlike evaluation's rescorable
+identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
+before resume can mutate the model; engineered fixtures use separate, explicit admission.
+Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
+also stops ties by default; explicit `"continue"` passes raw tied rewards through
+ordinary TRL/Adam without resampling. Mathematically zero advantages can have
+float32 residuals; these or momentum may move weights. This is not update skipping.
+Saved `trl_advantages_estimate` values are Python-formula estimates, not observed
+trainer tensors. Groups record ties separately from checkpointed optimizer progress. `GRPOSettings.microbatch_size=None`
+trains the full group with accumulation 1. An explicit microbatch must be a positive
+integer dividing `group_size`; `gradient_accumulation_steps` is derived as
+`group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one
+accumulation window, and updates once. Checkpoints occur only at that boundary; no
+partially consumed rollout buffer needs restoring. Microbatch settings are identity-bound.
+`loss_type` is also identity-bound: `grpo` remains the default, while explicit `dapo`
+uses public TRL's generation-group active-token denominator, excluding observations
+and padding. Neither selection changes sampling, reward admission, or safety budgets.
+Inference adapters and full trainer checkpoints are different artifacts. CPU optimizer/resume verification does
+not establish Gemma GPU fit. See [GRPO methodology](../../docs/grpo.md) for the bounded
+execution, recovery, and caller-owned reward contracts.
+
+`grpo_probe.py` is a fixed engineering recipe over that trainer, not a general experiment
+scheduler. `grpo_probe_data.py` owns its committed source packet, bounded derivatives,
+and mechanical-only scorer; fixture successes are not sampled model successes or
+literary judgments. Preparation and tokenizer evidence bind the package sources before
+any model phase. Source changes therefore require fresh preparation, not rescoring an
+old run. See the [probe guide](../../docs/grpo-probe.md) for phase admission and recovery.
+The ordinary inference backend applies a trajectory token cap only when explicitly
+configured; older callers retain their per-call budget.
+
+`grpo_full48.py` admits the intact wave1 training release by frozen hashes and owns
+its separately bound mechanical-only reward. Delivery requires completed sequence
+and action evidence, all required artifacts at their lower word bounds, and actual
+file changes. Other mechanical failures can retain partial reward. Semantic rubrics
+and intermediate clarification faithfulness remain unjudged. Its fixture module
+constructs offline counterexamples; it never establishes sampled success or memory
+fit. See [full48 preparation](../../docs/grpo-full48.md); this is not a training runner.
 
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the
@@ -472,3 +526,23 @@ scores pending.
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.
 Prose quality still uses only designated prose selections.
+
+`grpo_full48_runner.py` selects intact release/reward bindings and an explicit
+`intact-full48-v1` admission profile. The default probe profile keeps its original
+limits and 32-seed stride. Full48 reserves 48 seeds per slot, validates ordered
+visits before sampling, pauses at pass one, and refuses recovery with uncommitted
+sampled groups (generic trainer recovery may resample; this recipe may not).
+Coverage counts optimizer progress only from complete hash-verified checkpoints.
+`grpo_full48_supervisor.py` owns the inherited writer lease and advisory process
+progress; quiet output never triggers termination. Preparation/preflight import no
+model stack. See [full48 usage](../../docs/grpo-full48.md) for frozen allocations
+and their limits; CPU schedule proof does not establish native training fit.
+
+`grpo_gpu.py` admits the complete graphics/compute NVML inventory for production
+fit and full48 train/resume, reusing the unchanged probe display policy. Prepared
+identity and pinned source admission precede ownership; ownership precedes model
+loading. `grpo_gpu_fit.py` owns a separate single-attempt controlled token-ledger
+profile and native prefill check. Generation and training use sequential fresh
+processes so ownership never exempts an existing CUDA context. Controlled ledgers
+are memory evidence only; production rollouts remain native sampling. See
+[fit usage](../../docs/grpo-gpu-fit.md) for coverage and limits.

@@ -6,10 +6,12 @@ to the source texts. This repository does not vendor model weights or book corpo
 `scripts/organize_sources.py` turns those downloads into the catalog.
 `src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
 residue. Supervised training is `scripts/train_sft.py`; the reward function is
-`src/writing_agent/reward.py`. There is no GRPO trainer yet; the [deterministic group coordinator](docs/task-graph-groups.md) only prepares offline comparison and segment-credit artifacts.
+`src/writing_agent/reward.py`. A standalone GRPO/DAPO trainer exists; task-graph
+integration is Phase 8. The [deterministic group coordinator](docs/task-graph-groups.md)
+prepares offline comparison and segment-credit artifacts.
 
-This research harness also runs tool-use evaluations and prepares conversational
-training data for [creative-writing agents](wiki/project-goals.md).
+This research harness evaluates and trains tool-using
+[creative-writing agents](wiki/project-goals.md).
 
 **What to do next: [TODO.md](TODO.md)** — the short, active checklist.
 
@@ -90,6 +92,17 @@ uv run cwa export-sft path/to/trajectories.jsonl data/processed/train.jsonl
 Export produces TRL-style `messages` and `tools` columns and refuses to overwrite
 an existing file.
 
+## Training
+
+[GRPO usage and checkpoint methodology](docs/grpo.md) covers the inspect-first training
+entrypoint, candidate-token masks, separate inference adapters, and resumable checkpoints.
+The [prepared Gemma probe](docs/grpo-probe.md) freezes three training tasks, six development
+cases, mechanical rewards, token budgets, and supervised execution. A tiny CPU model
+verifies exact step-1→3 resume after checkpoint pruning. The real Gemma
+[microbatch probe](work/research-plan/gemma-microbatch-result.md) completed three updates,
+checkpoint resume, verified adapter reload, and matched development evaluation on the
+3090. No SFT demonstrations are required for GRPO.
+
 ## Limits
 
 The filesystem tools block absolute paths, traversal, symlinks, oversized files,
@@ -100,6 +113,7 @@ Current scorers check literal output constraints, file outcomes, tool errors, an
 edit scope. Literary quality is unscored. There is no automatic canon
 commit policy: the prompt teaches the distinction, and tests check file outcomes.
 
-GPU training and a held-out benchmark are not implemented.
+Short-context Gemma GRPO mechanics are verified; writing improvement is not.
+Held-out long-form tasks exist but have not been run.
 See the [research wiki](wiki/index.md) for project concepts and the
 [research work plan](work/research-plan/index.md) for proposed experiments.
