@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Share Gemma native suffix and stop-set rules through `native_protocol`; accept task-graph
+  author replies and check-driven continuations only when their context delta is
+  template-prefix stable.
+
 - Classify filesystem path mistakes consistently in both dispatchers: missing, invalid,
   overlong, or file-ancestor paths are recoverable tool errors; host faults remain
   infrastructure failures.
