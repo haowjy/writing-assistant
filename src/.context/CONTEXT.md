@@ -24,8 +24,9 @@ retains its smoke-evaluation and training-format workflows.
 - **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
   is the field-spec vocabulary, strict decoder and `WireRecord` base;
   [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
-  context `WireRecord`s, plus runtime port-descriptor and manifest records; context content
-  and revision records live here. Pure group record classes live in
+  context `WireRecord`s, plus runtime port-descriptor and manifest records. V1 records remain
+  unchanged; V2 sampling, manifest-descriptor, and training-admission records are additive.
+  Context content and revision records live here. Pure group record classes live in
   [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
   [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
   sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
@@ -71,7 +72,8 @@ retains its smoke-evaluation and training-format workflows.
   [rollout-execution.md](rollout-execution.md) for the contracts.
 - [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
   writer-turn decoder and sampling-binding checks, plus the current evaluation-only
-  eligibility decision. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+  eligibility decision. `WriterTurnV2` is declared but is not decoded until its S4 derive
+  lands. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
   [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable

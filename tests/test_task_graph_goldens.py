@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tests.task_graph_golden_fixtures import (
     BYTE_GOLDEN,
+    POST_GOLDEN_RECORD_TYPES,
     build_hash_golden,
     build_records_golden,
     build_rollout_golden,
@@ -87,7 +88,7 @@ class TaskGraphGoldenTests(unittest.TestCase):
         self.assertEqual(golden, actual)
         records = golden["records"]
         self.assertEqual(
-            set(RECORD_TYPES),
+            set(RECORD_TYPES) - POST_GOLDEN_RECORD_TYPES,
             set(records)
             - {
                 "BudgetContractV1",
@@ -113,7 +114,7 @@ class TaskGraphGoldenTests(unittest.TestCase):
             },
         )
 
-        for record_type in RECORD_TYPES:
+        for record_type in set(RECORD_TYPES) - POST_GOLDEN_RECORD_TYPES:
             for variant in _variants(record_type, records[record_type]):
                 body = variant["body"]
                 self.assertEqual(

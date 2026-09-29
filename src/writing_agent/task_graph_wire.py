@@ -516,6 +516,7 @@ class WireRecord:
     EDGE_TYPE: ClassVar[str | None] = None
     FIELD_SPEC: ClassVar[Obj] = Obj(MappingProxyType({}))
     REFS: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -557,7 +558,11 @@ class WireRecord:
         """Apply record-local cross-field invariants."""
 
     def to_wire(self) -> dict[str, Any]:
-        body = {item.name: _json_value(getattr(self, item.name)) for item in fields(self)}
+        body = {
+            item.name: _json_value(getattr(self, item.name))
+            for item in fields(self)
+            if item.name not in self.OMIT_NONE_FIELDS or getattr(self, item.name) is not None
+        }
         if self.RECORD_TYPE is not None:
             body = {"record_type": self.RECORD_TYPE, **body}
         return body
@@ -584,6 +589,13 @@ class WireRecord:
             if value.get("record_type") != cls.RECORD_TYPE:
                 raise ValueError("record_type does not match codec")
             value = {key: item for key, item in value.items() if key != "record_type"}
+        field_names = {item.name for item in fields(cls)}
+        missing = field_names - set(value)
+        if missing and not missing - cls.OMIT_NONE_FIELDS:
+            defaults = {item.name: item.default for item in fields(cls)}
+            if any(defaults[name] is not None for name in missing):
+                raise TypeError("omitted wire fields must default to None")
+            value = {**value, **{name: None for name in missing}}
         edges: list[tuple[str, str, Any]] = []
         normalized = _walk_spec(cls.FIELD_SPEC, value, cls.__name__, edges=edges)
         record = object.__new__(cls)

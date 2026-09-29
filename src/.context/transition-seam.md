@@ -75,16 +75,20 @@ Choose the module by concern:
 
 | Module | Holds |
 |---|---|
-| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, `RuntimePortDescriptorV1`, and `RuntimeManifestV1`; registries and reference closure |
+| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, runtime manifest V1/V2 and descriptor records, `WriterTurnV1`/`WriterTurnV2`, and `TrainingAdmissionV1`; registries and reference closure |
 | `task_graph_group_records` | Pure group result and credit `WireRecord` classes (`GroupDecisionV1`, `GroupAdvantageV1`, `GroupSegmentCreditV1`, and related records) |
 | `task_graph` | Core environment records and context materialization |
 | `task_graph_record_contracts` | Sealed contracts with binding rules: `GroupSpecV1`, `GroupMemberSpecV1`, `ContextPolicyV1`, `ExecutionVersionsV1`, `SEMANTICS_V1`, `GroupError`, `CompactionError` |
 | `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, and group seeds |
 
-`WriterTurnV1` currently contains `action_id`, `context_revision_ref`, `raw_output_ref`,
+`WriterTurnV1` contains `action_id`, `context_revision_ref`, `raw_output_ref`,
 `usage`, `adapter_trace`, and `message`; optional trace context claims are bound when present.
 There is no separate writer-request record. `EnvironmentStateV1.history` stores nonnegative
 `action_count` and `tool_result_count`; tool-queue entries require a `rejection` field.
+`WriterTurnV2` is additive and carries byte references to the full input and generated token
+IDs, generated-token logprobs, termination, and sampling pins. `RuntimeManifestV2` carries the
+three native sampling capabilities and rendering, tokenizer, and decoding descriptors.
+`GroupSpecV1.training_mode` is omitted when `None`, preserving existing group identities.
 
 The steps:
 
@@ -271,13 +275,11 @@ An empty required set never counts as a pass.
   - **Why a hook and not a new contract version.** A `BudgetContractV2` would force
     version dispatch in admission and `derive_entry` for one optional field. A token-limits
     sub-contract becomes the right shape once `total_tokens` limits arrive.
-  - **Open before native training:** admission accepts a token-limited node
-    whatever adapter later runs it, and the only guard is the derive's
-    `AdapterContractError`, raised after the port call. In a group, that becomes a member
-    failure mid-rollout. The follow-up adds a usage-reporting capability to
-    `RuntimeManifestV1`. It refuses, at seal and bind time (`require_seal`,
-    `GroupCoordinatorV1.seal`), a manifest without that capability when the entry budget
-    has token limits. It also wires `total_tokens` the same way as `generated_tokens`.
+  - **Token-limited seals:** admission remains adapter-independent, but a real group refuses
+    a manifest without `usage_reporting` before sampling. V1 keeps that single capability;
+    V2 declares `usage_reporting`, `native_token_ledger` and `sampled_logprobs`, and a native
+    group requires all three plus rendering and policy-pin agreement. `total_tokens` is a
+    cumulative compute budget; S4 adds `max_context_tokens` separately as a ledger ceiling.
 - **One validator for the sampled message, not a sentinel.** The records codec and
   `task_graph_calls` once accepted different values for the same message, so the store
   could persist a `WriterTurnV1` that `parse_calls` rejects. That is a producer/replay split

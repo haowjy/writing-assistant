@@ -15,7 +15,9 @@
   Groups start from verified views and credit only sampled content.
 - Goldens pin the v1 wire shapes and a deterministic rollout; changing them requires a
   semantics bump.
-- Native on-policy optimization remains future work.
+- Native group seals require a V2 manifest, all three native sampling capabilities, and
+  descriptor pins that match both group policy and entry rendering; existing V1 group
+  identities and wire records remain unchanged.
 - Admission rejects a node whose checks require multiple evaluator families.
 - Token-limited entries require a usage-reporting sampler manifest and support total-token caps.
 - Group collection is bound to each member's verified published head; real groups pin a

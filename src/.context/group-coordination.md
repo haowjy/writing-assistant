@@ -9,7 +9,11 @@ environment starts, resumes and verifies a lineage is in
 collects or credits members.
 
 **Mental model.** A group is a sealed `GroupSpecV1`: the entry checkpoint, the sampling
-policy and one seed slot per member. Each member is its own new-core lineage that starts
+policy, an optional native-training mode and one seed slot per member. `training_mode` is
+omitted when absent, so existing group identities stay fixed. A native-training group
+requires `RuntimeManifestV2`, all three native sampling capabilities, and descriptor pins
+that match both the sealed policy and entry rendering; V1 remains the evaluation contract.
+Each member is its own new-core lineage that starts
 from the shared entry checkpoint with a `MemberStartV1`. The gate verifies everything about
 a member's history, including `view.group`, and binds every policy pin as it derives each
 step. The coordinator adds only group bookkeeping: which result fills which slot, rewards,
@@ -92,9 +96,7 @@ on the environment's placeholder.
 
 `GroupCoordinatorV1` requires a `RolloutEnvironment`. It has no bare-store, branch or workspace-restore start path; group members begin and resume only through the verified environment.
 
-## Known limit
-
-`_admit_result` checks only that `result.final_checkpoint_id` belongs to the member's
-lineage. It does not check that the checkpoint is the verified head. Binding a collected
-result to the head, and orphan collection (X5), belong to the HIGH-5 follow-up after the
-seam.
+Real collection binds the result to the verified published member head. `collect_invalid`
+also refuses to relabel a valid terminal outcome as infrastructure-invalid. Group session
+seals are checked before member publication, so a manifest mismatch cannot leave a started
+head behind.

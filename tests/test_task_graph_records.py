@@ -44,14 +44,21 @@ from writing_agent.task_graph_records import (
     ContextContentV1,
     ContextOperationInputV1,
     ContextRevisionV1,
+    DecodingDescriptorV1,
     EnvironmentStepV1,
     EvaluatorResultV1,
     ExternalInputsV1,
     MemberStartV1,
     OutcomeV1,
+    RendererDescriptorV1,
+    RuntimeManifestV2,
+    RuntimePortDescriptorV1,
     SampledMessageV1,
+    TokenizerDescriptorV1,
     ToolObservationV1,
+    TrainingAdmissionV1,
     WriterTurnV1,
+    WriterTurnV2,
     materialize_context_nodes,
     record_reference_edges,
 )
@@ -158,6 +165,11 @@ EXPECTED_REFS = {
         ("policy.template_ref", "artifact"),
         ("policy.tokenizer_ref", "artifact"),
     ),
+    "RendererDescriptorV1": (
+        ("template_ref", "artifact"),
+        ("tokenizer_ref", "artifact"),
+        ("tool_schema_ref", "artifact"),
+    ),
     "MemberStartV1": (("group_spec_ref", "artifact"),),
     "OutcomeV1": (
         ("candidate_checkpoint", "checkpoint"),
@@ -171,6 +183,11 @@ EXPECTED_REFS = {
     "RequirementLedgerV1": (),
     "RuntimePortDescriptorV1": (),
     "RuntimeManifestV1": (),
+    "RuntimeManifestV2": (
+        ("renderer.template_ref", "artifact"),
+        ("renderer.tokenizer_ref", "artifact"),
+        ("renderer.tool_schema_ref", "artifact"),
+    ),
     "RewardV1": (
         ("candidate_checkpoint", "checkpoint"),
         ("check_result_refs[]", "artifact"),
@@ -181,6 +198,7 @@ EXPECTED_REFS = {
     "SampledMessageV1": (),
     "ToolObservationV1": (),
     "TrainingEligibilityV1": (("terminal_outcome_ref", "artifact"),),
+    "TrainingAdmissionV1": (("batch_ref", "artifact"), ("decision_ref", "artifact")),
     "WriterTurnV1": (
         ("adapter_trace.adapter_ref", "artifact"),
         ("adapter_trace.behavior_policy_ref", "artifact"),
@@ -195,6 +213,28 @@ EXPECTED_REFS = {
         ("context_revision_ref", "context_revision"),
         ("raw_output_ref", "artifact|bytes"),
     ),
+    "WriterTurnV2": (
+        ("adapter_trace.adapter_ref", "artifact"),
+        ("adapter_trace.behavior_policy_ref", "artifact"),
+        ("adapter_trace.context_policy_ref", "artifact"),
+        ("adapter_trace.context_revision_ref", "context_revision"),
+        ("adapter_trace.decoding_ref", "artifact"),
+        ("adapter_trace.model_ref", "artifact"),
+        ("adapter_trace.policy_ref", "artifact"),
+        ("adapter_trace.template_ref", "artifact"),
+        ("adapter_trace.tokenizer_ref", "artifact"),
+        ("context_revision_ref", "context_revision"),
+        ("generated_token_ids_ref", "bytes"),
+        ("input_token_ids_ref", "bytes"),
+        ("logprobs.ref", "bytes"),
+        ("raw_output_ref", "artifact|bytes"),
+        ("sampling_pins.behavior_policy_ref", "artifact"),
+        ("sampling_pins.decoding_ref", "artifact"),
+        ("sampling_pins.manifest_ref", "artifact"),
+        ("sampling_pins.renderer_ref", "artifact"),
+    ),
+    "TokenizerDescriptorV1": (),
+    "DecodingDescriptorV1": (),
     "context_node": (
         ("parent_ref", "context_node"),
         ("rendering.template_ref", "artifact"),
@@ -210,6 +250,18 @@ EXPECTED_REFS = {
 
 EXPECTED_NON_EDGE_HASHES = {
     "GroupMemberSeedsV1": frozenset({"group_id"}),
+    "TokenizerDescriptorV1": frozenset({"files_sha256{}"}),
+    "RuntimeManifestV2": frozenset({"tokenizer.files_sha256{}"}),
+    "WriterTurnV2": frozenset({"adapter_trace.context_content_hash"}),
+    "TrainingAdmissionV1": frozenset(
+        {
+            "group_id",
+            "renderer_ref",
+            "tokenizer_descriptor_ref",
+            "adapter_hash_before",
+            "adapter_hash_after",
+        }
+    ),
     "WriterTurnV1": frozenset({"adapter_trace.context_content_hash"}),
     "DeterministicCheckEvidenceV1": frozenset({"check_contract_hash"}),
     "FixtureFileCountEvidenceV1": frozenset({"check_contract_hash"}),
@@ -339,6 +391,60 @@ def record_examples():
         policy=policy,
         members=group_members,
     )
+    tokenizer = TokenizerDescriptorV1(
+        model_id="tests/toy-tokenizer",
+        revision="toy-r1",
+        files_sha256={"tokenizer": P},
+    )
+    decoding = DecodingDescriptorV1(
+        temperature=1,
+        top_p=1,
+        top_k=0,
+        processors=(),
+        max_tokens_per_decision=64,
+        seed_rule="writer_seed ⊕ action ordinal (sha256-domain-v1)",
+        logprob_convention="log_softmax(model logits after model softcap), fp32",
+        trainer_ratio="recomputed, num_iterations=1",
+    )
+    renderer = RendererDescriptorV1(
+        implementation="gemma4-native-append-v1",
+        template_ref=H,
+        tokenizer_ref=tokenizer.identity(),
+        tool_schema_ref=Q,
+        stop_token_ids=(1, 106, 50),
+        enable_thinking=False,
+        suffix_rules_version="native-suffix-v1",
+    )
+    native_capabilities = ("native_token_ledger", "sampled_logprobs", "usage_reporting")
+    native_ports = tuple(
+        RuntimePortDescriptorV1(
+            schema=1,
+            role=role,
+            implementation=f"tests.{role.title()}",
+            version="1",
+            configuration={"capabilities": native_capabilities} if role == "sampling" else {},
+        )
+        for role in ("sampling", "environment", "tools", "evaluator")
+    )
+    native_manifest = RuntimeManifestV2(
+        schema=2,
+        ports=native_ports,
+        capabilities=native_capabilities,
+        renderer=renderer,
+        tokenizer=tokenizer,
+        decoding=decoding,
+    )
+    native_admission = TrainingAdmissionV1(
+        group_id=H,
+        decision_ref=P,
+        batch_ref=Q,
+        audit_version="training-audit-v1",
+        renderer_ref=renderer.identity(),
+        tokenizer_descriptor_ref=tokenizer.identity(),
+        adapter_hash_before=R,
+        adapter_hash_after=H,
+        members=({"member_id": "grp-example-00", "status": "admitted", "failed_check": None},),
+    )
     return (
         sampled,
         WriterTurnV1(
@@ -417,6 +523,37 @@ def record_examples():
             H,
             {"max_file_bytes": 1, "max_workspace_bytes": 1},
         ),
+        WriterTurnV2(
+            action_id="rollout-1:action:1",
+            context_revision_ref=context_revision.identity(),
+            raw_output_ref=Q,
+            usage={
+                "prompt_tokens": 3,
+                "completion_tokens": 2,
+                "prefill_tokens": 3,
+                "cached_input_tokens": 0,
+            },
+            adapter_trace={"model": "toy-native"},
+            message=sampled,
+            input_token_ids_ref=H,
+            input_token_count=3,
+            generated_token_ids_ref=P,
+            generated_token_count=2,
+            logprobs={"ref": R, "codec": "f32-le", "shape": (2,)},
+            termination={"kind": "native_stop", "stop_token_id": 1, "limit": None},
+            sampling_pins={
+                "manifest_ref": H,
+                "behavior_policy_ref": P,
+                "decoding_ref": decoding.identity(),
+                "renderer_ref": renderer.identity(),
+                "seed": 27,
+            },
+        ),
+        renderer,
+        tokenizer,
+        decoding,
+        native_manifest,
+        native_admission,
     )
 
 
