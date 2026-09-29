@@ -229,6 +229,9 @@ class WriterTurnV2(WireRecord):
             raise ValueError("native adapter trace contains a forbidden claim")
 
 
+RENDERER_STOP_TOKEN_ROLES = ("eos", "end_of_turn", "tool_response")
+
+
 @dataclass(frozen=True)
 class RendererDescriptorV1(WireRecord):
     implementation: Annotated[str, Str(nonempty=True)]
@@ -239,6 +242,11 @@ class RendererDescriptorV1(WireRecord):
     enable_thinking: Annotated[bool, Bool()]
     suffix_rules_version: Annotated[str, Str(nonempty=True)]
     RECORD_TYPE: ClassVar[str] = "RendererDescriptorV1"
+
+    @property
+    def tool_response_stop_token_id(self) -> int:
+        """Return the renderer-pinned token ID assigned the tool-response role."""
+        return self.stop_token_ids[RENDERER_STOP_TOKEN_ROLES.index("tool_response")]
 
     def check(self) -> None:
         if (

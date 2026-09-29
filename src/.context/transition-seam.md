@@ -35,7 +35,7 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 
 | Rank | Modules |
 |---|---|
-| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_operation` |
+| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_native_contracts`, `task_graph_operation` |
 | 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
 | 2 | `task_graph_store` |
 | 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `task_graph_eligibility`, `_author`, `_outcome`, `_context` |
@@ -89,6 +89,8 @@ There is no separate writer-request record. `EnvironmentStateV1.history` stores 
 `WriterTurnV2` is additive and carries byte references to the full input and generated token
 IDs, generated-token logprobs, termination, and sampling pins. `RuntimeManifestV2` carries the
 three native sampling capabilities and rendering, tokenizer, and decoding descriptors.
+`task_graph_native_contracts` owns the public native sampling allocation and the shared
+manifest-policy-rendering binding used by seal and derive paths.
 `SampledMessageV1` keeps optional reasoning/thinking side channels for eligibility while
 omitting them when absent, preserving prior wire identities. Structural training eligibility
 is decided from committed V2 evidence and the sealed native group; it never records the
@@ -100,7 +102,10 @@ exact prior-input-plus-generated prefix on the current context root. It derives 
 as the minimum of per-decision, remaining generated, and remaining context limits (ties are
 decision, generated budget, then context); false stop and limit claims are rejected at their
 first differing path. Valid token/context limits and malformed native stops commit an
-incomplete writer outcome instead of an adapter-provided halt.
+incomplete writer outcome instead of an adapter-provided halt. Present V2 adapter-trace
+claims still bind to the sealed group policy. A zero-generation `context_limit` cannot carry
+message content, calls, or a raw-output reference, and mapped incomplete outcomes commit
+directly to terminal state with the overrun path's candidate-checkpoint shape.
 
 The steps:
 

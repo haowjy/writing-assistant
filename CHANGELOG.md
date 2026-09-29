@@ -26,6 +26,9 @@
   prefixes; it derives termination from committed limits and maps valid token/context limits
   and unterminated stop classes to scored incomplete outcomes. V1 identities and goldens stay
   unchanged.
+- V2 group traces bind present policy claims, zero-generation context-limit turns carry no
+  output, and termination-mapped outcomes retain their stop reason and candidate checkpoint
+  in the committed terminal `OutcomeV1`.
 - Reward publication derives ordered structural eligibility from native manifest, group,
   context and sampled-message evidence; the reserved `eligible` status is never emitted.
 - Real group member starts and commits require the sealed manifest. Collection binds terminal

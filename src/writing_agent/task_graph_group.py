@@ -286,13 +286,6 @@ class GroupCoordinatorV1:
             raise AdapterContractError("real group members require a bound runtime session")
         self._require_group_seal(spec)
         token_limited = self._entry_has_token_limits(spec.environment)
-        self.session.require_seal(
-            spec.policy["adapter_ref"],
-            token_limited=token_limited,
-            training_mode=spec.training_mode,
-            policy=spec.policy,
-            rendering=rendering,
-        )
         self.environment.session.require_seal(
             spec.policy["adapter_ref"],
             token_limited=token_limited,

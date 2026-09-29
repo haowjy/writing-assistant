@@ -71,9 +71,11 @@ retains its smoke-evaluation and training-format workflows.
   [gate-and-rollout.md](gate-and-rollout.md), and
   [rollout-execution.md](rollout-execution.md) for the contracts.
 - [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the single
-  V1/V2 writer-turn decoder, sampling-binding checks, and `NativeSamplingBudget`. V2 binds
-  token bytes, prior-turn prefixes, sealed sampling pins, and termination derived from
-  decoding and committed budgets. [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
+  V1/V2 writer-turn decoder and structural sampling evidence checks. The shared
+  [task_graph_native_contracts.py](../writing_agent/task_graph_native_contracts.py) owns
+  `NativeSamplingBudget` and the manifest-policy-rendering binding used by seal and derive
+  paths. V2 binds token bytes, prior-turn prefixes, sealed sampling pins, and termination
+  derived from decoding and committed budgets. [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
   owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
   it reads only the verified view and hash-addressed evidence through the artifact reader.
   [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)

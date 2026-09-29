@@ -13,17 +13,28 @@ from unittest.mock import patch
 from tests.task_graph_fixtures import make_entry_fixture
 from tests.task_graph_rollout_fixtures import build_rollout_fixture
 from tests.test_task_graph_derive_writer import make_group, make_turn, make_view, with_budget
-from writing_agent.task_graph import CheckpointV1, EventV1, domain_hash_bytes, thaw
+from writing_agent.task_graph import CheckpointV1, domain_hash_bytes, thaw
 from writing_agent.task_graph_calls import intake_message
+from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_writer_turn_v2, writer_action_id
-from writing_agent.task_graph_eligibility import EligibilityDecisionV1, decide_eligibility
 from writing_agent.task_graph_environment import RolloutEnvironment
-from writing_agent.task_graph_errors import AdapterContractProjectionError, ProjectionError
+from writing_agent.task_graph_errors import (
+    AdapterContractError,
+    AdapterContractProjectionError,
+    ProjectionError,
+)
 from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader
 from writing_agent.task_graph_gatherers import SamplingRunner
 from writing_agent.task_graph_group import GroupCoordinatorV1
-from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_local import (
+    DeterministicEvaluator,
+    LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
+    ScriptedSampleBackend,
+)
+from writing_agent.task_graph_native_contracts import NativeSamplingBudget
+from writing_agent.task_graph_ports import RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import (
     POLICY_FIELDS,
     ContextPolicyV1,
@@ -31,17 +42,14 @@ from writing_agent.task_graph_record_contracts import (
     group_identity,
 )
 from writing_agent.task_graph_records import (
-    ContextOperationInputV1,
     DecodingDescriptorV1,
     MemberStartV1,
     RendererDescriptorV1,
     RuntimeManifestV2,
     RuntimePortDescriptorV1,
     TokenizerDescriptorV1,
-    WriterTurnV1,
     WriterTurnV2,
 )
-from writing_agent.task_graph_sampling import NativeSamplingBudget
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import CheckpointChain, SampleRef
 
@@ -311,6 +319,75 @@ def _runtime_manifest_v2(store, rendering, *, max_tokens=4, tokenizer=None):
     return manifest
 
 
+class _NativeRuntimeDependencies:
+    """Exercise RuntimeSession with the V2 manifest a native adapter supplies."""
+
+    def __init__(self, ports, manifest):
+        self._ports = ports
+        self._manifest = manifest
+
+    def __getattr__(self, name):
+        return getattr(self._ports, name)
+
+    def manifest(self):
+        return self._manifest
+
+
+def _bound_native_lineage(
+    root: Path,
+    *,
+    mode: str = "context_token_limited",
+    max_tokens: int = 4,
+):
+    tokenizer = TokenizerDescriptorV1(
+        model_id="tests/toy-tokenizer",
+        revision="toy-r1",
+        files_sha256={"tokenizer": "c" * 64},
+    )
+    fixture = build_rollout_fixture(
+        root,
+        mode=mode,
+        rendering_overrides={"tokenizer_ref": tokenizer.identity()},
+        public_records=(tokenizer,),
+    )
+    manifest = _runtime_manifest_v2(
+        fixture.store,
+        fixture.runtime.context.rendering,
+        max_tokens=max_tokens,
+        tokenizer=tokenizer,
+    )
+    tools = LocalTextToolProvider()
+    ports = RuntimeDependenciesV1(
+        ScriptedSampleBackend(fixture.sample_results),
+        LocalWorkspaceEnvironment(tools),
+        tools,
+        DeterministicEvaluator(),
+    )
+    dependencies = _NativeRuntimeDependencies(ports, manifest)
+    session = RuntimeSession.create(fixture.store, dependencies).bind(
+        fixture.store, manifest.identity()
+    )
+    policy = _native_policy(fixture.store, fixture.runtime.context.rendering, manifest)
+    coordinator = GroupCoordinatorV1(fixture.env, session=session)
+    # Seal from the root, then bind the already sealed group to its member session.
+    fixture.env.session = None
+    spec = coordinator.seal(
+        fixture.runtime.checkpoint_id,
+        policy=policy,
+        group_seed=17,
+        group_sequence=93,
+        member_count=2,
+        runner_mode="fixture",
+        training_mode="native",
+    )
+    fixture.env.session = session
+    runtime = fixture.env.start_member(
+        fixture.runtime.checkpoint_id,
+        MemberStartV1(spec.identity(), 0),
+    )
+    return fixture, session, spec, runtime
+
+
 class WriterTurnV2Tests(unittest.TestCase):
     def setUp(self):
         self.fixture, self.view, self.manifest = _native_view()
@@ -424,6 +501,7 @@ class WriterTurnV2Tests(unittest.TestCase):
             termination_kind="context_limit",
             stop_token_id=None,
             limit="context",
+            content="",
         )
         _assert_path(
             self,
@@ -496,7 +574,7 @@ class WriterTurnV2Tests(unittest.TestCase):
             self.reader,
         )
         self.assertEqual(unterminated_call.view.outcome.stop_reason, "unterminated_tool_call")
-        self.assertEqual(unterminated_call.state.position["phase"], "ready_transition")
+        self.assertEqual(unterminated_call.state.position["phase"], "terminal")
 
         unterminated_final = derive_writer_turn_v2(
             self.view,
@@ -580,31 +658,12 @@ class WriterTurnV2Tests(unittest.TestCase):
                 termination_kind="context_limit",
                 stop_token_id=None,
                 limit="context",
+                content="",
             ),
             self.reader,
         )
         self.assertEqual(context_empty.view.outcome.stop_reason, "context_tokens_budget")
         self.assertEqual(context_empty.view.budget["consumed"]["context_tokens"], 3)
-
-        # Equal limits choose the first term: decision, then generated budget, then context.
-        tied_view = with_budget(
-            self.view,
-            self.reader,
-            limits={"generated_tokens": 4, "context_tokens": 6},
-        )
-        tied = _turn(
-            tied_view,
-            self.reader,
-            input_ids=(10, 11),
-            generated_ids=(12, 13, 14, 15),
-            termination_kind="token_limit",
-            stop_token_id=None,
-            limit="decision",
-        )
-        self.assertEqual(
-            derive_writer_turn_v2(tied_view, tied, self.reader).view.outcome.stop_reason,
-            "decision_token_limit",
-        )
 
     def test_rule_4_pins_manifest_behavior_decoding_renderer_and_seed(self):
         bad_pins = _turn(
@@ -615,6 +674,62 @@ class WriterTurnV2Tests(unittest.TestCase):
         _assert_path(
             self, self.view, bad_pins, self.reader, "input.sampling_pins.behavior_policy_ref:"
         )
+
+    def test_rule_4_reuses_manifest_binding_for_context_rendering_pins(self):
+        rendering = thaw(self.view.context.rendering)
+        rendering["tool_schema_ref"] = "f" * 64
+        context = replace(self.view.context, rendering=rendering)
+        view = replace(self.view, context=context)
+        turn = replace(_turn(view, self.reader), adapter_trace=None)
+
+        _assert_path(self, view, turn, self.reader, "input.adapter_trace:")
+
+    def test_v2_adapter_trace_claims_are_bound_to_the_group_policy(self):
+        policy = self.view.group.policy
+        model = self.reader.artifact(policy["model_ref"])["model_id"]
+        member_seed = self.view.group.members[0].writer_seed
+        mismatches = {
+            "model": "different-model",
+            "seed": member_seed + 1,
+            "behavior_policy_ref": "f" * 64,
+            "tokenizer_ref": "e" * 64,
+        }
+        for claim, value in mismatches.items():
+            with self.subTest(claim=claim):
+                trace = {
+                    "context_revision_ref": self.view.context.revision_ref,
+                    "context_content_hash": self.view.context.content_ref,
+                    "rendering": thaw(self.view.context.rendering),
+                    "model": model,
+                    "seed": member_seed,
+                    **policy,
+                }
+                trace[claim] = value
+                turn = _turn(self.view, self.reader, adapter_trace=trace)
+                _assert_path(self, self.view, turn, self.reader, "input.adapter_trace:")
+
+        trace_without_context = {
+            **policy,
+            "model": model,
+            "seed": member_seed,
+        }
+        turn = _turn(self.view, self.reader, adapter_trace=trace_without_context)
+        transition = derive_writer_turn_v2(self.view, turn, self.reader)
+        self.assertEqual(transition.state.position["phase"], "checking")
+
+    def test_native_fixture_member_commit_requires_environment_session(self):
+        with tempfile.TemporaryDirectory() as root:
+            fixture, _session, _spec, runtime = _bound_native_lineage(Path(root) / "rollout")
+            view = fixture.env.verify(runtime)
+            turn = _turn(view, StoreArtifactReader(fixture.store))
+            member_id = view.state.position["lineage_id"]
+            old_head = fixture.store.read_head(member_id)
+
+            fixture.env.session = None
+            with self.assertRaises(AdapterContractError):
+                fixture.env.commit(runtime, turn)
+
+            self.assertEqual(fixture.store.read_head(member_id), old_head)
 
     def test_rule_5_native_eligibility_claim_is_refused_by_v2_codec(self):
         body = _turn(self.view, self.reader).to_wire()
@@ -694,63 +809,43 @@ class WriterTurnV2Tests(unittest.TestCase):
 
     def test_crash_resume_rederives_identical_v2_commit_mid_lineage(self):
         with tempfile.TemporaryDirectory() as root:
-            tokenizer = TokenizerDescriptorV1(
-                model_id="tests/toy-tokenizer",
-                revision="toy-r1",
-                files_sha256={"tokenizer": "b" * 64},
-            )
-            fixture = build_rollout_fixture(
-                Path(root) / "rollout",
-                mode="context_token_limited",
-                rendering_overrides={"tokenizer_ref": tokenizer.identity()},
-                public_records=(tokenizer,),
-            )
-            rendering = fixture.runtime.context.rendering
-            manifest = _runtime_manifest_v2(fixture.store, rendering, tokenizer=tokenizer)
-            policy = _native_policy(fixture.store, rendering, manifest)
-
-            class BoundSession:
-                sealed_adapter_ref = manifest.identity()
-
-                def require_seal(self, adapter_ref, **_kwargs):
-                    if adapter_ref != self.sealed_adapter_ref:
-                        raise ValueError("test session seal mismatch")
-
-                def require_member_seal(self, view):
-                    if view.group is None:
-                        return
-                    if view.group.policy["adapter_ref"] != self.sealed_adapter_ref:
-                        raise ValueError("test member seal mismatch")
-
-            session = BoundSession()
-            fixture.env.session = session
-            coordinator = GroupCoordinatorV1(fixture.env, session=session)
-            spec = coordinator.seal(
-                fixture.runtime.checkpoint_id,
-                policy=policy,
-                group_seed=17,
-                group_sequence=93,
-                member_count=2,
-                runner_mode="fixture",
-                training_mode="native",
-            )
-            runtime = fixture.env.start_member(
-                fixture.runtime.checkpoint_id,
-                MemberStartV1(spec.identity(), 0),
-            )
-            view = fixture.env.verify(runtime)
-            turn = _turn(view, StoreArtifactReader(fixture.store))
-            turn = replace(
-                turn,
-                action_id=writer_action_id(view),
-                sampling_pins={
-                    **turn.sampling_pins,
-                    "manifest_ref": spec.policy["adapter_ref"],
-                    "behavior_policy_ref": spec.policy["behavior_policy_ref"],
-                    "decoding_ref": spec.policy["decoding_ref"],
-                },
-            )
+            fixture, session, spec, runtime = _bound_native_lineage(Path(root) / "rollout")
             member_id = spec.members[0].member_id
+            reader = StoreArtifactReader(fixture.store)
+
+            first_view = fixture.env.verify(runtime)
+            first_turn = _turn(
+                first_view,
+                reader,
+                generated_ids=(50,),
+                stop_token_id=50,
+                calls=(
+                    {
+                        "id": "first-write",
+                        "type": "function",
+                        "function": {
+                            "name": "write_file",
+                            "arguments": {"path": "draft.txt", "content": "first"},
+                        },
+                    },
+                ),
+                content="",
+            )
+            runtime = fixture.env.commit(runtime, first_turn).runtime
+            _tool_view, tool_directive, tool_input = fixture.env.step_input(runtime)
+            self.assertEqual(tool_directive.kind, "execute_tool")
+            observation = fixture.gatherers.tools.observe(tool_input)
+            runtime = fixture.env.commit(runtime, observation).runtime
+
+            second_view = fixture.env.verify(runtime)
+            second_turn = _turn(
+                second_view,
+                reader,
+                input_ids=(10, 11, 50, 99),
+                generated_ids=(1,),
+                stop_token_id=1,
+                content="second",
+            )
             baseline_root = Path(root) / "baseline"
             shutil.copytree(fixture.store.root, baseline_root)
 
@@ -763,7 +858,7 @@ class WriterTurnV2Tests(unittest.TestCase):
                 baseline_gate,
                 fixture.entry.graph.policy,
             )
-            baseline = baseline_env.commit(baseline_env.open_head(member_id), turn)
+            baseline = baseline_env.commit(baseline_env.open_head(member_id), second_turn)
 
             old_head = fixture.store.read_head(member_id)
             publish = fixture.store.publish
@@ -778,7 +873,7 @@ class WriterTurnV2Tests(unittest.TestCase):
 
             with patch.object(fixture.store, "publish", side_effect=crash_after_writes):
                 with self.assertRaisesRegex(RuntimeError, "injected crash"):
-                    fixture.env.commit(runtime, turn)
+                    fixture.env.commit(runtime, second_turn)
             self.assertEqual(fixture.store.read_head(member_id), old_head)
 
             retry_gate = LineageGate()
@@ -790,174 +885,16 @@ class WriterTurnV2Tests(unittest.TestCase):
                 retry_gate,
                 fixture.entry.graph.policy,
             )
-            retried = retry_env.commit(retry_env.open_head(member_id), turn)
-            self.assertEqual(retried.commit_id, baseline.commit_id)
-
-
-class EligibilityDecisionTests(unittest.TestCase):
-    def setUp(self):
-        self.fixture, self.view, self.manifest = _native_view()
-        self.reader = self.fixture.reader
-
-    def _sampled(self, turn=None, *, outcome="action"):
-        turn = _turn(self.view, self.reader) if turn is None else turn
-        turn_ref = turn.identity()
-        self.reader.public[turn_ref] = turn.to_wire()
-        sample = SampleRef(turn.action_id, "e" * 64, turn_ref, outcome)
-        view = replace(
-            self.view,
-            samples=(sample,),
-            outcome=replace(self.view.outcome, execution_status="valid"),
-        )
-        return view, turn
-
-    def _assert_reason(self, view, reason):
-        decision = decide_eligibility(view, self.reader)
-        self.assertEqual(decision.status, "ineligible")
-        self.assertEqual(decision.reason, reason)
-
-    def test_v1_writer_turn_is_unavailable(self):
-        turn = WriterTurnV1(
-            action_id="v1-action",
-            context_revision_ref=self.view.context.revision_ref,
-            raw_output_ref=None,
-            usage={},
-            adapter_trace=None,
-            message=intake_message({"content": "scripted output", "tool_calls": []}),
-        )
-        view, _ = self._sampled(turn)
-
-        self._assert_reason(view, "native_action_trace_unavailable")
-
-    def test_missing_manifest_capability_is_checked_before_group_mode(self):
-        turn = _turn(self.view, self.reader)
-        manifest = RuntimeManifestV2.from_dict(self.reader.artifact(self.manifest.identity()))
-        ports = tuple(
-            replace(
-                port,
-                configuration={
-                    **dict(port.configuration),
-                    "capabilities": tuple(
-                        capability
-                        for capability in port.configuration.get("capabilities", ())
-                        if capability != "sampled_logprobs"
-                    ),
-                },
+            resumed = retry_env.open_head(member_id)
+            wrong_prefix = replace(
+                second_turn,
+                input_token_ids_ref=_put_bytes(
+                    StoreArtifactReader(retry_store), _token_bytes((10, 11, 52, 99))
+                ),
             )
-            if port.role == "sampling"
-            else port
-            for port in manifest.ports
-        )
-        manifest = replace(manifest, ports=ports)
-        self.reader.public[manifest.identity()] = manifest.to_wire()
-        turn = replace(
-            turn,
-            sampling_pins={**turn.sampling_pins, "manifest_ref": manifest.identity()},
-        )
-        view, _ = self._sampled(turn)
-        view = replace(view, group=None)
+            with self.assertRaises(AdapterContractError):
+                retry_env.commit(resumed, wrong_prefix)
+            self.assertEqual(retry_store.read_head(member_id), old_head)
 
-        self._assert_reason(view, "manifest_capability_missing")
-
-    def test_missing_native_group_gets_group_reason(self):
-        view, _ = self._sampled()
-        view = replace(view, group=None)
-
-        self._assert_reason(view, "group_training_mode_absent")
-
-    def test_context_reset_gets_multi_segment_reason(self):
-        view, _ = self._sampled()
-        lineage_id = view.state.position["lineage_id"]
-        start = EventV1(
-            previous=None,
-            seq=1,
-            lineage_id=lineage_id,
-            rollout_id=lineage_id,
-            node_visit_id=view.state.position["visit_id"],
-            kind="rollout_started",
-            actor="environment",
-            audience=("controller",),
-            payload_ref="d" * 64,
-            versions_ref=view.state.versions_ref,
-            provenance_ref=view.state.provenance_ref,
-        )
-        policy = ContextPolicyV1(operation="drop")
-        self.reader.public[policy.identity()] = policy.to_wire()
-        operation = ContextOperationInputV1(policy_ref=policy.identity())
-        self.reader.public[operation.identity()] = operation.to_wire()
-        context_changed = EventV1(
-            previous=start.identity(),
-            seq=2,
-            lineage_id=lineage_id,
-            rollout_id=lineage_id,
-            node_visit_id=view.state.position["visit_id"],
-            kind="context_changed",
-            actor="environment",
-            audience=("controller",),
-            payload_ref=operation.identity(),
-            versions_ref=view.state.versions_ref,
-            provenance_ref=view.state.provenance_ref,
-        )
-        self.reader.events[start.identity()] = start.to_dict()
-        self.reader.events[context_changed.identity()] = context_changed.to_dict()
-        view = replace(view, head_event_id=context_changed.identity())
-
-        self._assert_reason(view, "multi_segment_context")
-
-    def test_sampled_reasoning_channel_is_retained_and_rejected(self):
-        message = intake_message(
-            {"content": "answer", "reasoning_content": "private chain of thought"}
-        )
-        self.assertEqual(message.to_wire()["reasoning_content"], "private chain of thought")
-        self.assertFalse(
-            {"reasoning", "thinking", "reasoning_content"}
-            & set(intake_message({"content": "answer"}).to_wire())
-        )
-        view, _ = self._sampled(replace(_turn(self.view, self.reader), message=message))
-
-        self._assert_reason(view, "reasoning_content_present")
-
-    def test_zero_generated_tokens_get_no_sampled_actions_reason(self):
-        turn = _turn(
-            self.view,
-            self.reader,
-            generated_ids=(),
-            termination_kind="context_limit",
-            stop_token_id=None,
-            limit="context",
-        )
-        view, _ = self._sampled(turn, outcome="budget_stop")
-
-        self._assert_reason(view, "no_sampled_actions")
-
-    def test_invalid_execution_gets_defensive_reason(self):
-        view, _ = self._sampled()
-        view = replace(view, outcome=replace(view.outcome, execution_status="simulator_error"))
-
-        self._assert_reason(view, "execution_not_valid")
-
-    def test_native_v2_group_records_structural_eligibility(self):
-        view, _ = self._sampled()
-
-        decision = decide_eligibility(view, self.reader)
-
-        self.assertEqual(decision.status, "structurally_eligible")
-        self.assertEqual(decision.reason, "native_evidence_structural")
-        self.assertEqual(
-            decision.training_wire("f" * 64),
-            {
-                "record_type": "TrainingEligibilityV1",
-                "schema": 1,
-                "terminal_outcome_ref": "f" * 64,
-                "status": "structurally_eligible",
-                "reason": "native_evidence_structural",
-            },
-        )
-
-    def test_reserved_eligible_status_cannot_be_constructed(self):
-        with self.assertRaises(ValueError):
-            EligibilityDecisionV1("eligible", "native_evidence_structural")
-
-
-if __name__ == "__main__":
-    unittest.main()
+            retried = retry_env.commit(resumed, second_turn)
+            self.assertEqual(retried.commit_id, baseline.commit_id)

@@ -1,0 +1,212 @@
+{
+  "records": {
+    "DecodingDescriptorV1": {
+      "body": {
+        "logprob_convention": "log_softmax(model logits after model softcap), fp32",
+        "max_tokens_per_decision": 64,
+        "processors": [],
+        "record_type": "DecodingDescriptorV1",
+        "seed_rule": "writer_seed ⊕ action ordinal (sha256-domain-v1)",
+        "temperature": 1,
+        "top_k": 0,
+        "top_p": 1,
+        "trainer_ratio": "recomputed, num_iterations=1"
+      },
+      "identity": "1bb8dfc0333b46b4c6f9542ef66dd8d788dc4afb91dcebd70df2777411bd4c77"
+    },
+    "RendererDescriptorV1": {
+      "body": {
+        "enable_thinking": false,
+        "implementation": "gemma4-native-append-v1",
+        "record_type": "RendererDescriptorV1",
+        "stop_token_ids": [
+          1,
+          106,
+          50
+        ],
+        "suffix_rules_version": "native-suffix-v1",
+        "template_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tokenizer_ref": "2cd7ed38eecdf1374bee8443c3409a8c6688eff6d94567cb4e8ee33057190c3d",
+        "tool_schema_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "identity": "73b1793715f32f11629d9d571b05b021c8aacd63f85ceb4de50884798ecc68cf"
+    },
+    "RuntimeManifestV2": {
+      "body": {
+        "capabilities": [
+          "native_token_ledger",
+          "sampled_logprobs",
+          "usage_reporting"
+        ],
+        "decoding": {
+          "logprob_convention": "log_softmax(model logits after model softcap), fp32",
+          "max_tokens_per_decision": 64,
+          "processors": [],
+          "record_type": "DecodingDescriptorV1",
+          "seed_rule": "writer_seed ⊕ action ordinal (sha256-domain-v1)",
+          "temperature": 1,
+          "top_k": 0,
+          "top_p": 1,
+          "trainer_ratio": "recomputed, num_iterations=1"
+        },
+        "ports": [
+          {
+            "configuration": {
+              "capabilities": [
+                "native_token_ledger",
+                "sampled_logprobs",
+                "usage_reporting"
+              ]
+            },
+            "implementation": "tests.Sampling",
+            "record_type": "RuntimePortDescriptorV1",
+            "role": "sampling",
+            "schema": 1,
+            "version": "1"
+          },
+          {
+            "configuration": {},
+            "implementation": "tests.Environment",
+            "record_type": "RuntimePortDescriptorV1",
+            "role": "environment",
+            "schema": 1,
+            "version": "1"
+          },
+          {
+            "configuration": {},
+            "implementation": "tests.Tools",
+            "record_type": "RuntimePortDescriptorV1",
+            "role": "tools",
+            "schema": 1,
+            "version": "1"
+          },
+          {
+            "configuration": {},
+            "implementation": "tests.Evaluator",
+            "record_type": "RuntimePortDescriptorV1",
+            "role": "evaluator",
+            "schema": 1,
+            "version": "1"
+          }
+        ],
+        "record_type": "RuntimeManifestV2",
+        "renderer": {
+          "enable_thinking": false,
+          "implementation": "gemma4-native-append-v1",
+          "record_type": "RendererDescriptorV1",
+          "stop_token_ids": [
+            1,
+            106,
+            50
+          ],
+          "suffix_rules_version": "native-suffix-v1",
+          "template_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "tokenizer_ref": "2cd7ed38eecdf1374bee8443c3409a8c6688eff6d94567cb4e8ee33057190c3d",
+          "tool_schema_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "schema": 2,
+        "tokenizer": {
+          "files_sha256": {
+            "tokenizer": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "model_id": "tests/toy-tokenizer",
+          "record_type": "TokenizerDescriptorV1",
+          "revision": "toy-r1"
+        }
+      },
+      "identity": "9e5b601a85a2b3db52a6792f6de717e5fbae28d8d59ea7ea8d0bda780daf8809"
+    },
+    "TokenizerDescriptorV1": {
+      "body": {
+        "files_sha256": {
+          "tokenizer": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "model_id": "tests/toy-tokenizer",
+        "record_type": "TokenizerDescriptorV1",
+        "revision": "toy-r1"
+      },
+      "identity": "2cd7ed38eecdf1374bee8443c3409a8c6688eff6d94567cb4e8ee33057190c3d"
+    },
+    "TrainingAdmissionV1": {
+      "body": {
+        "adapter_hash_after": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "adapter_hash_before": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "audit_version": "training-audit-v1",
+        "batch_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "decision_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "members": [
+          {
+            "failed_check": null,
+            "member_id": "grp-example-00",
+            "status": "admitted"
+          }
+        ],
+        "record_type": "TrainingAdmissionV1",
+        "renderer_ref": "73b1793715f32f11629d9d571b05b021c8aacd63f85ceb4de50884798ecc68cf",
+        "tokenizer_descriptor_ref": "2cd7ed38eecdf1374bee8443c3409a8c6688eff6d94567cb4e8ee33057190c3d"
+      },
+      "identity": "9b24a6dfb3d567805affa4ed36d09332a836ec7143da09548861eebf89e8c16b"
+    },
+    "WriterTurnV2": {
+      "body": {
+        "action_id": "rollout-1:action:1",
+        "adapter_trace": {
+          "model": "toy-native"
+        },
+        "context_revision_ref": "dd493aaba3db03ff69c6b35b8d87a76434d523200b80d053ebe0f4abbe53c000",
+        "generated_token_count": 2,
+        "generated_token_ids_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "input_token_count": 3,
+        "input_token_ids_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "logprobs": {
+          "codec": "f32-le",
+          "ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "shape": [
+            2
+          ]
+        },
+        "message": {
+          "calls": [
+            {
+              "bounded": true,
+              "value": {
+                "name": "read_file"
+              }
+            },
+            {
+              "bounded": false,
+              "value": {
+                "$noncanonical": "bounded-call"
+              }
+            }
+          ],
+          "content": "Keep the dialogue terse.",
+          "tool_calls_was_list": true
+        },
+        "raw_output_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "record_type": "WriterTurnV2",
+        "sampling_pins": {
+          "behavior_policy_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "decoding_ref": "1bb8dfc0333b46b4c6f9542ef66dd8d788dc4afb91dcebd70df2777411bd4c77",
+          "manifest_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "renderer_ref": "73b1793715f32f11629d9d571b05b021c8aacd63f85ceb4de50884798ecc68cf",
+          "seed": 27
+        },
+        "termination": {
+          "kind": "native_stop",
+          "limit": null,
+          "stop_token_id": 1
+        },
+        "usage": {
+          "cached_input_tokens": 0,
+          "completion_tokens": 2,
+          "prefill_tokens": 3,
+          "prompt_tokens": 3
+        }
+      },
+      "identity": "ba0f14d8202006b869028671c9b794b42b6b165442c18919b23faa4ecf3debef"
+    }
+  },
+  "transition_semantics": "task-graph-derive-v1"
+}
