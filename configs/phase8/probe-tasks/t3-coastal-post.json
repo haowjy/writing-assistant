@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "id": "t3-coastal-post",
+  "public": {
+    "brief": "Write a short, original scene in scene.txt about a coastal post runner arriving before a storm. Ask the author using decision id signal about the color of a signal bell, then use the answer. Let the public detail salt grass shape the setting if it fits; field-notes.txt is optional. Keep the scene under 70 words.",
+    "initial_files": {
+      "scene.txt": "The path above the beach is empty."
+    },
+    "decision": {
+      "id": "signal",
+      "label": "signal bell color",
+      "binding": "choice_93",
+      "question": "What color is the signal bell?"
+    },
+    "author_packet": {
+      "preferences": {
+        "choice_93": "copper"
+      }
+    },
+    "feedback": {
+      "id": "revision",
+      "utterance": "Revise one sentence so the bell and salt grass share a clear image."
+    }
+  },
+  "probe_settings": {
+    "training_mode": "native",
+    "max_context_tokens": 4096,
+    "max_tokens_per_decision": 512,
+    "max_generated_tokens": 1536,
+    "max_writer_turns": 6,
+    "max_tool_calls": 8,
+    "max_author_calls": 2,
+    "max_total_tokens": 26112
+  },
+  "checks": {
+    "required_id": "scene_nonempty",
+    "components": {
+      "scene_nonempty": 1000,
+      "disclosed_decision": 2500,
+      "public_detail": 2000,
+      "scene_word_range": 2500,
+      "field_notes_nonempty": 2000
+    },
+    "optional": [
+      {
+        "id": "disclosed_decision",
+        "kind": "contains",
+        "path": "scene.txt",
+        "text": "copper bell"
+      },
+      {
+        "id": "public_detail",
+        "kind": "contains",
+        "path": "scene.txt",
+        "text": "salt grass"
+      },
+      {
+        "id": "scene_word_range",
+        "kind": "word_range",
+        "path": "scene.txt",
+        "min": 24,
+        "max": 70
+      },
+      {
+        "id": "field_notes_nonempty",
+        "kind": "nonempty",
+        "path": "field-notes.txt"
+      }
+    ]
+  },
+  "scripted_lineages": {
+    "nonempty_only": {
+      "scene": "A runner reaches the gate before the rain.",
+      "notes": null
+    },
+    "decision_phrase": {
+      "scene": "The copper bell rings above the empty shore.",
+      "notes": null
+    },
+    "phrase_and_detail": {
+      "scene": "The copper bell rings where salt grass leans toward the path.",
+      "notes": null
+    },
+    "word_range": {
+      "scene": "The copper bell rings where salt grass leans toward the path. The runner shakes rain from her sleeves, looks back once at the white road, and carries the warning through the village before the clouds break.",
+      "notes": null
+    },
+    "all_optional": {
+      "scene": "The copper bell rings where salt grass leans toward the path. The runner shakes rain from her sleeves, looks back once at the white road, and carries the warning through the village before the clouds break.",
+      "notes": "The warning arrived before the storm."
+    }
+  }
+}

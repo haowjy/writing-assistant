@@ -26,6 +26,8 @@
 - Real group member starts and commits require the sealed manifest. Collection binds terminal
   results to the verified head, resolves rewards published after collection, and records the
   judged head for infrastructure interruptions.
+- Add three public Phase 8 probe graphs with scripted author/feedback paths and optional
+  deterministic rewards that produce distinct scripted score levels.
 
 - Disable W&B console capture for fork training: native TRL scalar/system metrics
   and package metadata remain available, while stdout/stderr cannot become a
