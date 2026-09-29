@@ -71,6 +71,7 @@ class SamplingRunner:
             messages_json=canonical_json([message.to_dict() for message in port.messages]),
             tools_json=canonical_json(port.tools),
             rendering_json=canonical_json(port.rendering),
+            native_sampling_budget=port.native_sampling_budget,
         )
         result = self.backend.sample(prepared)
         if not isinstance(result, SampleResult):

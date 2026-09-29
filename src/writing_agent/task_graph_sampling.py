@@ -8,9 +8,32 @@ from typing import Any, Protocol
 
 from writing_agent.task_graph import canonical_bytes
 from writing_agent.task_graph_errors import ProjectionError
-from writing_agent.task_graph_records import WriterTurnV1
+from writing_agent.task_graph_record_contracts import GroupSpecV1
+from writing_agent.task_graph_records import (
+    RECORD_TYPES,
+    RuntimeManifestV1,
+    RuntimeManifestV2,
+    WriterTurnV1,
+    WriterTurnV2,
+    decode_runtime_manifest,
+)
 
 NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
+TOOL_RESPONSE_STOP_TOKEN_ID = 50
+
+
+@dataclass(frozen=True)
+class NativeSamplingBudget:
+    """Public allocation inputs for a native sampler, never the full runtime ledger."""
+
+    remaining_generated_tokens: int | None
+    max_context_tokens: int | None
+
+    def __post_init__(self) -> None:
+        for name in ("remaining_generated_tokens", "max_context_tokens"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"{name} must be a nonnegative integer or None")
 
 
 class ArtifactSink(Protocol):
@@ -87,10 +110,70 @@ def bind_group_sampling_claims(
             raise ProjectionError(f"writer sample request/adapter changed {field}")
 
 
-def decode_writer_turn_sampling(turn: WriterTurnV1, context: Any, reader: Any) -> None:
-    """Bind a typed writer turn and its trace claims to the active context."""
-    if not isinstance(turn, WriterTurnV1):
-        raise ProjectionError("input.record_type: sampling input is not a WriterTurnV1")
+def sampling_usage_requirements(budget: Mapping[str, Any]) -> frozenset[str]:
+    """Return usage fields required by the active token-budget limits."""
+    limits = budget["limits"]
+    fields: set[str] = set()
+    if "generated_tokens" in limits:
+        fields.add("completion_tokens")
+    if "total_tokens" in limits:
+        fields.add("total_tokens")
+    if "context_tokens" in limits:
+        fields.update(("prompt_tokens", "completion_tokens"))
+    return frozenset(fields)
+
+
+def decode_and_bind_sampling(
+    turn: WriterTurnV1 | WriterTurnV2,
+    context: Any,
+    group: GroupSpecV1 | None,
+    samples: tuple[Any, ...],
+    head_event_id: str | None,
+    budget: Mapping[str, Any],
+    lineage_id: str,
+    reader: Any,
+) -> None:
+    """Dispatch sampling evidence by record type and bind it to its pinned context."""
+    record_type = getattr(turn, "RECORD_TYPE", None)
+    if record_type == WriterTurnV1.RECORD_TYPE and isinstance(turn, WriterTurnV1):
+        manifest = _sampling_manifest(group, reader) if group is not None else None
+        if isinstance(manifest, RuntimeManifestV2):
+            raise ProjectionError("input.record_type: WriterTurnV1 cannot use RuntimeManifestV2")
+        _decode_v1_sampling(turn, context, reader)
+        return
+    if record_type != WriterTurnV2.RECORD_TYPE or not isinstance(turn, WriterTurnV2):
+        raise ProjectionError("input.record_type: sampling input is not a writer-turn record")
+    if group is None:
+        raise ProjectionError("input.record_type: WriterTurnV2 requires a sealed V2 manifest")
+    manifest = _sampling_manifest(group, reader)
+    if not isinstance(manifest, RuntimeManifestV2):
+        raise ProjectionError("input.record_type: WriterTurnV2 requires RuntimeManifestV2")
+    _decode_v2_sampling(
+        turn, context, group, manifest, samples, head_event_id, budget, lineage_id, reader
+    )
+
+
+def _sampling_manifest(
+    group: GroupSpecV1, reader: Any
+) -> RuntimeManifestV1 | RuntimeManifestV2 | None:
+    try:
+        body = reader.artifact(group.policy["adapter_ref"])
+        if body.get("record_type") not in {
+            RuntimeManifestV1.RECORD_TYPE,
+            RuntimeManifestV2.RECORD_TYPE,
+        }:
+            if group.runner_mode == "fixture" and group.training_mode is None:
+                return None
+            raise ValueError("sealed group artifact is not a runtime manifest")
+        return decode_runtime_manifest(body)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError(
+            "input.sampling_pins.manifest_ref: sealed manifest is invalid"
+        ) from exc
+
+
+def _decode_v1_sampling(turn: WriterTurnV1, context: Any, reader: Any) -> None:
+    """Bind the existing V1 trace shape to its active context."""
     if turn.context_revision_ref != context.revision_ref:
         raise ProjectionError(
             "input.context_revision_ref: writer turn differs from the active context"
@@ -144,3 +227,230 @@ def decode_writer_turn_sampling(turn: WriterTurnV1, context: Any, reader: Any) -
                 raise ProjectionError(
                     "input.adapter_trace.per_token_logprobs_ref: byte shape differs"
                 )
+
+
+def _decode_v2_sampling(
+    turn: WriterTurnV2,
+    context: Any,
+    group: GroupSpecV1,
+    manifest: RuntimeManifestV2,
+    samples: tuple[Any, ...],
+    head_event_id: str | None,
+    budget: Mapping[str, Any],
+    lineage_id: str,
+    reader: Any,
+) -> None:
+    """Check V2 evidence, pin identity, prior-token chaining and derived termination."""
+    if turn.context_revision_ref != context.revision_ref:
+        raise ProjectionError("input.context_revision_ref: writer turn differs from active context")
+    trace = turn.adapter_trace
+    if trace is not None:
+        for field, expected in (
+            ("context_revision_ref", context.revision_ref),
+            ("context_content_hash", context.content_ref),
+            ("rendering", context.rendering),
+        ):
+            if field in trace and canonical_bytes(trace[field]) != canonical_bytes(expected):
+                raise ProjectionError(f"input.adapter_trace.{field}: differs from active context")
+
+    usage = turn.usage
+    if usage.get("prompt_tokens") != turn.input_token_count:
+        raise ProjectionError("input.input_token_count: differs from usage.prompt_tokens")
+    if usage.get("completion_tokens") != turn.generated_token_count:
+        raise ProjectionError("input.generated_token_count: differs from usage.completion_tokens")
+    if turn.logprobs["shape"] != (turn.generated_token_count,):
+        raise ProjectionError("input.logprobs.shape: differs from generated_token_count")
+
+    input_ids = _read_token_ids(
+        reader, turn.input_token_ids_ref, turn.input_token_count, path="input.input_token_ids_ref"
+    )
+    generated_ids = _read_token_ids(
+        reader,
+        turn.generated_token_ids_ref,
+        turn.generated_token_count,
+        path="input.generated_token_ids_ref",
+    )
+    try:
+        logprobs = reader.bytes_artifact(turn.logprobs["ref"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError("input.logprobs.ref: unavailable") from exc
+    if not isinstance(logprobs, bytes) or len(logprobs) != 4 * turn.generated_token_count:
+        raise ProjectionError("input.logprobs.ref: byte shape differs from generated_token_count")
+
+    member = next((item for item in group.members if item.member_id == lineage_id), None)
+    if member is None:
+        raise ProjectionError("input.sampling_pins.seed: writer lineage is not a group member")
+    expected_pins = {
+        "manifest_ref": group.policy["adapter_ref"],
+        "behavior_policy_ref": group.policy["behavior_policy_ref"],
+        "decoding_ref": group.policy["decoding_ref"],
+        "renderer_ref": manifest.renderer.identity(),
+        "seed": member.writer_seed,
+    }
+    if manifest.identity() != group.policy["adapter_ref"]:
+        raise ProjectionError("input.sampling_pins.manifest_ref: differs from sealed group policy")
+    for field, expected in expected_pins.items():
+        if turn.sampling_pins[field] != expected:
+            raise ProjectionError(f"input.sampling_pins.{field}: differs from sealed policy")
+    if manifest.decoding.identity() != group.policy["decoding_ref"]:
+        raise ProjectionError("input.sampling_pins.decoding_ref: differs from manifest")
+    if manifest.renderer.template_ref != group.policy["template_ref"]:
+        raise ProjectionError("input.sampling_pins.template_ref: differs from manifest")
+    if manifest.tokenizer.identity() != group.policy["tokenizer_ref"]:
+        raise ProjectionError("input.sampling_pins.tokenizer_ref: differs from manifest")
+
+    prior_sample = next(iter(reversed(samples)), None)
+    if prior_sample is not None and not _has_context_root_change(
+        reader, head_event_id, prior_sample.event_id
+    ):
+        previous_turn = _read_previous_turn(reader, prior_sample.turn_ref)
+        if not isinstance(previous_turn, WriterTurnV2):
+            raise ProjectionError(
+                "input.record_type: V2 sampling follows a V1 turn on the same root"
+            )
+        previous_input = _read_token_ids(
+            reader,
+            previous_turn.input_token_ids_ref,
+            previous_turn.input_token_count,
+            path="input.input_token_ids_ref",
+        )
+        previous_generated = _read_token_ids(
+            reader,
+            previous_turn.generated_token_ids_ref,
+            previous_turn.generated_token_count,
+            path="input.generated_token_ids_ref",
+        )
+        expected_prefix = previous_input + previous_generated
+        if input_ids[: len(expected_prefix)] != expected_prefix:
+            raise ProjectionError("input.input_token_ids_ref: prior generated prefix differs")
+
+    allowed, limit = _allowed_tokens(turn, manifest, budget)
+    _validate_termination(turn, generated_ids, manifest, allowed, limit)
+
+
+def _read_token_ids(reader: Any, ref: str, count: int, *, path: str) -> tuple[int, ...]:
+    try:
+        data = reader.bytes_artifact(ref)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError(f"{path}: unavailable") from exc
+    if not isinstance(data, bytes) or len(data) != 4 * count:
+        raise ProjectionError(f"{path}: byte count differs from declared token count")
+    return tuple(
+        int.from_bytes(data[offset : offset + 4], "little") for offset in range(0, len(data), 4)
+    )
+
+
+def _read_previous_turn(reader: Any, ref: str) -> WriterTurnV1 | WriterTurnV2:
+    try:
+        body = reader.artifact(ref)
+        record_type = body.get("record_type")
+        codec = RECORD_TYPES.get(record_type)
+        if codec in (WriterTurnV1, WriterTurnV2):
+            return codec.from_dict(body)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise ProjectionError("input.input_token_ids_ref: previous turn is invalid") from exc
+    raise ProjectionError("input.record_type: previous sample is not a writer turn")
+
+
+def _has_context_root_change(reader: Any, head_event_id: str | None, sample_event_id: str) -> bool:
+    current = head_event_id
+    while current is not None and current != sample_event_id:
+        try:
+            event = reader.artifact(current, domain="event")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ProjectionError("input.input_token_ids_ref: prior event is unavailable") from exc
+        if event.get("kind") == "context_changed":
+            return True
+        current = event.get("previous")
+    if current != sample_event_id:
+        raise ProjectionError(
+            "input.input_token_ids_ref: prior sample is not in the event ancestry"
+        )
+    return False
+
+
+def _allowed_tokens(
+    turn: WriterTurnV2, manifest: RuntimeManifestV2, budget: Mapping[str, Any]
+) -> tuple[int, str]:
+    limits = budget["limits"]
+    consumed = budget["consumed"]
+    generated_limit = limits.get("generated_tokens")
+    context_limit = limits.get("context_tokens")
+    if generated_limit is not None and type(generated_limit) is not int:
+        raise ProjectionError("state.budgets_ref.limits.generated_tokens: invalid committed limit")
+    generated_consumed = consumed.get("generated_tokens", 0)
+    if type(generated_consumed) is not int:
+        raise ProjectionError("state.budgets_ref.consumed.generated_tokens: invalid counter")
+    if context_limit is not None and type(context_limit) is not int:
+        raise ProjectionError("state.budgets_ref.limits.context_tokens: invalid committed limit")
+    context_remaining = (
+        float("inf") if context_limit is None else context_limit - turn.input_token_count
+    )
+    generated_remaining = (
+        float("inf") if generated_limit is None else generated_limit - generated_consumed
+    )
+    candidates = (
+        ("decision", manifest.decoding.max_tokens_per_decision),
+        ("generated_budget", generated_remaining),
+        ("context", context_remaining),
+    )
+    allowed = min(value for _, value in candidates)
+    limiting_term = next(name for name, value in candidates if value == allowed)
+    return allowed, limiting_term
+
+
+def _validate_termination(
+    turn: WriterTurnV2,
+    generated_ids: tuple[int, ...],
+    manifest: RuntimeManifestV2,
+    allowed: int,
+    limiting_term: str,
+) -> None:
+    termination = turn.termination
+    kind = termination["kind"]
+    stop_ids = frozenset(manifest.renderer.stop_token_ids)
+    has_stop = any(token in stop_ids for token in generated_ids)
+    if kind == "native_stop":
+        last_is_stop = bool(generated_ids) and generated_ids[-1] in stop_ids
+        if not (
+            1 <= len(generated_ids) <= allowed
+            and last_is_stop
+            and termination["stop_token_id"] == generated_ids[-1]
+            and not any(token in stop_ids for token in generated_ids[:-1])
+        ):
+            raise ProjectionError("input.termination: native_stop does not match token counts")
+        return
+    if kind == "token_limit":
+        if not (
+            len(generated_ids) == allowed >= 1
+            and not has_stop
+            and termination["limit"] == limiting_term
+        ):
+            raise ProjectionError("input.termination: token_limit does not match token counts")
+        return
+    if kind == "context_limit" and not (
+        allowed <= 0 and limiting_term == "context" and not generated_ids
+    ):
+        raise ProjectionError("input.termination: context_limit does not match token counts")
+    if kind != "context_limit":
+        raise ProjectionError("input.termination.kind: unsupported termination")
+
+
+def termination_stop_reason(turn: WriterTurnV2) -> str | None:
+    """Map a validated native termination and sampled message to its writer outcome."""
+    termination = turn.termination
+    kind = termination["kind"]
+    if kind == "token_limit":
+        return {
+            "decision": "decision_token_limit",
+            "generated_budget": "generated_tokens_budget",
+            "context": "context_tokens_budget",
+        }[termination["limit"]]
+    if kind == "context_limit":
+        return "context_tokens_budget"
+    has_tool_calls = turn.message.tool_calls_was_list and bool(turn.message.calls)
+    if has_tool_calls and termination["stop_token_id"] != TOOL_RESPONSE_STOP_TOKEN_ID:
+        return "unterminated_tool_call"
+    if not has_tool_calls and termination["stop_token_id"] == TOOL_RESPONSE_STOP_TOKEN_ID:
+        return "unterminated_final_answer"
+    return None

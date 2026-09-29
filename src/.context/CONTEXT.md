@@ -24,8 +24,9 @@ retains its smoke-evaluation and training-format workflows.
 - **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
   is the field-spec vocabulary, strict decoder and `WireRecord` base;
   [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
-  context `WireRecord`s, plus runtime port-descriptor and manifest records; context content
-  and revision records live here. Pure group record classes live in
+  context `WireRecord`s, plus runtime port-descriptor and manifest records. V1 records remain
+  unchanged; V2 sampling, manifest-descriptor, and training-admission records are additive.
+  Context content and revision records live here. Pure group record classes live in
   [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
   [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
   sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
@@ -69,9 +70,11 @@ retains its smoke-evaluation and training-format workflows.
   materialization. See [transition-seam.md](transition-seam.md),
   [gate-and-rollout.md](gate-and-rollout.md), and
   [rollout-execution.md](rollout-execution.md) for the contracts.
-- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
-  writer-turn decoder and sampling-binding checks, plus the current evaluation-only
-  eligibility decision. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the single
+  V1/V2 writer-turn decoder, sampling-binding checks, `NativeSamplingBudget`, and the
+  current evaluation-only eligibility decision. V2 binds token bytes, prior-turn prefixes,
+  sealed sampling pins, and termination derived from decoding and committed budgets.
+  [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
   [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable
@@ -92,7 +95,7 @@ retains its smoke-evaluation and training-format workflows.
   override admitted schemas, semantic replay, or the native-ineligible decision. `prepare_request` pins caller-owned evidence;
   `prepare_verified_messages` checks typed messages against the active projection
   at preparation, publication, and recovery. The sampling decoder alone binds
-  duplicated trace/action/request claims. The bound sampling input carries the
+  duplicated trace/action/request claims and dispatches V1/V2 ledger evidence. The bound sampling input carries the
   complete canonical persisted request/options value; composition stores typed
   binary logprob output and constructs its ref without backend CAS access. Only the
   composition runner invokes `SampleBackend`. The [author derive](../writing_agent/task_graph_derive_author.py)

@@ -43,6 +43,16 @@ from writing_agent.task_graph_records import (
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BYTE_GOLDEN = b"golden\x00bytes"
+POST_GOLDEN_RECORD_TYPES = frozenset(
+    {
+        "WriterTurnV2",
+        "RendererDescriptorV1",
+        "TokenizerDescriptorV1",
+        "DecodingDescriptorV1",
+        "RuntimeManifestV2",
+        "TrainingAdmissionV1",
+    }
+)
 ZERO_HASH = "0" * 64
 HASH_REF = HASH_FIXTURE_REF
 
@@ -216,6 +226,8 @@ def build_records_golden() -> dict[str, object]:
     records: dict[str, object] = {}
     for record in record_examples():
         record_type = record.RECORD_TYPE
+        if record_type in POST_GOLDEN_RECORD_TYPES:
+            continue
         if record_type is not None:
             records[record_type] = _entry(record)
         elif isinstance(record, ExecutionVersionsV1):
@@ -265,7 +277,7 @@ def build_records_golden() -> dict[str, object]:
     state_after_two_actions = replace(state, history=history)
     records["EnvironmentStateV1"] = _entry(state_after_two_actions)
 
-    if set(records) != set(RECORD_TYPES) | {
+    if set(records) | POST_GOLDEN_RECORD_TYPES != set(RECORD_TYPES) | {
         "BudgetContractV1",
         "ContextContentV1",
         "ContextRevisionV1",

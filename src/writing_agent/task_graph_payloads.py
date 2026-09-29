@@ -109,7 +109,7 @@ _PAYLOAD_RECORD_CODECS = MappingProxyType(
             "TrainingEligibilityV1",
             schema=Int(equals=1),
             terminal_outcome_ref=Hash("artifact"),
-            status=Enum(frozenset({"eligible", "ineligible"})),
+            status=Enum(frozenset({"eligible", "ineligible", "structurally_eligible"})),
             reason=Str(nonempty=True),
         ),
         **{

@@ -45,6 +45,7 @@ from writing_agent.task_graph_records import (
 from writing_agent.task_graph_records import (
     MemberStartV1,
 )
+from writing_agent.task_graph_sampling import NativeSamplingBudget
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
 
@@ -61,7 +62,15 @@ class RuntimeHandle:
 class SessionSeals(Protocol):
     sealed_adapter_ref: str | None
 
-    def require_seal(self, adapter_ref: str, *, token_limited: bool = False) -> None: ...
+    def require_seal(
+        self,
+        adapter_ref: str,
+        *,
+        token_limited: bool = False,
+        training_mode: str | None = None,
+        policy=None,
+        rendering=None,
+    ) -> None: ...
 
     def require_member_seal(self, view: LineageView) -> None: ...
 
@@ -80,6 +89,7 @@ class SamplerInput:
     tokenizer_ref: str | None
     template_ref: str | None
     decoding_ref: str | None
+    native_sampling_budget: NativeSamplingBudget | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
@@ -234,6 +244,19 @@ class RolloutEnvironment:
         if directive.kind == "sample_writer":
             member = group_member(view)
             policy = {} if view.group is None else view.group.policy
+            native_budget = None
+            if view.group is not None and view.group.training_mode == "native":
+                limits = view.budget["limits"]
+                consumed = view.budget["consumed"]
+                generated_limit = limits.get("generated_tokens")
+                native_budget = NativeSamplingBudget(
+                    remaining_generated_tokens=(
+                        None
+                        if generated_limit is None
+                        else max(0, generated_limit - consumed.get("generated_tokens", 0))
+                    ),
+                    max_context_tokens=limits.get("context_tokens"),
+                )
             return SamplerInput(
                 messages=view.context.messages,
                 tools=view.context.tools,
@@ -247,6 +270,7 @@ class RolloutEnvironment:
                 tokenizer_ref=policy.get("tokenizer_ref"),
                 template_ref=policy.get("template_ref"),
                 decoding_ref=policy.get("decoding_ref"),
+                native_sampling_budget=native_budget,
             )
         if directive.kind == "execute_tool":
             cursor = directive.call_index
@@ -374,10 +398,9 @@ class RolloutEnvironment:
         try:
             if view.group is not None:
                 self.session.require_member_seal(view)
-            elif token_limited and sealed_ref is not None:
-                self.session.require_seal(sealed_ref, token_limited=True)
             elif sealed_ref is not None:
-                self.session.require_seal(sealed_ref)
+                self.session.require_seal(sealed_ref, token_limited=token_limited)
+                self.session.require_member_seal(view)
         except Exception as exc:
             raise AdapterContractError(
                 "runtime session seal does not match the verified view"
@@ -476,6 +499,7 @@ class RolloutEnvironment:
 __all__ = [
     "AuthorInput",
     "CheckInput",
+    "NativeSamplingBudget",
     "PortInput",
     "RolloutEnvironment",
     "RuntimeHandle",

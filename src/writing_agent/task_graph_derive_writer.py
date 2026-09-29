@@ -42,10 +42,13 @@ from writing_agent.task_graph_errors import (
 from writing_agent.task_graph_records import (
     ToolObservationV1,
     WriterTurnV1,
+    WriterTurnV2,
 )
 from writing_agent.task_graph_sampling import (
     bind_group_sampling_claims,
-    decode_writer_turn_sampling,
+    decode_and_bind_sampling,
+    sampling_usage_requirements,
+    termination_stop_reason,
 )
 from writing_agent.task_graph_scripted import validate_ask_semantics
 from writing_agent.task_graph_transition import (
@@ -75,19 +78,6 @@ def group_member(view: LineageView):
     if member is None:
         raise ProjectionError("writer lineage is absent from its sealed group spec")
     return member
-
-
-def sampling_usage_requirements(budget: Mapping[str, Any]) -> frozenset[str]:
-    """Return usage fields required by the active token-budget limits."""
-    limits = budget["limits"]
-    return frozenset(
-        field
-        for limit, field in (
-            ("generated_tokens", "completion_tokens"),
-            ("total_tokens", "total_tokens"),
-        )
-        if limit in limits
-    )
 
 
 def tool_dispatch_error(budget: Mapping[str, Any], queue_entry: Mapping[str, Any]) -> str | None:
@@ -156,12 +146,20 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     )
 
     required_usage = sampling_usage_requirements(next_budget)
-    if ("completion_tokens" in required_usage and "completion_tokens" not in usage) or (
-        "total_tokens" in required_usage
-        and "total_tokens" not in usage
-        and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
+    missing_usage = required_usage - usage.keys()
+    if (
+        "total_tokens" in missing_usage
+        and {
+            "prompt_tokens",
+            "completion_tokens",
+        }
+        <= usage.keys()
     ):
-        raise AdapterContractProjectionError("input.usage.completion_tokens: required")
+        missing_usage = missing_usage - {"total_tokens"}
+    if missing_usage:
+        raise AdapterContractProjectionError(
+            f"input.usage.{sorted(missing_usage)[0]}: required by active token budget"
+        )
 
     assistant = _build_assistant_message(turn, action_id, content, queue)
     event = new_event(
@@ -224,11 +222,167 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     return result_view
 
 
+def derive_writer_turn_v2(view: LineageView, turn: WriterTurnV2, reader: Any) -> Transition:
+    """Derive a native sampled turn after verifying its bytes and termination class."""
+    action_ordinal, action_id, content = _validate_writer_action(view, turn)
+    if not isinstance(turn, WriterTurnV2):
+        raise ProjectionError("writer turn input must use its strict V2 wire codec")
+    _bind_writer_turn(view, turn, reader)
+
+    next_budget, exceeded = sampled_usage_charge(
+        view.budget,
+        turn.usage,
+        allow_context_overrun=turn.termination["kind"] == "context_limit",
+    )
+    input_artifact = payload_artifact(turn)
+    if exceeded is not None:
+        stop_reason = f"{exceeded}_budget"
+        outcome = replace(
+            view.outcome,
+            task_status="incomplete",
+            execution_status="valid",
+            stop_reason=stop_reason,
+            candidate_checkpoint=view.checkpoint_id,
+            requirement_version=view.state.requirements_ref,
+        )
+        event = new_event(
+            view,
+            input_artifact.ref,
+            kind="budget_charged",
+            actor="writer_runtime",
+            audience=("controller", "evaluator", "trainer"),
+        )
+        state = next_state(
+            view,
+            event,
+            budgets_ref=domain_hash("payload", next_budget),
+            outcome_ref=outcome.identity(),
+            position={"phase": "terminal"},
+        )
+        artifacts = (input_artifact, payload_artifact(next_budget), payload_artifact(outcome))
+        return advance(
+            view,
+            turn,
+            event,
+            state,
+            artifacts=artifacts,
+            budget=next_budget,
+            outcome=outcome,
+            samples=(
+                *view.samples,
+                SampleRef(action_id, event.id, input_artifact.ref, "budget_stop"),
+            ),
+        )
+
+    required_usage = sampling_usage_requirements(next_budget)
+    missing_usage = required_usage - turn.usage.keys()
+    if (
+        "total_tokens" in missing_usage
+        and {
+            "prompt_tokens",
+            "completion_tokens",
+        }
+        <= turn.usage.keys()
+    ):
+        missing_usage = missing_usage - {"total_tokens"}
+    if missing_usage:
+        raise AdapterContractProjectionError(
+            f"input.usage.{sorted(missing_usage)[0]}: required by active token budget"
+        )
+
+    id_prefix = f"{view.state.position['lineage_id']}:call:{action_ordinal}"
+    queue = _build_tool_queue(
+        view,
+        turn,
+        reader,
+        id_prefix=id_prefix,
+        prior_raw_ids=view.raw_call_ids,
+    )
+    assistant = _build_assistant_message(turn, action_id, content, queue)
+    event = new_event(
+        view,
+        input_artifact.ref,
+        kind="writer_action",
+        actor="writer",
+        audience=("controller", "trainer", "writer"),
+    )
+    context, content_node, revision, context_budget = append_context(
+        replace(view, budget=next_budget), (assistant,), event.id
+    )
+    budget = context_budget if context_budget is not None else next_budget
+    if context_budget is None:
+        budget = next_budget
+
+    continuation = view.state.to_dict()["continuation"]
+    stop_reason = termination_stop_reason(turn)
+    incomplete = stop_reason is not None
+    continuation["tool_queue"] = [] if incomplete else [item.to_dict() for item in queue]
+    continuation["next_call"] = 0
+    outcome = view.outcome
+    if incomplete:
+        outcome = replace(
+            view.outcome,
+            task_status="incomplete",
+            execution_status="valid",
+            stop_reason=stop_reason,
+            candidate_checkpoint=None,
+            requirement_version=view.state.requirements_ref,
+        )
+    state = next_state(
+        view,
+        event,
+        budgets_ref=domain_hash("payload", budget),
+        context_ref=revision.ref,
+        outcome_ref=outcome.identity() if incomplete else view.state.outcome_ref,
+        continuation=continuation,
+        position={
+            "phase": "ready_transition" if incomplete else "ready_writer" if queue else "checking"
+        },
+        history={"action_count": view.state.history["action_count"] + 1},
+    )
+    sources = dict(view.call_sources)
+    for index, call in enumerate(queue):
+        if call.call_id in sources:
+            raise ProjectionError("writer turn reuses a logical tool-call ID")
+        sources[call.call_id] = CallSource(action_id, index)
+    raw_call_ids = view.raw_call_ids
+    if turn.message.tool_calls_was_list:
+        raw_call_ids = frozenset((*raw_call_ids, *_raw_call_ids(turn)))
+    artifacts = (
+        input_artifact,
+        payload_artifact(budget),
+        payload_artifact(outcome) if incomplete else None,
+        content_node,
+        revision,
+    )
+    return advance(
+        view,
+        turn,
+        event,
+        state,
+        artifacts=tuple(artifact for artifact in artifacts if artifact is not None),
+        context=context,
+        budget=budget,
+        outcome=outcome,
+        call_sources=sources,
+        raw_call_ids=raw_call_ids,
+        samples=(*view.samples, SampleRef(action_id, event.id, input_artifact.ref, "action")),
+    )
+
+
 def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, str, str]:
+    if not isinstance(turn, WriterTurnV1):
+        raise ProjectionError("writer turn input must use its strict V1 wire codec")
+    return _validate_writer_action(view, turn)
+
+
+def _validate_writer_action(
+    view: LineageView, turn: WriterTurnV1 | WriterTurnV2
+) -> tuple[int, str, str]:
     directive = _directive(view)
     if directive.kind != "sample_writer":
         raise ProjectionError("writer turn is not the next legal step")
-    if not isinstance(turn, WriterTurnV1):
+    if not isinstance(turn, (WriterTurnV1, WriterTurnV2)):
         raise ProjectionError("writer turn input must use its strict wire codec")
 
     ordinal = view.state.history["action_count"]
@@ -241,16 +395,25 @@ def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, s
     return ordinal, action_id, "" if content is None else content
 
 
-def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> None:
+def _bind_writer_turn(view: LineageView, turn: WriterTurnV1 | WriterTurnV2, reader: Any) -> None:
     try:
-        decode_writer_turn_sampling(turn, view.context, reader)
+        decode_and_bind_sampling(
+            turn,
+            view.context,
+            view.group,
+            view.samples,
+            view.head_event_id,
+            view.budget,
+            view.state.position["lineage_id"],
+            reader,
+        )
     except ProjectionError as exc:
         raise AdapterContractProjectionError(str(exc)) from exc
     except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
         raise AdapterContractProjectionError("input.adapter_trace: invalid") from exc
 
     member = group_member(view)
-    if member is None:
+    if member is None or isinstance(turn, WriterTurnV2):
         return
     spec = view.group
     try:
@@ -273,7 +436,7 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
 
 def _build_tool_queue(
     view: LineageView,
-    turn: WriterTurnV1,
+    turn: WriterTurnV1 | WriterTurnV2,
     reader: Any,
     *,
     id_prefix: str,
@@ -304,7 +467,7 @@ def _build_tool_queue(
 
 
 def _build_assistant_message(
-    turn: WriterTurnV1,
+    turn: WriterTurnV1 | WriterTurnV2,
     action_id: str,
     content: str,
     queue: list[ToolQueueEntry],
@@ -476,7 +639,7 @@ def _directive(view: LineageView):
         raise ProjectionError("lineage view has no valid next directive") from exc
 
 
-def _raw_call_ids(turn: WriterTurnV1) -> set[str]:
+def _raw_call_ids(turn: WriterTurnV1 | WriterTurnV2) -> set[str]:
     found: set[str] = set()
     for item in turn.message.calls:
         if not item["bounded"]:
@@ -497,6 +660,7 @@ def _raw_call_ids(turn: WriterTurnV1) -> set[str]:
 
 DERIVES: dict[DeriveKey, Callable] = {
     "WriterTurnV1": derive_writer_turn,
+    "WriterTurnV2": derive_writer_turn_v2,
     "ToolObservationV1": derive_tool_result,
 }
 

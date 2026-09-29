@@ -38,15 +38,26 @@ from writing_agent.task_graph_group_records import (
     fraction_wire,
 )
 from writing_agent.task_graph_operation import operation_scoped
-from writing_agent.task_graph_ports import manifest_supports_usage_reporting
+from writing_agent.task_graph_ports import (
+    manifest_supports_usage_reporting,
+    require_native_manifest_binding,
+)
 from writing_agent.task_graph_record_contracts import (
     POLICY_FIELDS,
     ContextPolicyV1,
     GroupError,
     GroupMemberSpecV1,
     GroupSpecV1,
+    group_identity,
 )
-from writing_agent.task_graph_records import MemberStartV1, RuntimeManifestV1, WriterTurnV1
+from writing_agent.task_graph_records import (
+    MemberStartV1,
+    RuntimeManifestV1,
+    RuntimeManifestV2,
+    WriterTurnV1,
+    WriterTurnV2,
+    decode_runtime_manifest,
+)
 
 
 class GroupCoordinatorV1:
@@ -85,10 +96,28 @@ class GroupCoordinatorV1:
         group_sequence: int,
         member_count: int,
         runner_mode: str = "real",
+        training_mode: str | None = None,
     ) -> GroupSpecV1:
         environment, rendering = self._entry_contract(entry_checkpoint_id)
-        policy = validate_group_policy(policy, rendering)
-        self._require_group_seal_contract(policy["adapter_ref"], environment, runner_mode)
+        adapter_ref = policy.get("adapter_ref")
+        is_v2_manifest = self._is_v2_manifest(adapter_ref)
+        if training_mode == "native" or is_v2_manifest:
+            try:
+                policy = validate_group_policy(policy, rendering)
+            except GroupError as exc:
+                raise AdapterContractError(
+                    "native group rendering pins differ from the entry"
+                ) from exc
+        else:
+            policy = validate_group_policy(policy, rendering)
+        self._require_group_seal_contract(
+            policy["adapter_ref"],
+            environment,
+            runner_mode,
+            training_mode=training_mode,
+            policy=policy,
+            rendering=rendering,
+        )
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(policy["context_policy_ref"]))
@@ -96,16 +125,14 @@ class GroupCoordinatorV1:
             raise GroupError("group size must be 2..64")
         if type(group_sequence) is not int or group_sequence < 0:
             raise GroupError("group sequence must be nonnegative")
-        group_id = payload_hash(
-            [
-                "GroupIdV1",
-                group_sequence,
-                environment,
-                policy,
-                group_seed,
-                runner_mode,
-                member_count,
-            ]
+        group_id = group_identity(
+            group_sequence,
+            environment,
+            policy,
+            group_seed,
+            runner_mode,
+            member_count,
+            training_mode,
         )
         members = tuple(
             GroupMemberSpecV1(
@@ -124,6 +151,7 @@ class GroupCoordinatorV1:
             environment=environment,
             policy=policy,
             members=members,
+            training_mode=training_mode,
         )
         # Keep the sealed contract addressable to the pure member-start derive.
         # Its payload identity is exactly GroupSpecV1.identity().
@@ -168,41 +196,109 @@ class GroupCoordinatorV1:
         budget = self.environment.graph.node(environment["node_id"]).contract.budget_contract
         return bool(budget.usage_charged_limits())
 
-    def _validate_manifest_pin(self, adapter_ref: str, *, token_limited: bool) -> None:
+    def _is_v2_manifest(self, adapter_ref: str | None) -> bool:
+        if not adapter_ref:
+            return False
         try:
-            manifest = RuntimeManifestV1.from_dict(self.store.get_artifact(adapter_ref))
+            return self.store.get_artifact(adapter_ref).get("record_type") == "RuntimeManifestV2"
+        except (MissingReferenceError, TypeError, ValueError):
+            return False
+
+    def _validate_manifest_pin(
+        self,
+        adapter_ref: str,
+        *,
+        token_limited: bool,
+        training_mode: str | None = None,
+        policy: dict[str, str] | None = None,
+        rendering: dict[str, Any] | None = None,
+    ) -> RuntimeManifestV1 | RuntimeManifestV2:
+        try:
+            manifest = decode_runtime_manifest(self.store.get_artifact(adapter_ref))
         except MissingReferenceError as exc:
-            raise AdapterContractError("real group must pin a RuntimeManifestV1") from exc
+            raise AdapterContractError("real group must pin a runtime manifest") from exc
         except (TypeError, ValueError) as exc:
-            raise AdapterContractError("real group must pin a RuntimeManifestV1") from exc
+            raise AdapterContractError("real group must pin a runtime manifest") from exc
+        if training_mode == "native" and not isinstance(manifest, RuntimeManifestV2):
+            raise AdapterContractError("native training requires RuntimeManifestV2")
         if token_limited and not manifest_supports_usage_reporting(manifest):
             raise AdapterContractError(
                 "token-limited group manifest lacks usage-reporting capability"
             )
+        if isinstance(manifest, RuntimeManifestV2) and policy is not None and rendering is not None:
+            require_native_manifest_binding(
+                manifest,
+                adapter_ref,
+                policy=policy,
+                rendering=rendering,
+                require_capabilities=training_mode == "native",
+            )
+        return manifest
 
     def _require_group_seal(self, spec: GroupSpecV1) -> None:
+        _current, rendering = self._entry_contract(spec.environment["entry_checkpoint_id"])
         self._require_group_seal_contract(
-            spec.policy["adapter_ref"], spec.environment, spec.runner_mode
+            spec.policy["adapter_ref"],
+            spec.environment,
+            spec.runner_mode,
+            training_mode=spec.training_mode,
+            policy=spec.policy,
+            rendering=rendering,
         )
 
     def _require_group_seal_contract(
-        self, adapter_ref: str, environment: dict[str, Any], runner_mode: str
+        self,
+        adapter_ref: str,
+        environment: dict[str, Any],
+        runner_mode: str,
+        *,
+        training_mode: str | None = None,
+        policy: dict[str, str] | None = None,
+        rendering: dict[str, Any] | None = None,
     ) -> None:
         token_limited = self._entry_has_token_limits(environment)
-        if runner_mode == "real":
-            self._validate_manifest_pin(adapter_ref, token_limited=token_limited)
+        should_validate = (
+            runner_mode == "real" or training_mode == "native" or self._is_v2_manifest(adapter_ref)
+        )
+        if should_validate:
+            if rendering is None:
+                _current, rendering = self._entry_contract(environment["entry_checkpoint_id"])
+            self._validate_manifest_pin(
+                adapter_ref,
+                token_limited=token_limited,
+                training_mode=training_mode,
+                policy=policy,
+                rendering=rendering,
+            )
         if self.session is not None:
-            self.session.require_seal(adapter_ref, token_limited=token_limited)
+            self.session.require_seal(
+                adapter_ref,
+                token_limited=token_limited,
+                training_mode=training_mode,
+                policy=policy,
+                rendering=rendering,
+            )
 
-    def _require_bound_group_session(self, spec: GroupSpecV1) -> None:
-        if spec.runner_mode != "real":
+    def _require_bound_group_session(self, spec: GroupSpecV1, rendering: dict[str, Any]) -> None:
+        if spec.runner_mode != "real" and spec.training_mode != "native":
             return
         if self.session is None or self.environment.session is None:
             raise AdapterContractError("real group members require a bound runtime session")
         self._require_group_seal(spec)
         token_limited = self._entry_has_token_limits(spec.environment)
+        self.session.require_seal(
+            spec.policy["adapter_ref"],
+            token_limited=token_limited,
+            training_mode=spec.training_mode,
+            policy=spec.policy,
+            rendering=rendering,
+        )
         self.environment.session.require_seal(
-            spec.policy["adapter_ref"], token_limited=token_limited
+            spec.policy["adapter_ref"],
+            token_limited=token_limited,
+            training_mode=spec.training_mode,
+            policy=spec.policy,
+            rendering=rendering,
         )
 
     @operation_scoped
@@ -224,8 +320,8 @@ class GroupCoordinatorV1:
     def assert_start_contract(
         self, spec: GroupSpecV1, checkpoint_id: str, policy: dict[str, str]
     ) -> None:
-        self._require_bound_group_session(spec)
         candidate, rendering = self._entry_contract(checkpoint_id)
+        self._require_bound_group_session(spec, rendering)
         if canonical_bytes(candidate) != canonical_bytes(spec.environment):
             raise GroupError("member entry differs from full sealed environment contract")
         if canonical_bytes(validate_group_policy(policy, rendering)) != canonical_bytes(
@@ -716,7 +812,14 @@ class GroupCoordinatorV1:
         for sample in view.samples:
             if sample.outcome != "action":
                 continue
-            turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
+            turn_record = self.store.get_artifact(sample.turn_ref)
+            record_type = turn_record.get("record_type")
+            if record_type == WriterTurnV1.RECORD_TYPE:
+                turn = WriterTurnV1.from_dict(turn_record)
+            elif record_type == WriterTurnV2.RECORD_TYPE:
+                turn = WriterTurnV2.from_dict(turn_record)
+            else:
+                raise GroupError("sample reference does not name a writer turn")
             message = messages.get(sample.event_id)
             if message is None:
                 raise GroupError("sample event has no verified assistant message")
