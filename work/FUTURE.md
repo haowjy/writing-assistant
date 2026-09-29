@@ -25,7 +25,7 @@ These entries are deferred directions, not scheduled runs or generation jobs.
 Deferred from the transition seam's final reviews; none blocks correctness.
 
 - [ ] **Store split:** move `_ClosureValidator` and `_LineageLock` out of `src/writing_agent/task_graph_store.py` (1,352 lines) into `task_graph_closure.py`, as a move.
-- [ ] **Test consolidation:** task-graph tests grew from 8,641 to 15,824 lines; the acceptance suite, the restored guard tests and the per-module tests overlap.
+- [ ] **Test consolidation:** task-graph test code grew from 8,526 to 16,472 lines (JSON fixtures excluded); the acceptance suite, the restored guard tests and the per-module tests overlap.
 - [ ] **Structured codec errors:** raise `CodecError(path, detail)` from the wire layer instead of parsing exception text in `_ClosureValidator._codec_field_path`.
 - [ ] **Small duplicates:** one `_json_value`/`_wire_value` (`task_graph.py`, `task_graph_wire.py`); rename one of the two `AdmissionPolicyV1` classes; narrow `StoreArtifactReader.artifact`'s domain multiplexing; tighten `LAYER_RANKS`.
 - [ ] **Redundant checks:** the context check in `decode_writer_turn_sampling` duplicates `_validate_writer_turn`, and the ask-author `latest_action_id` binding is unreachable. Delete them or test them directly.
