@@ -70,7 +70,5 @@ class RuntimeSession:
         if lineage not in {member.member_id for member in spec.members}:
             raise ValueError("group member differs from its verified group contract")
         budget = view.node.contract.budget_contract
-        token_limited = (
-            budget.max_generated_tokens is not None or budget.max_total_tokens is not None
-        )
+        token_limited = bool(budget.usage_charged_limits())
         self.require_seal(spec.policy["adapter_ref"], token_limited=token_limited)

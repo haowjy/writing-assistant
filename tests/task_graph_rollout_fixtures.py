@@ -25,6 +25,7 @@ from unittest.mock import patch
 
 from tests.task_graph_fixtures import EntryFixture, make_entry_fixture, make_outcome_fixture
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
+from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
     DecisionBindingsV1,
@@ -49,9 +50,15 @@ from writing_agent.task_graph_gatherers import (
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
     LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
     ScriptedSampleBackend,
 )
-from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_ports import (
+    USAGE_REPORTING_CAPABILITY,
+    PortDescriptorV1,
+    RuntimeDependenciesV1,
+    SampleResult,
+)
 from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_store import TaskGraphStore
 
@@ -412,6 +419,28 @@ def make_gatherers(
         evaluator=evaluator,
         sampler_inputs=fixture.sampler_inputs,
     )
+
+
+def bind_usage_reporting_session(fixture: RolloutFixture, *, sampler=None):
+    """Bind a real scripted session whose manifest promises sampler usage evidence."""
+    sampler = sampler or ScriptedSampleBackend(fixture.sample_results)
+    sampler.descriptor = PortDescriptorV1(
+        "sampling",
+        "scripted-usage-sampler",
+        "1",
+        capabilities=(USAGE_REPORTING_CAPABILITY,),
+    )
+    tools = LocalTextToolProvider()
+    dependencies = RuntimeDependenciesV1(
+        sampler,
+        LocalWorkspaceEnvironment(tools),
+        tools,
+        DeterministicEvaluator(),
+    )
+    unbound = RuntimeSession.create(fixture.store, dependencies)
+    fixture.env.session = unbound.bind(fixture.store, unbound.manifest_ref)
+    fixture.gatherers = make_gatherers(fixture, sampler=sampler)
+    return fixture.env.session
 
 
 def build_rollout_fixture(

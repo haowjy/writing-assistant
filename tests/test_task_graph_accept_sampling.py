@@ -7,7 +7,10 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from tests.task_graph_rollout_fixtures import build_rollout_fixture
+from tests.task_graph_rollout_fixtures import (
+    bind_usage_reporting_session,
+    build_rollout_fixture,
+)
 from tests.test_task_graph_rollout_env import _group_spec
 from writing_agent.task_graph import canonical_bytes, domain_hash
 from writing_agent.task_graph_composition import RuntimeSession
@@ -70,6 +73,8 @@ class SamplingAcceptanceTests(unittest.TestCase):
                     mode=mode,
                     sample_results=(result,),
                 )
+                if mode == "token_limited":
+                    bind_usage_reporting_session(fixture)
                 before = _event_count(fixture.store)
                 head = fixture.store.read_head(fixture.lineage_id)
                 with self.assertRaises(AdapterContractError):
@@ -114,6 +119,8 @@ class SamplingAcceptanceTests(unittest.TestCase):
         for name, mode, mutate in bodies:
             with self.subTest(forgery=name):
                 fixture = build_rollout_fixture(self.root / f"persisted-{name}", mode=mode)
+                if mode == "token_limited":
+                    bind_usage_reporting_session(fixture)
                 view = fixture.env.verify(fixture.runtime)
                 port = fixture.env.step_input(fixture.runtime)[2]
                 sampled = fixture.gatherers.sampler.turn(port)

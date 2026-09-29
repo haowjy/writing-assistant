@@ -88,14 +88,7 @@ class GroupCoordinatorV1:
     ) -> GroupSpecV1:
         environment, rendering = self._entry_contract(entry_checkpoint_id)
         policy = validate_group_policy(policy, rendering)
-        token_limited = self._entry_has_token_limits(environment)
-        if runner_mode == "real":
-            self._validate_manifest_pin(policy["adapter_ref"], token_limited=token_limited)
-        if self.session is not None:
-            self.session.require_seal(
-                policy["adapter_ref"],
-                token_limited=token_limited,
-            )
+        self._require_group_seal_contract(policy["adapter_ref"], environment, runner_mode)
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(policy["context_policy_ref"]))
@@ -172,9 +165,8 @@ class GroupCoordinatorV1:
         )
 
     def _entry_has_token_limits(self, environment: dict[str, Any]) -> bool:
-        budget = self.store.get_artifact(environment["budget_ref"])
-        limits = budget.get("limits", {})
-        return bool({"generated_tokens", "total_tokens"} & set(limits))
+        budget = self.environment.graph.node(environment["node_id"]).contract.budget_contract
+        return bool(budget.usage_charged_limits())
 
     def _validate_manifest_pin(self, adapter_ref: str, *, token_limited: bool) -> None:
         try:
@@ -189,22 +181,26 @@ class GroupCoordinatorV1:
             )
 
     def _require_group_seal(self, spec: GroupSpecV1) -> None:
-        token_limited = self._entry_has_token_limits(spec.environment)
-        if spec.runner_mode == "real":
-            self._validate_manifest_pin(spec.policy["adapter_ref"], token_limited=token_limited)
+        self._require_group_seal_contract(
+            spec.policy["adapter_ref"], spec.environment, spec.runner_mode
+        )
+
+    def _require_group_seal_contract(
+        self, adapter_ref: str, environment: dict[str, Any], runner_mode: str
+    ) -> None:
+        token_limited = self._entry_has_token_limits(environment)
+        if runner_mode == "real":
+            self._validate_manifest_pin(adapter_ref, token_limited=token_limited)
         if self.session is not None:
-            self.session.require_seal(
-                spec.policy["adapter_ref"],
-                token_limited=token_limited,
-            )
+            self.session.require_seal(adapter_ref, token_limited=token_limited)
 
     def _require_bound_group_session(self, spec: GroupSpecV1) -> None:
         if spec.runner_mode != "real":
             return
-        token_limited = self._entry_has_token_limits(spec.environment)
         if self.session is None or self.environment.session is None:
             raise AdapterContractError("real group members require a bound runtime session")
-        self.session.require_seal(spec.policy["adapter_ref"], token_limited=token_limited)
+        self._require_group_seal(spec)
+        token_limited = self._entry_has_token_limits(spec.environment)
         self.environment.session.require_seal(
             spec.policy["adapter_ref"], token_limited=token_limited
         )
@@ -296,7 +292,7 @@ class GroupCoordinatorV1:
                 if previous_ref == ref:
                     return ref
                 previous = GroupMemberResultV1.from_dict(self.store.get_artifact(previous_ref))
-                self._admit_result(spec, previous, ordinal)
+                self._admit_result(spec, previous, ordinal, stored=True)
                 resolution = (
                     previous.execution_status == "valid"
                     and result.execution_status == "valid"
@@ -395,10 +391,6 @@ class GroupCoordinatorV1:
             raise GroupError("infrastructure failure needs a cause")
         validate_hash(evidence_ref, optional=True)
         view = self._verified_member_view(spec, ordinal)
-        if view.state.position["phase"] == "terminal" and view.outcome.execution_status == "valid":
-            raise AdapterContractError(
-                "a valid terminal member cannot be relabeled as infrastructure-invalid"
-            )
         if evidence_ref is not None:
             self.store.get_artifact(evidence_ref)
         start = self._start_receipt(spec, ordinal, view=view)["start_checkpoint_id"]
@@ -410,6 +402,7 @@ class GroupCoordinatorV1:
             start_checkpoint_id=start,
             reason=reason,
             evidence_ref=evidence_ref,
+            judged_checkpoint_id=view.checkpoint_id,
         )
         failure_ref = self.store.put_artifact(failure.to_wire())
         return self.collect(
@@ -430,7 +423,7 @@ class GroupCoordinatorV1:
             return self._scripted_terminal(result.fixture_ref).reward_status
         return "pending"
 
-    def reward_of(self, result: GroupMemberResultV1) -> Fraction | None:
+    def reward_of(self, result: GroupMemberResultV1, *, view=None) -> Fraction | None:
         """Read one verified exact reward from either group result path."""
         if result.fixture_ref:
             fixture = self._scripted_terminal(result.fixture_ref)
@@ -439,8 +432,11 @@ class GroupCoordinatorV1:
                 if fixture.reward is not None
                 else None
             )
-        if result.availability_ref:
-            reward = self.store.get_artifact(result.availability_ref)
+        reward_ref = result.availability_ref
+        if reward_ref is None and view is not None and view.outcome.reward_status == "available":
+            reward_ref = view.outcome.reward_ref
+        if reward_ref:
+            reward = self.store.get_artifact(reward_ref)
             if reward.get("record_type") != "RewardV1":
                 raise GroupError("member reward reference is not RewardV1")
             return Fraction(reward["numerator"], reward["normalization"])
@@ -457,7 +453,12 @@ class GroupCoordinatorV1:
             raise GroupError("group spec differs from its sealed receipt")
 
     def _admit_result(
-        self, spec: GroupSpecV1, result: GroupMemberResultV1, expected_ordinal: int | None = None
+        self,
+        spec: GroupSpecV1,
+        result: GroupMemberResultV1,
+        expected_ordinal: int | None = None,
+        *,
+        stored: bool = False,
     ) -> tuple[int, Any | None]:
         """One immutable admission boundary for live collection and offline recovery."""
         ordinal = next((m.ordinal for m in spec.members if m.member_id == result.member_id), None)
@@ -486,13 +487,6 @@ class GroupCoordinatorV1:
             return ordinal, None
         if result.execution_status == "infrastructure_invalid":
             view = self._verified_member_view(spec, ordinal)
-            if (
-                view.state.position["phase"] == "terminal"
-                and view.outcome.execution_status == "valid"
-            ):
-                raise AdapterContractError(
-                    "a valid terminal member cannot be relabeled as infrastructure-invalid"
-                )
             try:
                 failure = GroupExecutionFailureV1.from_dict(
                     self.store.get_artifact(result.failure_ref)
@@ -503,17 +497,32 @@ class GroupCoordinatorV1:
                 failure.group_id != spec.group_id
                 or failure.member_id != result.member_id
                 or failure.start_checkpoint_id != result.start_checkpoint_id
+                or (stored and not self._is_verified_ancestor(view, failure.judged_checkpoint_id))
+                or (not stored and failure.judged_checkpoint_id != view.checkpoint_id)
             ):
                 raise GroupError("infrastructure failure record is misbound")
+            judged_view = self.environment.gate.view(self.store, failure.judged_checkpoint_id)
+            self._assert_member_view(spec, spec.members[ordinal], judged_view)
+            if (
+                judged_view.state.position["phase"] == "terminal"
+                and judged_view.outcome.execution_status == "valid"
+            ):
+                raise AdapterContractError(
+                    "a valid terminal member cannot be relabeled as infrastructure-invalid"
+                )
             if failure.evidence_ref is not None:
                 self.store.get_artifact(failure.evidence_ref)
-            return ordinal, None
+            return ordinal, view
 
         view = self._verified_member_view(spec, ordinal)
         final = self.store.load_checkpoint(result.final_checkpoint_id)
         if final.state.position["lineage_id"] != result.member_id:
             raise GroupError("terminal checkpoint belongs to another member")
-        if result.final_checkpoint_id != view.checkpoint_id:
+        if result.final_checkpoint_id != view.checkpoint_id and (
+            not stored
+            or not self._is_verified_ancestor(view, result.final_checkpoint_id)
+            or not self._has_reward_only_suffix(result.member_id, result.final_checkpoint_id)
+        ):
             raise ConcurrentUpdateError(
                 "terminal result checkpoint is not the published member head"
             )
@@ -521,9 +530,20 @@ class GroupCoordinatorV1:
         if outcome.execution_status != "valid" or view.state.position["phase"] != "terminal":
             raise GroupError("result lacks a valid terminal outcome")
         if outcome.reward_status == "available":
-            if not result.availability_ref or outcome.reward_ref != result.availability_ref:
+            reward_ref = outcome.reward_ref
+            if result.availability_ref is None:
+                reward = self.store.get_artifact(reward_ref)
+                if (
+                    not stored
+                    or result.terminal_outcome_ref != reward.get("terminal_outcome_ref")
+                    or not self._has_reward_only_suffix(
+                        result.member_id, result.final_checkpoint_id
+                    )
+                ):
+                    raise GroupError("result reward differs from the verified outcome")
+            elif result.availability_ref != reward_ref:
                 raise GroupError("result reward differs from the verified outcome")
-            reward = self.store.get_artifact(result.availability_ref)
+            reward = self.store.get_artifact(reward_ref)
             if (
                 reward.get("record_type") != "RewardV1"
                 or result.terminal_outcome_ref != reward.get("terminal_outcome_ref")
@@ -551,6 +571,30 @@ class GroupCoordinatorV1:
         ):
             raise GroupError("result outcome differs from the verified head view")
         return ordinal, view
+
+    @staticmethod
+    def _is_verified_ancestor(view, checkpoint_id: str) -> bool:
+        current = view.ancestry
+        while current is not None:
+            if current.checkpoint_id == checkpoint_id:
+                return True
+            current = current.parent
+        return False
+
+    @staticmethod
+    def _reward_only_suffix(event_kinds: tuple[str, ...]) -> bool:
+        return bool(event_kinds) and all(kind == "reward_recorded" for kind in event_kinds)
+
+    def _has_reward_only_suffix(self, member_id: str, checkpoint_id: str) -> bool:
+        event_kinds: list[str] = []
+        commit_id = self.store.read_head(member_id)
+        while commit_id is not None:
+            commit = self.store.load_commit(commit_id)
+            if commit.checkpoint == checkpoint_id:
+                return self._reward_only_suffix(tuple(event_kinds))
+            event_kinds.extend(self.store.load_event(event_id).kind for event_id in commit.events)
+            commit_id = commit.parent_commit
+        return False
 
     def _verified_member_view(self, spec: GroupSpecV1, ordinal: int):
         member = spec.members[ordinal]
@@ -593,7 +637,7 @@ class GroupCoordinatorV1:
                 raise GroupError("result receipt has invalid schema")
             ref = receipt["result_ref"]
             result = GroupMemberResultV1.from_dict(self.store.get_artifact(ref))
-            _, view = self._admit_result(spec, result, member.ordinal)
+            _, view = self._admit_result(spec, result, member.ordinal, stored=True)
             result_refs.append(ref)
             results.append(result)
             views.append(view)
@@ -603,8 +647,8 @@ class GroupCoordinatorV1:
             status, reason = "pending", "members_pending"
         else:
             rewards = []
-            for result in results:
-                reward = self.reward_of(result)
+            for result, view in zip(results, views, strict=True):
+                reward = self.reward_of(result, view=view)
                 if reward is None:
                     break
                 rewards.append(reward)

@@ -8,6 +8,23 @@ from writing_agent.task_graph_contracts import BudgetContractV1
 
 
 class BudgetContractTests(unittest.TestCase):
+    def test_budget_contract_owns_usage_charged_limits(self) -> None:
+        required = {
+            "max_steps": 1,
+            "max_total_bytes": 1,
+            "max_graph_hops": 1,
+            "max_visits": 1,
+        }
+        self.assertEqual(BudgetContractV1(**required).usage_charged_limits(), {})
+        self.assertEqual(
+            BudgetContractV1(
+                **required,
+                max_generated_tokens=32,
+                max_total_tokens=64,
+            ).usage_charged_limits(),
+            {"generated_tokens": 32, "total_tokens": 64},
+        )
+
     def test_absent_token_limit_keeps_the_legacy_wire_form(self) -> None:
         budget = BudgetContractV1(
             max_steps=1,

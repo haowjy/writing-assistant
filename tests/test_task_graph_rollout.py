@@ -17,6 +17,7 @@ from tests.task_graph_rollout_fixtures import (
     EVALUATOR_PACKET_CANARY,
     LEDGER_CANARY,
     PortCallCounter,
+    bind_usage_reporting_session,
     build_rollout_fixture,
     make_gatherers,
     ports_disabled,
@@ -446,6 +447,7 @@ class RolloutDriverTests(unittest.TestCase):
                 ),
             ),
         )
+        bind_usage_reporting_session(fixture)
         entry_budget = fixture.store.get_artifact(fixture.runtime.state.budgets_ref)
         self.assertEqual(entry_budget["limits"]["total_tokens"], 5)
         self.assertNotIn("total_tokens", entry_budget["consumed"])
@@ -466,6 +468,7 @@ class RolloutDriverTests(unittest.TestCase):
             mode="total_token_limited",
             sample_results=(SampleResult({"role": "assistant", "content": "No usage."}),),
         )
+        bind_usage_reporting_session(fixture)
         head = fixture.store.read_head(fixture.lineage_id)
 
         with self.assertRaises(AdapterContractError):
