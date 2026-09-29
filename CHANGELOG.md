@@ -2,36 +2,20 @@
 
 ## [Unreleased]
 
-- Pin the V1 task-graph wire shapes, binary artifact envelope, and deterministic rollout
-  identities with explicit goldens paired to `task-graph-derive-v1`; align the docs and
-  design notes with the S7.3 runtime and record ownership.
-- Restore context records as strict `WireRecord`s, derive their closure edges from one field declaration,
-  and unify runtime, evaluator, and group payload codecs with their record classes. Classify malformed
-  on-disk records as corruption.
-- Restore direct tests for admission, scripted-author, budget, intake, quiescence, gate,
-  identity, and on-disk transition-semantics guards; pin context and commit identities.
-- Flatten rollout storage: writer turns bind messages through the context revision instead
-  of copied request artifacts, checkpoints store history counts instead of repeated ID
-  arrays, and persisted tool-queue entries require an explicit rejection field.
-- Unify task-graph writer, scripted-author, check, context, and group execution behind one
-  verified rollout core. The driver gathers typed, allowlisted inputs; one pure derive per
-  input produces one event and complete successor state for both publication and replay.
-- Require a semantic verifier when constructing a store, pin runtime lineages to
-  `task-graph-derive-v1`, and resume published runs through verified heads.
-- Remove the store's workspace restore/materialize/diff helpers; checkpoint persistence stays
-  structural and publication or gate views perform semantic verification.
-- Use `step_input` as the sole verified environment-to-port path.
-- Store context as immutable content chains and source-linked revisions. Ordinary message
-  appends belong to their source event; explicit carry, seed, drop, and compact operations
-  derive directly from the active view and account for context budgets.
-- Remove the discarded compaction evidence path and unused group worker-root surface; resolve
-  group entry contracts from the verified view alone.
-- Keep check batches, transitions, terminal status, reward, and training eligibility in one
-  evolving `OutcomeV1`; groups start from verified views, derive receipts from ancestry, and
-  collect without a redundant policy walk.
-- Remove the separate runtime log, generic patch replay path, and legacy task-graph runtime
-  modules. Existing evaluation CLI behavior is unchanged; native on-policy optimization
-  remains future work.
+- Replace the task-graph runtime with one verified rollout core: one pure derive per input,
+  one event and one checkpoint per commit, the same derive for publication and replay.
+  The old writer, scripted-author, checks, terminal, replay and runtime-log paths are gone.
+  The evaluation CLI is unchanged.
+- Stores require a verifier and refuse lineages not pinned to `task-graph-derive-v1`.
+  Forged content raises `ProjectionError` at its field path; disk damage raises
+  `CorruptRecordError`. The store no longer restores, materializes or diffs workspaces.
+- Storage grows linearly with history: context is a chain of appended messages, writer
+  turns bind their messages through the context revision, and checkpoints store counts.
+- One `OutcomeV1` carries checks, transitions, status, reward and training eligibility.
+  Groups start from verified views and credit only sampled content.
+- Goldens pin the v1 wire shapes and a deterministic rollout; changing them requires a
+  semantics bump.
+- Native on-policy optimization remains future work.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.
