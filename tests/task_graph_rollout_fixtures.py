@@ -284,14 +284,14 @@ def _entry_fixture(
     )
     entry_contract = contract.entry_contract
     requirement_ref = None
-    if mode in {"slice", "feedback"}:
+    if mode in {"slice", "feedback", "triple_feedback"}:
         requirement_ref = fixture.reader.add(
             {"requirements": {"baseline": LEDGER_CANARY}}, private=True
         )
         entry_contract = replace(entry_contract, requirement_version=requirement_ref)
     interaction = contract.interaction_contract
     budgets = contract.budget_contract
-    if mode in {"slice", "feedback"}:
+    if mode in {"slice", "feedback", "triple_feedback"}:
         author_packet = AuthorPacketV1(
             preferences={"choice_key_91": "amber", "private_key_91": AUTHOR_PACKET_CANARY},
             requirements={},
@@ -301,19 +301,29 @@ def _entry_fixture(
             tool_allowlist=(*entry_contract.tool_allowlist, "ask_author"),
         )
         feedback = ()
-        if mode == "feedback":
+        if mode in {"feedback", "triple_feedback"}:
             update = RequirementUpdateV1(
                 id="revised", supersedes="baseline", replacement="Revise for " + LEDGER_CANARY
             )
             fixture.reader.private[update.identity()] = update.to_dict()
-            feedback = (
+            feedback = [
                 {
                     "id": "feedback-1",
                     "utterance": "Revise the draft to satisfy the updated requirement.",
                     "prerequisite_check_ids": [],
                     "requirement_update_ref": update.identity(),
                 },
-            )
+            ]
+            if mode == "triple_feedback":
+                feedback.append(
+                    {
+                        "id": "feedback-2",
+                        "utterance": "Make one more revision.",
+                        "prerequisite_check_ids": [],
+                        "requirement_update_ref": None,
+                    }
+                )
+            feedback = tuple(feedback)
         script = ScriptedAuthorV1(
             answers={
                 "door": {
@@ -346,7 +356,7 @@ def _entry_fixture(
             contract,
             entry=entry_contract,
             interaction=interaction,
-            budgets=replace(budgets, max_author_calls=2),
+            budgets=replace(budgets, max_author_calls=max(2, len(feedback) + 1)),
         )
     elif mode == "token_limited":
         entry = replace(
@@ -473,6 +483,7 @@ def build_rollout_fixture(
         "slice",
         "none",
         "feedback",
+        "triple_feedback",
         "token_limited",
         "total_token_limited",
         "context_token_limited",
@@ -494,7 +505,7 @@ def build_rollout_fixture(
     if sample_results is None:
         sample_results = (
             _scripted_samples()
-            if mode in {"slice", "feedback"}
+            if mode in {"slice", "feedback", "triple_feedback"}
             else (
                 SampleResult(
                     {"role": "assistant", "content": "A complete draft.", "tool_calls": []}
@@ -508,7 +519,7 @@ def build_rollout_fixture(
     runtime = env.open(checkpoint)
     counter = PortCallCounter(raising=raising_ports)
     sampler_inputs = []
-    if mode == "feedback" and len(sample_results) == 4:
+    if mode in {"feedback", "triple_feedback"} and len(sample_results) == 4:
         sample_results += (
             SampleResult(
                 {

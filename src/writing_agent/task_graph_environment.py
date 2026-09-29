@@ -42,10 +42,8 @@ from writing_agent.task_graph_record_contracts import ExecutionVersionsV1
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1 as AdmissionPolicyRecord,
 )
-from writing_agent.task_graph_records import (
-    MemberStartV1,
-)
-from writing_agent.task_graph_sampling import NativeSamplingBudget
+from writing_agent.task_graph_records import MemberStartV1, WriterTurnV2
+from writing_agent.task_graph_sampling import NativeSamplingBudget, NativeSamplingHistory
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
 
@@ -90,11 +88,22 @@ class SamplerInput:
     template_ref: str | None
     decoding_ref: str | None
     native_sampling_budget: NativeSamplingBudget | None = None
+    adapter_ref: str | None = None
+    decision_ordinal: int | None = None
+    native_history: NativeSamplingHistory | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "tools", tuple(freeze(self.tools)))
         object.__setattr__(self, "rendering", freeze(self.rendering))
+        if self.decision_ordinal is not None and (
+            type(self.decision_ordinal) is not int or self.decision_ordinal < 0
+        ):
+            raise ValueError("sampling decision ordinal must be nonnegative")
+        if self.native_history is not None and not isinstance(
+            self.native_history, NativeSamplingHistory
+        ):
+            raise TypeError("sampling history must be committed native ledger evidence")
 
 
 @dataclass(frozen=True)
@@ -245,7 +254,9 @@ class RolloutEnvironment:
             member = group_member(view)
             policy = {} if view.group is None else view.group.policy
             native_budget = None
-            if view.group is not None and view.group.training_mode == "native":
+            native_history = None
+            native_mode = view.group is not None and view.group.training_mode == "native"
+            if native_mode:
                 limits = view.budget["limits"]
                 consumed = view.budget["consumed"]
                 generated_limit = limits.get("generated_tokens")
@@ -257,6 +268,7 @@ class RolloutEnvironment:
                     ),
                     max_context_tokens=limits.get("context_tokens"),
                 )
+                native_history = self._native_sampling_history(view)
             return SamplerInput(
                 messages=view.context.messages,
                 tools=view.context.tools,
@@ -271,6 +283,9 @@ class RolloutEnvironment:
                 template_ref=policy.get("template_ref"),
                 decoding_ref=policy.get("decoding_ref"),
                 native_sampling_budget=native_budget,
+                adapter_ref=policy.get("adapter_ref") if native_mode else None,
+                decision_ordinal=(view.state.history["action_count"] if native_mode else None),
+                native_history=native_history,
             )
         if directive.kind == "execute_tool":
             cursor = directive.call_index
@@ -297,6 +312,26 @@ class RolloutEnvironment:
             packet = None if packet_ref is None else self.reader.artifact(packet_ref, private=True)
             return CheckInput(request_ref, request, view.state.files, packet)
         return None
+
+    def _native_sampling_history(self, view: LineageView) -> NativeSamplingHistory | None:
+        if not view.samples:
+            return None
+        previous = view.samples[-1]
+        if _context_root_changed_after(self.reader, view.head_event_id, previous.event_id):
+            return None
+        try:
+            turn = WriterTurnV2.from_dict(self.reader.artifact(previous.turn_ref))
+            input_ids = _read_u32_tokens(
+                self.reader.bytes_artifact(turn.input_token_ids_ref), turn.input_token_count
+            )
+            generated_ids = _read_u32_tokens(
+                self.reader.bytes_artifact(turn.generated_token_ids_ref), turn.generated_token_count
+            )
+            return NativeSamplingHistory(turn, input_ids, generated_ids)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AdapterContractError(
+                "native sampler cannot rebuild its committed token prefix"
+            ) from exc
 
     @operation_scoped
     def commit(self, runtime: RuntimeHandle, input_record: InputRecord) -> StepResult:
@@ -399,7 +434,11 @@ class RolloutEnvironment:
             if view.group is not None:
                 self.session.require_member_seal(view)
             elif sealed_ref is not None:
-                self.session.require_seal(sealed_ref, token_limited=token_limited)
+                self.session.require_seal(
+                    sealed_ref,
+                    token_limited=token_limited,
+                    rendering=view.context.rendering,
+                )
                 self.session.require_member_seal(view)
         except Exception as exc:
             raise AdapterContractError(
@@ -494,6 +533,26 @@ class RolloutEnvironment:
         for artifact in transition.artifacts:
             if artifact.kind == "context_revision":
                 self.store.persist_artifact(artifact)
+
+
+def _context_root_changed_after(reader, head_event_id: str | None, sample_event_id: str) -> bool:
+    current = head_event_id
+    while current is not None and current != sample_event_id:
+        event = reader.artifact(current, domain="event")
+        if event.get("kind") == "context_changed":
+            return True
+        current = event.get("previous")
+    if current != sample_event_id:
+        raise AdapterContractError("native sampler history is outside the active event ancestry")
+    return False
+
+
+def _read_u32_tokens(data: bytes, count: int) -> tuple[int, ...]:
+    if not isinstance(data, bytes) or len(data) != 4 * count:
+        raise ValueError("native token bytes do not match their committed count")
+    return tuple(
+        int.from_bytes(data[offset : offset + 4], "little") for offset in range(0, len(data), 4)
+    )
 
 
 __all__ = [

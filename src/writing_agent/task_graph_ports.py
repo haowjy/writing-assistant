@@ -16,11 +16,14 @@ from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
 from writing_agent.task_graph_records import (
     NATIVE_RUNTIME_CAPABILITIES,
+    DecodingDescriptorV1,
+    RendererDescriptorV1,
     RuntimeManifestV1,
     RuntimeManifestV2,
     RuntimePortDescriptorV1,
+    TokenizerDescriptorV1,
 )
-from writing_agent.task_graph_sampling import NativeSamplingBudget
+from writing_agent.task_graph_sampling import NativeSamplingBudget, NativeSamplingHistory
 
 USAGE_REPORTING_CAPABILITY = "usage_reporting"
 NATIVE_TOKEN_LEDGER_CAPABILITY = "native_token_ledger"
@@ -90,6 +93,9 @@ class PreparedSamplingInput:
     tools_json: str
     rendering_json: str
     native_sampling_budget: NativeSamplingBudget | None = None
+    adapter_ref: str | None = None
+    decision_ordinal: int | None = None
+    native_history: NativeSamplingHistory | None = None
 
     def __post_init__(self) -> None:
         validate_hash(self.context_content_hash)
@@ -104,9 +110,18 @@ class PreparedSamplingInput:
             self.decoding_ref,
             self.tokenizer_ref,
             self.template_ref,
+            self.adapter_ref,
         ):
             if reference is not None:
                 validate_hash(reference)
+        if self.decision_ordinal is not None and (
+            type(self.decision_ordinal) is not int or self.decision_ordinal < 0
+        ):
+            raise ValueError("prepared decision ordinal must be a nonnegative integer")
+        if self.native_history is not None and not isinstance(
+            self.native_history, NativeSamplingHistory
+        ):
+            raise TypeError("prepared native history must be typed committed sampling evidence")
 
 
 @dataclass(frozen=True)
@@ -213,6 +228,7 @@ class SampleBackend(Protocol):
 
 class SampleBackendV2(Protocol):
     descriptor: PortDescriptorV1
+    manifest_descriptors: tuple[RendererDescriptorV1, TokenizerDescriptorV1, DecodingDescriptorV1]
 
     def sample(self, prepared: PreparedSamplingInput) -> SampleResultV2: ...
 
@@ -327,7 +343,7 @@ class Evaluator(Protocol):
 
 @dataclass(frozen=True)
 class RuntimeDependenciesV1:
-    sampling: SampleBackend
+    sampling: SampleBackend | SampleBackendV2
     environment: ExecutionEnvironment
     tools: ToolProvider
     evaluator: Evaluator
@@ -337,7 +353,7 @@ class RuntimeDependenciesV1:
             if getattr(self, role).descriptor.role != role:
                 raise ValueError(f"runtime {role} has a descriptor for another port")
 
-    def manifest(self) -> RuntimeManifestV1:
+    def manifest(self) -> RuntimeManifestV1 | RuntimeManifestV2:
         ports = tuple(
             sorted(
                 (
@@ -347,7 +363,26 @@ class RuntimeDependenciesV1:
                 key=lambda item: item.role,
             )
         )
-        return RuntimeManifestV1(schema=1, ports=ports)
+        native = getattr(self.sampling, "manifest_descriptors", None)
+        if native is None:
+            return RuntimeManifestV1(schema=1, ports=ports)
+        if (
+            not isinstance(native, tuple)
+            or len(native) != 3
+            or not isinstance(native[0], RendererDescriptorV1)
+            or not isinstance(native[1], TokenizerDescriptorV1)
+            or not isinstance(native[2], DecodingDescriptorV1)
+        ):
+            raise ValueError("native sampler manifest descriptors are invalid")
+        renderer, tokenizer, decoding = native
+        return RuntimeManifestV2(
+            schema=2,
+            ports=ports,
+            capabilities=tuple(sorted(NATIVE_RUNTIME_CAPABILITIES)),
+            renderer=renderer,
+            tokenizer=tokenizer,
+            decoding=decoding,
+        )
 
 
 def manifest_sampling_capabilities(

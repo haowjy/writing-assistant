@@ -36,6 +36,29 @@ class NativeSamplingBudget:
                 raise ValueError(f"{name} must be a nonnegative integer or None")
 
 
+@dataclass(frozen=True)
+class NativeSamplingHistory:
+    """Persisted token prefix for the previous committed native writer turn."""
+
+    turn: WriterTurnV2
+    input_token_ids: tuple[int, ...]
+    generated_token_ids: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.turn, WriterTurnV2):
+            raise TypeError("native sampling history requires a committed WriterTurnV2")
+        for name in ("input_token_ids", "generated_token_ids"):
+            values = getattr(self, name)
+            if not isinstance(values, tuple) or any(
+                type(token) is not int or token < 0 for token in values
+            ):
+                raise TypeError(f"native history {name} must be a tuple of token IDs")
+        if len(self.input_token_ids) != self.turn.input_token_count:
+            raise ValueError("native history input count differs from its turn")
+        if len(self.generated_token_ids) != self.turn.generated_token_count:
+            raise ValueError("native history generated count differs from its turn")
+
+
 class ArtifactSink(Protocol):
     """The two artifact writes needed by sampling adapters."""
 

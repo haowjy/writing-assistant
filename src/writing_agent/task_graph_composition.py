@@ -36,6 +36,10 @@ class RuntimeSession:
         if evaluator_family != dependencies.evaluator.family:
             raise ValueError("evaluator descriptor does not declare its evidence family")
         manifest = dependencies.manifest()
+        if isinstance(manifest, RuntimeManifestV2):
+            for descriptor in (manifest.renderer, manifest.tokenizer, manifest.decoding):
+                if store.put_artifact(descriptor.to_wire()) != descriptor.identity():
+                    raise ValueError("runtime descriptor persistence changed identity")
         ref = store.put_artifact(manifest.to_wire())
         if ref != manifest.identity():
             raise ValueError("runtime manifest persistence changed identity")

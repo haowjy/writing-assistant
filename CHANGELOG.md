@@ -6,6 +6,9 @@
   author replies and check-driven continuations only when their context delta is
   template-prefix stable.
 
+- Add a native Gemma renderer and V2 sampler that rebuilds each decision from committed token
+  evidence, records sampled logprobs and usage, and keeps model KV caches local to each call.
+
 - Classify filesystem path mistakes consistently in both dispatchers: missing, invalid,
   overlong, or file-ancestor paths are recoverable tool errors; host faults remain
   infrastructure failures.

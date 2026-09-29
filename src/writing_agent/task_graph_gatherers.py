@@ -28,7 +28,9 @@ from writing_agent.task_graph_ports import (
     ExecutionInfrastructureError,
     PreparedSamplingInput,
     SampleBackend,
+    SampleBackendV2,
     SampleResult,
+    SampleResultV2,
     ToolProvider,
 )
 from writing_agent.task_graph_records import (
@@ -36,6 +38,7 @@ from writing_agent.task_graph_records import (
     EvaluatorResultV1,
     ToolObservationV1,
     WriterTurnV1,
+    WriterTurnV2,
 )
 from writing_agent.task_graph_sampling import ArtifactSink, persist_logprob_trace
 from writing_agent.task_graph_scripted import scripted_author_reply
@@ -47,14 +50,14 @@ class SamplingRunner:
     def __init__(
         self,
         artifacts: ArtifactSink,
-        backend: SampleBackend,
+        backend: SampleBackend | SampleBackendV2,
         input_observer: Callable[[SamplerInput], None] | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.backend = backend
         self.input_observer = input_observer
 
-    def turn(self, port: SamplerInput) -> WriterTurnV1:
+    def turn(self, port: SamplerInput) -> WriterTurnV1 | WriterTurnV2:
         if not isinstance(port, SamplerInput):
             raise TypeError("sampling runner requires SamplerInput")
         if self.input_observer is not None:
@@ -72,8 +75,13 @@ class SamplingRunner:
             tools_json=canonical_json(port.tools),
             rendering_json=canonical_json(port.rendering),
             native_sampling_budget=port.native_sampling_budget,
+            adapter_ref=port.adapter_ref,
+            decision_ordinal=port.decision_ordinal,
+            native_history=port.native_history,
         )
         result = self.backend.sample(prepared)
+        if isinstance(result, SampleResultV2):
+            return self._native_turn(port, result)
         if not isinstance(result, SampleResult):
             raise AdapterContractError("sample backend must return SampleResult")
         message = result.message
@@ -110,6 +118,57 @@ class SamplingRunner:
         except (TypeError, ValueError, KeyError) as exc:
             raise AdapterContractError("sample response violates the writer-turn contract") from exc
         return turn
+
+    def _native_turn(self, port: SamplerInput, result: SampleResultV2) -> WriterTurnV2:
+        message = dict(result.message)
+        if (
+            message.get("role") != "assistant"
+            or (message.get("content") is not None and not isinstance(message["content"], str))
+            or not isinstance(message.get("tool_calls", []), list)
+        ):
+            raise AdapterContractError("native sample message violates the assistant contract")
+        try:
+            raw_output_ref = None
+            if result.raw_output is not None:
+                raw_output_ref = (
+                    self.artifacts.put_bytes_artifact(result.raw_output)
+                    if isinstance(result.raw_output, bytes)
+                    else self.artifacts.put_artifact(result.raw_output)
+                )
+            input_ref = self.artifacts.put_bytes_artifact(_u32_token_bytes(result.input_token_ids))
+            generated_ref = self.artifacts.put_bytes_artifact(
+                _u32_token_bytes(result.generated_token_ids)
+            )
+            logprobs_ref = self.artifacts.put_bytes_artifact(result.logprobs.data)
+            return WriterTurnV2(
+                action_id=port.action_id,
+                context_revision_ref=port.context_revision_ref,
+                raw_output_ref=raw_output_ref,
+                usage=dict(result.usage),
+                adapter_trace=None if result.trace is None else dict(result.trace),
+                message=intake_message(message),
+                input_token_ids_ref=input_ref,
+                input_token_count=len(result.input_token_ids),
+                generated_token_ids_ref=generated_ref,
+                generated_token_count=len(result.generated_token_ids),
+                logprobs={
+                    "ref": logprobs_ref,
+                    "codec": result.logprobs.codec,
+                    "shape": result.logprobs.shape,
+                },
+                termination=dict(result.termination),
+                sampling_pins=dict(result.sampling_pins),
+            )
+        except (OverflowError, TypeError, ValueError, KeyError) as exc:
+            raise AdapterContractError(
+                "native sample violates the V2 writer-turn contract"
+            ) from exc
+
+
+def _u32_token_bytes(tokens: tuple[int, ...]) -> bytes:
+    if any(token >= 2**32 for token in tokens):
+        raise ValueError("native token ID exceeds the u32 ledger codec")
+    return b"".join(token.to_bytes(4, "little") for token in tokens)
 
 
 class ToolRunner:

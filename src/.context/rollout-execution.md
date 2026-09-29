@@ -45,6 +45,10 @@ rendering, but no persisted request body or request-reference pair;
 - for a native-training group only, `native_sampling_budget` carries the remaining generated
   allowance and `max_context_tokens`; it exposes no cumulative usage ledger. The gatherer
   forwards this allocation unchanged to `PreparedSamplingInput`.
+- Native sampling also receives the sealed `adapter_ref`, the action-count `decision_ordinal`,
+  and `native_history` rebuilt from the last committed `WriterTurnV2` and its token artifacts.
+  That ledger is re-prefilled per decision; no model KV cache crosses a sample call. The
+  concrete adapter is `native_gemma.NativeGemmaSampleBackend`.
 
 The rules:
 - **There is one content hash: `view.context.content_ref`.** `step_input` supplies it, and the
