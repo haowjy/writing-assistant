@@ -1,6 +1,7 @@
 # Checkpointed task-graph environment
 
-**Proposed architecture, 2026-09-24; not an implemented runner.** The environment
+**Architecture design, 2026-09-24. The verified core is implemented; end-to-end model
+training is not.** The environment
 instantiates a versioned task graph and samples **bounded trajectories, each one
 walk through that graph**. Immutable checkpoints preserve files *and* execution
 state. A simulated author supplies user utterances, never transitions, completion,
@@ -10,8 +11,8 @@ Transitions are derived by one pure function per input kind; see §4, “Events 
 This is the authoritative runtime design. [Simulated author](simulated-author.md)
 defines collaborator behavior; [multi-turn RL](multi-turn-rl.md) supplies research
 rationale; [task generation and rewards](rl-task-generation.md) supplies admission
-and reward proposals. Where those sketches differ, this contract governs. All
-schemas/APIs below are proposed. Current implementation is distinguished explicitly.
+and reward proposals. Where those sketches differ, this contract governs. The broader
+architecture remains proposed; current core behavior is called out where it differs.
 
 **Reading map:** [boundaries](#1-boundaries-the-environment-executes-the-author-does-not-judge)
 · [current behavior](#2-what-exists-today-and-what-must-change)
@@ -43,8 +44,9 @@ flowchart LR
 ```
 
 The environment is the trusted state-machine executor, not a language model or
-just a directory. It owns the workspace, budgets, event commit, access projections,
-checkpoint store, and enforcement of the frozen task contract. The controller
+just a directory. It owns the logical file map, budgets, event commit, access projections,
+checkpoint store, and enforcement of the frozen task contract; an execution adapter may
+host a disposable workspace outside the runtime core. The controller
 selects a *proposed* permitted next step; the environment validates and commits it.
 The evaluator reports evidence/results; it cannot write project state. Dependencies
 point to versioned record contracts, not to another role's prompts or mutable internals.
@@ -66,7 +68,7 @@ whether or not components share a process.
 | Event log | Append-only causal history, including private operational events; not directly a model prompt |
 | Message | Role-tagged conversational payload inside an event; not all events are messages |
 | Active context | Exact bounded writer input derived from authorized messages, files returned by tools, and explicit context transformations |
-| Checkpoint | Immutable, restorable environment-state envelope, with parent linkage and referenced immutable artifacts; distinct from model-weight checkpoints |
+| Checkpoint | Immutable environment-state envelope that can be opened through the verified runtime, with parent linkage and referenced immutable artifacts; distinct from model-weight checkpoints |
 | Trajectory / rollout | One realized bounded walk with its writer actions, observations, state changes and outcome; aliases here |
 | GRPO group | A sealed collection of rollouts sharing a frozen task/start checkpoint and sampling/evaluation contract; never a graph |
 | Project lineage | Checkpoint ancestry across walks, branches and policy versions; not one endless rollout |
@@ -113,18 +115,18 @@ an answer. Script misses are coverage errors unless a frozen fallback was declar
 
 | Implemented evidence | Consequence for this design |
 |---|---|
-| [`Workspace.snapshot()`](../../src/writing_agent/workspace.py) returns path-to-text; defaults 128,000 bytes/file and 1,000,000 bytes total | Useful file snapshot, not an environment checkpoint; no restore/branch API |
+| [`Workspace.snapshot()`](../../src/writing_agent/workspace.py) returns path-to-text; defaults 128,000 bytes/file and 1,000,000 bytes total | Useful file snapshot, not an environment checkpoint; no checkpoint-open or branch API |
 | [`agent.py`](../../src/writing_agent/agent.py) has a bounded message/tool loop, fixed follow-ups, tool observations and per-completed-turn file snapshots | Retain tool semantics; replace fixed follow-up sequencing with a controller |
-| [`suite.py`](../../src/writing_agent/suite.py) isolates attempts, saves before/after artifacts, resumes completed identities and retries interruptions from clean state | Evaluation resume is not mid-rollout restore; maintain historical records separately |
+| [`suite.py`](../../src/writing_agent/suite.py) isolates attempts, saves before/after artifacts, resumes completed identities and retries interruptions from clean state | Evaluation resume is not mid-rollout continuation; maintain historical records separately |
 | [`data.py`](../../src/writing_agent/data.py) validates reviewed training trajectories; [`training.py`](../../src/writing_agent/training.py) masks non-assistant material in native training exports | Do not treat a flat exported transcript as canonical state or an RL probability trace |
 | [`reward.py`](../../src/writing_agent/reward.py) computes training-side scalar/relative advantages separately from benchmark scoring | Reuse scoring semantics through an adapter, but require a stronger group identity and eligibility gate |
-| [Source contracts](../../src/.context/CONTEXT.md) define private labels, path tools, bounded inference and serial run directories | Preserve separation; graph, checkpoint, adaptive-author and GRPO execution contracts are new |
+| [Source contracts](../../src/.context/CONTEXT.md) define private labels, path tools, bounded inference and serial run directories | Preserve separation; the verified graph/checkpoint core exists, while adaptive-author and end-to-end GRPO training remain proposed |
 
 Current workspace tools expose text files, not a shell/browser. The old sketch's
 250k context window is **not** a runtime guarantee: use the pinned backend's actual
 input-plus-output limit (the current local harness declares 65,536). Store context
-capacity separately from total trajectory token/time/tool budgets. No probability
-or restore capability is inferred from a saved before/after snapshot.
+capacity separately from total trajectory token/time/tool budgets. A saved before/after
+snapshot does not imply a probability trace or mid-rollout resume capability.
 
 Existing regression evidence is in [core workspace/agent/data tests](../../tests/test_core.py),
 [follow-up/resume tests](../../tests/test_research.py), and
@@ -136,16 +138,16 @@ not the proposed checkpoint/graph contracts.
 An environment state is a versioned value. Its immutable references resolve to
 hash-verified artifacts. Private references are available only to authorized services;
 materializing a writer workspace must never materialize the envelope or author/rubric
-packets there. The implemented rollout core stores the file map but does not own a
-workspace or materialize files on entry/open; adapters that need a directory use a separate
-materialization operation.
+packets there. The rollout core stores the file map and sends it through typed port inputs;
+an adapter that needs a directory creates it outside the runtime core. The store's
+`materialize_context` flattens context chains, not workspaces.
 
 | Field group | Required content |
 |---|---|
 | Graph position | Template ID/hash, instantiated graph hash/schema version, node ID, visit ID, loop counters, phase, entry contract hash, originating start checkpoint (null at entry), edge/branch lineage |
 | Project files | Canonical relative path → exact UTF-8 text, file hashes, aggregate file-tree hash, file/tool byte limits |
-| History | Event head hash and sequence cursor; branch base event head; imported seed/context provenance; committed action and tool-result IDs |
-| Active context | Context revision/artifact hash, ordered message/summary references, visibility projection version, prefix ID, render/template/tokenizer/tool-schema hashes, exact rendered input when sampled |
+| History | Event head hash and sequence cursor; branch base event head; imported seed/context provenance; nonnegative `action_count` and `tool_result_count` |
+| Active context | Context revision/artifact hash, ordered message/summary references, visibility projection version, prefix ID, render/template/tokenizer/tool-schema hashes; the adapter renders each sampled request from these pins |
 | Requirements and decisions | Immutable versions for binding requirements, accepted decisions, superseded entries, reveal permissions and disclosure history; author-packet hash and independent source evidence |
 | Continuation | Ordered pending tool calls and next-call cursor, unanswered author request, outstanding check/request IDs with target hashes, applied-response IDs and mandatory-feedback cursor |
 | Execution configuration | Environment, controller, simulator, evaluator, reward, compactor and tool implementation/config hashes; interaction mode and fallback policy |
@@ -156,11 +158,10 @@ materialization operation.
 | Provenance | Parent checkpoint(s), origin rollout/group/lineage, creator environment version; writer policy/weights/adapter/tokenizer identity for actions already taken and current pinned behavior-policy contract |
 
 Do not checkpoint credentials, live clients, Python objects, KV caches, open handles
-or absolute worker paths. **As built:** the state contains the file map, but the runtime
-handle has no workspace and entry/open do not materialize files. A separate store
-materialization operation is the boundary for adapters that need a directory. Reconstruct
-these from configuration. Paid-call reservations
-and global spend limits live in an external durable ledger: restoring a checkpoint
+or absolute worker paths. The runtime handle contains a checkpoint, state and verified
+context, not a workspace; `step_input` supplies typed port inputs. Reconstruct live
+resources from configuration. Paid-call reservations
+and global spend limits live in an external durable ledger: opening a checkpoint
 **never refunds spending or releases uncertain charges**. References to reservations
 and logical task-budget counters are checkpointed. Operational timestamps/worker IDs
 are side metadata, not task identity. Wall-clock checks become recorded observations;
@@ -178,7 +179,8 @@ EnvironmentStateV1 = {
              entry_contract: Hash, start_checkpoint: Hash | null,
              loop_counts: map[str, int], lineage_id: str},
   files: map[SafePath, Utf8Text], tree_hash: Hash,
-  history: {head: Hash | null, seq: int, branch_base: Hash | null},
+  history: {head: Hash | null, seq: int, branch_base: Hash | null,
+            imported_refs: list[Hash], action_count: int, tool_result_count: int},
   context_ref: Ref[ContextRevision],
   requirements_ref: Ref[Requirements], decisions_ref: Ref[Decisions],
   disclosures_ref: Ref[DisclosureLedger], author_packet_ref: Hash | null,
@@ -202,10 +204,10 @@ is validated, not two independent cursors. At a new entry checkpoint,
 as its origin. No checkpoint contains its own ID. `in_flight_effects=[]` is a required
 checkpoint invariant: an immutable checkpoint describes a recoverable logical state,
 not a live call. Queued tool calls and unanswered requests are allowed and explicitly
-checkpointed. External dispatch/receipt lives in recovery journals; restore consults
-those journals before any dispatch, never assuming a missing response means no call.
+checkpointed. External dispatch/receipt lives in recovery journals; continuation consults
+those journals before dispatch, never assuming a missing response means no call.
 
-An absent field required by the schema makes a state non-restorable. Legacy imports
+An absent field required by the schema makes a state impossible to open. Legacy imports
 must be labeled `seed_only` rather than filling unknown controller/RNG state with
 guesses. Mutable author conversation state, if introduced, is explicit state here;
 v1 author calls are stateless over exact recorded requests.
@@ -221,6 +223,9 @@ NodeSpec:
   budgets, mandatory_checks, optional_checks, completion_contract
   exits: list[{edge_id, guard_ref, target_node?, effect, precedence}]
 ```
+
+`entry` is the node-entry contract, including its `request_ref`; the current
+`NodeSpecV1.entry_contract` points to a `NodeContractV1` artifact containing that entry.
 
 `effect` is `advance | branch | terminate`; clarification stays in the same visit.
 The `families` list is empty for an environment node. Completion and check
@@ -371,7 +376,7 @@ the projection/index, never embedded back into its own payload. The event store 
 | Event kinds | Payload and model-context treatment |
 |---|---|
 | `rollout_started` | Slot, origin checkpoint and assigned random streams; private, context-only |
-| `writer_action` | One typed `WriterTurnV1` input (parsed message, request/output evidence, usage and adapter trace); its derive queues any calls |
+| `writer_action` | One typed `WriterTurnV1` input (sampled message, context-revision reference, optional raw output, usage and adapter trace); its derive queues any calls |
 | `tool_result` | One typed `ToolObservationV1` input for the next queued call; its derive records the result, file effect, charge and context append |
 | `author_turn` | One `AuthorReplyV1` input; its derive applies the authorized reply and control-tool acknowledgement together |
 | `external_requested` | Typed author/check request step; private request and apply precondition |
@@ -382,23 +387,23 @@ the projection/index, never embedded back into its own payload. The event store 
 | `budget_charged` | Writer-turn input over budget; the derive records its charge and incomplete outcome |
 | `request_entered`, `seed_attached`, `fetch_recorded`, `external_response` | Reserved event kinds in v1; no current producer |
 
-Action and call IDs are stable `(rollout_id, ordinal)` identifiers, not their enclosing
-event hashes. Trace payloads use `action_id`; the event index maps that ID to its event
-hash, avoiding a self-referential hash. Every checkpoint on a verified lineage equals
+Writer action IDs are stable `(lineage_id, ordinal)` identifiers, not their enclosing
+event hashes. Tool-call IDs are carried by the queued call and bound to its observation.
+Trace payloads use `action_id`; the event index maps that ID to its event hash, avoiding
+a self-referential hash. Every checkpoint on a verified lineage equals
 the state its event's derivation produces, which is stronger than a fingerprint of a
 projection of it; v1 records no separate execution-value fingerprints. Hashes still
 exclude provenance where content identity must be comparable (context content, §4).
 
-Action IDs and tool-result IDs are logical index keys (for example,
-`r1:action:0` and `r1:tool_result:0`), never SHA-256 event hashes. The two ID
-classes are validated independently in `history.action_ids` and
-`history.tool_result_ids`; event hashes remain separate references, while
+Action IDs are logical index keys (for example, `r1:action:0`), never SHA-256 event
+hashes; their ordinals come from `history.action_count`. History stores a nonnegative
+`tool_result_count`, not tool-result IDs. Event hashes remain separate references, while
 tool-call IDs remain the logical call IDs bound by the queue.
 
 Context content is a hash chain: each node appends messages to its parent; a root holds
 tools and rendering pins. A context revision names its content head and source event.
 Compaction, seed and drop create a new root. The checkpoint references the revision.
-This preserves exact replay evidence without a payload referring to its own future
+This preserves replay evidence without a payload referring to its own future
 event/checkpoint hash.
 
 Tool-call IDs are unique within a rollout. Commit the writer action first, then one
@@ -450,10 +455,11 @@ separate experiment and would need an explicit policy-action contract.
 
 ### Action probabilities stay with the sampled context
 
-Version 1 records one `WriterTurnV1` per sampled turn: the parsed message, exact
-request/prepared-request/raw-output references, usage, and adapter trace. The adapter
-trace is the sole source of model, seed, token IDs and binary logprobs; its optional
-context claims are bound when present. Phase 8 adds token and mask evidence as
+Version 1 records one `WriterTurnV1` per sampled turn: the parsed message,
+`context_revision_ref`, optional `raw_output_ref`, usage, and adapter trace. The exact
+request is reconstructed from the pinned context and rendering rather than copied into
+the turn. The adapter trace is the sole source of model, seed, token IDs and binary
+logprobs; its optional context claims are bound when present. Phase 8 adds token and mask evidence as
 `WriterTurnV2` behind the same decoder.
 
 The behavior distribution and logprob convention must be explicit: logits before
@@ -473,7 +479,7 @@ its writer segments; no compaction creates a new independent action history.
 ## 5. Immutable checkpoints: full envelopes first, no Git
 
 **Use full file snapshots in checkpoint envelopes for v1.** Existing text workspaces
-are capped at 1,000,000 bytes; full copies minimize restore/deletion/path correctness
+are capped at 1,000,000 bytes; full copies minimize reopen/deletion/path correctness
 risk. This is an engineering choice, not a measured throughput claim. Hash-address
 whole immutable artifacts from the start; do not initially require a per-file blob
 store, delta chain or Git repository. Large source packets may already be referenced
@@ -485,12 +491,12 @@ flowchart LR
     P --> B["Child B: isolated materialization"]
     A --> A1["Checkpoint A1"]
     B --> B1["Checkpoint B1"]
-    A1 --> D["Diff A1 versus B1"]
+    A1 --> D["Compare candidate states"]
     B1 --> D
 ```
 
 A checkpoint contains a full state envelope and an event-head reference. Parent
-linkage describes causal ancestry, not a diff required to restore files. Normal
+linkage describes causal ancestry, not a file delta required to reopen state. Normal
 checkpoints have one parent; roots have none. Multiple-parent merge checkpoints are
 **not supported** initially. A narrative “merge branches” task is a new writer node
 with explicit inputs and requirements, not an automatic storage merge.
@@ -542,16 +548,14 @@ the event hash is not substituted for a payload identity.
 
 | Operation | Contract |
 |---|---|
-| `checkpoint` | At a quiescent logical boundary, freeze state and verify references; publish it only through the atomic commit protocol below |
-| `materialize` | Separate optional operation: verify the checkpoint and reconstruct only its files into a fresh private execution directory; reject missing artifacts instead of partial materialization |
-| `restore` | The rollout API resumes through `RolloutEnvironment.open`/`open_head` without a workspace or event-log rewind. The explicitly called lower-level `TaskGraphStore.restore(checkpoint_id, fresh_root)` verifies through the mandatory gate and materializes a workspace; `TaskGraphStore.materialize` is available separately. |
+| `checkpoint` | Save a structurally valid checkpoint; semantic verification belongs to the gate at publication and open |
+| `open` / `open_head` | `RolloutEnvironment.open` opens a verified checkpoint; `open_head` resumes the published lineage head. Neither creates a workspace or rewinds the event history. |
 | `branch` | Runtime group members use `MemberStartV1` from the shared entry; general branch/advance remain Phase 9. A child has a new entry contract; the parent remains immutable |
-| `diff` | Sorted added/deleted/changed paths with before/after hashes and optional text diffs; separately report non-file state differences (including contexts/requirements/budgets) |
 | `replay` | Fold `derive` over recorded inputs from the admitted entry; require each event and checkpoint state to match, and require the entry itself to derive from its admitted node |
 
 This supplies Git-like immutable identities, parent ancestry, named mutable branch
-heads and diffs **without Git**, index/worktree semantics, textual merge heuristics
-or commits made by the writer.
+heads **without Git**, index/worktree semantics, textual merge heuristics or commits
+made by the writer. File-map comparison is outside the store API.
 
 ### One commit publishes every logical effect together
 
@@ -583,7 +587,7 @@ it must not persist `expected_head` or treat that request field as lineage state
 
 A `writer_action` commit records the `WriterTurnV1` input, usage and sampled evidence; its derive
 queues calls and advances state. Each following tool-result input records one observation;
-its derive updates files, budget, context and the call cursor together. A restored handle
+its derive updates files, budget, context and the call cursor together. An opened runtime
 resumes the next queued call, not generation or an earlier tool. Author delivery is one
 `author_turn` event whose derive applies validated disclosure/requirement changes, the
 user utterance, control-tool acknowledgement, budget, context update, and cleared request.
@@ -605,7 +609,7 @@ by replay, even if the local transaction did not publish.
 | Between tool execution and publication | Nothing published; the recorded observation is an orphan; re-execute the local text tool (a remote tool needs the receipt journal) |
 | Between decision staging and author utterance | Neither is public until the batch commits; reuse journaled response and apply once |
 | Immediately before head publication | Old head is authoritative; artifacts are orphaned or reused by a reconciled commit |
-| Immediately after head publication | New state is authoritative even if worker files lag; materialize before the next operation |
+| Immediately after head publication | New state is authoritative; an execution adapter must source its next operation from the published file map, not stale workspace state |
 | After paid response but before state application | Consume the matching receipt once; no second model call or spend reservation |
 
 ### A hash fixture has no backwards dependency
@@ -631,18 +635,18 @@ IDs to events; they introduce no backwards link inside a hashed payload.
 Record/replay is deterministic for **recorded** effects; resampling a provider call
 from a seed is not guaranteed identical. Distinguish:
 
-- **State restore:** load the exact saved state without executing past actions.
+- **Checkpoint open:** load the saved state through the verified runtime; validation re-derives recorded history without resampling past actions.
 - **Recorded replay:** fold a recorded suffix; reuse exact author/fetch/judge/tool
   observations and file effects. Reject divergence/missing observations.
-- **Fresh continuation:** generate new actions from a restored start; this is a new
+- **Fresh continuation:** generate new actions from an opened start checkpoint; this is a new
   rollout with its own provenance, not proof of exact stochastic reproducibility.
 
 Garbage collection is mark-and-sweep over explicit roots: retained run/group manifests,
 branch heads, evaluation records and exported dataset/action-context references.
 Traverse commits, checkpoint ancestry, event prefixes, payloads, sources and context artifacts;
 private artifacts are not exempt. Pin roots during active writes/exports; use a grace
-period and a store-level lock before deletion. Full envelopes permit direct file
-restore, but deleting their event ancestors destroys audit replay. Never collect by
+period and a store-level lock before deletion. Full envelopes store the complete file
+map, but deleting event ancestors destroys audit replay. Never collect by
 age alone. Storage/retention thresholds remain an operational policy to choose.
 
 ## 6. Lifecycle: finite walks, persistent project state
@@ -816,9 +820,9 @@ or behavior policy creates a **new group contract**. Changing only a worker path
 operational timestamp does not. A branch creates a new entry/group even if files are
 identical. Policy updates occur only between sealed groups in v1; inherited actions
 from an earlier policy remain context-only unless separately trained under their
-original group/probabilities. A post-restore policy change is a recorded between-group
-configuration event creating a new entry checkpoint; it is not an in-place edit of
-an old checkpoint.
+original group/probabilities. A policy change after opening an earlier checkpoint is a
+recorded between-group configuration event creating a new entry checkpoint; it is not an
+in-place edit of an old checkpoint.
 
 All members must be valid and have available rewards before advantages are computed.
 Valid writer failures stay in the denominator. Missing grader responses keep the group
@@ -896,8 +900,9 @@ it is unnecessary for the trusted text-only v1 tool contract.
 Canonical task-graph storage is separate from any disposable execution workspace.
 The core checkpoints files as values but does not materialize them: `RolloutEnvironment`
 has no workspace field or workspace root; execution adapters receive typed file inputs.
-An explicit materializer, when needed, is a separate store operation. Store roots are
-never exposed as workspace paths.
+`TaskGraphStore.materialize_context` flattens context chains and does not create a
+workspace. An adapter that needs a directory builds it from typed file inputs. Store
+roots are never exposed as workspace paths.
 
 ```text
 store/
@@ -920,7 +925,7 @@ ledger/                            # append-only paid reservations; never restor
 
 Events are stored individually to support immutable branching without copying a JSONL
 prefix; export resolved histories as JSONL when convenient. The store and rollout core do
-not own a workspace tree or materialize one when opening a checkpoint. `artifacts` may contain
+not own a workspace tree or create one when opening a checkpoint. `artifacts` may contain
 private raw calls and must not be world-readable; directory names are organization,
 not sufficient access control. Reference closure and projection checks enforce access.
 
@@ -941,14 +946,12 @@ class AuthorReplyV1:
     selected_proposals: dict[Hash, tuple[ProposalID, ...]]  # keyed by decision ref
     evidence_refs: tuple[Hash, ...]   # provenance only; no transition/score
 
-class CheckpointStore:
-    def save(self, state: EnvironmentStateV1, parent: Hash | None) -> Hash: ...
-    def load(self, checkpoint: Hash) -> CheckpointV1: ...
-    def materialize(self, checkpoint: Hash, fresh_root: Path) -> Runtime: ...
-    def diff(self, before: Hash, after: Hash) -> StateDiff: ...
-
-class CommitStore:
-    # The structural store API accepts batches; the runtime CommitVerifier permits one event.
+class TaskGraphStore:
+    def save_checkpoint(self, state: EnvironmentStateV1, parent: Hash | None) -> Hash: ...
+    def load_checkpoint(self, checkpoint: Hash) -> CheckpointV1: ...
+    def materialize_context(self, revision: Hash) -> MaterializedContextV1: ...
+    def read_head(self, lineage: str) -> Hash | None: ...
+    # The structural store accepts batches; the runtime verifier permits one event.
     def publish(self, lineage: str, expected_head: Hash | None,
                 events: tuple[EventV1, ...], next_state: EnvironmentStateV1) -> Hash: ...
 
@@ -958,7 +961,6 @@ class RolloutEnvironment:
     def open_head(self, lineage_id: str) -> RuntimeHandle: ...
     def verify(self, runtime: RuntimeHandle) -> LineageView: ...
     def step_input(self, runtime: RuntimeHandle) -> tuple[LineageView, Directive, PortInput | None]: ...
-    def port_input(self, view: LineageView, directive: Directive) -> PortInput | None: ...
     def commit(self, runtime: RuntimeHandle, input: InputRecord) -> StepResult: ...
     def start_member(self, entry_checkpoint_id: Hash, start: MemberStartV1) -> RuntimeHandle: ...
 
@@ -979,24 +981,24 @@ class GroupCoordinator:
 ```
 
 The store is constructed with a mandatory `CommitVerifier`: `publish` calls its
-`verify_commit` under the lineage lock, and restore calls `view`. Without a verifier the
-store rejects `publish` and `restore` at `store.verifier`; a runtime lineage without the
-`task-graph-derive-v1` semantics pin is rejected at
+`verify_commit` under the lineage lock, and `RolloutEnvironment.open`/`open_head` obtain
+the verified view through the gate. Construction without a verifier fails; publication
+is gated, and a runtime lineage without the `task-graph-derive-v1` semantics pin is rejected at
 `state.versions_ref.transition_semantics`. After publication the environment calls
 `record_published(store, commit_id)`, which verifies the published head before caching its
 view; it does not accept a caller-provided candidate view.
 
 The store API accepts event batches, but the required verifier rejects more than one
-event in a runtime commit. `RolloutDriver.run` calls `step_input`, gathers the typed port
-input (or encodes `EnvironmentStepV1.of(directive)`), and commits one input before asking
-the controller again. `port_input` supports a caller that builds a port outside the driver,
-and requires the verified view and matching directive. The driver returns
+event in a runtime commit. `RolloutDriver.run` calls `step_input`, gathers its verified
+typed port input (or encodes `EnvironmentStepV1.of(directive)`), and commits one input
+before asking the controller again. The driver returns
 `RunResult(runtime, directive)`; `done` and `halt` are distinct outcomes.
 `Directive` uses the v1 vocabulary (`sample_writer`, `execute_tool`, `request_author`,
 `await_author_reply`, `request_checks`, `await_check_result`, `commit_transition`,
 `seal_outcome`, `stop_exhausted`, `publish_reward`, `halt`, `done`), and `next_step(view)`
-is shared by the driver and replay. `advance` and `branch` remain Phase 9. The runtime handle
-is opaque and is not a model tool argument. Mutable head writes use locks/CAS.
+is shared by the driver and gate verification. `advance` and `branch` remain Phase 9.
+`RuntimeHandle` contains a checkpoint ID, state and verified context; it is not a model
+tool argument. Mutable head writes use locks/CAS.
 
 ## 11. Migration and verification gates
 
@@ -1006,7 +1008,7 @@ benchmark behavior/results and code contracts unchanged until explicit adapters 
 | Stage | Migration seam | Evidence required before advancing |
 |---|---|---|
 | 1. Freeze records | Add versioned graph/node/event/state schemas beside existing scenario formats; compile legacy brief+followups as an explicitly scripted single-node contract | Golden fixtures preserve existing turns/check inputs; invalid edges, missing budgets and impossible source requirements rejected |
-| 2. Checkpoint text environment | Wrap text-tool effects and full state snapshots in verified event/checkpoint storage | Restore round-trip equal files/state/context hashes and re-derivation of every recorded input from entry; empty/deleted/Unicode files; path attacks; corrupt/missing refs; crash before/after publication; branch parent unchanged |
+| 2. Checkpoint text environment | Wrap text-tool effects and full state snapshots in verified event/checkpoint storage | Open round-trip equal files/state/context hashes and re-derivation of every recorded input from entry; empty/deleted/Unicode files; path attacks; corrupt/missing refs; crash before/after publication; branch parent unchanged |
 | 3. Scripted controller | Replace follow-up list traversal for opted-in graph cases; keep old evaluation runner available | Clarification/repeat/unsupported paths; required feedback stage; final-turn success; illegal transition fails; author “done” cannot complete task |
 | 4. Restricted author and compaction | Add versioned stateless simulator and fixed safe-boundary compactor | No rubric/sibling/undisclosed leakage via projection; malformed or ungrounded replies invalidate; exact-input cache identity; pre/post-compaction trace and file/decision preservation |
 | 5. Group coordinator and RL traces | Bind the same entry and contract to member lineages; collect through verified views and emit segment-credit artifacts | Equal sealed starts; isolated RNG streams; mask tool/user/seed tokens; segment likelihood reconstruction; policy-change rejection; pending/tie/invalid-group handling |
@@ -1028,7 +1030,7 @@ future implementation, not claims made by this documentation change.
 ## 12. Open-ended stream, bounded compute
 
 The sampler repeatedly chooses admitted source packets, template variants, starting
-checkpoints, transformations and author preferences; it materializes/freeze-validates
+checkpoints, transformations and author preferences; it instantiates and freeze-validates
 an instance, runs a bounded group, then optionally admits continuations or branches.
 Every rollout has finite node/turn/tool/token/time/hop limits. The scheduler also has
 explicit experiment/spend limits: an open-ended generator does not authorize an
@@ -1045,9 +1047,9 @@ before generation, and held-out evaluation remains frozen.
 
 | Decision | Chosen design and tradeoff | Alternative / when to revisit |
 |---|---|---|
-| Full snapshots vs per-file CAS | Full text maps in hash-addressed checkpoint envelopes; simplest correct restore at current 1 MB cap, but repeats unchanged text | Blob/manifest trees reduce duplication for many checkpoints/larger projects; introduce after measuring storage cost, preserve logical hashes/API |
-| Canonical events vs messages-as-state | Typed append-only events + immutable materialized state + context artifacts; larger records but represent budgets, tool effects and hidden state | Flat messages cannot restore files/control state or preserve compacted contexts; rejected as canonical storage |
-| State snapshots vs replay-only sourcing | Snapshot restore is primary; event replay audits suffixes with committed deltas | Re-running models/tools from log descriptions is not deterministic; pure replay-only state recovery increases dependency/risk |
+| Full snapshots vs per-file CAS | Full text maps in hash-addressed checkpoint envelopes; simplest correct reopening at current 1 MB cap, but repeats unchanged text | Blob/manifest trees reduce duplication for many checkpoints/larger projects; introduce after measuring storage cost, preserve logical hashes/API |
+| Canonical events vs messages-as-state | Typed append-only events + immutable materialized state + context artifacts; larger records but represent budgets, tool effects and hidden state | Flat messages cannot recover files/control state or preserve compacted contexts; rejected as canonical storage |
+| State snapshots vs replay-only sourcing | Checkpoint opening is primary; event replay audits suffixes with committed deltas | Re-running models/tools from log descriptions is not deterministic; pure replay-only state recovery increases dependency/risk |
 | Node-local vs multi-node reward | Node-local groups bound comparisons and provenance; downstream cross-node credit is not learned directly | Multi-node rollout horizon may reward persistence across stages, but needs explicit shared horizon/aggregation and validated credit rules |
 | Environment vs author transition control | Only environment commits guards; simulator supplies utterance | Author-controlled `DONE` or reward creates self-approval/leakage; rejected |
 | Stateless vs conversational author service | Exact request per call; simple isolation/cache identity, potentially larger prompts | Sessionful partner needs checkpointed hidden state and stricter branch isolation |
