@@ -17,6 +17,7 @@ from tests.task_graph_rollout_fixtures import (
 )
 from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json
 from writing_agent.task_graph_calls import intake_message
+from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_derive_writer import derive_writer_turn
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
@@ -29,7 +30,13 @@ from writing_agent.task_graph_group import (
     GroupMemberResultV1,
     GroupScriptedTerminalV1,
 )
-from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_local import (
+    DeterministicEvaluator,
+    LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
+    ScriptedSampleBackend,
+)
+from writing_agent.task_graph_ports import RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
 from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
 from writing_agent.task_graph_store import TaskGraphStore
@@ -76,6 +83,49 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             member_count=2,
             runner_mode=mode,
         )
+
+    @staticmethod
+    def runtime_session(fixture):
+        backend = ScriptedSampleBackend(())
+        tools = LocalTextToolProvider()
+        dependencies = RuntimeDependenciesV1(
+            backend,
+            LocalWorkspaceEnvironment(tools),
+            tools,
+            DeterministicEvaluator(),
+        )
+        unbound = RuntimeSession.create(fixture.store, dependencies)
+        return unbound.bind(fixture.store, unbound.manifest_ref)
+
+    def test_token_limited_group_seal_rejects_manifest_without_usage_reporting(self):
+        fixture = build_rollout_fixture(self.root / "token-limited-group", mode="token_limited")
+        session = self.runtime_session(fixture)
+        policy = self.policy_for(fixture)
+        policy["adapter_ref"] = session.manifest_ref
+        coordinator = GroupCoordinatorV1(fixture.env, session=session)
+
+        with self.assertRaises(AdapterContractError):
+            coordinator.seal(
+                fixture.runtime.checkpoint_id,
+                policy=policy,
+                group_seed=17,
+                group_sequence=0,
+                member_count=2,
+            )
+
+    def test_token_limited_session_binding_rejects_manifest_without_usage_reporting(self):
+        fixture = build_rollout_fixture(self.root / "token-limited-bind", mode="token_limited")
+        session = self.runtime_session(fixture)
+        environment = RolloutEnvironment(
+            fixture.store,
+            fixture.entry.graph,
+            session,
+            fixture.gate,
+            fixture.entry.graph.policy,
+        )
+
+        with self.assertRaises(AdapterContractError):
+            environment.verify(fixture.runtime)
 
     def test_group_terminal_records_roundtrip_with_unchanged_payload_identity(self):
         fixture = GroupScriptedTerminalV1(

@@ -180,11 +180,11 @@ class _Contract:
             raise TypeError(f"{cls.ARTIFACT_TYPE} must be an object")
         expected = {field.name for field in fields(cls)} | {"artifact_type"}
         present = set(value)
-        if present != expected and present != expected - cls.OMIT_NONE_FIELDS:
-            missing = sorted(expected - set(value))
+        missing = expected - present
+        if missing - cls.OMIT_NONE_FIELDS or present - expected:
             unknown = sorted(set(value) - expected)
             raise ValueError(
-                f"invalid {cls.ARTIFACT_TYPE} fields; missing={missing}, unknown={unknown}"
+                f"invalid {cls.ARTIFACT_TYPE} fields; missing={sorted(missing)}, unknown={unknown}"
             )
         if value["artifact_type"] != cls.ARTIFACT_TYPE:
             raise ValueError(f"expected {cls.ARTIFACT_TYPE}")
@@ -301,8 +301,11 @@ class BudgetContractV1(_Contract):
     max_graph_hops: int = 0
     max_visits: int = 0
     max_generated_tokens: int | None = None
+    max_total_tokens: int | None = None
     ARTIFACT_TYPE: ClassVar[str] = "BudgetContractV1"
-    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"max_generated_tokens"})
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"max_generated_tokens", "max_total_tokens"}
+    )
 
     def validate(self) -> None:
         _nonnegative(self.max_steps, "max_steps", positive=True)
@@ -314,6 +317,8 @@ class BudgetContractV1(_Contract):
         _nonnegative(self.max_visits, "max_visits", positive=True)
         if self.max_generated_tokens is not None:
             _nonnegative(self.max_generated_tokens, "max_generated_tokens")
+        if self.max_total_tokens is not None:
+            _nonnegative(self.max_total_tokens, "max_total_tokens")
 
 
 @dataclass(frozen=True)

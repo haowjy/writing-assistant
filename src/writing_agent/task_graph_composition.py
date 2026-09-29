@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_local import LocalWorkspaceEnvironment
 from writing_agent.task_graph_ports import (
+    USAGE_REPORTING_CAPABILITY,
     RuntimeDependenciesV1,
+    manifest_supports_usage_reporting,
 )
 from writing_agent.task_graph_transition import LineageView
 
@@ -46,13 +49,17 @@ class RuntimeSession:
             raise ValueError("sealed adapter manifest differs from executing runtime")
         return RuntimeSession(self.dependencies, self.manifest_ref, adapter_ref)
 
-    def require_seal(self, adapter_ref: str) -> None:
+    def require_seal(self, adapter_ref: str, *, token_limited: bool = False) -> None:
         if (
             self.sealed_adapter_ref != adapter_ref
             or self.manifest_ref != adapter_ref
             or self.dependencies.manifest().identity() != adapter_ref
         ):
-            raise ValueError("sealed adapter manifest differs from executing runtime")
+            raise AdapterContractError("sealed adapter manifest differs from executing runtime")
+        if token_limited and not manifest_supports_usage_reporting(self.dependencies.manifest()):
+            raise AdapterContractError(
+                f"token-limited entry requires {USAGE_REPORTING_CAPABILITY} capability"
+            )
 
     def require_member_seal(self, view: LineageView) -> None:
         """Check the gate-verified group contract against the executing manifest."""
@@ -62,4 +69,8 @@ class RuntimeSession:
         lineage = view.state.position["lineage_id"]
         if lineage not in {member.member_id for member in spec.members}:
             raise ValueError("group member differs from its verified group contract")
-        self.require_seal(spec.policy["adapter_ref"])
+        budget = view.node.contract.budget_contract
+        token_limited = (
+            budget.max_generated_tokens is not None or budget.max_total_tokens is not None
+        )
+        self.require_seal(spec.policy["adapter_ref"], token_limited=token_limited)

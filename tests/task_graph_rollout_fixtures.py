@@ -4,7 +4,8 @@
 session=None)`` creates a verified entry, store, gate, environment, and default gatherers.
 Modes are ``slice`` (writer/tool/author/check), ``none`` (writer-only reward),
 ``feedback`` (mandatory feedback plus requirement supersession), ``token_limited`` (a real
-generated-token budget), and ``halt`` (no admitted evaluation). The fixture exposes
+generated-token budget), ``total_token_limited`` (a real total-token budget), and ``halt``
+(no admitted evaluation). The fixture exposes
 ``entry``, ``store``, ``gate``, ``env``, ``runtime``, ``lineage_id``, ``counter``,
 ``sampler_inputs``, ordered ``checkpoint_ids``, and a composable ``commit_observer`` hook.
 
@@ -337,6 +338,11 @@ def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
             contract,
             budgets=replace(budgets, max_generated_tokens=100),
         )
+    elif mode == "total_token_limited":
+        entry = replace(
+            contract,
+            budgets=replace(budgets, max_total_tokens=5),
+        )
     else:
         entry = replace(contract, entry=entry_contract)
     fixture.reader.public[entry.identity()] = entry.to_dict()
@@ -418,7 +424,14 @@ def build_rollout_fixture(
     session=None,
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
-    if mode not in {"slice", "none", "feedback", "token_limited", "halt"}:
+    if mode not in {
+        "slice",
+        "none",
+        "feedback",
+        "token_limited",
+        "total_token_limited",
+        "halt",
+    }:
         raise ValueError("unsupported rollout fixture mode")
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)

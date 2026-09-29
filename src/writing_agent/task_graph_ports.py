@@ -16,6 +16,8 @@ from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
 from writing_agent.task_graph_records import RuntimeManifestV1, RuntimePortDescriptorV1
 
+USAGE_REPORTING_CAPABILITY = "usage_reporting"
+
 
 @dataclass(frozen=True)
 class PortDescriptorV1:
@@ -23,6 +25,7 @@ class PortDescriptorV1:
     implementation: str
     version: str
     configuration_json: str = "{}"
+    capabilities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.role not in {"sampling", "environment", "tools", "evaluator"}:
@@ -35,17 +38,29 @@ class PortDescriptorV1:
             or canonical_json(configuration) != self.configuration_json
         ):
             raise ValueError("port configuration must be canonical JSON object")
+        if "capabilities" in configuration:
+            raise ValueError("port capabilities must use the descriptor field")
+        if (
+            not isinstance(self.capabilities, tuple)
+            or self.capabilities != tuple(sorted(set(self.capabilities)))
+            or set(self.capabilities) - {USAGE_REPORTING_CAPABILITY}
+            or (self.capabilities and self.role != "sampling")
+        ):
+            raise ValueError("port capabilities must be supported, sorted, and role-specific")
 
     def to_wire(self) -> dict[str, Any]:
         return self.to_record().to_wire()
 
     def to_record(self) -> RuntimePortDescriptorV1:
+        configuration = json.loads(self.configuration_json)
+        if self.capabilities:
+            configuration["capabilities"] = list(self.capabilities)
         return RuntimePortDescriptorV1(
             schema=1,
             role=self.role,
             implementation=self.implementation,
             version=self.version,
-            configuration=json.loads(self.configuration_json),
+            configuration=configuration,
         )
 
     def identity(self) -> str:
@@ -276,3 +291,10 @@ class RuntimeDependenciesV1:
             )
         )
         return RuntimeManifestV1(schema=1, ports=ports)
+
+
+def manifest_supports_usage_reporting(manifest: RuntimeManifestV1) -> bool:
+    """Whether the sealed sampling descriptor promises token usage evidence."""
+    sampler = next(port for port in manifest.ports if port.role == "sampling")
+    capabilities = sampler.configuration.get("capabilities", ())
+    return USAGE_REPORTING_CAPABILITY in capabilities

@@ -17,6 +17,7 @@
   semantics bump.
 - Native on-policy optimization remains future work.
 - Admission rejects a node whose checks require multiple evaluator families.
+- Token-limited entries require a usage-reporting sampler manifest and support total-token caps.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

@@ -435,6 +435,44 @@ class RolloutDriverTests(unittest.TestCase):
         self.assertEqual(_artifact_count(fixture.store), before)
         self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
 
+    def test_total_token_limit_is_seeded_and_charges_overruns_to_writer_stop(self):
+        fixture = build_rollout_fixture(
+            self.root / "total-token-budget",
+            mode="total_token_limited",
+            sample_results=(
+                SampleResult(
+                    {"role": "assistant", "content": "Over the total-token budget."},
+                    usage={"prompt_tokens": 3, "completion_tokens": 3, "total_tokens": 6},
+                ),
+            ),
+        )
+        entry_budget = fixture.store.get_artifact(fixture.runtime.state.budgets_ref)
+        self.assertEqual(entry_budget["limits"]["total_tokens"], 5)
+        self.assertNotIn("total_tokens", entry_budget["consumed"])
+
+        with self.assertRaises(DriverBudgetError) as stopped:
+            fixture.driver().run(fixture.runtime, max_steps=1)
+        runtime = stopped.exception.runtime
+        view = fixture.env.verify(runtime)
+        event = fixture.store.load_event(runtime.state.history["head"])
+        budget = fixture.store.get_artifact(runtime.state.budgets_ref)
+        self.assertEqual(event.kind, "budget_charged")
+        self.assertEqual(view.outcome.stop_reason, "total_tokens_budget")
+        self.assertEqual(budget["consumed"]["total_tokens"], 6)
+
+    def test_total_token_limit_requires_usage_evidence_before_publication(self):
+        fixture = build_rollout_fixture(
+            self.root / "missing-total-token-usage",
+            mode="total_token_limited",
+            sample_results=(SampleResult({"role": "assistant", "content": "No usage."}),),
+        )
+        head = fixture.store.read_head(fixture.lineage_id)
+
+        with self.assertRaises(AdapterContractError):
+            fixture.driver().run(fixture.runtime, max_steps=1)
+
+        self.assertEqual(fixture.store.read_head(fixture.lineage_id), head)
+
 
 class GathererContractTests(unittest.TestCase):
     def setUp(self):

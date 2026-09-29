@@ -61,7 +61,7 @@ class RuntimeHandle:
 class SessionSeals(Protocol):
     sealed_adapter_ref: str | None
 
-    def require_seal(self, adapter_ref: str) -> None: ...
+    def require_seal(self, adapter_ref: str, *, token_limited: bool = False) -> None: ...
 
     def require_member_seal(self, view: LineageView) -> None: ...
 
@@ -347,7 +347,11 @@ class RolloutEnvironment:
         sealed_ref = self.session.sealed_adapter_ref
         try:
             if sealed_ref is not None:
-                self.session.require_seal(sealed_ref)
+                budget = view.node.contract.budget_contract
+                token_limited = (
+                    budget.max_generated_tokens is not None or budget.max_total_tokens is not None
+                )
+                self.session.require_seal(sealed_ref, token_limited=token_limited)
             self.session.require_member_seal(view)
         except Exception as exc:
             raise AdapterContractError(

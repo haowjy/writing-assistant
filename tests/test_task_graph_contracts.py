@@ -19,9 +19,26 @@ class BudgetContractTests(unittest.TestCase):
         wire = budget.to_dict()
 
         self.assertNotIn("max_generated_tokens", wire)
+        self.assertNotIn("max_total_tokens", wire)
         self.assertEqual(BudgetContractV1.from_dict(wire), budget)
         with self.assertRaises(ValueError):
             BudgetContractV1.from_dict({**wire, "max_generated_tokens": None})
+        with self.assertRaises(ValueError):
+            BudgetContractV1.from_dict({**wire, "max_total_tokens": None})
+
+    def test_total_token_limit_is_optional_and_omitted_when_absent(self) -> None:
+        budget = BudgetContractV1(
+            max_steps=1,
+            max_total_bytes=1,
+            max_graph_hops=1,
+            max_visits=1,
+            max_total_tokens=1536,
+        )
+
+        wire = budget.to_dict()
+
+        self.assertEqual(wire["max_total_tokens"], 1536)
+        self.assertEqual(BudgetContractV1.from_dict(wire), budget)
 
 
 if __name__ == "__main__":

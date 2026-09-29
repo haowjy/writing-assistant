@@ -29,7 +29,7 @@ Carried from the transition seam (`src/.context/transition-seam.md`). Each item 
 before group training or the first real model backend relies on it.
 
 - [ ] **Group head binding (HIGH-5):** bind group collection to the head, the sealed manifest, and `collect_invalid` to the head's `OutcomeV1`. `src/writing_agent/task_graph_group.py`.
-- [ ] **Token-budget admission:** add a usage-reporting capability to `RuntimeManifestV1`; refuse at seal or bind a manifest without it when the entry budget sets `max_generated_tokens`; wire `total_tokens` like `generated_tokens`. `task_graph_admission.py`, `task_graph_ports.py`.
+- [x] **Token-budget admission:** require a usage-reporting sampler capability for token-limited entries and charge total-token limits.
 - [ ] **Mixed evaluator families (MEDIUM-3):** admission refuses a graph that mixes evaluator families. `task_graph_admission.py`.
 - [ ] **Compaction trigger:** make compaction controller-owned before group training uses it; today the caller triggers it. `task_graph_controller.py`.
 - [ ] **Receipt journal:** record backend receipts before the first paid or remote backend.

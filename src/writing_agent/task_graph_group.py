@@ -83,7 +83,10 @@ class GroupCoordinatorV1:
         environment, rendering = self._entry_contract(entry_checkpoint_id)
         policy = validate_group_policy(policy, rendering)
         if self.session is not None:
-            self.session.require_seal(policy["adapter_ref"])
+            self.session.require_seal(
+                policy["adapter_ref"],
+                token_limited=self._entry_has_token_limits(environment),
+            )
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(policy["context_policy_ref"]))
@@ -159,6 +162,18 @@ class GroupCoordinatorV1:
             thaw(view.context.rendering),
         )
 
+    def _entry_has_token_limits(self, environment: dict[str, Any]) -> bool:
+        budget = self.store.get_artifact(environment["budget_ref"])
+        limits = budget.get("limits", {})
+        return bool({"generated_tokens", "total_tokens"} & set(limits))
+
+    def _require_group_seal(self, spec: GroupSpecV1) -> None:
+        if self.session is not None:
+            self.session.require_seal(
+                spec.policy["adapter_ref"],
+                token_limited=self._entry_has_token_limits(spec.environment),
+            )
+
     @operation_scoped
     def resume(self, group_id: str) -> GroupSpecV1:
         validate_hash(group_id)
@@ -166,6 +181,7 @@ class GroupCoordinatorV1:
         spec = GroupSpecV1.from_dict(load_canonical_json(path.read_bytes()))
         if spec.group_id != group_id:
             raise GroupError("group directory misbinds spec")
+        self._require_group_seal(spec)
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(spec.policy[field])
         ContextPolicyV1.from_dict(self.store.get_artifact(spec.policy["context_policy_ref"]))
@@ -177,9 +193,12 @@ class GroupCoordinatorV1:
     def assert_start_contract(
         self, spec: GroupSpecV1, checkpoint_id: str, policy: dict[str, str]
     ) -> None:
-        if self.session is not None:
-            self.session.require_seal(spec.policy["adapter_ref"])
         candidate, rendering = self._entry_contract(checkpoint_id)
+        if self.session is not None:
+            self.session.require_seal(
+                spec.policy["adapter_ref"],
+                token_limited=self._entry_has_token_limits(candidate),
+            )
         if canonical_bytes(candidate) != canonical_bytes(spec.environment):
             raise GroupError("member entry differs from full sealed environment contract")
         if canonical_bytes(validate_group_policy(policy, rendering)) != canonical_bytes(
@@ -235,8 +254,7 @@ class GroupCoordinatorV1:
 
     @operation_scoped
     def collect(self, spec: GroupSpecV1, result: GroupMemberResultV1) -> str:
-        if self.session is not None:
-            self.session.require_seal(spec.policy["adapter_ref"])
+        self._require_group_seal(spec)
         self._assert_sealed_spec(spec)
         ordinal, _ = self._admit_result(spec, result)
         ref = self.store.put_artifact(result.to_dict())
@@ -509,8 +527,7 @@ class GroupCoordinatorV1:
 
     @operation_scoped
     def finalize(self, spec: GroupSpecV1) -> GroupDecisionV1:
-        if self.session is not None:
-            self.session.require_seal(spec.policy["adapter_ref"])
+        self._require_group_seal(spec)
         self._assert_sealed_spec(spec)
         result_refs: list[str | None] = []
         results: list[GroupMemberResultV1 | None] = []
