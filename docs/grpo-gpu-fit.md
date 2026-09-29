@@ -35,7 +35,7 @@ Use the already qualified Python environment and cached model only:
 ```bash
 export PYTHONPATH=src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export CUDA_VISIBLE_DEVICES=0
-PYTHON=/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/memory-qualification-v1/env/bin/python
+PYTHON=/path/to/existing/training-environment/bin/python
 FIT=/absolute/new/gpu-fit-evidence
 "$PYTHON" scripts/run_grpo_gpu_fit.py "$FIT"
 "$PYTHON" scripts/run_grpo_gpu_fit.py "$FIT" --phase prepare

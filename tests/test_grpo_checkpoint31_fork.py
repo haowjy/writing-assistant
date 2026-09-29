@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,11 +30,9 @@ from writing_agent.grpo_checkpoint31_fork import (
 from writing_agent.grpo_rollout import GroupPending, NativeRolloutBackend
 from writing_agent.reward import Reward
 
-SOURCE = Path(
-    "/home/jimyao/.meridian/context/orange-juniper-leaf/work/dapo-full-rounds/"
-    "full48-production-v2/trainer"
-)
-GROUP = SOURCE / "groups/step-000031-87b060b85fc043198c5ef1f8807f47c5"
+FORK_SOURCE = os.environ.get("FORK_SOURCE")
+SOURCE = Path(FORK_SOURCE) if FORK_SOURCE else None
+GROUP = SOURCE / "groups/step-000031-87b060b85fc043198c5ef1f8807f47c5" if SOURCE else None
 
 
 class ForkAdmissionTests(unittest.TestCase):
@@ -51,7 +50,7 @@ class ForkAdmissionTests(unittest.TestCase):
             <= pinned
         )
 
-    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    @unittest.skipUnless(FORK_SOURCE, "Set FORK_SOURCE to production trainer evidence")
     def test_first_launch_rejects_partial_slot002_suffix_before_gpu(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "fork"
@@ -66,7 +65,7 @@ class ForkAdmissionTests(unittest.TestCase):
         current = {"id2label": {0: "LABEL_0", 1: "LABEL_1"}}
         self.assertEqual(canonical_json_value(source), canonical_json_value(current))
 
-    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    @unittest.skipUnless(FORK_SOURCE, "Set FORK_SOURCE to production trainer evidence")
     def test_pinned_source_model_config_normalizes_integer_labels(self):
         source = _check_source_checkpoint(SOURCE / "checkpoint-31")["experiment_manifest"]
         model_config = copy.deepcopy(source["model_config"])
@@ -78,7 +77,7 @@ class ForkAdmissionTests(unittest.TestCase):
             }
             self.assertEqual(canonical_json_value(model_config), canonical_json_value(current))
 
-    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    @unittest.skipUnless(FORK_SOURCE, "Set FORK_SOURCE to production trainer evidence")
     def test_manifest_pins_source_and_preserves_bytes(self):
         before_checkpoint = _check_source_checkpoint(SOURCE / "checkpoint-31")
         before_group = _check_source_group(GROUP)
@@ -140,7 +139,7 @@ class ForkAdmissionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 apply_native_wandb_binding(config)
 
-    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    @unittest.skipUnless(FORK_SOURCE, "Set FORK_SOURCE to production trainer evidence")
     def test_imported_slots_do_not_call_model(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "fork"
@@ -206,7 +205,7 @@ class ForkAdmissionTests(unittest.TestCase):
             )
             self.assertTrue((trainer_output / "groups" / GROUP_NAME / "complete.json").exists())
 
-    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    @unittest.skipUnless(FORK_SOURCE, "Set FORK_SOURCE to production trainer evidence")
     def test_infrastructure_continuation_stays_pending(self):
         from writing_agent.grpo_full48_runner import SETTINGS
 
@@ -262,7 +261,7 @@ class ForkAdmissionTests(unittest.TestCase):
             self.assertEqual(before, (source_attempt / "result.json").read_bytes())
             self.assertFalse((trainer_output / "groups" / GROUP_NAME / "complete.json").exists())
 
-    @unittest.skipUnless(SOURCE.exists(), "production evidence is not mounted")
+    @unittest.skipUnless(FORK_SOURCE, "Set FORK_SOURCE to production trainer evidence")
     def test_eligible_continuation_scores_complete_trace(self):
         from writing_agent.grpo_full48_runner import SETTINGS
 
