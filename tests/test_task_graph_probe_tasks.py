@@ -7,7 +7,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
+from tests.task_graph_rollout_fixtures import (
+    bind_usage_reporting_session,
+    build_rollout_fixture,
+    run_slice,
+)
 from writing_agent.task_graph_ports import SampleResult
 
 BUILDER_PATH = Path(__file__).parents[1] / "configs/phase8/probe-tasks/build.py"
@@ -107,6 +111,8 @@ def _run(config: dict, samples: tuple[SampleResult, ...]):
             sample_results=samples,
             entry_fixture=_BUILDER.build_admitted_entry(config),
         )
+        # Probe graphs are token-limited, so they run under a usage-reporting session.
+        bind_usage_reporting_session(fixture)
         runtime = run_slice(fixture)
         view = fixture.env.verify(runtime)
         reward = fixture.store.get_artifact(view.outcome.reward_ref)
