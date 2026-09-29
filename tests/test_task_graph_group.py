@@ -15,12 +15,22 @@ from tests.task_graph_rollout_fixtures import (
     ports_disabled,
     run_slice,
 )
-from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json
+from writing_agent.task_graph import (
+    CheckpointV1,
+    canonical_bytes,
+    domain_hash,
+    load_canonical_json,
+    thaw,
+)
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_derive_writer import derive_writer_turn
 from writing_agent.task_graph_environment import RolloutEnvironment
-from writing_agent.task_graph_errors import AdapterContractError, ProjectionError
+from writing_agent.task_graph_errors import (
+    AdapterContractError,
+    ConcurrentUpdateError,
+    ProjectionError,
+)
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_group import (
     POLICY_FIELDS,
@@ -36,7 +46,12 @@ from writing_agent.task_graph_local import (
     LocalWorkspaceEnvironment,
     ScriptedSampleBackend,
 )
-from writing_agent.task_graph_ports import RuntimeDependenciesV1, SampleResult
+from writing_agent.task_graph_ports import (
+    USAGE_REPORTING_CAPABILITY,
+    PortDescriptorV1,
+    RuntimeDependenciesV1,
+    SampleResult,
+)
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
 from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
 from writing_agent.task_graph_store import TaskGraphStore
@@ -51,10 +66,12 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         self.store = self.fixture.store
         self.env = self.fixture.env
         self.entry_id = self.fixture.runtime.checkpoint_id
-        self.coordinator = GroupCoordinatorV1(self.env)
-        self.policy = self.policy_for(self.fixture)
+        self.session = self.runtime_session(self.fixture)
+        self.env.session = self.session
+        self.coordinator = GroupCoordinatorV1(self.env, session=self.session)
+        self.policy = self.policy_for(self.fixture, session=self.session)
 
-    def policy_for(self, fixture):
+    def policy_for(self, fixture, *, session=None):
         store = fixture.store
         rendering = fixture.runtime.context.rendering
         policy = {
@@ -62,6 +79,8 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             for field in POLICY_FIELDS
             if field != "rng_derivation_version"
         }
+        if session is not None:
+            policy["adapter_ref"] = session.manifest_ref
         policy["model_ref"] = store.put_artifact({"model_id": "group-model-v1"})
         context_policy = ContextPolicyV1(
             "compact", summarizer_version="visible-text-v1", max_summary_chars=20
@@ -85,8 +104,8 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         )
 
     @staticmethod
-    def runtime_session(fixture):
-        backend = ScriptedSampleBackend(())
+    def runtime_session(fixture, *, backend=None):
+        backend = backend or ScriptedSampleBackend(fixture.sample_results)
         tools = LocalTextToolProvider()
         dependencies = RuntimeDependenciesV1(
             backend,
@@ -293,6 +312,124 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             )
             self.assertEqual(self.store.read_head(member_id), resumed_head)
 
+    def test_real_group_seal_rejects_a_non_manifest_adapter_pin(self):
+        unbound_environment = RolloutEnvironment(
+            self.store,
+            self.fixture.entry.graph,
+            None,
+            self.fixture.gate,
+            self.fixture.entry.graph.policy,
+        )
+        unbound_coordinator = GroupCoordinatorV1(unbound_environment)
+
+        with self.assertRaises(AdapterContractError):
+            unbound_coordinator.seal(
+                self.entry_id,
+                policy=self.policy_for(self.fixture),
+                group_seed=771,
+                group_sequence=88,
+                member_count=2,
+                runner_mode="real",
+            )
+
+    def test_orphaned_reward_checkpoint_cannot_be_collected_or_finalize_group(self):
+        spec = self.group(sequence=89)
+        member = spec.members[0]
+        runtime = self.coordinator.start(spec, 0, policy=self.policy)
+        runtime = run_slice(
+            self.fixture,
+            runtime=runtime,
+            until=lambda directive: directive.kind == "publish_reward",
+        )
+        current_head = self.store.read_head(member.member_id)
+        orphan = {}
+        publish = self.store.publish
+
+        class InjectedCrash(RuntimeError):
+            pass
+
+        def publish_with_fault(lineage_id, expected_head, events, next_state, **kwargs):
+            if lineage_id == member.member_id and events[0].kind == "reward_recorded":
+                parent_checkpoint = self.store.load_commit(expected_head).checkpoint
+                orphan_checkpoint = CheckpointV1(
+                    parents=(parent_checkpoint,),
+                    state=next_state,
+                    event_head=next_state.history["head"],
+                )
+                orphan["checkpoint_id"] = orphan_checkpoint.identity()
+
+                def crash_at_head_publication(stage):
+                    if stage == "before_head_publication":
+                        raise InjectedCrash(stage)
+
+                kwargs["fault"] = crash_at_head_publication
+            return publish(lineage_id, expected_head, events, next_state, **kwargs)
+
+        with patch.object(self.store, "publish", side_effect=publish_with_fault):
+            with self.assertRaises(InjectedCrash):
+                self.fixture.driver().run(runtime, max_steps=1)
+
+        self.assertEqual(self.store.read_head(member.member_id), current_head)
+        self.assertIsNotNone(self.store.load_checkpoint(orphan["checkpoint_id"]))
+        published = self.env.open_head(member.member_id)
+        published_view = self.env.verify(published)
+        result = GroupMemberResultV1(
+            group_id=spec.group_id,
+            member_id=member.member_id,
+            start_checkpoint_id=self.coordinator._start_receipt(spec, 0)["start_checkpoint_id"],
+            final_checkpoint_id=orphan["checkpoint_id"],
+            terminal_outcome_ref=published_view.state.outcome_ref,
+            execution_status="valid",
+        )
+
+        with self.assertRaises(ConcurrentUpdateError):
+            self.coordinator.collect(spec, result)
+
+        self.assertEqual(self.coordinator.finalize(spec).status, "pending")
+
+    def test_collect_invalid_rejects_a_member_with_a_valid_terminal_reward(self):
+        spec = self.group(sequence=90)
+        self.run_member(spec, 0)
+        published = self.store.read_head(spec.members[0].member_id)
+
+        with self.assertRaises(AdapterContractError):
+            self.coordinator.collect_invalid(spec, 0, reason="claimed interruption")
+
+        self.assertEqual(self.store.read_head(spec.members[0].member_id), published)
+        self.assertEqual(self.coordinator.finalize(spec).status, "pending")
+
+    def test_group_sampling_requires_all_active_context_claims(self):
+        required = {
+            "context_revision_ref",
+            "context_content_hash",
+            "rendering",
+        }
+        for index, missing in enumerate(sorted(required), start=91):
+            with self.subTest(missing=missing):
+                spec = self.group(sequence=index)
+                runtime = self.coordinator.start(spec, 0, policy=self.policy)
+                view, _directive, port = self.env.step_input(runtime)
+                claims = {
+                    "context_revision_ref": view.context.revision_ref,
+                    "context_content_hash": view.context.content_ref,
+                    "rendering": thaw(view.context.rendering),
+                }
+                claims.pop(missing)
+                turn = WriterTurnV1(
+                    action_id=port.action_id,
+                    context_revision_ref=port.context_revision_ref,
+                    raw_output_ref=None,
+                    usage={},
+                    adapter_trace=claims,
+                    message=intake_message({"role": "assistant", "content": "draft"}),
+                )
+                head = self.store.read_head(spec.members[0].member_id)
+
+                with self.assertRaises(AdapterContractError):
+                    self.env.commit(runtime, turn)
+
+                self.assertEqual(self.store.read_head(spec.members[0].member_id), head)
+
     def test_start_retry_after_member_advanced_keeps_receipt_and_allows_collect(self):
         spec = self.group(sequence=77)
         member = spec.members[0]
@@ -498,8 +635,21 @@ class TestGroupCoordinatorCore(unittest.TestCase):
 
     def test_sampled_budget_stop_remains_a_valid_group_result(self):
         fixture = build_rollout_fixture(self.root / "token-limited", mode="token_limited")
-        policy = self.policy_for(fixture)
-        coordinator = GroupCoordinatorV1(fixture.env)
+        overrun = SampleResult(
+            {"role": "assistant", "content": "overrun", "tool_calls": []},
+            usage={"completion_tokens": 101},
+        )
+        backend = ScriptedSampleBackend((overrun, overrun))
+        backend.descriptor = PortDescriptorV1(
+            "sampling",
+            "overrun-sampler",
+            "1",
+            capabilities=(USAGE_REPORTING_CAPABILITY,),
+        )
+        session = self.runtime_session(fixture, backend=backend)
+        fixture.env.session = session
+        policy = self.policy_for(fixture, session=session)
+        coordinator = GroupCoordinatorV1(fixture.env, session=session)
         spec = coordinator.seal(
             fixture.runtime.checkpoint_id,
             policy=policy,
@@ -508,16 +658,9 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             member_count=2,
         )
 
-        class OverrunSampler:
-            def sample(self, _prepared):
-                return SampleResult(
-                    {"role": "assistant", "content": "overrun", "tool_calls": []},
-                    usage={"completion_tokens": 101},
-                )
-
         for ordinal, member in enumerate(spec.members):
             runtime = coordinator.start(spec, ordinal, policy=policy)
-            fixture.gatherers = make_gatherers(fixture, sampler=OverrunSampler())
+            fixture.gatherers = make_gatherers(fixture, sampler=backend)
             runtime = run_slice(fixture, runtime=runtime)
             view = fixture.env.verify(runtime)
             self.assertEqual(view.state.position["phase"], "terminal")

@@ -18,6 +18,8 @@
 - Native on-policy optimization remains future work.
 - Admission rejects a node whose checks require multiple evaluator families.
 - Token-limited entries require a usage-reporting sampler manifest and support total-token caps.
+- Group collection is bound to each member's verified published head; real groups pin a
+  runtime manifest and cannot void a valid terminal reward.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

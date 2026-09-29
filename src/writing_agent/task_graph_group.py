@@ -17,6 +17,11 @@ from writing_agent.task_graph import (
     validate_hash,
 )
 from writing_agent.task_graph_environment import RolloutEnvironment, RuntimeHandle
+from writing_agent.task_graph_errors import (
+    AdapterContractError,
+    ConcurrentUpdateError,
+    MissingReferenceError,
+)
 from writing_agent.task_graph_group_contract import (
     derive_group_seed,
     payload_hash,
@@ -33,6 +38,7 @@ from writing_agent.task_graph_group_records import (
     fraction_wire,
 )
 from writing_agent.task_graph_operation import operation_scoped
+from writing_agent.task_graph_ports import manifest_supports_usage_reporting
 from writing_agent.task_graph_record_contracts import (
     POLICY_FIELDS,
     ContextPolicyV1,
@@ -40,7 +46,7 @@ from writing_agent.task_graph_record_contracts import (
     GroupMemberSpecV1,
     GroupSpecV1,
 )
-from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
+from writing_agent.task_graph_records import MemberStartV1, RuntimeManifestV1, WriterTurnV1
 
 
 class GroupCoordinatorV1:
@@ -82,10 +88,13 @@ class GroupCoordinatorV1:
     ) -> GroupSpecV1:
         environment, rendering = self._entry_contract(entry_checkpoint_id)
         policy = validate_group_policy(policy, rendering)
+        token_limited = self._entry_has_token_limits(environment)
+        if runner_mode == "real":
+            self._validate_manifest_pin(policy["adapter_ref"], token_limited=token_limited)
         if self.session is not None:
             self.session.require_seal(
                 policy["adapter_ref"],
-                token_limited=self._entry_has_token_limits(environment),
+                token_limited=token_limited,
             )
         for field in POLICY_FIELDS - {"rng_derivation_version"}:
             self.store.get_artifact(policy[field])
@@ -167,12 +176,38 @@ class GroupCoordinatorV1:
         limits = budget.get("limits", {})
         return bool({"generated_tokens", "total_tokens"} & set(limits))
 
+    def _validate_manifest_pin(self, adapter_ref: str, *, token_limited: bool) -> None:
+        try:
+            manifest = RuntimeManifestV1.from_dict(self.store.get_artifact(adapter_ref))
+        except MissingReferenceError as exc:
+            raise AdapterContractError("real group must pin a RuntimeManifestV1") from exc
+        except (TypeError, ValueError) as exc:
+            raise AdapterContractError("real group must pin a RuntimeManifestV1") from exc
+        if token_limited and not manifest_supports_usage_reporting(manifest):
+            raise AdapterContractError(
+                "token-limited group manifest lacks usage-reporting capability"
+            )
+
     def _require_group_seal(self, spec: GroupSpecV1) -> None:
+        token_limited = self._entry_has_token_limits(spec.environment)
+        if spec.runner_mode == "real":
+            self._validate_manifest_pin(spec.policy["adapter_ref"], token_limited=token_limited)
         if self.session is not None:
             self.session.require_seal(
                 spec.policy["adapter_ref"],
-                token_limited=self._entry_has_token_limits(spec.environment),
+                token_limited=token_limited,
             )
+
+    def _require_bound_group_session(self, spec: GroupSpecV1) -> None:
+        if spec.runner_mode != "real":
+            return
+        token_limited = self._entry_has_token_limits(spec.environment)
+        if self.session is None or self.environment.session is None:
+            raise AdapterContractError("real group members require a bound runtime session")
+        self.session.require_seal(spec.policy["adapter_ref"], token_limited=token_limited)
+        self.environment.session.require_seal(
+            spec.policy["adapter_ref"], token_limited=token_limited
+        )
 
     @operation_scoped
     def resume(self, group_id: str) -> GroupSpecV1:
@@ -193,12 +228,8 @@ class GroupCoordinatorV1:
     def assert_start_contract(
         self, spec: GroupSpecV1, checkpoint_id: str, policy: dict[str, str]
     ) -> None:
+        self._require_bound_group_session(spec)
         candidate, rendering = self._entry_contract(checkpoint_id)
-        if self.session is not None:
-            self.session.require_seal(
-                spec.policy["adapter_ref"],
-                token_limited=self._entry_has_token_limits(candidate),
-            )
         if canonical_bytes(candidate) != canonical_bytes(spec.environment):
             raise GroupError("member entry differs from full sealed environment contract")
         if canonical_bytes(validate_group_policy(policy, rendering)) != canonical_bytes(
@@ -363,9 +394,14 @@ class GroupCoordinatorV1:
         if not isinstance(reason, str) or not reason:
             raise GroupError("infrastructure failure needs a cause")
         validate_hash(evidence_ref, optional=True)
+        view = self._verified_member_view(spec, ordinal)
+        if view.state.position["phase"] == "terminal" and view.outcome.execution_status == "valid":
+            raise AdapterContractError(
+                "a valid terminal member cannot be relabeled as infrastructure-invalid"
+            )
         if evidence_ref is not None:
             self.store.get_artifact(evidence_ref)
-        start = self._start_receipt(spec, ordinal)["start_checkpoint_id"]
+        start = self._start_receipt(spec, ordinal, view=view)["start_checkpoint_id"]
         member = spec.members[ordinal]
         failure = GroupExecutionFailureV1(
             schema=1,
@@ -449,6 +485,14 @@ class GroupCoordinatorV1:
         if result.execution_status == "pending":
             return ordinal, None
         if result.execution_status == "infrastructure_invalid":
+            view = self._verified_member_view(spec, ordinal)
+            if (
+                view.state.position["phase"] == "terminal"
+                and view.outcome.execution_status == "valid"
+            ):
+                raise AdapterContractError(
+                    "a valid terminal member cannot be relabeled as infrastructure-invalid"
+                )
             try:
                 failure = GroupExecutionFailureV1.from_dict(
                     self.store.get_artifact(result.failure_ref)
@@ -469,6 +513,10 @@ class GroupCoordinatorV1:
         final = self.store.load_checkpoint(result.final_checkpoint_id)
         if final.state.position["lineage_id"] != result.member_id:
             raise GroupError("terminal checkpoint belongs to another member")
+        if result.final_checkpoint_id != view.checkpoint_id:
+            raise ConcurrentUpdateError(
+                "terminal result checkpoint is not the published member head"
+            )
         outcome = view.outcome
         if outcome.execution_status != "valid" or view.state.position["phase"] != "terminal":
             raise GroupError("result lacks a valid terminal outcome")
