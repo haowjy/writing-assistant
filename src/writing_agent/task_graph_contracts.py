@@ -302,9 +302,10 @@ class BudgetContractV1(_Contract):
     max_visits: int = 0
     max_generated_tokens: int | None = None
     max_total_tokens: int | None = None
+    max_context_tokens: int | None = None
     ARTIFACT_TYPE: ClassVar[str] = "BudgetContractV1"
     OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"max_generated_tokens", "max_total_tokens"}
+        {"max_generated_tokens", "max_total_tokens", "max_context_tokens"}
     )
 
     def usage_charged_limits(self) -> dict[str, int]:
@@ -314,6 +315,7 @@ class BudgetContractV1(_Contract):
             for name, limit in (
                 ("generated_tokens", self.max_generated_tokens),
                 ("total_tokens", self.max_total_tokens),
+                ("context_tokens", self.max_context_tokens),
             )
             if limit is not None
         }
@@ -330,6 +332,8 @@ class BudgetContractV1(_Contract):
             _nonnegative(self.max_generated_tokens, "max_generated_tokens")
         if self.max_total_tokens is not None:
             _nonnegative(self.max_total_tokens, "max_total_tokens")
+        if self.max_context_tokens is not None:
+            _nonnegative(self.max_context_tokens, "max_context_tokens")
 
 
 @dataclass(frozen=True)

@@ -45,6 +45,7 @@ from writing_agent.task_graph_records import (
 from writing_agent.task_graph_records import (
     MemberStartV1,
 )
+from writing_agent.task_graph_sampling import NativeSamplingBudget
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
 
@@ -88,6 +89,7 @@ class SamplerInput:
     tokenizer_ref: str | None
     template_ref: str | None
     decoding_ref: str | None
+    native_sampling_budget: NativeSamplingBudget | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
@@ -242,6 +244,19 @@ class RolloutEnvironment:
         if directive.kind == "sample_writer":
             member = group_member(view)
             policy = {} if view.group is None else view.group.policy
+            native_budget = None
+            if view.group is not None and view.group.training_mode == "native":
+                limits = view.budget["limits"]
+                consumed = view.budget["consumed"]
+                generated_limit = limits.get("generated_tokens")
+                native_budget = NativeSamplingBudget(
+                    remaining_generated_tokens=(
+                        None
+                        if generated_limit is None
+                        else max(0, generated_limit - consumed.get("generated_tokens", 0))
+                    ),
+                    max_context_tokens=limits.get("context_tokens"),
+                )
             return SamplerInput(
                 messages=view.context.messages,
                 tools=view.context.tools,
@@ -255,6 +270,7 @@ class RolloutEnvironment:
                 tokenizer_ref=policy.get("tokenizer_ref"),
                 template_ref=policy.get("template_ref"),
                 decoding_ref=policy.get("decoding_ref"),
+                native_sampling_budget=native_budget,
             )
         if directive.kind == "execute_tool":
             cursor = directive.call_index
@@ -483,6 +499,7 @@ class RolloutEnvironment:
 __all__ = [
     "AuthorInput",
     "CheckInput",
+    "NativeSamplingBudget",
     "PortInput",
     "RolloutEnvironment",
     "RuntimeHandle",

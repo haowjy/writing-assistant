@@ -92,6 +92,10 @@ to `tool_syntax`. It skips a part only when `raw` equals the sentinel. Never re-
 Before the sentinel existed, an unbounded call earned `tool_syntax` credit, which was hashed
 on the environment's placeholder.
 
+`_segment_credits` accepts both `WriterTurnV1` and `WriterTurnV2` evidence. V2 byte ledgers,
+sampling pins and termination remain owned by the writer derive; group collection does not
+re-validate sampling evidence or infer eligibility from the token trace.
+
 ## Runtime boundary
 
 `GroupCoordinatorV1` requires a `RolloutEnvironment`. It has no bare-store, branch or workspace-restore start path; group members begin and resume only through the verified environment.

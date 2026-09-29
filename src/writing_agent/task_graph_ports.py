@@ -20,6 +20,7 @@ from writing_agent.task_graph_records import (
     RuntimeManifestV2,
     RuntimePortDescriptorV1,
 )
+from writing_agent.task_graph_sampling import NativeSamplingBudget
 
 USAGE_REPORTING_CAPABILITY = "usage_reporting"
 NATIVE_TOKEN_LEDGER_CAPABILITY = "native_token_ledger"
@@ -88,6 +89,7 @@ class PreparedSamplingInput:
     messages_json: str
     tools_json: str
     rendering_json: str
+    native_sampling_budget: NativeSamplingBudget | None = None
 
     def __post_init__(self) -> None:
         validate_hash(self.context_content_hash)

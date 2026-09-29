@@ -33,6 +33,7 @@ from writing_agent.task_graph_records import (
     OutcomeV1,
     ToolObservationV1,
     WriterTurnV1,
+    WriterTurnV2,
 )
 from writing_agent.task_graph_wire import WireRecord
 
@@ -237,6 +238,7 @@ class DerivedArtifact:
 
 InputRecord: TypeAlias = (
     WriterTurnV1
+    | WriterTurnV2
     | ToolObservationV1
     | AuthorReplyV1
     | EvaluatorResultV1

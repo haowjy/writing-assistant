@@ -235,10 +235,16 @@ class RolloutFixture:
         self.checkpoint_ids.append(result.runtime.checkpoint_id)
 
 
-def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
+def _entry_fixture(
+    mode: str, evaluator_family: str, *, rendering_overrides=None, public_records=()
+) -> EntryFixture:
     if mode == "halt":
-        return make_entry_fixture()
-    fixture = make_outcome_fixture()
+        return make_entry_fixture(
+            rendering_overrides=rendering_overrides, public_records=public_records
+        )
+    fixture = make_outcome_fixture(
+        rendering_overrides=rendering_overrides, public_records=public_records
+    )
     node = fixture.graph.node(fixture.node_id)
     base_check = node.checks["nonempty"]
     family = FAMILIES[evaluator_family]
@@ -344,6 +350,11 @@ def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
         entry = replace(
             contract,
             budgets=replace(budgets, max_generated_tokens=100),
+        )
+    elif mode == "context_token_limited":
+        entry = replace(
+            contract,
+            budgets=replace(budgets, max_context_tokens=100),
         )
     elif mode == "total_token_limited":
         entry = replace(
@@ -451,6 +462,8 @@ def build_rollout_fixture(
     sample_results: tuple[SampleResult, ...] | None = None,
     evaluator_family: str = "deterministic-file-v1",
     session=None,
+    rendering_overrides=None,
+    public_records=(),
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
     if mode not in {
@@ -459,6 +472,7 @@ def build_rollout_fixture(
         "feedback",
         "token_limited",
         "total_token_limited",
+        "context_token_limited",
         "halt",
     }:
         raise ValueError("unsupported rollout fixture mode")
@@ -466,7 +480,12 @@ def build_rollout_fixture(
     root.chmod(0o700)
     if evaluator_family not in FAMILIES:
         raise ValueError("unsupported evaluator family")
-    entry = _entry_fixture(mode, evaluator_family)
+    entry = _entry_fixture(
+        mode,
+        evaluator_family,
+        rendering_overrides=rendering_overrides,
+        public_records=public_records,
+    )
     if sample_results is None:
         sample_results = (
             _scripted_samples()

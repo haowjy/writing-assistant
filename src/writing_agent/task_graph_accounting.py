@@ -24,9 +24,12 @@ EXHAUSTION_ORDER = (
 
 
 def sampled_usage_charge(
-    budget: Mapping[str, Any], usage: Mapping[str, Any]
+    budget: Mapping[str, Any],
+    usage: Mapping[str, Any],
+    *,
+    allow_context_overrun: bool = False,
 ) -> tuple[dict, str | None]:
-    """Charge one sampled call, including an overrun, with parent totals counted once."""
+    """Charge one sample; context tokens are a high-water mark, not an accumulated total."""
     result = json.loads(canonical_json(budget))
     consumed = result["consumed"]
     consumed["writer_turns"] = consumed.get("writer_turns", 0) + 1
@@ -37,11 +40,16 @@ def sampled_usage_charge(
     consumed["total_tokens"] = consumed.get("total_tokens", 0) + usage.get(
         "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
     )
+    if "context_tokens" in result["limits"]:
+        context_high_water = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+        consumed["context_tokens"] = max(consumed.get("context_tokens", 0), context_high_water)
     exceeded = next(
         (
             name
-            for name in ("generated_tokens", "total_tokens")
-            if name in result["limits"] and consumed[name] > result["limits"][name]
+            for name in ("generated_tokens", "total_tokens", "context_tokens")
+            if name in result["limits"]
+            and consumed[name] > result["limits"][name]
+            and not (name == "context_tokens" and allow_context_overrun)
         ),
         None,
     )

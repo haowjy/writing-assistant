@@ -55,6 +55,7 @@ from writing_agent.task_graph_records import (
     RuntimeManifestV1,
     RuntimeManifestV2,
     WriterTurnV1,
+    WriterTurnV2,
     decode_runtime_manifest,
 )
 
@@ -811,7 +812,14 @@ class GroupCoordinatorV1:
         for sample in view.samples:
             if sample.outcome != "action":
                 continue
-            turn = WriterTurnV1.from_dict(self.store.get_artifact(sample.turn_ref))
+            turn_record = self.store.get_artifact(sample.turn_ref)
+            record_type = turn_record.get("record_type")
+            if record_type == WriterTurnV1.RECORD_TYPE:
+                turn = WriterTurnV1.from_dict(turn_record)
+            elif record_type == WriterTurnV2.RECORD_TYPE:
+                turn = WriterTurnV2.from_dict(turn_record)
+            else:
+                raise GroupError("sample reference does not name a writer turn")
             message = messages.get(sample.event_id)
             if message is None:
                 raise GroupError("sample event has no verified assistant message")

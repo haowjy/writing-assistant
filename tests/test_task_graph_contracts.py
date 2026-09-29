@@ -21,8 +21,9 @@ class BudgetContractTests(unittest.TestCase):
                 **required,
                 max_generated_tokens=32,
                 max_total_tokens=64,
+                max_context_tokens=128,
             ).usage_charged_limits(),
-            {"generated_tokens": 32, "total_tokens": 64},
+            {"generated_tokens": 32, "total_tokens": 64, "context_tokens": 128},
         )
 
     def test_absent_token_limit_keeps_the_legacy_wire_form(self) -> None:
@@ -37,11 +38,14 @@ class BudgetContractTests(unittest.TestCase):
 
         self.assertNotIn("max_generated_tokens", wire)
         self.assertNotIn("max_total_tokens", wire)
+        self.assertNotIn("max_context_tokens", wire)
         self.assertEqual(BudgetContractV1.from_dict(wire), budget)
         with self.assertRaises(ValueError):
             BudgetContractV1.from_dict({**wire, "max_generated_tokens": None})
         with self.assertRaises(ValueError):
             BudgetContractV1.from_dict({**wire, "max_total_tokens": None})
+        with self.assertRaises(ValueError):
+            BudgetContractV1.from_dict({**wire, "max_context_tokens": None})
 
     def test_total_token_limit_is_optional_and_omitted_when_absent(self) -> None:
         budget = BudgetContractV1(
@@ -56,6 +60,22 @@ class BudgetContractTests(unittest.TestCase):
 
         self.assertEqual(wire["max_total_tokens"], 1536)
         self.assertEqual(BudgetContractV1.from_dict(wire), budget)
+
+    def test_context_limit_is_optional_and_usage_charged(self) -> None:
+        budget = BudgetContractV1(
+            max_steps=1,
+            max_total_bytes=1,
+            max_graph_hops=1,
+            max_visits=1,
+            max_context_tokens=4096,
+        )
+        wire = budget.to_dict()
+
+        self.assertEqual(wire["max_context_tokens"], 4096)
+        self.assertEqual(budget.usage_charged_limits(), {"context_tokens": 4096})
+        self.assertEqual(BudgetContractV1.from_dict(wire), budget)
+        with self.assertRaises(ValueError):
+            BudgetContractV1.from_dict({**wire, "max_context_tokens": None})
 
 
 if __name__ == "__main__":

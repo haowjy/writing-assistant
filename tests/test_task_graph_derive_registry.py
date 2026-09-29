@@ -1,4 +1,4 @@
-"""The four derive lanes export one collision-free V1 dispatch-key vocabulary."""
+"""The derive lanes export one collision-free writer-input dispatch-key vocabulary."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ class DeriveRegistryTests(unittest.TestCase):
             set(combined),
             {
                 "WriterTurnV1",
+                "WriterTurnV2",
                 "ToolObservationV1",
                 ("EnvironmentStepV1", "request_author"),
                 "AuthorReplyV1",

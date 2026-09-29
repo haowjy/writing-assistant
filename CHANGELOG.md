@@ -20,7 +20,12 @@
   identities and wire records remain unchanged.
 - Admission rejects nodes mixing evaluator families, with `legacy-check-v1` treated as its own family.
 - Token-limited entries require a sealed usage-reporting sampler before sampling and support
-  total-token caps.
+  cumulative generated/total-token caps and a high-water context-token cap. Native sampler
+  inputs expose only remaining generated allocation and the context cap.
+- The V2 writer derive validates byte-backed token counts, logprobs, sample pins and prior-turn
+  prefixes; it derives termination from committed limits and maps valid token/context limits
+  and unterminated stop classes to scored incomplete outcomes. V1 identities and goldens stay
+  unchanged.
 - Real group member starts and commits require the sealed manifest. Collection binds terminal
   results to the verified head, resolves rewards published after collection, and records the
   judged head for infrastructure interruptions.

@@ -58,7 +58,7 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
   `ArtifactReader` (I7).
 
 The core keeps pure helpers in the same concern modules:
-- `derive_writer` uses `decode_writer_turn_sampling` and `bind_group_sampling_claims` from
+- `derive_writer` uses `decode_and_bind_sampling` and `bind_group_sampling_claims` from
   `task_graph_sampling`, and `validate_ask_semantics` from `task_graph_scripted`;
 - `derive_author` uses `resolve_script_reply`, `scripted_author_reply`,
   `ScriptCoverageError` and `validate_ask_semantics` from `task_graph_scripted`;
@@ -89,6 +89,13 @@ There is no separate writer-request record. `EnvironmentStateV1.history` stores 
 IDs, generated-token logprobs, termination, and sampling pins. `RuntimeManifestV2` carries the
 three native sampling capabilities and rendering, tokenizer, and decoding descriptors.
 `GroupSpecV1.training_mode` is omitted when `None`, preserving existing group identities.
+`decode_and_bind_sampling` dispatches both writer-turn record types and refuses cross-version
+turn/manifest pairs. V2 checks token counts, logprob shape, sealed pins, trace claims, and the
+exact prior-input-plus-generated prefix on the current context root. It derives the token cap
+as the minimum of per-decision, remaining generated, and remaining context limits (ties are
+decision, generated budget, then context); false stop and limit claims are rejected at their
+first differing path. Valid token/context limits and malformed native stops commit an
+incomplete writer outcome instead of an adapter-provided halt.
 
 The steps:
 
@@ -263,23 +270,26 @@ An empty required set never counts as a pass.
     `awaiting_checks`; check-result transitions stay within that active batch
     (`tests/test_task_graph_derive_outcome.py`).
 - **O1: a writer turn without sampling evidence is charged 0 tokens.** Entries without
-  generated- or total-token limits seed no corresponding counters. `derive_writer_turn`
-  requires usage evidence under a token limit (missing usage is
-  `AdapterContractProjectionError`) and binds usage to token IDs only when IDs are present,
-  matching the persisted sampling evidence contract.
+  usage-charged limits seed no corresponding counters. `BudgetContractV1.usage_charged_limits`
+  is the sole owner of generated, cumulative total, and context-token limits. The writer
+  derive requires their corresponding usage evidence; V2 additionally binds usage counts to
+  token IDs and charges `context_tokens` as the per-turn high-water mark
+  `prompt_tokens + completion_tokens`, never as a cumulative sum. Reaching the high-water cap
+  does not drain a cumulative controller budget: the next native sample must still be allowed
+  to return the zero-generation `context_limit` record that seals the lineage incomplete.
   - **The contract can declare a token limit.** `BudgetContractV1.max_generated_tokens` is
     optional. It is listed in `_Contract.OMIT_NONE_FIELDS`, so it is left out of the
     canonical form when `None`, and every existing contract keeps its identity. This field
     departs from the design package. It exists so that the `token_limited` rollout fixture
     carries a real limit, which makes missing usage and `budget_charged` reachable.
-  - **Why a hook and not a new contract version.** A `BudgetContractV2` would force
-    version dispatch in admission and `derive_entry` for one optional field. A token-limits
-    sub-contract becomes the right shape once `total_tokens` limits arrive.
+  - **Why optional fields and not a new contract version.** A `BudgetContractV2` would force
+    version dispatch in admission and `derive_entry` for optional token limits. Each unset
+    limit is omitted from canonical form, preserving existing contract identities.
   - **Token-limited seals:** admission remains adapter-independent, but a real group refuses
     a manifest without `usage_reporting` before sampling. V1 keeps that single capability;
     V2 declares `usage_reporting`, `native_token_ledger` and `sampled_logprobs`, and a native
     group requires all three plus rendering and policy-pin agreement. `total_tokens` is a
-    cumulative compute budget; S4 adds `max_context_tokens` separately as a ledger ceiling.
+    cumulative compute budget; `max_context_tokens` is the independent high-water context cap.
 - **One validator for the sampled message, not a sentinel.** The records codec and
   `task_graph_calls` once accepted different values for the same message, so the store
   could persist a `WriterTurnV1` that `parse_calls` rejects. That is a producer/replay split
