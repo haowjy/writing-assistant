@@ -16,6 +16,7 @@
 - Goldens pin the v1 wire shapes and a deterministic rollout; changing them requires a
   semantics bump.
 - Native on-policy optimization remains future work.
+- Admission rejects a node whose checks require multiple evaluator families.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

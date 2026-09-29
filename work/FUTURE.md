@@ -20,6 +20,8 @@ it becomes near-term work. Detailed acceptance criteria stay in the linked plans
 
 These entries are deferred directions, not scheduled runs or generation jobs.
 
+- [ ] **Family-routed evaluator port:** support nodes whose checks require multiple evaluator families.
+
 ## Task-graph code health
 
 Deferred from the transition seam's final reviews; none blocks correctness.
