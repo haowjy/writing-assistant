@@ -24,6 +24,7 @@ from writing_agent.task_graph import (
     domain_hash,
     tree_hash,
 )
+from writing_agent.task_graph_closure import ClosureValidator, LineageLock
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_records import ContextContentV1, ContextRevisionV1, OutcomeV1
@@ -207,6 +208,10 @@ class StoreFixture:
 
 
 class TaskGraphStoreTest(unittest.TestCase):
+    def test_moved_closure_classes_retain_the_store_type(self):
+        self.assertEqual(ClosureValidator.__init__.__annotations__["store"], "TaskGraphStore")
+        self.assertEqual(LineageLock.__init__.__annotations__["store"], "TaskGraphStore")
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)

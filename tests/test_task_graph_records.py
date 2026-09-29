@@ -111,6 +111,7 @@ EXPECTED_REFS = {
     "GroupScriptedTerminalV1": (("start_checkpoint_id", "checkpoint"),),
     "GroupExecutionFailureV1": (
         ("evidence_ref", "artifact"),
+        ("judged_checkpoint_id", "checkpoint"),
         ("start_checkpoint_id", "checkpoint"),
     ),
     "GroupMemberResultV1": (

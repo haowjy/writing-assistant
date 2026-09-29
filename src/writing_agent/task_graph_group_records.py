@@ -84,7 +84,9 @@ class GroupExecutionFailureV1(WireRecord):
     start_checkpoint_id: Annotated[str, Hash("checkpoint")]
     reason: Annotated[str, Str(nonempty=True)]
     evidence_ref: Annotated[str | None, Hash("artifact", optional=True)]
+    judged_checkpoint_id: Annotated[str | None, Hash("checkpoint", optional=True)] = None
     RECORD_TYPE: ClassVar[str] = "GroupExecutionFailureV1"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"judged_checkpoint_id"})
 
 
 @dataclass(frozen=True)
