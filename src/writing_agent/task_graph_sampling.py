@@ -71,7 +71,10 @@ def bind_group_sampling_claims(
 ) -> None:
     """Compare present adapter claims with the member's sealed sampling policy."""
     if not isinstance(claims, Mapping):
-        return
+        raise ProjectionError("group writer sample must include adapter claims")
+    context_claims = {"context_revision_ref", "context_content_hash", "rendering"}
+    if not context_claims <= claims.keys():
+        raise ProjectionError("group writer sample omits active context claims")
     for field, expected in policy.items():
         if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
             raise ProjectionError(f"writer sample used a different {field}")

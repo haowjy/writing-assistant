@@ -194,8 +194,7 @@ def derive_entry(
         "read_tokens": contract.budget_contract.max_read_tokens,
         "storage_bytes": contract.budget_contract.max_total_bytes,
     }
-    if contract.budget_contract.max_generated_tokens is not None:
-        budget_limits["generated_tokens"] = contract.budget_contract.max_generated_tokens
+    budget_limits.update(contract.budget_contract.usage_charged_limits())
     if contract.interaction_contract.mode == "scripted_author":
         budget_limits["author_calls"] = contract.budget_contract.max_author_calls
     budget = {

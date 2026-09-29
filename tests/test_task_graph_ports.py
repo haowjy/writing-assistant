@@ -20,6 +20,7 @@ from writing_agent.task_graph_local import (
     ScriptedSampleBackend,
 )
 from writing_agent.task_graph_ports import (
+    USAGE_REPORTING_CAPABILITY,
     BinaryLogprobEvidence,
     EnvironmentResult,
     EnvironmentSnapshot,
@@ -28,6 +29,7 @@ from writing_agent.task_graph_ports import (
     RuntimeDependenciesV1,
     SampleResult,
     ToolManifest,
+    manifest_supports_usage_reporting,
 )
 from writing_agent.task_graph_record_contracts import POLICY_FIELDS, ContextPolicyV1
 from writing_agent.task_graph_records import WriterTurnV1
@@ -154,6 +156,29 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         )
         unbound = RuntimeSession.create(fixture.store, dependencies)
         return unbound.bind(fixture.store, unbound.manifest_ref)
+
+    def test_usage_reporting_is_an_explicit_sampling_manifest_capability(self):
+        fixture = self.fixture(mode="none")
+        backend = ScriptedSampleBackend(fixture.sample_results)
+        provider = LocalTextToolProvider()
+        dependencies = RuntimeDependenciesV1(
+            backend,
+            LocalWorkspaceEnvironment(provider),
+            provider,
+            DeterministicEvaluator(),
+        )
+        self.assertFalse(manifest_supports_usage_reporting(dependencies.manifest()))
+
+        backend.descriptor = PortDescriptorV1(
+            "sampling",
+            "usage-reporting-test-backend",
+            "1",
+            capabilities=(USAGE_REPORTING_CAPABILITY,),
+        )
+        manifest = dependencies.manifest()
+        self.assertTrue(manifest_supports_usage_reporting(manifest))
+        sampler = next(port for port in manifest.ports if port.role == "sampling")
+        self.assertEqual(sampler.configuration["capabilities"], (USAGE_REPORTING_CAPABILITY,))
 
     @staticmethod
     def group_policy(fixture, session, *, decoding_ref=None):
@@ -389,7 +414,7 @@ class RuntimePortsIntegrationTest(unittest.TestCase):
         )
 
         wrong = GroupCoordinatorV1(fixture.env, session=session_b)
-        with self.assertRaisesRegex(ValueError, "manifest differs"):
+        with self.assertRaisesRegex(AdapterContractError, "manifest differs"):
             wrong.start(spec, 0, policy=policy)
         self.assertIsNone(fixture.store.read_head(spec.members[0].member_id))
         self.assertEqual(backend_a.calls, 0)

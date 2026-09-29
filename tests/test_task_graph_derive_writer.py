@@ -8,7 +8,7 @@ from dataclasses import replace
 from typing import Any
 
 from tests.task_graph_fixtures import make_entry_fixture
-from writing_agent.task_graph import CheckpointV1, canonical_bytes, domain_hash
+from writing_agent.task_graph import CheckpointV1, canonical_bytes, domain_hash, thaw
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_tool_result, derive_writer_turn
@@ -347,6 +347,9 @@ class WriterDeriveTests(unittest.TestCase):
             "model": "sealed-model",
             "model_ref": spec.policy["model_ref"],
             "behavior_policy_ref": spec.policy["behavior_policy_ref"],
+            "context_revision_ref": view.context.revision_ref,
+            "context_content_hash": view.context.content_ref,
+            "rendering": thaw(view.context.rendering),
         }
         good = make_turn(view, adapter_trace=base)
         good_result = assert_fixed_point(self, derive_writer_turn, view, good, self.reader)
@@ -379,7 +382,13 @@ class WriterDeriveTests(unittest.TestCase):
 
     def test_group_binding_checks_present_policy_seed_and_model_claims(self):
         policy = {"behavior_policy_ref": "a" * 64}
-        claims = {"behavior_policy_ref": policy["behavior_policy_ref"], "seed": 4}
+        claims = {
+            "behavior_policy_ref": policy["behavior_policy_ref"],
+            "seed": 4,
+            "context_revision_ref": "b" * 64,
+            "context_content_hash": "c" * 64,
+            "rendering": {},
+        }
         bind_group_sampling_claims(policy, 4, claims, model_id="model-v1")
         for changed in (
             {**claims, "behavior_policy_ref": "b" * 64},
