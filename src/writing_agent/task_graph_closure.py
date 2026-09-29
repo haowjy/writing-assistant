@@ -8,7 +8,7 @@ import stat
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from writing_agent.task_graph import (
     CheckpointV1,
@@ -39,6 +39,9 @@ from writing_agent.task_graph_records import (
     ContextRevisionV1,
     record_reference_paths,
 )
+
+if TYPE_CHECKING:
+    from writing_agent.task_graph_store import TaskGraphStore
 
 
 @dataclass(frozen=True)
@@ -76,7 +79,7 @@ class ClosureValidator:
         "private": "private",
     }
 
-    def __init__(self, store: Any, parent: ClosureValidator | None = None) -> None:
+    def __init__(self, store: TaskGraphStore, parent: ClosureValidator | None = None) -> None:
         self.store = store
         self.parent = parent
         self.loaded: dict[tuple[str, str], Any] = {}
@@ -660,7 +663,7 @@ class ClosureValidator:
 
 
 class LineageLock:
-    def __init__(self, store: Any, lineage_id: str) -> None:
+    def __init__(self, store: TaskGraphStore, lineage_id: str) -> None:
         self.store = store
         self.lineage_id = lineage_id
         self.stream = None

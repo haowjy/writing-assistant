@@ -16,7 +16,7 @@
 - Goldens pin the v1 wire shapes and a deterministic rollout; changing them requires a
   semantics bump.
 - Native on-policy optimization remains future work.
-- Admission rejects a node whose checks require multiple evaluator families.
+- Admission rejects nodes mixing evaluator families, with `legacy-check-v1` treated as its own family.
 - Token-limited entries require a sealed usage-reporting sampler before sampling and support
   total-token caps.
 - Real group member starts and commits require the sealed manifest. Collection binds terminal
