@@ -675,6 +675,22 @@ def _validate_checks(
         raise AdmissionError(
             "check_contract", f"node {spec.id} completion does not name every mandatory check"
         )
+    families = {
+        next(
+            (
+                family.name
+                for family in FAMILIES.values()
+                if family.check_version == check.evaluator_version
+            ),
+            check.evaluator_version,
+        )
+        for check in checks.values()
+    }
+    if len(families) > 1:
+        raise AdmissionError(
+            "mixed_evaluator_families",
+            f"node {spec.id} checks require more than one evaluator family",
+        )
     return checks
 
 

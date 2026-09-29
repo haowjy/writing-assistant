@@ -4,7 +4,8 @@
 session=None)`` creates a verified entry, store, gate, environment, and default gatherers.
 Modes are ``slice`` (writer/tool/author/check), ``none`` (writer-only reward),
 ``feedback`` (mandatory feedback plus requirement supersession), ``token_limited`` (a real
-generated-token budget), and ``halt`` (no admitted evaluation). The fixture exposes
+generated-token budget), ``total_token_limited`` (a real total-token budget), and ``halt``
+(no admitted evaluation). The fixture exposes
 ``entry``, ``store``, ``gate``, ``env``, ``runtime``, ``lineage_id``, ``counter``,
 ``sampler_inputs``, ordered ``checkpoint_ids``, and a composable ``commit_observer`` hook.
 
@@ -24,6 +25,7 @@ from unittest.mock import patch
 
 from tests.task_graph_fixtures import EntryFixture, make_entry_fixture, make_outcome_fixture
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
+from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_contracts import (
     AuthorPacketV1,
     DecisionBindingsV1,
@@ -48,9 +50,15 @@ from writing_agent.task_graph_gatherers import (
 from writing_agent.task_graph_local import (
     DeterministicEvaluator,
     LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
     ScriptedSampleBackend,
 )
-from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_ports import (
+    USAGE_REPORTING_CAPABILITY,
+    PortDescriptorV1,
+    RuntimeDependenciesV1,
+    SampleResult,
+)
 from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_store import TaskGraphStore
 
@@ -337,6 +345,11 @@ def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
             contract,
             budgets=replace(budgets, max_generated_tokens=100),
         )
+    elif mode == "total_token_limited":
+        entry = replace(
+            contract,
+            budgets=replace(budgets, max_total_tokens=5),
+        )
     else:
         entry = replace(contract, entry=entry_contract)
     fixture.reader.public[entry.identity()] = entry.to_dict()
@@ -408,6 +421,28 @@ def make_gatherers(
     )
 
 
+def bind_usage_reporting_session(fixture: RolloutFixture, *, sampler=None):
+    """Bind a real scripted session whose manifest promises sampler usage evidence."""
+    sampler = sampler or ScriptedSampleBackend(fixture.sample_results)
+    sampler.descriptor = PortDescriptorV1(
+        "sampling",
+        "scripted-usage-sampler",
+        "1",
+        capabilities=(USAGE_REPORTING_CAPABILITY,),
+    )
+    tools = LocalTextToolProvider()
+    dependencies = RuntimeDependenciesV1(
+        sampler,
+        LocalWorkspaceEnvironment(tools),
+        tools,
+        DeterministicEvaluator(),
+    )
+    unbound = RuntimeSession.create(fixture.store, dependencies)
+    fixture.env.session = unbound.bind(fixture.store, unbound.manifest_ref)
+    fixture.gatherers = make_gatherers(fixture, sampler=sampler)
+    return fixture.env.session
+
+
 def build_rollout_fixture(
     root: Path,
     *,
@@ -418,7 +453,14 @@ def build_rollout_fixture(
     session=None,
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
-    if mode not in {"slice", "none", "feedback", "token_limited", "halt"}:
+    if mode not in {
+        "slice",
+        "none",
+        "feedback",
+        "token_limited",
+        "total_token_limited",
+        "halt",
+    }:
         raise ValueError("unsupported rollout fixture mode")
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)

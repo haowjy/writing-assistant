@@ -532,7 +532,7 @@ class GraphAdmissionTest(unittest.TestCase):
         instance = replace_node_contract(
             public,
             instance,
-            lambda body, ref=changed: body["mandatory_checks"].__setitem__(0, ref),
+            lambda body, ref=changed: body.update(mandatory_checks=[ref], optional_checks=[]),
         )
         admitted = self.admit(public, private, instance)
         self.assertEqual(
@@ -563,6 +563,76 @@ class GraphAdmissionTest(unittest.TestCase):
         instance = replace_node_contract(public, instance, add_feedback)
         with self.assertRaisesRegex(AdmissionError, "unsupported_feedback"):
             self.admit(public, private, instance)
+
+    def test_node_with_mixed_evaluator_families_is_rejected_at_admission(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        contract = thaw(public[instance.nodes[0].entry_contract])
+        mandatory_ref, optional_ref = (
+            contract["mandatory_checks"][0],
+            contract["optional_checks"][0],
+        )
+        mandatory = thaw(private.pop(mandatory_ref))
+        mandatory["evaluator_version"] = "deterministic-v1"
+        mandatory_ref = domain_hash("payload", mandatory)
+        private[mandatory_ref] = mandatory
+
+        optional = thaw(private.pop(optional_ref))
+        optional["evaluator_version"] = "fixture-file-count-v1"
+        optional["spec"] = {
+            "id": optional["id"],
+            "metric": "Q1",
+            "kind": "fixture_file_count",
+            "method": "fixture",
+            "required": False,
+        }
+        optional_ref = domain_hash("payload", optional)
+        private[optional_ref] = optional
+        instance = replace_node_contract(
+            public,
+            instance,
+            lambda body: body.update(
+                mandatory_checks=[mandatory_ref], optional_checks=[optional_ref]
+            ),
+        )
+
+        with self.assertRaises(AdmissionError) as rejected:
+            self.admit(public, private, instance)
+        self.assertEqual(rejected.exception.code, "mixed_evaluator_families")
+
+    def test_legacy_check_is_its_own_evaluator_family_at_admission(self):
+        bundle = compile_legacy_scenario(scenario())
+        public, private, instance = mutable_bundle(bundle)
+        contract = thaw(public[instance.nodes[0].entry_contract])
+        mandatory_ref, optional_ref = (
+            contract["mandatory_checks"][0],
+            contract["optional_checks"][0],
+        )
+        mandatory = thaw(private.pop(mandatory_ref))
+        mandatory["evaluator_version"] = "legacy-check-v1"
+        mandatory_ref = domain_hash("payload", mandatory)
+        private[mandatory_ref] = mandatory
+
+        optional = thaw(private.pop(optional_ref))
+        optional["evaluator_version"] = "deterministic-v1"
+        optional["spec"] = {
+            **mandatory["spec"],
+            "id": optional["id"],
+            "required": False,
+        }
+        optional_ref = domain_hash("payload", optional)
+        private[optional_ref] = optional
+        instance = replace_node_contract(
+            public,
+            instance,
+            lambda body: body.update(
+                mandatory_checks=[mandatory_ref], optional_checks=[optional_ref]
+            ),
+        )
+
+        with self.assertRaises(AdmissionError) as rejected:
+            self.admit(public, private, instance)
+        self.assertEqual(rejected.exception.code, "mixed_evaluator_families")
 
 
 class LegacyGraphAdapterTest(unittest.TestCase):

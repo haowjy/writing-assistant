@@ -10,12 +10,19 @@ from pathlib import Path
 from tests.task_graph_rollout_fixtures import CANARIES, build_rollout_fixture, run_slice
 from writing_agent.task_graph import EventV1
 from writing_agent.task_graph_compaction import ContextPolicyV1
+from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_environment import derive_input
 from writing_agent.task_graph_errors import DriverBudgetError, ProjectionError
 from writing_agent.task_graph_gate import StoreArtifactReader
 from writing_agent.task_graph_group import POLICY_FIELDS, GroupCoordinatorV1
-from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_local import (
+    DeterministicEvaluator,
+    LocalTextToolProvider,
+    LocalWorkspaceEnvironment,
+    ScriptedSampleBackend,
+)
+from writing_agent.task_graph_ports import RuntimeDependenciesV1, SampleResult
 from writing_agent.task_graph_record_contracts import ContextPolicyV1 as SealedContextPolicyV1
 from writing_agent.task_graph_records import ContextOperationInputV1
 
@@ -138,7 +145,18 @@ class ContextPipelineTests(unittest.TestCase):
             template_ref=rendering["template_ref"],
             rng_derivation_version="sha256-domain-v1",
         )
-        coordinator = GroupCoordinatorV1(fixture.env)
+        tools = LocalTextToolProvider()
+        dependencies = RuntimeDependenciesV1(
+            ScriptedSampleBackend(fixture.sample_results),
+            LocalWorkspaceEnvironment(tools),
+            tools,
+            DeterministicEvaluator(),
+        )
+        unbound_session = RuntimeSession.create(store, dependencies)
+        session = unbound_session.bind(store, unbound_session.manifest_ref)
+        fixture.env.session = session
+        policy["adapter_ref"] = session.manifest_ref
+        coordinator = GroupCoordinatorV1(fixture.env, session=session)
         spec = coordinator.seal(
             fixture.runtime.checkpoint_id,
             policy=policy,
