@@ -20,6 +20,8 @@
 - Token-limited entries require a usage-reporting sampler manifest and support total-token caps.
 - Group collection is bound to each member's verified published head; real groups pin a
   runtime manifest and cannot void a valid terminal reward.
+- Add three public Phase 8 probe graphs with scripted author/feedback paths and optional
+  deterministic rewards that produce distinct scripted score levels.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

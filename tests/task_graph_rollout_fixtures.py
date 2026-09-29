@@ -1,7 +1,9 @@
 """Shared fixture API for the rollout, forgery, privacy, and group lanes.
 
 ``build_rollout_fixture(root, *, mode="slice", raising_ports=False, sample_results=None,
-session=None)`` creates a verified entry, store, gate, environment, and default gatherers.
+session=None, entry_fixture=None)`` creates a verified entry, store, gate, environment, and
+default gatherers. ``entry_fixture`` lets focused tests run a separately admitted config
+through the same fixture setup.
 Modes are ``slice`` (writer/tool/author/check), ``none`` (writer-only reward),
 ``feedback`` (mandatory feedback plus requirement supersession), ``token_limited`` (a real
 generated-token budget), ``total_token_limited`` (a real total-token budget), and ``halt``
@@ -422,6 +424,7 @@ def build_rollout_fixture(
     sample_results: tuple[SampleResult, ...] | None = None,
     evaluator_family: str = "deterministic-file-v1",
     session=None,
+    entry_fixture: EntryFixture | None = None,
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
     if mode not in {
@@ -437,7 +440,7 @@ def build_rollout_fixture(
     root.chmod(0o700)
     if evaluator_family not in FAMILIES:
         raise ValueError("unsupported evaluator family")
-    entry = _entry_fixture(mode, evaluator_family)
+    entry = entry_fixture or _entry_fixture(mode, evaluator_family)
     if sample_results is None:
         sample_results = (
             _scripted_samples()
