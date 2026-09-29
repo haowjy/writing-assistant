@@ -1,6 +1,8 @@
 """Runtime source admission and immutable legacy plan contracts, without downloads."""
 
 import json
+import os
+import sys
 import tempfile
 import unittest
 from importlib.metadata import PackageNotFoundError, version
@@ -25,6 +27,51 @@ except PackageNotFoundError:
 
 
 class RuntimeAdmissionTests(unittest.TestCase):
+    def test_wandb_environment_is_unchanged_when_runtime_admission_fails(self):
+        from test_grpo import REVISION, task
+
+        from scripts.smoke_grpo_cpu import toy_reward
+
+        bindings = {
+            "WANDB_RUN_ID": "admission-failure",
+            "WANDB_ENTITY": "fixture-entity",
+            "WANDB_PROJECT": "fixture-project",
+            "WANDB_MODE": "online",
+            "WANDB_LOG_MODEL": "false",
+            "WANDB_WATCH": "false",
+            "WANDB_DISABLE_CODE": "true",
+            "WANDB_API_KEY": "must-not-be-copied",
+        }
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}):
+            for key in bindings:
+                os.environ.pop(key, None)
+            before = dict(os.environ)
+            with (
+                patch.dict(sys.modules, {"wandb": None}),
+                patch(
+                    "writing_agent.grpo.verify_runtime",
+                    side_effect=ValueError("runtime admission rejected"),
+                ),
+                self.assertRaisesRegex(ValueError, "runtime admission rejected"),
+            ):
+                train_grpo(
+                    [task()],
+                    Path(tmp) / "run",
+                    settings=GRPOSettings(revision=REVISION),
+                    reward_spec={
+                        "id": "fixture",
+                        "config": {},
+                        "mode": "mechanical-only-smoke",
+                    },
+                    admission={"mode": "engineered-fixture", "label": "test-only"},
+                    reward_callback=toy_reward,
+                    execute=True,
+                    report_to="wandb",
+                    wandb_run_name=bindings["WANDB_RUN_ID"],
+                    wandb_environment=bindings,
+                )
+            self.assertEqual(dict(os.environ), before)
+
     def test_legacy_plan_shape_and_explicit_streaming_identity(self):
         from test_grpo import REVISION, task
 

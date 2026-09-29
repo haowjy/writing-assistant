@@ -344,9 +344,10 @@ def train_grpo(
             or getattr(active_run, "project", None) != wandb_environment.get("WANDB_PROJECT")
         ):
             raise ValueError("A different W&B run is already active")
-        for key, value in wandb_environment.items():
-            os.environ[key] = str(value)
     verified_runtime = verify_runtime(implementation)
+    if wandb_reporting:
+        for key, value in required_env.items():
+            os.environ[key] = str(value)
     import torch
     from datasets import Dataset
     from peft import LoraConfig, PeftModel, get_peft_model
