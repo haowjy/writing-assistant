@@ -18,7 +18,6 @@ from writing_agent.task_graph_records import (
     decode_runtime_manifest,
 )
 
-NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
 TOOL_RESPONSE_STOP_TOKEN_ID = 50
 
 
@@ -63,26 +62,6 @@ def persist_logprob_trace(
     trace["per_token_logprobs_codec"] = result.logprobs.codec
     trace["per_token_logprobs_shape"] = list(result.logprobs.shape)
     return trace
-
-
-@dataclass(frozen=True)
-class EligibilityDecisionV1:
-    native_on_policy_eligible: bool = False
-    trace_reason: str = NATIVE_TRACE_REASON
-    training_status: str = "ineligible"
-    training_reason: str = "native_action_trace_unavailable"
-
-    def training_wire(self, outcome_ref: str) -> dict[str, Any]:
-        return {
-            "record_type": "TrainingEligibilityV1",
-            "schema": 1,
-            "terminal_outcome_ref": outcome_ref,
-            "status": self.training_status,
-            "reason": self.training_reason,
-        }
-
-
-CURRENT_ELIGIBILITY = EligibilityDecisionV1()
 
 
 def bind_group_sampling_claims(

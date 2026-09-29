@@ -32,6 +32,7 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_derive_context",
     "writing_agent.task_graph_derive_common",
     "writing_agent.task_graph_derive_outcome",
+    "writing_agent.task_graph_eligibility",
     "writing_agent.task_graph_derive_author",
     "writing_agent.task_graph_derive_writer",
     "writing_agent.task_graph_controller",
@@ -88,6 +89,7 @@ LAYER_RANKS = {
             "task_graph_derive_entry",
             "task_graph_derive_context",
             "task_graph_derive_outcome",
+            "task_graph_eligibility",
             "task_graph_derive_author",
             "task_graph_derive_writer",
         )

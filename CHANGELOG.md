@@ -26,6 +26,8 @@
   prefixes; it derives termination from committed limits and maps valid token/context limits
   and unterminated stop classes to scored incomplete outcomes. V1 identities and goldens stay
   unchanged.
+- Reward publication derives ordered structural eligibility from native manifest, group,
+  context and sampled-message evidence; the reserved `eligible` status is never emitted.
 - Real group member starts and commits require the sealed manifest. Collection binds terminal
   results to the verified head, resolves rewards published after collection, and records the
   judged head for infrastructure interruptions.

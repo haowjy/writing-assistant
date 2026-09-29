@@ -142,6 +142,9 @@ class SampledMessageV1(WireRecord):
     content: Annotated[Any, CanonicalIntake()]
     tool_calls_was_list: Annotated[bool, Bool()]
     calls: Annotated[Any, _JSON]
+    reasoning: Annotated[Any, CanonicalIntake()] = None
+    thinking: Annotated[Any, CanonicalIntake()] = None
+    reasoning_content: Annotated[Any, CanonicalIntake()] = None
 
     def check(self) -> None:
         if not self.tool_calls_was_list:
@@ -158,6 +161,10 @@ class SampledMessageV1(WireRecord):
                 validate_canonical_value(call["value"])
             elif call["value"] != {"$noncanonical": "bounded-call"}:
                 raise ValueError("unbounded calls require the bounded-call marker")
+
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"reasoning", "thinking", "reasoning_content"}
+    )
 
 
 @dataclass(frozen=True)

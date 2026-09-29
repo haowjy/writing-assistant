@@ -38,7 +38,7 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 | 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_operation` |
 | 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
 | 2 | `task_graph_store` |
-| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
+| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `task_graph_eligibility`, `_author`, `_outcome`, `_context` |
 | 4 | `task_graph_gate`, `task_graph_group_contract` |
 | 5 | `task_graph_environment` |
 | 6 | `task_graph_group`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
@@ -62,7 +62,8 @@ The core keeps pure helpers in the same concern modules:
   `task_graph_sampling`, and `validate_ask_semantics` from `task_graph_scripted`;
 - `derive_author` uses `resolve_script_reply`, `scripted_author_reply`,
   `ScriptCoverageError` and `validate_ask_semantics` from `task_graph_scripted`;
-- `derive_outcome` uses `CURRENT_ELIGIBILITY` from `task_graph_sampling`;
+- `derive_outcome` uses `decide_eligibility` from `task_graph_eligibility`, which reads
+  committed writer-turn and manifest evidence to persist the ordered structural reason;
 - the gatherers use `ArtifactSink` and `persist_logprob_trace` from `task_graph_sampling`,
   and `scripted_author_reply` from `task_graph_scripted`.
 
@@ -88,6 +89,10 @@ There is no separate writer-request record. `EnvironmentStateV1.history` stores 
 `WriterTurnV2` is additive and carries byte references to the full input and generated token
 IDs, generated-token logprobs, termination, and sampling pins. `RuntimeManifestV2` carries the
 three native sampling capabilities and rendering, tokenizer, and decoding descriptors.
+`SampledMessageV1` keeps optional reasoning/thinking side channels for eligibility while
+omitting them when absent, preserving prior wire identities. Structural training eligibility
+is decided from committed V2 evidence and the sealed native group; it never records the
+reserved `eligible` status.
 `GroupSpecV1.training_mode` is omitted when `None`, preserving existing group identities.
 `decode_and_bind_sampling` dispatches both writer-turn record types and refuses cross-version
 turn/manifest pairs. V2 checks token counts, logprob shape, sealed pins, trace claims, and the
