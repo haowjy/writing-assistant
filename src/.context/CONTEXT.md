@@ -419,7 +419,9 @@ Liger model replacements through public configuration. The maintained FP32
 streaming softcap is an accepted numerical variant, not native BF16 parity.
 See [GRPO usage](../../docs/grpo.md) for qualification scope and source pins.
 
-`grpo.py` connects fresh task groups to TRL's public rollout callback; it does not
+`grpo.py` owns legacy experiment admission, frozen settings/identity and TRL config;
+`grpo_trainer.py` owns the shared resume/quarantine, checkpoint callback, trainer
+construction and adapter-export lifecycle exposed as `run_trainer(...)`. It does not
 reuse SFT preparation or implement another RL loss. `grpo_rollout.py` owns append-only
 sampled tokens and external suffix masks. Do not rebuild training actions by rendering
 parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
@@ -431,7 +433,9 @@ also stops ties by default; explicit `"continue"` passes raw tied rewards throug
 ordinary TRL/Adam without resampling. Mathematically zero advantages can have
 float32 residuals; these or momentum may move weights. This is not update skipping.
 Saved `trl_advantages_estimate` values are Python-formula estimates, not observed
-trainer tensors. Groups record ties separately from checkpointed optimizer progress. `GRPOSettings.microbatch_size=None`
+trainer tensors. Reward scaling is explicit and identity-bound (`group` by default;
+task-graph training selects `none`). Groups record ties separately from checkpointed
+optimizer progress. `GRPOSettings.microbatch_size=None`
 trains the full group with accumulation 1. An explicit microbatch must be a positive
 integer dividing `group_size`; `gradient_accumulation_steps` is derived as
 `group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one
@@ -538,10 +542,11 @@ progress; quiet output never triggers termination. Preparation/preflight import 
 model stack. See [full48 usage](../../docs/grpo-full48.md) for frozen allocations
 and their limits; CPU schedule proof does not establish native training fit.
 
-`grpo_gpu.py` admits the complete graphics/compute NVML inventory for production
-fit and full48 train/resume, reusing the unchanged probe display policy. Prepared
-identity and pinned source admission precede ownership; ownership precedes model
-loading. `grpo_gpu_fit.py` owns a separate single-attempt controlled token-ledger
+`grpo_gpu.py` owns the display allowance policy and desktop-consumer check as well as
+complete graphics/compute NVML inventory admission for production fit and full48
+train/resume. `grpo_probe.py` re-imports the display policy and check. Prepared identity
+and pinned source admission precede ownership; ownership precedes model loading.
+`grpo_gpu_fit.py` owns a separate single-attempt controlled token-ledger
 profile and native prefill check. Generation and training use sequential fresh
 processes so ownership never exempts an existing CUDA context. Controlled ledgers
 are memory evidence only; production rollouts remain native sampling. See

@@ -4,6 +4,8 @@
 
 - Set only validated W&B environment bindings, and only after runtime admission succeeds.
 
+- Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
+
 - Classify filesystem path mistakes consistently in both dispatchers: missing, invalid,
   overlong, or file-ancestor paths are recoverable tool errors; host faults remain
   infrastructure failures.
