@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Plant Phase 8 privacy canaries in private task records and fail criterion 6 if either reaches
+  run artifacts outside the store's private area.
+
 - Treat only recognized Gemma malformed-response errors as model parse failures; surface
   unexpected parser errors as protocol failures.
 - Refuse false `native_parse_failed` claims at decode.

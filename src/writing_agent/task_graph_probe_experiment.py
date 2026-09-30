@@ -52,9 +52,8 @@ from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import DerivedArtifact
 
 TOKENIZER_REVISION = "3e22461f65e89153144f8adb70e3b8c2cc9845a7"
-AUTHOR_PACKET_CANARY = "AUTHOR_PACKET_CANARY_S4_1937"
-EVALUATOR_PACKET_CANARY = "EVALUATOR_PACKET_CANARY_S4_2841"
-LEDGER_CANARY = "REQUIREMENT_LEDGER_CANARY_S4_9752"
+AUTHOR_PACKET_CANARY = "P8R3C_PRIVATE_AUTHOR_PREF_CANARY_4172"
+EVALUATOR_PACKET_CANARY = "P8R3C_PRIVATE_EVALUATOR_SPEC_CANARY_8365"
 TOKENIZER_PATH = (
     Path.home()
     / ".cache/huggingface/hub/models--google--gemma-4-E2B-it/snapshots"
@@ -358,12 +357,35 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
         reader.private[check.identity()] = check.to_dict()
         checks.append(check)
 
+    # Keep this private check outside the admitted evaluator packet: it is a leak
+    # detector, not an evaluator operand or a value that may affect task behavior.
+    canary_check = CheckContractV1(
+        id="privacy_canary_only",
+        evaluator_version="deterministic-v1",
+        applicability="node_exit_candidate",
+        required=False,
+        spec={
+            "id": "privacy_canary_only",
+            "metric": "Q13",
+            "kind": "nonempty",
+            "method": "deterministic",
+            "required": False,
+            "path": "scene.txt",
+            "private_fixture_canary": EVALUATOR_PACKET_CANARY,
+        },
+    )
+    reader.private[canary_check.identity()] = canary_check.to_dict()
+
     reward = RewardContractV1(components=checks_config["components"], incomplete_score=0)
     packet = EvaluatorPacketV1(reward_contract_ref=reward.identity(), check_ids=check_ids)
     reader.private[reward.identity()] = reward.to_dict()
     reader.private[packet.identity()] = packet.to_dict()
     author_packet = AuthorPacketV1(
-        preferences=public["author_packet"]["preferences"], requirements={}
+        preferences={
+            **public["author_packet"]["preferences"],
+            "unused_private_preference": AUTHOR_PACKET_CANARY,
+        },
+        requirements={},
     )
     answer = author_packet.preferences[decision["binding"]]
     script = ScriptedAuthorV1(
@@ -634,7 +656,6 @@ __all__ = [
     "AUTHOR_PACKET_CANARY",
     "CONFIG_DIR",
     "EVALUATOR_PACKET_CANARY",
-    "LEDGER_CANARY",
     "TOKENIZER_PATH",
     "TOKENIZER_REVISION",
     "EntryFixture",

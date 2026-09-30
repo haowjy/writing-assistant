@@ -18,7 +18,6 @@ from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
 from writing_agent.task_graph_probe_experiment import (
     AUTHOR_PACKET_CANARY,
     EVALUATOR_PACKET_CANARY,
-    LEDGER_CANARY,
     TOKENIZER_PATH,
     tiny_gemma,
 )
@@ -51,8 +50,9 @@ CRITERION_DESCRIPTIONS = {
         "ceiling held."
     ),
     "criterion_6": (
-        "The two offline inspection outputs are byte-identical and private-data canaries "
-        "are absent."
+        "The two inspections are byte-identical; planted private-record canaries are absent "
+        "outside the store's private area; and each member's sampler inputs are re-derived from "
+        "that member's verified lineage."
     ),
 }
 
@@ -141,9 +141,20 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
                         key += ":" + turn.termination["limit"]
                     terminations[key] = terminations.get(key, 0) + 1
                     member_terminations.append(turn)
+                member_lineage = member.member_id
+                lineage_bound = (
+                    start_view.state.position["lineage_id"] == member_lineage
+                    and view.state.position["lineage_id"] == member_lineage
+                    and bool(member_terminations)
+                    and all(
+                        turn.action_id.startswith(f"{member_lineage}:action:")
+                        for turn in member_terminations
+                    )
+                )
                 result_members.append(
                     {
                         "member_id": member.member_id,
+                        "sampler_inputs_bound_to_own_lineage": lineage_bound,
                         "eligibility": eligibility,
                         "turns": member_terminations,
                         "tool_outcomes": tool_outcomes,
@@ -394,6 +405,78 @@ def _criterion(computed: bool, passed: bool, evidence: dict[str, Any], missing=(
     }
 
 
+def _sibling_input_scope(
+    groups: list[dict[str, Any]],
+    inspector_reports: list[dict[str, Any]],
+    *,
+    inspections_byte_identical: bool,
+) -> dict[str, Any]:
+    members = [member for group in groups for member in group["members"]]
+    member_bindings_ok = bool(members) and all(
+        member["sampler_inputs_bound_to_own_lineage"] for member in members
+    )
+    admission_members = [member for group in groups for member in group["admission"].members]
+    admissions_ok = bool(admission_members) and all(
+        member["status"] == "admitted" for member in admission_members
+    )
+    audit_reports_ok = (
+        len(inspector_reports) == 6
+        and all(
+            report.get("status") == "admitted"
+            and report.get("member_count") == 4
+            and report.get("admitted_count") == 4
+            and report.get("mismatch_count") == 0
+            for report in inspector_reports
+        )
+        and inspections_byte_identical
+    )
+    return {
+        "verified": member_bindings_ok and admissions_ok and audit_reports_ok,
+        "member_count": len(members),
+        "member_action_ids_bind_to_their_own_lineage": member_bindings_ok,
+        "training_admissions_all_admitted": admissions_ok,
+        "offline_native_audit_rederived_all_member_inputs": audit_reports_ok,
+        "scope": (
+            "Each member's native sampler inputs are reconstructed from that member's own "
+            "verified start checkpoint, event chain, and context; exported prompt and completion "
+            "bytes are checked by the offline native audit."
+        ),
+        "limits": (
+            "This proves per-member lineage and input reconstruction, not absence of arbitrary "
+            "shared public text or any unplanted sibling-derived content."
+        ),
+    }
+
+
+def _criterion_6(
+    *,
+    inspections_byte_identical: bool,
+    privacy: dict[str, Any],
+    frozen_public_task_scope: bool,
+    network_disabled: bool,
+    sibling_input_scope: dict[str, Any],
+) -> dict[str, Any]:
+    evidence = {
+        "inspections_byte_identical": inspections_byte_identical,
+        "privacy_canary_hits": privacy["hits"],
+        "privacy_files_scanned": privacy["checked_files"],
+        "privacy_canaries_scanned": privacy["canaries_scanned"],
+        "privacy_scan_scope": privacy["scan_scope"],
+        "excluded_private_store_area": privacy["excluded_private_store_area"],
+        "frozen_public_task_scope": frozen_public_task_scope,
+        "network_disabled": network_disabled,
+        "sibling_input_scope": sibling_input_scope,
+    }
+    passed = (
+        inspections_byte_identical
+        and not privacy["hits"]
+        and frozen_public_task_scope
+        and network_disabled
+        and sibling_input_scope["verified"]
+    )
+    return _criterion(True, passed, evidence)
+
+
 def _store_integrity_controls_refused(evidence: dict[str, Any]) -> bool:
     controls = evidence.get("controls")
     return bool(
@@ -608,20 +691,49 @@ def _checkpoint_disk_metrics(training_root: Path) -> list[dict[str, int]]:
 
 
 def _privacy_scan(run_dir: Path) -> dict[str, Any]:
-    canaries = (AUTHOR_PACKET_CANARY, EVALUATOR_PACKET_CANARY, LEDGER_CANARY)
+    canaries = {
+        "unused_author_preference": AUTHOR_PACKET_CANARY,
+        "private_evaluator_check_spec": EVALUATOR_PACKET_CANARY,
+    }
+    private_root = run_dir / "training" / "private"
     hits = []
+    checked_files = 0
     for path in run_dir.rglob("*"):
-        if not path.is_file() or path.is_symlink():
+        if path == private_root:
+            if path.is_symlink() or not path.is_dir():
+                hits.append(
+                    {
+                        "path": str(path.relative_to(run_dir)),
+                        "reason": "private_store_area_not_a_directory",
+                    }
+                )
             continue
+        if private_root in path.parents:
+            continue
+        if path.is_symlink():
+            hits.append({"path": str(path.relative_to(run_dir)), "reason": "symlink_not_scanned"})
+            continue
+        if not path.is_file():
+            continue
+        checked_files += 1
         try:
             data = path.read_bytes()
         except OSError:
             hits.append({"path": str(path.relative_to(run_dir)), "reason": "unreadable"})
             continue
-        for canary in canaries:
+        for canary_id, canary in canaries.items():
             if canary.encode() in data:
-                hits.append({"path": str(path.relative_to(run_dir)), "canary": canary})
-    return {"checked_files": sum(1 for path in run_dir.rglob("*") if path.is_file()), "hits": hits}
+                hits.append({"path": str(path.relative_to(run_dir)), "canary_id": canary_id})
+    return {
+        "checked_files": checked_files,
+        "hits": hits,
+        "canaries_scanned": [
+            {"canary_id": canary_id, "sha256": hashlib.sha256(value.encode()).hexdigest()}
+            for canary_id, value in canaries.items()
+        ],
+        "scan_scope": "all regular run-directory files outside training/private",
+        "excluded_private_store_area": "training/private",
+    }
 
 
 def _failed_result(run_dir: Path, mode: str, error: str) -> dict[str, Any]:
@@ -825,20 +937,17 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
         source_scope_ok = len(prepared.get("task_graph_hashes", ())) == 3 and [
             item["task_id"] for item in prepared["task_graph_hashes"]
         ] == ["t1-lighthouse", "t2-winter-garden", "t3-coastal-post"]
-        criterion_6_evidence = {
-            "inspections_byte_identical": inspections_identical,
-            "privacy_canary_hits": privacy["hits"],
-            "privacy_files_scanned": privacy["checked_files"],
-            "frozen_public_task_scope": source_scope_ok,
-            "network_disabled": all(
+        sibling_input_scope = _sibling_input_scope(
+            groups, reports, inspections_byte_identical=inspections_identical
+        )
+        criterion_6 = _criterion_6(
+            inspections_byte_identical=inspections_identical,
+            privacy=privacy,
+            frozen_public_task_scope=source_scope_ok,
+            network_disabled=all(
                 os.environ.get(name) == "1" for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
             ),
-        }
-        criterion_6_pass = (
-            inspections_identical
-            and not privacy["hits"]
-            and source_scope_ok
-            and criterion_6_evidence["network_disabled"]
+            sibling_input_scope=sibling_input_scope,
         )
 
         measurements = _ledger_metrics(groups)
@@ -884,7 +993,7 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
                 else [store_integrity_error or "offline inspection evidence"],
             ),
             "criterion_5": _criterion(criterion_5_computed, criterion_5_pass, criterion_5_evidence),
-            "criterion_6": _criterion(True, criterion_6_pass, criterion_6_evidence),
+            "criterion_6": criterion_6,
         }
         for key, description in CRITERION_DESCRIPTIONS.items():
             criteria[key]["description"] = description

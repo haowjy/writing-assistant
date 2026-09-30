@@ -291,6 +291,7 @@ class TaskGraphProbeTests(unittest.TestCase):
                     members.append(
                         {
                             "member_id": f"member-{group_index}-{member_index}",
+                            "sampler_inputs_bound_to_own_lineage": True,
                             "eligibility": "structurally_eligible",
                             "turns": [],
                             "tool_outcomes": member_outcomes,
@@ -431,7 +432,13 @@ class TaskGraphProbeTests(unittest.TestCase):
                 ),
                 patch(
                     "writing_agent.grpo_task_graph_probe_evidence._privacy_scan",
-                    return_value={"hits": [], "checked_files": 0},
+                    return_value={
+                        "hits": [],
+                        "checked_files": 0,
+                        "canaries_scanned": [],
+                        "scan_scope": "all regular run-directory files outside training/private",
+                        "excluded_private_store_area": "training/private",
+                    },
                 ),
                 patch("writing_agent.grpo_task_graph_probe_evidence._disk_bytes", return_value=0),
             ):
