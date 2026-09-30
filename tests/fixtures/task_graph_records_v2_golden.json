@@ -148,6 +148,116 @@
       },
       "identity": "9b24a6dfb3d567805affa4ed36d09332a836ec7143da09548861eebf89e8c16b"
     },
+    "TrainingBatchV1": {
+      "body": {
+        "decision_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "max_context_tokens": 4096,
+        "members": [
+          {
+            "advantage": {
+              "advantage": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "centered": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "expression": "zero",
+              "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "mean": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "member_id": "grp-batch-00",
+              "native_optimizer_eligible": false,
+              "record_type": "GroupAdvantageV1",
+              "result_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "reward": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "schema": 1,
+              "variance": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "zero_variance": true
+            },
+            "advantage_f64_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "advantage_ref": "675c5ebe4bf9e2c95122d6c854a154393c8b44154412fbe9e335822c930f82c3",
+            "completion_ids_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "env_mask_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "ledger_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "member_id": "grp-batch-00",
+            "prompt_ids_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "result_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "turn_spans": [
+              {
+                "action_id": "batch:grp-batch-00:action:0",
+                "completion_end": 1,
+                "completion_start": 0,
+                "ext_start": 0,
+                "turn_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+              }
+            ]
+          },
+          {
+            "advantage": {
+              "advantage": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "centered": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "expression": "zero",
+              "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "mean": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "member_id": "grp-batch-01",
+              "native_optimizer_eligible": false,
+              "record_type": "GroupAdvantageV1",
+              "result_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "reward": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "schema": 1,
+              "variance": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "zero_variance": true
+            },
+            "advantage_f64_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "advantage_ref": "dce2476504ffad5c95d16e7ae3ac1fc051d48d2c90104f05ba8acb23303f9827",
+            "completion_ids_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "env_mask_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "ledger_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "member_id": "grp-batch-01",
+            "prompt_ids_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "result_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "turn_spans": [
+              {
+                "action_id": "batch:grp-batch-01:action:0",
+                "completion_end": 1,
+                "completion_start": 0,
+                "ext_start": 0,
+                "turn_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+              }
+            ]
+          }
+        ],
+        "record_type": "TrainingBatchV1",
+        "schema": 1
+      },
+      "identity": "776eb0a163e2aaaf1cf57f3f4b05a9ef2c62d6967ac427e71353ebc95b5d77f6"
+    },
     "WriterTurnV2": {
       "body": {
         "action_id": "rollout-1:action:1",

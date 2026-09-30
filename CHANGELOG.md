@@ -268,6 +268,8 @@
 - Add a root `TODO.md` linked from the README as the active work order. Put the
   cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
   download; point older work checklists to it.
+- Finalized native groups export `TrainingBatchV1` with V2-derived token masks and segment
+  spans; trailing zero-generation context-limit turns remain audit-only.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

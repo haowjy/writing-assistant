@@ -35,13 +35,13 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 
 | Rank | Modules |
 |---|---|
-| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_native_contracts`, `task_graph_operation` |
+| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_training_records`, `task_graph_native_contracts`, `task_graph_operation` |
 | 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
 | 2 | `task_graph_store` |
 | 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `task_graph_eligibility`, `_author`, `_outcome`, `_context` |
 | 4 | `task_graph_gate`, `task_graph_group_contract` |
 | 5 | `task_graph_environment` |
-| 6 | `task_graph_group`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
+| 6 | `task_graph_group`, `task_graph_training_export`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
 
 - **`TYPE_CHECKING` imports count for layer order, not for cycles.** The layer test walks
   type-only imports; the SCC test ignores them. A type-only import is not a way around the
@@ -78,6 +78,7 @@ Choose the module by concern:
 |---|---|
 | `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, runtime manifest V1/V2 and descriptor records, `WriterTurnV1`/`WriterTurnV2`, and `TrainingAdmissionV1`; registries and reference closure |
 | `task_graph_group_records` | Pure group result and credit `WireRecord` classes (`GroupDecisionV1`, `GroupAdvantageV1`, `GroupSegmentCreditV1`, and related records) |
+| `task_graph_training_records` | Codec-registered `TrainingBatchV1` record for a finalized group export |
 | `task_graph` | Core environment records and context materialization |
 | `task_graph_record_contracts` | Sealed contracts with binding rules: `GroupSpecV1`, `GroupMemberSpecV1`, `ContextPolicyV1`, `ExecutionVersionsV1`, `SEMANTICS_V1`, `GroupError`, `CompactionError` |
 | `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, and group seeds |
@@ -91,6 +92,9 @@ IDs, generated-token logprobs, termination, and sampling pins. `RuntimeManifestV
 three native sampling capabilities and rendering, tokenizer, and decoding descriptors.
 `task_graph_native_contracts` owns the public native sampling allocation and the shared
 manifest-policy-rendering binding used by seal and derive paths.
+`task_graph_training_export` reads a finalized group's V2 member chains and emits the
+hash-addressed batch plus token and float64 byte artifacts; it is a consumer-side pure
+projection, not a commit derive.
 `SampledMessageV1` keeps optional reasoning/thinking side channels for eligibility while
 omitting them when absent, preserving prior wire identities. Structural training eligibility
 is decided from committed V2 evidence and the sealed native group; it never records the

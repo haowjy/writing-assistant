@@ -47,7 +47,7 @@ PINNED_GOLDEN_SHA256 = {
             "4d7287b26cf2d038d6c623daea731ac7cdc2fb8d949183f38354854c463abe0f"
         ),
         "task_graph_records_v2_golden.json": (
-            "7063bda996697f903565d784a435453ebe2fed56448aa67deddaf6c7f377812b"
+            "8fd3dcd5b5ec1dd33426183528180930c728ae6c1056501a938fc72977393978"
         ),
     }
 }
