@@ -560,6 +560,8 @@ class NativeGemmaTests(unittest.TestCase):
                 ("termination", first_view.samples[0].turn_ref, "termination"),
                 ("v1_manifest", spec.policy["adapter_ref"], "manifest"),
             )
+            # Store-layer controls: changing an envelope body breaks its content hash, so
+            # LineageGate refuses before the tokenizer-backed admission audit can run.
             for label, ref, kind in tamper_cases:
                 with self.subTest(tamper=label), tempfile.TemporaryDirectory() as tamper_tmp:
                     copied = Path(tamper_tmp) / "store"

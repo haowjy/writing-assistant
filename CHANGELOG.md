@@ -4,6 +4,8 @@
 
 - Audit native training batches against committed context and pinned tokenizer files before
   training; offline inspection re-derives the batch and admission without network access.
+- Offline inspection now persists and re-derives tokenizer-file hash refusals through the
+  admission audit instead of stopping at tokenizer load.
 
 - Derive V2 total, prefill and cached-input usage from the committed token ledger before
   charging a native turn.

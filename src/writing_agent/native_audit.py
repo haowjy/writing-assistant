@@ -542,12 +542,13 @@ def _load_pinned_tokenizer(manifest: RuntimeManifestV2):
                 local_files_only=True,
             )
         )
-    for name, expected in descriptor.files_sha256.items():
+    # Keep file-integrity mismatches in the durable audit path. The offline inspector
+    # must be able to load the local tokenizer and re-derive `tokenizer_files` refusal,
+    # rather than failing before it can reproduce TrainingAdmissionV1.
+    for name in descriptor.files_sha256:
         relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:
             raise TrainingExportError("tokenizer_file_path", "tokenizer descriptor path is unsafe")
-        if hashlib.sha256((snapshot / relative).read_bytes()).hexdigest() != expected:
-            raise TrainingExportError("tokenizer_file_hash", "cached tokenizer file hash differs")
     tokenizer = AutoTokenizer.from_pretrained(str(snapshot), local_files_only=True)
     return tokenizer, snapshot
 
