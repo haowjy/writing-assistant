@@ -254,8 +254,6 @@ def _load_prepare(run_dir: Path, *, mode: str) -> dict[str, Any]:
 
 def inspect(run_dir: Path, *, mode: str) -> dict[str, Any]:
     """Read-only orientation; it does not query a GPU or create the run directory."""
-    if "torch" in sys.modules or "writing_agent.grpo_probe" in sys.modules:
-        raise ProbeError("probe inspect must not load Torch or the legacy probe")
     if run_dir.exists():
         prepare_path = run_dir / "prepare.json"
         if prepare_path.exists():

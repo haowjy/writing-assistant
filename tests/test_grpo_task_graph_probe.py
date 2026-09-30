@@ -43,6 +43,13 @@ class TaskGraphProbeTests(unittest.TestCase):
                         "source": {"commit": "commit", "tree": "tree"},
                     },
                 ),
+                patch.dict(
+                    sys.modules,
+                    {
+                        "torch": object(),
+                        "writing_agent.grpo_probe": object(),
+                    },
+                ),
             ):
                 before = inspect(root, mode="cpu-dry-run")
                 self.assertFalse(root.exists())
