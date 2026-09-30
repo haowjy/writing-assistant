@@ -648,6 +648,7 @@ class NativeGemmaTests(unittest.TestCase):
                 adapter_hash_after=policy["behavior_policy_ref"],
                 tokenizer_root=TOKENIZER_PATH,
             )
+            coordinator.record_training_admission(spec, admission)
             self.assertEqual(
                 [member["status"] for member in admission.members],
                 ["admitted", "admitted"],

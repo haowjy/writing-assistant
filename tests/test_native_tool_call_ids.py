@@ -42,7 +42,6 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
 
         import torch
 
-        from scripts.task_graph_trace_check_support import with_native_tokenizer
         from tests.task_graph_rollout_fixtures import (
             _entry_fixture,
             build_rollout_fixture,
@@ -61,16 +60,16 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
             LocalWorkspaceEnvironment,
         )
         from writing_agent.task_graph_ports import RuntimeDependenciesV1
+        from writing_agent.task_graph_probe_experiment import (
+            bind_native_tokenizer,
+            build_admitted_entry,
+            load_probe_task,
+        )
         from writing_agent.task_graph_rollout import RolloutDriver
 
         root = Path(__file__).resolve().parents[1]
-        builder_spec = importlib.util.spec_from_file_location(
-            "phase8_probe_task_builder", root / "configs/phase8/probe-tasks/build.py"
-        )
-        builder = importlib.util.module_from_spec(builder_spec)
-        builder_spec.loader.exec_module(builder)
-        probe = builder.load_probe_task(root / "configs/phase8/probe-tasks/t1-lighthouse.json")
-        probe_entry = builder.build_admitted_entry(probe)
+        probe = load_probe_task(root / "configs/phase8/probe-tasks/t1-lighthouse.json")
+        probe_entry = build_admitted_entry(probe)
         revised_scene = (
             "At the lighthouse window, Mara watches the amber lantern settle as the boat enters "
             "the harbor. Low tide exposes silver stones. She checks the ropes, warms tea, and "
@@ -114,7 +113,7 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
                 tool_schema_ref=entry.params.rendering["tool_schema_ref"],
                 max_tokens_per_decision=512,
             )
-            entry = with_native_tokenizer(entry, descriptors[1])
+            entry = bind_native_tokenizer(entry, descriptors[1])
             fixture = build_rollout_fixture(
                 parent / "store",
                 mode=mode,

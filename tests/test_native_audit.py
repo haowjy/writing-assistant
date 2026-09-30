@@ -251,7 +251,6 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
     def _audit(self, store, spec, decision, tokenizer, *, tokenizer_root, after):
         from writing_agent.native_audit import audit_training_batch
         from writing_agent.task_graph_environment import RolloutEnvironment
-        from writing_agent.task_graph_gate import LineageGate
         from writing_agent.task_graph_group import GroupCoordinatorV1
 
         admission = audit_training_batch(
@@ -267,7 +266,7 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
             store,
             self.fixture.entry.graph,
             None,
-            LineageGate(),
+            store.verifier,
             self.fixture.entry.graph.policy,
         )
         GroupCoordinatorV1(environment).record_training_admission(spec, admission)
