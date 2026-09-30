@@ -47,7 +47,7 @@ PINNED_GOLDEN_SHA256 = {
             "4d7287b26cf2d038d6c623daea731ac7cdc2fb8d949183f38354854c463abe0f"
         ),
         "task_graph_records_v2_golden.json": (
-            "8fd3dcd5b5ec1dd33426183528180930c728ae6c1056501a938fc72977393978"
+            "66bc1d4a6e83a12788a216fd8863d4fd5a393dd90e977fe7819496b644268093"
         ),
     }
 }
@@ -186,6 +186,33 @@ class TaskGraphGoldenTests(unittest.TestCase):
                     canonical_bytes(json.loads(canonical_bytes(body))),
                 )
                 record_reference_edges(record_type, body)
+        optional_examples = golden["optional_field_examples"]
+        self.assertEqual(
+            set(optional_examples),
+            {
+                "GroupSegmentCreditV1_with_token_spans",
+                "TrainingBatchV1_with_trailing_context_limit_turn_ref",
+            },
+        )
+        for example_name, variant in optional_examples.items():
+            body = variant["body"]
+            record_type = body["record_type"]
+            with self.subTest(optional_example=example_name):
+                self.assertEqual(variant["identity"], domain_hash("payload", body))
+                record = RECORD_TYPES[record_type].from_dict(body)
+                self.assertEqual(record.to_wire(), body)
+                self.assertEqual(record.identity(), variant["identity"])
+                record_reference_edges(record_type, body)
+        self.assertEqual(
+            optional_examples["GroupSegmentCreditV1_with_token_spans"]["body"]["completion_start"],
+            0,
+        )
+        self.assertIn(
+            "trailing_context_limit_turn_ref",
+            optional_examples["TrainingBatchV1_with_trailing_context_limit_turn_ref"]["body"][
+                "members"
+            ][0],
+        )
 
     def test_scripted_rollout_event_checkpoint_commit_and_state_identities(self):
         golden = _fixture("task_graph_rollout_golden.json")

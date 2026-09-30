@@ -14,9 +14,10 @@ from tests.test_task_graph_v2_writer import (
     _turn,
     with_budget,
 )
+from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_derive_writer import derive_writer_turn_v2
 from writing_agent.task_graph_gate import StoreArtifactReader
-from writing_agent.task_graph_records import OutcomeV1
+from writing_agent.task_graph_records import EnvironmentStepV1, OutcomeV1
 
 
 class V2TerminationTests(unittest.TestCase):
@@ -195,6 +196,31 @@ class V2TerminationTests(unittest.TestCase):
                         fixture.store.get_artifact(committed_view.state.outcome_ref),
                         outcome.to_wire(),
                     )
+                    self.assertEqual(next_step(committed_view).kind, "publish_reward")
+                    published = fixture.env.commit(
+                        committed.runtime,
+                        EnvironmentStepV1(directive={"kind": "publish_reward"}),
+                    )
+                    final_view = fixture.env.verify(published.runtime)
+                    final_outcome = final_view.outcome
+                    self.assertIsInstance(final_outcome, OutcomeV1)
+                    self.assertEqual(final_outcome.task_status, "incomplete")
+                    self.assertEqual(final_outcome.execution_status, "valid")
+                    self.assertEqual(final_outcome.stop_reason, reason)
+                    self.assertEqual(final_outcome.candidate_checkpoint, prior_checkpoint)
+                    self.assertEqual(final_outcome.reward_status, "available")
+                    self.assertEqual(
+                        fixture.store.get_artifact(final_view.state.outcome_ref),
+                        final_outcome.to_wire(),
+                    )
+                    if turn_args["generated_ids"]:
+                        self.assertEqual(
+                            final_outcome.training_eligibility, "structurally_eligible"
+                        )
+                    else:
+                        self.assertEqual(final_outcome.training_eligibility, "ineligible")
+                        eligibility = fixture.store.get_artifact(final_outcome.eligibility_ref)
+                        self.assertEqual(eligibility["reason"], "no_sampled_actions")
 
 
 if __name__ == "__main__":

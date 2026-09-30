@@ -1,4 +1,150 @@
 {
+  "optional_field_examples": {
+    "GroupSegmentCreditV1_with_token_spans": {
+      "body": {
+        "action_id": "batch:grp-batch-00:action:0",
+        "action_ref": "0000000000000000000000000000000000000000000000000000000000000000",
+        "advantage_ref": "675c5ebe4bf9e2c95122d6c854a154393c8b44154412fbe9e335822c930f82c3",
+        "completion_end": 1,
+        "completion_start": 0,
+        "excluded_roles": [
+          "system",
+          "user",
+          "author",
+          "tool",
+          "seed",
+          "environment",
+          "summary"
+        ],
+        "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "logprob_ref": null,
+        "member_id": "grp-batch-00",
+        "message_ref": "0000000000000000000000000000000000000000000000000000000000000000",
+        "native_optimizer_eligible": false,
+        "original_context_content_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "original_context_ref": "0000000000000000000000000000000000000000000000000000000000000000",
+        "part_index": null,
+        "record_type": "GroupSegmentCreditV1",
+        "schema": 1,
+        "segment_content_hash": null,
+        "segment_kind": "assistant_ending",
+        "token_mask_ref": null,
+        "trace_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "identity": "507877d4f06470f84e155f78b1f2a90a78a9200c7597fcff43c12b80ff21653c"
+    },
+    "TrainingBatchV1_with_trailing_context_limit_turn_ref": {
+      "body": {
+        "decision_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "max_context_tokens": 4096,
+        "members": [
+          {
+            "advantage": {
+              "advantage": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "centered": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "expression": "zero",
+              "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "mean": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "member_id": "grp-batch-00",
+              "native_optimizer_eligible": false,
+              "record_type": "GroupAdvantageV1",
+              "result_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "reward": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "schema": 1,
+              "variance": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "zero_variance": true
+            },
+            "advantage_f64_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "advantage_ref": "675c5ebe4bf9e2c95122d6c854a154393c8b44154412fbe9e335822c930f82c3",
+            "completion_ids_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "env_mask_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "ledger_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "member_id": "grp-batch-00",
+            "prompt_ids_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "result_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "trailing_context_limit_turn_ref": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "turn_spans": [
+              {
+                "action_id": "batch:grp-batch-00:action:0",
+                "completion_end": 1,
+                "completion_start": 0,
+                "ext_start": 0,
+                "turn_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+              }
+            ]
+          },
+          {
+            "advantage": {
+              "advantage": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "centered": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "expression": "zero",
+              "group_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "mean": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "member_id": "grp-batch-01",
+              "native_optimizer_eligible": false,
+              "record_type": "GroupAdvantageV1",
+              "result_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "reward": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "schema": 1,
+              "variance": {
+                "denominator": 1,
+                "numerator": 0
+              },
+              "zero_variance": true
+            },
+            "advantage_f64_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "advantage_ref": "dce2476504ffad5c95d16e7ae3ac1fc051d48d2c90104f05ba8acb23303f9827",
+            "completion_ids_ref": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "env_mask_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "ledger_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "member_id": "grp-batch-01",
+            "prompt_ids_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "result_ref": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "turn_spans": [
+              {
+                "action_id": "batch:grp-batch-01:action:0",
+                "completion_end": 1,
+                "completion_start": 0,
+                "ext_start": 0,
+                "turn_ref": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+              }
+            ]
+          }
+        ],
+        "record_type": "TrainingBatchV1",
+        "schema": 1
+      },
+      "identity": "c7c67bf6244baafb2f55552f42ba2e88dffb78ec9976190e94dc3c6c5797641c"
+    }
+  },
   "records": {
     "DecodingDescriptorV1": {
       "body": {

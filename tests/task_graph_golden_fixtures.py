@@ -8,10 +8,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tests.task_graph_fixtures import make_entry_fixture
+from tests.task_graph_record_fixtures import record_examples, shared_payload_examples
 from tests.task_graph_rollout_fixtures import build_rollout_fixture
 from tests.test_task_graph import H as HASH_FIXTURE_REF
 from tests.test_task_graph import TaskGraphRecordsTest
-from tests.test_task_graph_records import record_examples, shared_payload_examples
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
@@ -27,6 +27,7 @@ from writing_agent.task_graph import (
     tree_hash,
 )
 from writing_agent.task_graph_contracts import BudgetContractV1
+from writing_agent.task_graph_group_records import GroupSegmentCreditV1
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_records import (
@@ -298,7 +299,40 @@ def build_records_v2_golden() -> dict[str, object]:
     }
     if set(records) != POST_GOLDEN_RECORD_TYPES:
         raise AssertionError("V2 golden examples do not cover all additive records")
-    return {"transition_semantics": SEMANTICS_V1, "records": records}
+    batch = next(record for record in record_examples() if record.RECORD_TYPE == "TrainingBatchV1")
+    audit_members = tuple(
+        {
+            **dict(member),
+            **({"trailing_context_limit_turn_ref": "e" * 64} if index == 0 else {}),
+        }
+        for index, member in enumerate(batch.members)
+    )
+    batch_with_audit = replace(batch, members=audit_members)
+    first_member = batch.members[0]
+    first_span = first_member["turn_spans"][0]
+    segment_credit = GroupSegmentCreditV1(
+        group_id=batch.group_id,
+        member_id=first_member["member_id"],
+        action_id=first_span["action_id"],
+        action_ref=HASH_REF,
+        message_ref=HASH_REF,
+        trace_ref=first_span["turn_ref"],
+        original_context_ref=HASH_REF,
+        original_context_content_hash=HASH_REF,
+        advantage_ref=first_member["advantage_ref"],
+        segment_kind="assistant_ending",
+        completion_start=first_span["completion_start"],
+        completion_end=first_span["completion_end"],
+    )
+    optional_field_examples = {
+        "GroupSegmentCreditV1_with_token_spans": _entry(segment_credit),
+        "TrainingBatchV1_with_trailing_context_limit_turn_ref": _entry(batch_with_audit),
+    }
+    return {
+        "transition_semantics": SEMANTICS_V1,
+        "records": records,
+        "optional_field_examples": optional_field_examples,
+    }
 
 
 def _rollout_samples() -> tuple[SampleResult, ...]:
