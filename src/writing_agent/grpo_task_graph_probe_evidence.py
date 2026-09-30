@@ -669,7 +669,7 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
                 and report.get("mismatch_count") == 0
                 for report in reports
             )
-            and len(reports) == 3
+            and len(reports) == 6
         )
         criterion_4_evidence = {
             "inspection_reports": reports,
@@ -683,7 +683,7 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             and not tamper_error
             and not inspection_errors
             and not group_errors
-            and len(reports) == 3
+            and len(reports) == 6
         )
         criterion_4_pass = bool(
             criterion_4_computed

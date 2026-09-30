@@ -13,6 +13,8 @@
 - Add the bounded Phase 8 task-graph probe phases, offline evidence inspection and verdict,
   plus a tiny-Gemma CPU dry-run profile.
 
+- Require both offline inspection rounds to cover all three groups before criterion 4 can pass.
+
 - Set only validated W&B environment bindings, and only after runtime admission succeeds.
 
 - Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
