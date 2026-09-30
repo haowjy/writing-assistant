@@ -11,10 +11,18 @@ Nice-to-have follow-ups scoped to `src/`. None blocks correctness. Must-do items
 - [ ] **Report terminal status per member.** In `grpo_task_graph_probe_evidence.py`, add
   each member's `task_status` next to `stop_reason_counts.per_member`. A completed member
   has no stop reason, so its entry is `{}`, and that cannot be told apart from missing data.
-- [ ] **Rename the store-dump canary literal.** `task_graph_probe_tasks.PRIVATE_STORE_DUMP_CANARY`
-  still reads `P8R3C_PRIVATE_EVALUATOR_SPEC_CANARY_8365`, but the canary detects a bulk
-  private-store dump, not leakage of an evaluator spec. The literal feeds the probe task
-  graphs' hashes, so rename it only alongside another deliberate change to those hashes.
+- [ ] **Give the `_work_dir` refusals codes.** `grpo_task_graph_probe._work_dir` raises
+  `ProbeError` both when it cannot locate the work item and when `MERIDIAN_ACTIVE_WORK_DIR`
+  disagrees with the run directory. `tests/test_grpo_task_graph_probe.py` tells the two
+  apart with `assertRaisesRegex` on the message, and test rules forbid asserting messages
+  (review L2). Add a code or a subclass for the disagreement, and assert that instead.
+  Also test the symlinked-path and empty-variable cases, which the review checked by hand.
+- [ ] **Watch empty turns that stop on `<|tool_response>`.** In P1 attempt 2, one member
+  followed a successful `write_file` with an empty turn that stopped on the tool-response
+  token. `task_graph_sampling.termination_stop_reason` classified it
+  `unterminated_final_answer`, and the member scored 0 as a trainable negative example.
+  That is correct, not a bug. Rollout and termination owners should track how often it
+  happens in longer runs before they change prompts, stop tokens or completion rules.
 - [ ] **Stop parsing the rendering-pin message.** `task_graph_derive_writer._bind_writer_turn`
   recovers the differing field from the text of
   `task_graph_native_contracts`' `"native renderer <field> differs …"` error, and reports
@@ -35,6 +43,12 @@ Nice-to-have follow-ups scoped to `src/`. None blocks correctness. Must-do items
   than one context root (`multi_segment_context`), and `task_graph_training_export` exports
   one root. Training compacted lineages needs segment likelihoods reconstructed against
   their original contexts, and the controller-owned compaction trigger first.
+
+- [ ] **Reward meaning, not literal phrases, in real training tasks.** The probe's
+  `stated_detail` check (`configs/phase8/probe-tasks/`) is a `contains` match on a phrase
+  such as "amber lantern". A scene that honors "The lantern is amber." in other words misses
+  it, and several P1 members did (review L5). That is harmless spread for a plumbing probe.
+  Real training tasks should not reward a literal phrase when they mean "follow the brief".
 
 ## Tests
 

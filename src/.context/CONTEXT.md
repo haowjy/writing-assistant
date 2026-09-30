@@ -153,9 +153,10 @@ retains its smoke-evaluation and training-format workflows.
   builder and trace check load task data through the core module; the CPU scripted sampler
   remains in the smoke script. Criterion 6 uses
   [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
-  to scan run artifacts for private-author and bulk-private-store-dump canaries outside
-  `training/private`; the latter is outside the evaluator packet and does not claim to detect
-  leakage of an admitted check spec. Its sibling scope reports per-member input reconstruction
+  to scan run artifacts for its two canaries outside `training/private`. Both sit in one
+  private, non-admitted check record, outside the evaluator packet, so they detect a bulk
+  private-store dump and not leakage of an admitted check spec. `unused_author_preference`
+  is a legacy id: the probe tasks have no author packet. Its sibling scope reports per-member input reconstruction
   from that member's verified lineage, not general absence of unplanted shared or sibling-derived
   text.
 - **Task-graph training (Phase 8).** [native_gemma.py](../writing_agent/native_gemma.py)

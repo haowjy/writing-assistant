@@ -8,11 +8,12 @@ Optional ideas live in [work/FUTURE.md](work/FUTURE.md).
 The goal is better long-form project memory and effective use of large writing
 projects, supported by a maintained wiki, with better prose alongside it.
 
-Task-graph Phase 8 prerequisites are tracked in the
-[Phase 8 section of the work checklist](work/TODO.md#task-graph-environment-before-phase-8-training).
-Its follow-ups (the P1 result and S14 legacy retirement) are in
-[src/.context/TODO.md](src/.context/TODO.md); run the probe with
-[task-graph training](docs/task-graph-training.md).
+Task-graph Phase 8 training passed its GPU probe
+([result and runbook](docs/task-graph-training.md)). Its follow-ups are in
+[src/.context/TODO.md](src/.context/TODO.md): S14 legacy retirement, the core `ask_author`
+deletion, and the eligibility policy decision before any long run. Open task-graph
+environment items are in the
+[work checklist](work/TODO.md#task-graph-environment-open-follow-ups-after-phase-8).
 
 ## Next: DAPO over two complete training passes
 

@@ -177,6 +177,10 @@ are unchanged, and `transition_semantics` stays `task-graph-derive-v1`.
   4. calls without a `<|tool_response>` stop → `unterminated_tool_call`;
   5. a `<|tool_response>` stop without calls → `unterminated_final_answer`.
 
+  Rule 5 fired on real weights in P1: an empty turn after a successful `write_file` ended
+  the member `incomplete` with reward 0. The member stayed structurally eligible and
+  trained as a negative example, as designed.
+
   A mapped turn commits straight to terminal state, using the overrun path's
   candidate-checkpoint shape. A parse failure under a token limit therefore reports the
   limit.

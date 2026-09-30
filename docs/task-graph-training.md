@@ -5,7 +5,8 @@ graph samples, scores and seals each group. The trainer applies the group's exac
 advantages to the sampled tokens only. The probe is one bounded run on an RTX 3090 that
 tests this path end to end:
 
-- three public task graphs, scripted author only;
+- three public task graphs (t1–t3), each one writer node with file tools only and no
+  author interaction;
 - group size 4, three optimizer steps;
 - stop after step 2, then resume from `checkpoint-2` to step 3;
 - a deterministic offline inspection that writes `result.json`.
@@ -19,11 +20,128 @@ The contracts behind the run live in the source context:
 [native sampling and tool outcomes](../src/.context/rollout-execution.md) and
 [native training groups](../src/.context/group-coordination.md).
 
+## The probe tasks
+
+The three tasks are in [`configs/phase8/probe-tasks/`](../configs/phase8/probe-tasks/README.md).
+`task_graph_probe_tasks.build_admitted_entry` admits them. Each one asks for a short scene in
+`scene.txt` and states its task-specific detail in the brief, for example "The lantern is
+amber." The writer has five tools: `list_dir`, `read_file`, `search`, `write_file` and
+`patch_file`. The interaction mode is `none`, so there is no `ask_author` tool, no author
+packet and no feedback turn. The core accepts mandatory feedback only on `scripted_author`
+nodes, which must expose `ask_author`
+(`task_graph_admission._validate_interaction`), so dropping the tool also dropped the
+feedback turn.
+
+Only `scene_nonempty` is required. Four optional checks give partial credit:
+
+| Check | Weight (basis points) |
+|---|---:|
+| `scene_nonempty` (required) | 1,000 |
+| `stated_detail`: `scene.txt` contains the literal phrase, such as "amber lantern" | 2,500 |
+| `public_detail`: a second detail from the brief, such as "low tide" | 2,000 |
+| `scene_word_range`: 24–70 words | 2,500 |
+| `field_notes_nonempty`: the optional `field-notes.txt` | 2,000 |
+
+`stated_detail` matches the literal adjective–noun phrase. A scene that follows "The lantern
+is amber." in other words ("the lantern glowed amber") misses that component. This adds
+reward spread, and it is not a failure to follow the brief.
+
+Budgets per member: six writer turns, eight tool calls, a 4,096-token context cap, 512
+tokens per decision and 1,536 generated tokens. There is no author-call budget.
+
+Both privacy canaries sit in one private, non-admitted check record. Nothing public contains
+them: not the brief, the initial files or the tool manifest. The id
+`unused_author_preference` is a legacy name from the retired author packet. See criterion 6.
+
 ## P1 result
 
-> **Pending.** P1 has not run yet. It runs once, from the commit approved by the R3 review.
-> Until this section is filled in, nothing here claims that the GPU run passed or
-> measured anything. The only evidence so far comes from CPU runs (below).
+**P1 passed on its second attempt.** Attempt 2 ran `phase8/integration@95d4377` (tree
+`c53bf23`) into `runs/phase8-probe-v2/`, and `result.json` reads `pass`. Attempt 1, at
+`53b69ab`, failed at the train stage. The run records and the full write-up
+(`probe-result.md`) live in the `task-graph-training` work item, outside this repository.
+
+**What the pass shows.** Three optimizer steps on three tasks show that the integrated loop
+is mechanically sound on real hardware. The loop covers native sampling, task-graph reward,
+the masked DAPO update, checkpointing and resume. The run says nothing about whether
+training improves writing, or whether the reward is valid.
+
+### Attempt 1: `fail` at `train`
+
+At that commit, each task exposed one author decision through `ask_author` and had one
+scripted feedback turn. The train stage failed after 193 s with
+`TrainingExportError: training member is not structurally eligible`. No ceiling was hit, and
+peak reserved memory was 10.7 GiB.
+
+In the first group (t1), one member called `ask_author` with `proposals` items shaped like
+`{"name": "white"}`. The core refused the call twice with
+`ask_author proposals need exact id/text pairs`. The model, with `enable_thinking=false`,
+then emitted a thought channel on its own and chose the color itself. Derive recorded the
+thought, so the member was `ineligible` (`reasoning_content_present`). The export refused
+the group, and the run halted as designed: V1 training is non-thinking, and criterion 1
+needs 12 of 12 members eligible.
+
+It had two causes:
+
+- **The tool schema said less than its validator.** `ASK_AUTHOR_SCHEMA`
+  (`task_graph_contracts.py`) declares `proposals` items as a bare `{"type": "object"}`.
+  `task_graph_calls.validate_ask_shape` demands exact `{id, text}` pairs. The model had no
+  way to learn the shape. The S11 trace check had already recorded the same refusal as model
+  behavior.
+- **One ineligible member halts the whole run.** That policy is unchanged and still open;
+  see `src/.context/TODO.md`.
+
+### What changed before attempt 2
+
+- **The probe tasks dropped `ask_author`** (the user's decision). Each brief states its
+  detail, and `stated_detail` checks it. The feedback turn is gone, and both canaries moved
+  into the private check record. Removing the `ask_author` machinery from the core is a
+  separate, later change.
+- **`_work_dir` stopped trusting the ambient variable.** Attempt 1's first `prepare` refused,
+  because `MERIDIAN_ACTIVE_WORK_DIR` pointed at another work item. The runner now derives the
+  work directory from the run directory and refuses a variable that disagrees.
+- **The S11 trace check was brought up to date.** Its first run after the task change halted
+  at startup (see [the S11 trace check](#the-s11-trace-check)). After the fix, a real-weight
+  trace check on the new t1 shape passed. That check ran before the one-shot GPU attempt.
+
+### Attempt 2: `pass`
+
+| Phase | Result |
+|---|---|
+| `inspect`, `prepare`, `preflight` | ok. The task-graph hashes matched the pinned values |
+| `train` (`--stop-after-step 2`) | ok in 158 s. Peak reserved 10.8 GiB, RSS 11.5 GiB |
+| `resume` from `checkpoint-2` | ok in 105 s, reaching step 3. Peak reserved 10.9 GiB |
+| `inspect-run` (CPU) | ok in 88 s. Verdict `pass` |
+
+| Criterion | Evidence |
+|---|---|
+| 1. Groups, admission, tool outcomes | 3 groups, all `ready`, 0 ties. 12/12 members `structurally_eligible`, 3 all-admitted records, 0 protocol-shaped rejections |
+| 2. Update | 3 optimizer steps, finite gradients, the adapter changed |
+| 3. Checkpoints and resume | Checkpoints 1–3 verified, resume 2 → 3. Export = checkpoint 3 = resident adapter = PEFT reload |
+| 4. Offline re-derivation | 0 mismatches in two byte-identical inspections. All six store-integrity controls refused |
+| 5. Ceilings | 351 s of GPU time against 2,700. 10.9 of 21.0 GiB reserved, 11.5 of 24 GiB RSS. The run directory used 0.86 of 3 GiB |
+| 6. Determinism and privacy | 0 canary hits in 1,316 files outside `training/private`. The positive control found both canaries inside it |
+
+**What the model did.** The lead read this from the store, not from the admission records:
+
+- **Every member wrote a scene.** All 14 `write_file` calls returned `ok`, and no turn failed
+  to parse. All 26 decisions ended `native_stop`, and no member emitted a thought.
+- **Rewards had a spread in every group:** t1 0, 0.35, 0.55, 0.55; t2 0.6, 0.6, 0.8, 0.8;
+  t3 0.55, 0.55, 0.55, 0.8. No member wrote `field-notes.txt`. Several paraphrased the
+  stated detail and missed `stated_detail`.
+- **One member ended incomplete, and that was scored honestly.** After a successful
+  `write_file`, its next turn was empty and stopped on `<|tool_response>`.
+  `task_graph_sampling.termination_stop_reason` classifies that turn as
+  `unterminated_final_answer`. The member scored 0, stayed structurally eligible, and
+  trained as a negative example.
+
+**Measurements that do not gate:**
+
+- on-policy drift: mean 0.0183 and max 0.459 over 1,123 masked tokens;
+- re-prefill: 14,279 prefill tokens over 7,427 unique ledger tokens, a ratio of 1.92;
+- 3.5 s mean generation time per decision;
+- checkpoint 1 took 214 MB, and each later checkpoint added about 3 KB.
+
+The strict eligibility rule was not tested this time, because no member thought.
 
 ## Before you run
 
@@ -39,9 +157,12 @@ The runner checks each of these and refuses to start when one fails.
   - `prepare` checks the installed source trees against the `trl-6c5f135-streaming`
     runtime pins in `grpo_runtime`, and the versions against
     `env-phase8/environment.json`: torch 2.14.0, transformers 5.17.0, peft 0.20.0.
-  - The runner finds `env-phase8/` in the work directory: `$MERIDIAN_ACTIVE_WORK_DIR` if it
-    is set, otherwise the parent of a `runs/` directory that holds the run. Unset a stale
-    `MERIDIAN_ACTIVE_WORK_DIR`.
+  - The runner derives the work directory from the run directory
+    (`grpo_task_graph_probe._work_dir`). It is the parent of the `runs/` directory that
+    holds the run, or else the nearest ancestor that contains
+    `env-phase8/environment.json`. If `MERIDIAN_ACTIVE_WORK_DIR` is set and resolves to a
+    different directory, every phase refuses before it writes anything. Export it as the
+    work directory, or unset it.
 - **Cached weights and tokenizer.** `google/gemma-4-E2B-it` at revision
   `3e22461f65e89153144f8adb70e3b8c2cc9845a7`, in the Hugging Face cache. Nothing is
   downloaded.
@@ -69,14 +190,16 @@ not implemented.
 ## Running the phases
 
 Run from the approved commit, with the Phase 8 environment's Python. `$W` is the work
-directory that holds `env-phase8/`.
+directory that holds `env-phase8/`. Each attempt gets its own `RUN`, named
+`phase8-probe-vN`; P1 used `v1` and `v2`, so the next attempt is `v3`.
 
 ```bash
 git rev-parse HEAD                       # must equal the approved commit
+export MERIDIAN_ACTIVE_WORK_DIR="$W"     # or unset it; a different value is refused
 export PYTHONPATH=src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1
 export CUDA_VISIBLE_DEVICES=0
 PYTHON=$W/env-phase8/bin/python
-RUN=$W/runs/phase8-probe-v1              # must not exist
+RUN=$W/runs/phase8-probe-vN              # a new N per attempt; must not exist
 "$PYTHON" scripts/run_task_graph_probe.py "$RUN"                      # inspect: no GPU, no writes
 "$PYTHON" scripts/run_task_graph_probe.py "$RUN" --phase prepare
 "$PYTHON" scripts/run_task_graph_probe.py "$RUN" --phase preflight
@@ -196,8 +319,8 @@ Each entry under `criteria` has `computed`, `passed`, `evidence`, `missing_input
    A protocol-shaped rejection means our code refused the model's call: a duplicate or
    missing call ID, an invalid envelope, non-array calls, non-object arguments, or
    arguments that are not valid JSON. The native parser makes each of these impossible. A
-   model's own argument error (for example a malformed `ask_author` proposal) is recorded,
-   but it does not fail the criterion. The counts come from
+   model's own error is recorded, but it does not fail the criterion. Examples are bad
+   arguments, an unsafe path, a failed patch or a budget refusal. The counts come from
    `task_graph_tool_outcomes.read_member_tool_outcomes`. This rule was added after the S11
    trace check showed that admission alone can hide refused calls.
 2. **The update happened.** The LoRA hash changed, the optimizer step counter is 3, and
@@ -214,9 +337,12 @@ Each entry under `criteria` has `computed`, `passed`, `evidence`, `missing_input
    run-directory ceiling held.
 6. **Determinism and privacy.**
    - The two inspections are byte-identical, and the run used no network.
-   - Two planted canaries, a private author preference and a private-store dump, must be
+   - Two planted canaries, `unused_author_preference` and `private_store_dump`, must be
      present under `training/private` (the positive control) and absent from every other
-     file in the run directory.
+     file in the run directory. Both sit in one private, non-admitted check record, so
+     they detect a bulk dump or a copied private record. They do not test whether an
+     admitted check spec leaked. The first id is a legacy name, because the tasks have no
+     author packet.
    - Each member's sampler inputs are rebuilt from that member's own verified lineage.
 
    `sibling_input_scope.limits` states the limit of this check: it proves per-member
@@ -281,6 +407,16 @@ task t1 with the **real** cached Gemma weights on CPU. It uses the P1 budgets an
 training. It then finalizes, exports, audits and admits the group, and runs the offline
 inspector twice.
 
+Before loading the model, `load_trace_task_entry`
+(`scripts/task_graph_trace_check_support.py`) checks t1's budgets against
+`TRACE_TASK_BUDGETS` and refuses any `max_author_calls`. After sampling, the script
+requires the trainer's group policy to be context operation `carry`, interaction `none` and
+the simulator `{"implementation": "scripted-author-v1", "script_ref": null}`. The report
+stores that under `group_policy` as `context_policy`, `simulator_ref` and `simulator`.
+The field was `scripted_author_ref` before S10c. The trainer
+(`grpo_task_graph._native_policy`) still records the `scripted-author-v1` label with no
+script for these author-free tasks. The label is misleading but harmless.
+
 ```bash
 timeout 3600 env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 CUDA_VISIBLE_DEVICES='' \
   PYTHONPATH=src "$W/env-phase8/bin/python" scripts/task_graph_trace_check.py \
@@ -288,7 +424,8 @@ timeout 3600 env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 CUDA_VISIBLE_DEVICES=''
 ```
 
 - `--dry-run` prints the plan without importing the model stack, reading weights or writing
-  anything.
+  anything. It stops before the startup checks, so it does not show that a real run would
+  start. `tests/test_task_graph_trace_check.py` tests the startup path.
 - The script refuses an existing output directory and has a 60-minute ceiling.
 - It writes `report.json`, and `summary.json` when it completes. The report covers each
   decision's tool calls and results, tokens, termination and file changes, plus drift,
@@ -307,4 +444,9 @@ The attempts so far:
   duplicate IDs. No write landed, and the reward scored the starter file.
 - **v3** passed after the call-ID fix: 6 of 7 calls `ok` (the seventh was the model's own
   malformed `ask_author` arguments), both members changed `scene.txt`, rewards were 0.55
-  and 0.30, and the group was `ready`.
+  and 0.30, and the group was `ready`. The tasks still used `ask_author` then.
+- **v4**, the first run on the author-free tasks, halted at startup in 0.09 s. It still
+  expected `max_author_calls: 2`, a check the S10b lane's `--dry-run` had never reached.
+- **v5** passed after that fix. Each member made one `write_file` call (`ok`), stopped
+  natively and did not think. The rewards were 0.8 and 0.55, and the group was `ready`.
+  This was two members on the CPU, not a forecast for twelve on the GPU.
