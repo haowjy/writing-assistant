@@ -517,6 +517,7 @@ class WireRecord:
     OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
     FIELD_SPEC: ClassVar[Obj] = Obj(MappingProxyType({}))
     REFS: ClassVar[Mapping[str, str]] = MappingProxyType({})
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

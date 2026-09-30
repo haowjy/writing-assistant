@@ -1,1 +1,1 @@
-"""Project test package, including reusable local fixtures."""
+"""Project tests; explicit package prevents collisions with installed ``tests`` modules."""

@@ -24,8 +24,9 @@ retains its smoke-evaluation and training-format workflows.
 - **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
   is the field-spec vocabulary, strict decoder and `WireRecord` base;
   [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
-  context `WireRecord`s, plus runtime port-descriptor and manifest records; context content
-  and revision records live here. Pure group record classes live in
+  context `WireRecord`s, plus runtime port-descriptor and manifest records. V1 records remain
+  unchanged; V2 sampling, manifest-descriptor, and training-admission records are additive.
+  Context content and revision records live here. Pure group record classes live in
   [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
   [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
   sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
@@ -69,9 +70,21 @@ retains its smoke-evaluation and training-format workflows.
   materialization. See [transition-seam.md](transition-seam.md),
   [gate-and-rollout.md](gate-and-rollout.md), and
   [rollout-execution.md](rollout-execution.md) for the contracts.
-- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
-  writer-turn decoder and sampling-binding checks, plus the current evaluation-only
-  eligibility decision. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the single
+  V1/V2 writer-turn decoder and structural sampling evidence checks. The shared
+  [task_graph_native_contracts.py](../writing_agent/task_graph_native_contracts.py) owns
+  `NativeSamplingBudget`, `NativeSamplingHistory`, and the manifest-policy-rendering binding
+  used by seal and derive paths. [task_graph_token_ledger.py](../writing_agent/task_graph_token_ledger.py)
+  owns the little-endian u32 token codec shared by ledger readers/writers and training export;
+  [task_graph_context_roots.py](../writing_agent/task_graph_context_roots.py) owns the fail-closed
+  context ancestry walk used by V2 sampling, native history, eligibility and training export.
+  Any intervening `context_changed` event, including `carry`, is a new root. V2 binds token
+  bytes, prior-turn prefixes, derived prompt/completion/total/prefill/cache usage, sealed
+  sampling pins, and termination
+  derived from decoding and committed budgets. [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
+  owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
+  it reads only the verified view and hash-addressed evidence through the artifact reader.
+  [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
   [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable
@@ -92,7 +105,7 @@ retains its smoke-evaluation and training-format workflows.
   override admitted schemas, semantic replay, or the native-ineligible decision. `prepare_request` pins caller-owned evidence;
   `prepare_verified_messages` checks typed messages against the active projection
   at preparation, publication, and recovery. The sampling decoder alone binds
-  duplicated trace/action/request claims. The bound sampling input carries the
+  duplicated trace/action/request claims and dispatches V1/V2 ledger evidence. The bound sampling input carries the
   complete canonical persisted request/options value; composition stores typed
   binary logprob output and constructs its ref without backend CAS access. Only the
   composition runner invokes `SampleBackend`. The [author derive](../writing_agent/task_graph_derive_author.py)
@@ -117,6 +130,16 @@ retains its smoke-evaluation and training-format workflows.
   `TaskGraphRollouts`. See
   [group-coordination.md](group-coordination.md), and
   [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
+  [task_graph_training_layout.py](../writing_agent/task_graph_training_layout.py) owns the
+  pure native token layout shared by group segment-credit spans and export. The
+  [training export](../writing_agent/task_graph_training_export.py) derives a
+  `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
+  reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
+  [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
+  exported token layouts and pinned tokenizer files, then stores `TrainingAdmissionV1`.
+  Only all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
+  and admission derivation from stored evidence and the pinned local tokenizer without
+  network access; its canonical report contains no prompt, packet, context or token data.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;

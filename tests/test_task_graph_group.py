@@ -53,7 +53,16 @@ from writing_agent.task_graph_ports import (
     SampleResult,
 )
 from writing_agent.task_graph_record_contracts import ContextPolicyV1
-from writing_agent.task_graph_records import MemberStartV1, WriterTurnV1
+from writing_agent.task_graph_records import (
+    DecodingDescriptorV1,
+    MemberStartV1,
+    RendererDescriptorV1,
+    RuntimeManifestV1,
+    RuntimeManifestV2,
+    RuntimePortDescriptorV1,
+    TokenizerDescriptorV1,
+    WriterTurnV1,
+)
 from writing_agent.task_graph_store import TaskGraphStore
 
 
@@ -103,6 +112,71 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             runner_mode=mode,
         )
 
+    def native_manifest(self, capabilities, *, template_ref=None):
+        rendering = self.fixture.runtime.context.rendering
+        tokenizer = TokenizerDescriptorV1(
+            model_id="tests/toy-tokenizer",
+            revision="toy-r1",
+            files_sha256={"tokenizer": "a" * 64},
+        )
+        tokenizer_ref = self.store.put_artifact(tokenizer.to_wire())
+        decoding = DecodingDescriptorV1(
+            temperature=1,
+            top_p=1,
+            top_k=0,
+            processors=(),
+            max_tokens_per_decision=64,
+            seed_rule="writer_seed ⊕ action ordinal (sha256-domain-v1)",
+            logprob_convention="log_softmax(model logits after model softcap), fp32",
+            trainer_ratio="recomputed, num_iterations=1",
+        )
+        self.store.put_artifact(decoding.to_wire())
+        renderer = RendererDescriptorV1(
+            implementation="gemma4-native-append-v1",
+            template_ref=template_ref or rendering["template_ref"],
+            tokenizer_ref=tokenizer_ref,
+            tool_schema_ref=rendering["tool_schema_ref"],
+            stop_token_ids=(1, 106, 50),
+            enable_thinking=False,
+            suffix_rules_version="native-suffix-v1",
+        )
+        ports = tuple(
+            RuntimePortDescriptorV1(
+                schema=1,
+                role=role,
+                implementation=f"tests.{role.title()}",
+                version="1",
+                configuration={"capabilities": tuple(sorted(capabilities))}
+                if role == "sampling"
+                else {},
+            )
+            for role in ("sampling", "environment", "tools", "evaluator")
+        )
+        manifest = RuntimeManifestV2(
+            schema=2,
+            ports=ports,
+            capabilities=("native_token_ledger", "sampled_logprobs", "usage_reporting"),
+            renderer=renderer,
+            tokenizer=tokenizer,
+            decoding=decoding,
+        )
+        return manifest, self.store.put_artifact(manifest.to_wire())
+
+    def seal_native(self, *, adapter_ref, policy=None, sequence=0):
+        if policy is None:
+            group_policy = self.policy_for(self.fixture, session=None)
+        else:
+            group_policy = dict(policy)
+        group_policy["adapter_ref"] = adapter_ref
+        return self.coordinator.seal(
+            self.entry_id,
+            policy=group_policy,
+            group_seed=17,
+            group_sequence=sequence,
+            member_count=2,
+            training_mode="native",
+        )
+
     @staticmethod
     def runtime_session(fixture, *, backend=None):
         backend = backend or ScriptedSampleBackend(fixture.sample_results)
@@ -145,6 +219,40 @@ class TestGroupCoordinatorCore(unittest.TestCase):
 
         with self.assertRaises(AdapterContractError):
             environment.verify(fixture.runtime)
+
+    def test_native_group_seal_refuses_scripted_and_other_v1_manifests(self):
+        with self.assertRaises(AdapterContractError):
+            self.seal_native(adapter_ref=self.session.manifest_ref, sequence=101)
+
+        ports = tuple(
+            RuntimePortDescriptorV1(
+                schema=1,
+                role=role,
+                implementation=f"tests.{role.title()}",
+                version="1",
+                configuration={},
+            )
+            for role in ("sampling", "environment", "tools", "evaluator")
+        )
+        other_v1 = RuntimeManifestV1(schema=1, ports=ports)
+        other_ref = self.store.put_artifact(other_v1.to_wire())
+        with self.assertRaises(AdapterContractError):
+            self.seal_native(adapter_ref=other_ref, sequence=102)
+
+    def test_native_group_seal_refuses_each_missing_v2_capability(self):
+        capabilities = {"usage_reporting", "native_token_ledger", "sampled_logprobs"}
+        for index, missing in enumerate(sorted(capabilities), start=1):
+            manifest, reference = self.native_manifest(capabilities - {missing})
+            with self.subTest(missing=missing), self.assertRaises(AdapterContractError):
+                self.seal_native(adapter_ref=reference, sequence=110 + index)
+            self.assertEqual(manifest.identity(), reference)
+
+    def test_native_group_seal_refuses_manifest_rendering_pin_drift(self):
+        capabilities = {"usage_reporting", "native_token_ledger", "sampled_logprobs"}
+        alternate_template = self.store.put_artifact({"template": "different"})
+        _manifest, reference = self.native_manifest(capabilities, template_ref=alternate_template)
+        with self.assertRaises(AdapterContractError):
+            self.seal_native(adapter_ref=reference, sequence=120)
 
     def test_token_limited_run_requires_a_sealed_session_before_port_input(self):
         fixture = build_rollout_fixture(

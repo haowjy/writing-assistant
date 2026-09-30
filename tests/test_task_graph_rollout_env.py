@@ -792,6 +792,10 @@ class RolloutEnvironmentTests(unittest.TestCase):
                 "tokenizer_ref",
                 "template_ref",
                 "decoding_ref",
+                "native_sampling_budget",
+                "adapter_ref",
+                "decision_ordinal",
+                "native_history",
             },
         )
         self.assertEqual(

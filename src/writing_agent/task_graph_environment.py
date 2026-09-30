@@ -13,6 +13,7 @@ from writing_agent.task_graph import (
     MessageV1,
     Phase,
     freeze,
+    thaw,
 )
 from writing_agent.task_graph_admission import (
     AdmissionPolicyV1 as AdmissionPolicy,
@@ -20,6 +21,7 @@ from writing_agent.task_graph_admission import (
 from writing_agent.task_graph_admission import (
     AdmittedGraphV1,
 )
+from writing_agent.task_graph_context_roots import context_root_changed_after
 from writing_agent.task_graph_controller import Directive, next_step
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry
 from writing_agent.task_graph_derive_writer import (
@@ -37,15 +39,15 @@ from writing_agent.task_graph_errors import (
     WriterRuntimeError,
 )
 from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader, derive_input
+from writing_agent.task_graph_native_contracts import NativeSamplingBudget, NativeSamplingHistory
 from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_record_contracts import ExecutionVersionsV1
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1 as AdmissionPolicyRecord,
 )
-from writing_agent.task_graph_records import (
-    MemberStartV1,
-)
+from writing_agent.task_graph_records import MemberStartV1, WriterTurnV2
 from writing_agent.task_graph_store import TaskGraphStore
+from writing_agent.task_graph_token_ledger import decode_u32_token_ids
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
 
 
@@ -61,7 +63,16 @@ class RuntimeHandle:
 class SessionSeals(Protocol):
     sealed_adapter_ref: str | None
 
-    def require_seal(self, adapter_ref: str, *, token_limited: bool = False) -> None: ...
+    def require_seal(
+        self,
+        adapter_ref: str,
+        *,
+        token_limited: bool = False,
+        training_mode: str | None = None,
+        group_session: bool = False,
+        policy=None,
+        rendering=None,
+    ) -> None: ...
 
     def require_member_seal(self, view: LineageView) -> None: ...
 
@@ -80,11 +91,23 @@ class SamplerInput:
     tokenizer_ref: str | None
     template_ref: str | None
     decoding_ref: str | None
+    native_sampling_budget: NativeSamplingBudget | None = None
+    adapter_ref: str | None = None
+    decision_ordinal: int | None = None
+    native_history: NativeSamplingHistory | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "tools", tuple(freeze(self.tools)))
         object.__setattr__(self, "rendering", freeze(self.rendering))
+        if self.decision_ordinal is not None and (
+            type(self.decision_ordinal) is not int or self.decision_ordinal < 0
+        ):
+            raise ValueError("sampling decision ordinal must be nonnegative")
+        if self.native_history is not None and not isinstance(
+            self.native_history, NativeSamplingHistory
+        ):
+            raise TypeError("sampling history must be committed native ledger evidence")
 
 
 @dataclass(frozen=True)
@@ -194,8 +217,8 @@ class RolloutEnvironment:
         return runtime
 
     @operation_scoped
-    def open(self, checkpoint_id: str) -> RuntimeHandle:
-        return self._open(checkpoint_id)
+    def open(self, checkpoint_id: str, *, group_session: bool = False) -> RuntimeHandle:
+        return self._open(checkpoint_id, group_session=group_session)
 
     @operation_scoped
     def open_head(self, lineage_id: str) -> RuntimeHandle:
@@ -210,16 +233,19 @@ class RolloutEnvironment:
         return self._open(commit.checkpoint)
 
     @operation_scoped
-    def verify(self, runtime: RuntimeHandle) -> LineageView:
-        return self._verify(runtime)
+    def verify(self, runtime: RuntimeHandle, *, group_session: bool = False) -> LineageView:
+        return self._verify(runtime, group_session=group_session)
 
     @operation_scoped
     def step_input(self, runtime: RuntimeHandle) -> tuple[LineageView, Directive, PortInput | None]:
         """Verify once, then return the directive and its authorized port input."""
         view = self._verify(runtime)
         directive = next_step(view)
-        if view.group is not None and view.group.runner_mode == "real" and self.session is None:
-            raise AdapterContractError("real group member requires a bound runtime session")
+        requires_group_session = view.group is not None and (
+            view.group.runner_mode == "real" or view.group.training_mode == "native"
+        )
+        if requires_group_session and self.session is None:
+            raise AdapterContractError("runtime view requires a sealed runtime session")
         if (
             directive.kind == "sample_writer"
             and view.node.contract.budget_contract.usage_charged_limits()
@@ -234,6 +260,22 @@ class RolloutEnvironment:
         if directive.kind == "sample_writer":
             member = group_member(view)
             policy = {} if view.group is None else view.group.policy
+            native_budget = None
+            native_history = None
+            native_mode = view.group is not None and view.group.training_mode == "native"
+            if native_mode:
+                limits = view.budget["limits"]
+                consumed = view.budget["consumed"]
+                generated_limit = limits.get("generated_tokens")
+                native_budget = NativeSamplingBudget(
+                    remaining_generated_tokens=(
+                        None
+                        if generated_limit is None
+                        else max(0, generated_limit - consumed.get("generated_tokens", 0))
+                    ),
+                    max_context_tokens=limits.get("context_tokens"),
+                )
+                native_history = self._native_sampling_history(view)
             return SamplerInput(
                 messages=view.context.messages,
                 tools=view.context.tools,
@@ -247,6 +289,10 @@ class RolloutEnvironment:
                 tokenizer_ref=policy.get("tokenizer_ref"),
                 template_ref=policy.get("template_ref"),
                 decoding_ref=policy.get("decoding_ref"),
+                native_sampling_budget=native_budget,
+                adapter_ref=policy.get("adapter_ref") if native_mode else None,
+                decision_ordinal=(view.state.history["action_count"] if native_mode else None),
+                native_history=native_history,
             )
         if directive.kind == "execute_tool":
             cursor = directive.call_index
@@ -274,6 +320,34 @@ class RolloutEnvironment:
             return CheckInput(request_ref, request, view.state.files, packet)
         return None
 
+    def _native_sampling_history(self, view: LineageView) -> NativeSamplingHistory | None:
+        if not view.samples:
+            return None
+        previous = view.samples[-1]
+        try:
+            context_changed = context_root_changed_after(
+                self.reader, view.head_event_id, previous.event_id
+            )
+        except ProjectionError as exc:
+            raise AdapterContractError(
+                "native sampler history is outside the active event ancestry"
+            ) from exc
+        if context_changed:
+            return None
+        try:
+            turn = WriterTurnV2.from_dict(self.reader.artifact(previous.turn_ref))
+            input_ids = decode_u32_token_ids(
+                self.reader.bytes_artifact(turn.input_token_ids_ref), turn.input_token_count
+            )
+            generated_ids = decode_u32_token_ids(
+                self.reader.bytes_artifact(turn.generated_token_ids_ref), turn.generated_token_count
+            )
+            return NativeSamplingHistory(turn, input_ids, generated_ids)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AdapterContractError(
+                "native sampler cannot rebuild its committed token prefix"
+            ) from exc
+
     @operation_scoped
     def commit(self, runtime: RuntimeHandle, input_record: InputRecord) -> StepResult:
         result = self._commit(runtime, input_record)
@@ -285,14 +359,14 @@ class RolloutEnvironment:
     def start_member(self, entry_checkpoint_id: str, start: MemberStartV1) -> RuntimeHandle:
         if not isinstance(start, MemberStartV1):
             raise TypeError("member start must be MemberStartV1")
-        runtime = self._open(entry_checkpoint_id)
+        runtime = self._open(entry_checkpoint_id, group_session=True)
         return self._commit(runtime, start).runtime
 
-    def _open(self, checkpoint_id: str) -> RuntimeHandle:
+    def _open(self, checkpoint_id: str, *, group_session: bool = False) -> RuntimeHandle:
         self._published_checkpoint(checkpoint_id)
         view = self.gate.view(self.store, checkpoint_id)
         runtime = self._runtime(view)
-        self._check_session_seals(view)
+        self._check_session_seals(view, require_group_session=group_session)
         return runtime
 
     @staticmethod
@@ -302,11 +376,11 @@ class RolloutEnvironment:
         )
         return RuntimeHandle(view.checkpoint_id, view.state, context)
 
-    def _verify(self, runtime: RuntimeHandle) -> LineageView:
+    def _verify(self, runtime: RuntimeHandle, *, group_session: bool = False) -> LineageView:
         if not isinstance(runtime, RuntimeHandle):
             raise TypeError("runtime must be a RolloutEnvironment RuntimeHandle")
         checkpoint = self._published_checkpoint(runtime.checkpoint_id)
-        return self._verified_view(runtime, checkpoint)
+        return self._verified_view(runtime, checkpoint, require_group_session=group_session)
 
     def _verify_commit_base(self, runtime: RuntimeHandle) -> _CommitBase:
         if not isinstance(runtime, RuntimeHandle):
@@ -364,9 +438,11 @@ class RolloutEnvironment:
     ) -> None:
         budget = view.node.contract.budget_contract
         token_limited = bool(budget.usage_charged_limits())
-        real_group_member = view.group is not None and view.group.runner_mode == "real"
+        requires_group_session = view.group is not None and (
+            view.group.runner_mode == "real" or view.group.training_mode == "native"
+        )
         if self.session is None:
-            if real_group_member and require_group_session:
+            if requires_group_session and require_group_session:
                 raise AdapterContractError("runtime view requires a sealed runtime session")
             return
 
@@ -374,10 +450,13 @@ class RolloutEnvironment:
         try:
             if view.group is not None:
                 self.session.require_member_seal(view)
-            elif token_limited and sealed_ref is not None:
-                self.session.require_seal(sealed_ref, token_limited=True)
             elif sealed_ref is not None:
-                self.session.require_seal(sealed_ref)
+                self.session.require_seal(
+                    sealed_ref,
+                    token_limited=token_limited,
+                    group_session=require_group_session,
+                    rendering=thaw(view.context.rendering),
+                )
         except Exception as exc:
             raise AdapterContractError(
                 "runtime session seal does not match the verified view"
@@ -476,6 +555,7 @@ class RolloutEnvironment:
 __all__ = [
     "AuthorInput",
     "CheckInput",
+    "NativeSamplingBudget",
     "PortInput",
     "RolloutEnvironment",
     "RuntimeHandle",

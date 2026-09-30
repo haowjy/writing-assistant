@@ -9,6 +9,42 @@
 
 - Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
 
+- Audit native training batches against committed context and pinned tokenizer files before
+  training; offline inspection re-derives the batch and admission without network access.
+
+- Derive V2 total, prefill and cached-input usage from the committed token ledger before
+  charging a native turn.
+
+- Keep overrun lineages out of native training eligibility; coordinator finalization only
+  derives token spans for eligible members, and eligible-layout contradictions are invariant
+  breaches.
+
+- Export V2 advantages with a high-precision exact-expression conversion, and expose stable
+  reason codes for training-export refusals.
+
+- Share native token layout between group coordination and training export, and refuse V2
+  runtime sessions outside group sampling.
+
+- Attribute native rendering-pin failures to their rendering field rather than the adapter
+  trace projection.
+
+- Refuse native group sealing when the entry declares an aggregate total-token limit that
+  native rule 3 does not derive; remove that limit from the Phase 8 probe tasks.
+
+- Skip tokenizer/model-backed native tests when their optional dependencies are absent, while
+  keeping dependency-free import checks active.
+
+- Native token history and the u32 ledger codec now have shared owners. Context ancestry
+  checks require the sample or rollout-start boundary to be present; structural eligibility
+  treats every intervening context event as a multi-segment member.
+
+- Share Gemma native suffix and stop-set rules through `native_protocol`; accept task-graph
+  author replies and check-driven continuations only when their context delta is
+  template-prefix stable.
+
+- Add a native Gemma renderer and V2 sampler that rebuilds each decision from committed token
+  evidence, records sampled logprobs and usage, and keeps model KV caches local to each call.
+
 - Classify filesystem path mistakes consistently in both dispatchers: missing, invalid,
   overlong, or file-ancestor paths are recoverable tool errors; host faults remain
   infrastructure failures.
@@ -26,10 +62,22 @@
   Groups start from verified views and credit only sampled content.
 - Goldens pin the v1 wire shapes and a deterministic rollout; changing them requires a
   semantics bump.
-- Native on-policy optimization remains future work.
+- Native group seals require a V2 manifest, all three native sampling capabilities, and
+  descriptor pins that match both group policy and entry rendering; existing V1 group
+  identities and wire records remain unchanged.
 - Admission rejects nodes mixing evaluator families, with `legacy-check-v1` treated as its own family.
 - Token-limited entries require a sealed usage-reporting sampler before sampling and support
-  total-token caps.
+  cumulative generated/total-token caps and a high-water context-token cap. Native sampler
+  inputs expose only remaining generated allocation and the context cap.
+- The V2 writer derive validates byte-backed token counts, logprobs, sample pins and prior-turn
+  prefixes; it derives termination from committed limits and maps valid token/context limits
+  and unterminated stop classes to scored incomplete outcomes. V1 identities and goldens stay
+  unchanged.
+- V2 group traces bind present policy claims, zero-generation context-limit turns carry no
+  output, and termination-mapped outcomes retain their stop reason and candidate checkpoint
+  in the committed terminal `OutcomeV1`.
+- Reward publication derives ordered structural eligibility from native manifest, group,
+  context and sampled-message evidence; the reserved `eligible` status is never emitted.
 - Real group member starts and commits require the sealed manifest. Collection binds terminal
   results to the verified head, resolves rewards published after collection, and records the
   judged head for infrastructure interruptions.
@@ -249,6 +297,10 @@
 - Add a root `TODO.md` linked from the README as the active work order. Put the
   cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
   download; point older work checklists to it.
+- Finalized native groups export `TrainingBatchV1` with V2-derived token masks and segment
+  spans; trailing zero-generation context-limit turns remain audit-only.
+- Route native batch token encoding and context-root checks through their shared owners; a
+  `carry` context change now makes eligibility and export agree that a member is ineligible.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

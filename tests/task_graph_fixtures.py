@@ -77,6 +77,7 @@ class MemoryArtifactReader:
         self.checkpoints: dict[str, CheckpointV1] = {}
         self.context_revisions: dict[str, Any] = {}
         self.context_nodes: dict[str, Any] = {}
+        self.events: dict[str, Any] = {}
 
     def add(self, value: Any, *, private: bool = False) -> str:
         identity = domain_hash("payload", value)
@@ -90,6 +91,8 @@ class MemoryArtifactReader:
             value = self.context_revisions[ref]
         elif domain == "context_node":
             value = self.context_nodes[ref]
+        elif domain == "event":
+            value = self.events[ref]
         else:
             raise KeyError((domain, ref))
         return _copy(value)
@@ -135,7 +138,7 @@ class EntryFixture:
     artifacts: tuple[DerivedArtifact, ...]
 
 
-def make_entry_fixture() -> EntryFixture:
+def make_entry_fixture(*, rendering_overrides=None, public_records=()) -> EntryFixture:
     """Build a complete pure entry and all its deterministic artifacts."""
     bundle = compile_legacy_scenario(_scenario())
     graph = bundle.admission()
@@ -143,6 +146,8 @@ def make_entry_fixture() -> EntryFixture:
         {identity: _copy(body) for identity, body in bundle.public_artifacts.items()},
         {identity: _copy(body) for identity, body in bundle.private_artifacts.items()},
     )
+    for record in public_records:
+        reader.public[record.identity()] = record.to_wire()
     rendering = {
         "projection_version": "v1",
         "prefix_id": "root",
@@ -150,6 +155,7 @@ def make_entry_fixture() -> EntryFixture:
         "tokenizer_ref": reader.add({"pin": "tokenizer"}),
         "tool_schema_ref": reader.add({"pin": "tools"}),
     }
+    rendering.update(rendering_overrides or {})
     admission_policy = AdmissionPolicyV1.from_admission_policy(graph.policy)
     admission_policy_ref = reader.add(admission_policy.to_wire())
     versions_ref = reader.add(
@@ -183,9 +189,13 @@ def make_entry_fixture() -> EntryFixture:
     return EntryFixture(graph, node_id, params, reader, state, artifacts)
 
 
-def make_outcome_fixture(*, incomplete_score: int = 0) -> EntryFixture:
+def make_outcome_fixture(
+    *, incomplete_score: int = 0, rendering_overrides=None, public_records=()
+) -> EntryFixture:
     """Build an admitted writer entry with a deterministic completion check."""
-    base = make_entry_fixture()
+    base = make_entry_fixture(
+        rendering_overrides=rendering_overrides, public_records=public_records
+    )
     old_node = base.graph.node(base.node_id)
     check = CheckContractV1(
         id="nonempty",

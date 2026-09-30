@@ -177,6 +177,7 @@ class LineageGateTests(unittest.TestCase):
             set(DERIVE),
             {
                 "WriterTurnV1",
+                "WriterTurnV2",
                 "ToolObservationV1",
                 "AuthorReplyV1",
                 "EvaluatorResultV1",

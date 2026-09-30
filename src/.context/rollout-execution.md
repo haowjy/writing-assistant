@@ -42,6 +42,13 @@ rendering, but no persisted request body or request-reference pair;
 - the context revision ref and one `context_content_hash`;
 - for a group member, the sealed `writer_seed` and the model, behavior-policy, decoding,
   tokenizer and template refs. Outside a group these are `None`.
+- for a native-training group only, `native_sampling_budget` carries the remaining generated
+  allowance and `max_context_tokens`; it exposes no cumulative usage ledger. The gatherer
+  forwards this allocation unchanged to `PreparedSamplingInput`.
+- Native sampling also receives the sealed `adapter_ref`, the action-count `decision_ordinal`,
+  and `native_history` rebuilt from the last committed `WriterTurnV2` and its token artifacts.
+  That ledger is re-prefilled per decision; no model KV cache crosses a sample call. The
+  concrete adapter is `native_gemma.NativeGemmaSampleBackend`.
 
 The rules:
 - **There is one content hash: `view.context.content_ref`.** `step_input` supplies it, and the
@@ -58,7 +65,7 @@ The rules:
   the pinned refs and the context claims into its trace. When the pins did not reach the
   backend, a member was sampled with the backend's default seed, and an honest seed claim
   failed the group binding.
-- **Context claims are bound for every lineage.** `decode_writer_turn_sampling` compares a
+- **Context claims are bound for every lineage.** `decode_and_bind_sampling` compares a
   trace's `context_revision_ref`, `context_content_hash` and rendering with the active
   context whenever each claim is present. This is O2's present-only rule applied to every
   lineage. When only the group binder checked these claims, a non-group commit with false
