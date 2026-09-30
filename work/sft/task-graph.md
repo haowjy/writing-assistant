@@ -119,7 +119,7 @@ an answer. Script misses are coverage errors unless a frozen fallback was declar
 | [`agent.py`](../../src/writing_agent/agent.py) has a bounded message/tool loop, fixed follow-ups, tool observations and per-completed-turn file snapshots | Retain tool semantics; replace fixed follow-up sequencing with a controller |
 | [`suite.py`](../../src/writing_agent/suite.py) isolates attempts, saves before/after artifacts, resumes completed identities and retries interruptions from clean state | Evaluation resume is not mid-rollout continuation; maintain historical records separately |
 | [`data.py`](../../src/writing_agent/data.py) validates reviewed training trajectories; [`training.py`](../../src/writing_agent/training.py) masks non-assistant material in native training exports | Do not treat a flat exported transcript as canonical state or an RL probability trace |
-| [`reward.py`](../../src/writing_agent/reward.py) computes training-side scalar/relative advantages separately from benchmark scoring | Reuse scoring semantics through an adapter, but require a stronger group identity and eligibility gate |
+| The pre-Phase 9 [`reward.py`](https://github.com/haowjy/writing-assistant/blob/9cb9944/src/writing_agent/reward.py) experiment computed holistic training-side scalar/relative advantages separately from benchmark scoring | Superseded: Phase 9 design §2.1 rejects holistic 1–5 rewards; `RewardV1` is the sole training reward owner |
 | [Source contracts](../../src/.context/CONTEXT.md) define private labels, path tools, bounded inference and serial run directories | Preserve separation; the verified graph/checkpoint core exists, while adaptive-author and end-to-end GRPO training remain proposed |
 
 Current workspace tools expose text files, not a shell/browser. The old sketch's
@@ -129,9 +129,9 @@ capacity separately from total trajectory token/time/tool budgets. A saved befor
 snapshot does not imply a probability trace or mid-rollout resume capability.
 
 Existing regression evidence is in [core workspace/agent/data tests](../../tests/test_core.py),
-[follow-up/resume tests](../../tests/test_research.py), and
-[reward/group tests](../../tests/test_reward.py). They exercise current behavior,
-not the proposed checkpoint/graph contracts.
+[follow-up/resume tests](../../tests/test_research.py), and the former
+[reward/group tests at commit `9cb9944`](https://github.com/haowjy/writing-assistant/blob/9cb9944/tests/test_reward.py).
+The latter exercise retired behavior, not the proposed checkpoint/graph contracts.
 
 ## 3. State: checkpoint everything that can change the next step
 

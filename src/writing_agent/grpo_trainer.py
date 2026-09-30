@@ -14,6 +14,10 @@ from writing_agent.grpo_checkpoint import file_hashes, seal_directory, verify_ch
 RolloutFunc = Callable[..., Any]
 
 
+class CheckpointLocationError(ValueError):
+    """A resume checkpoint is outside the experiment output directory."""
+
+
 def saved_rewards(prompts, completions, rollout_rewards, **kwargs):
     """Return the advantages saved by a rollout function without re-scaling them."""
     del prompts, completions, kwargs
@@ -102,6 +106,10 @@ def run_trainer(
     resumed_step = 0
     if resume_from_checkpoint is not None:
         resume_from_checkpoint = Path(resume_from_checkpoint)
+        if resume_from_checkpoint.resolve().parent != output.resolve():
+            raise CheckpointLocationError(
+                "Resume checkpoint must be inside the experiment output directory"
+            )
         try:
             saved = json.loads((output / "experiment.json").read_text())
         except (OSError, json.JSONDecodeError):

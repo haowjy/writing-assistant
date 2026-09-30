@@ -33,12 +33,6 @@ CUDA_ALLOCATOR_CONF = {
     "environment": ["PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF"],
     "value": "expandable_segments:True",
 }
-HEADLESS_POLICY = {
-    "names": [],
-    "per_process_mib": 0,
-    "total_mib": 0,
-    "minimum_free_mib": 24000,
-}
 
 
 def configure_cuda_allocator():

@@ -7,7 +7,7 @@ The research script uses Transformers/PyTorch and PEFT through the optional
 through explicit entry points that import the model stack only when executed:
 `training.py` (QLoRA SFT) and Phase 8's task-graph DAPO trainer
 ([task-graph training](../../docs/task-graph-training.md)). The former standalone DAPO
-training path is retired from this branch; its code remains in history at `9cb9944`.
+training path is retired; its code remains at commit `9cb9944`, in `main`'s history.
 
 ## References and choices
 

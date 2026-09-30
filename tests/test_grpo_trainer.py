@@ -5,10 +5,59 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from writing_agent.grpo_trainer import run_trainer
+from writing_agent.grpo_trainer import CheckpointLocationError, run_trainer
 
 
 class RolloutFactoryTests(unittest.TestCase):
+    def test_resume_from_another_output_is_refused_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "training"
+            output.mkdir()
+            (output / "experiment.json").write_text('{"identity":"identity","manifest":{}}')
+            checkpoint = root / "previous-run" / "checkpoint-1"
+            checkpoint.mkdir(parents=True)
+            (checkpoint / "sentinel").write_text("unchanged")
+            before = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+            tokenizer = SimpleNamespace(padding_side="right")
+            api = SimpleNamespace(
+                set_seed=lambda _seed: self.fail("trainer mutated before refusal")
+            )
+
+            with self.assertRaises(CheckpointLocationError):
+                run_trainer(
+                    api=api,
+                    tasks=[],
+                    output=output,
+                    settings=SimpleNamespace(max_steps=2),
+                    plan={},
+                    identity="identity",
+                    manifest={},
+                    model=None,
+                    tokenizer=tokenizer,
+                    lora_config=None,
+                    trainer_config_values={},
+                    make_rollouts=lambda _invocation_id: None,
+                    resume_from_checkpoint=checkpoint,
+                    stop_after_steps=None,
+                )
+
+            after = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+            self.assertEqual(after, before)
+            self.assertEqual(tokenizer.padding_side, "right")
+
     def test_factory_receives_the_new_invocation_id(self):
         class StopAtFactory(Exception):
             pass

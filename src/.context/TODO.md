@@ -33,5 +33,5 @@ Nice-to-have items are in [FUTURE.md](FUTURE.md).
   member thought, so the rule went untested. Decide whether one ineligible member should
   still end a long run, and record the decision in the design.
 - [x] **S14: retire the DAPO legacy training path.** The task-graph path is the only
-  supported trainer; the former standalone runners remain in repository history at
-  `9cb9944` (`feat/dapo-full-rounds`). Its documentation now points to the task-graph guide.
+  supported trainer; the former standalone runners remain in commit `9cb9944`, in
+  `main`'s history. Their documentation now points to the task-graph guide.

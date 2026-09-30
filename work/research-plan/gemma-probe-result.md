@@ -12,7 +12,7 @@ passed training and resume. This report preserves the original full-batch failur
 ## Measured outcomes
 
 Executed on 2026-09-22 from source commit `c47a18c`, using the
-[probe protocol](../../docs/grpo-probe.md), without changing its settings or rewards.
+[probe protocol](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-probe.md), without changing its settings or rewards.
 This run trained all four attempts together with accumulation 1; the current guide
 instead describes the later microbatch-1, accumulation-4 profile.
 The Qwen server exited before execution; no desktop process was stopped. GPU

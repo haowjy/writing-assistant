@@ -105,7 +105,14 @@ def render_messages(messages: list[dict]) -> list[dict]:
 
 def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
-    message = tokenizer.parse_response(text, prefix=prefix)
+    try:
+        message = tokenizer.parse_response(text, prefix=prefix)
+    except ValueError as exc:
+        from writing_agent.native_protocol import is_native_output_parse_error
+
+        if is_native_output_parse_error(exc):
+            raise CandidateResponseError("Native response could not be parsed") from exc
+        raise
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
         raise CandidateResponseError("Native tool-call output was not completely parsed")
@@ -143,8 +150,8 @@ def generate_with_seed(model, inputs, generation: dict, *, seed: int):
             module.training = training
 
 
-class ContextBudgetExceeded(ValueError):
-    """An explicit context limit, with no history truncation."""
+class ContextBudgetExceeded(CandidateResponseError):
+    """Prior candidate output grew the conversation past its context budget."""
 
 
 class TransformersBackend:
@@ -214,7 +221,11 @@ class TransformersBackend:
                 raise ValueError("Total generated-token budget exhausted")
             limit = min(limit, remaining)
         if input_tokens + limit > self.config["context_tokens"]:
-            raise ContextBudgetExceeded("Context budget exceeded; history was not truncated")
+            if self.calls:
+                raise ContextBudgetExceeded(
+                    "Context budget exceeded after candidate output; history was not truncated"
+                )
+            raise ValueError("Initial prompt exceeds context budget; history was not truncated")
         temperature = self.config["temperature"]
         generation = {
             "max_new_tokens": limit,
@@ -239,7 +250,7 @@ class TransformersBackend:
         self.generated_tokens += len(output)
         emit({"type": "model_output", "text": text, "output_ids": output.tolist()})
         if len(output) >= limit and int(output[-1]) not in eos:
-            raise ValueError(f"Generation token limit reached; incomplete output: {text}")
+            raise CandidateResponseError(f"Incomplete generation at token limit: {text}")
         return Completion(
             (
                 parse_response(self.tokenizer, text, prefix=prompt)

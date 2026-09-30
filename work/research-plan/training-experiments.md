@@ -25,9 +25,9 @@ Do not assume every rollout must fill the context window. E2B memory and timing
 estimates do not transfer to Qwen. Obtain a compute quote before committing to long-
 context Qwen training; the target is not authorization for rented GPUs.
 
-The [GRPO connection and checkpoint lifecycle](../../docs/grpo.md) are implemented.
+The [GRPO connection and checkpoint lifecycle](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md) are implemented.
 A tiny CPU model verifies optimizer updates and exact step-1→3 save/reload/resume.
-The [prepared Gemma probe](../../docs/grpo-probe.md) now freezes three training tasks,
+The [prepared Gemma probe](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-probe.md) now freezes three training tasks,
 six two-seed development cases, tested mechanical rewards, native-token budgets, and
 supervised execution. The [first GPU run](gemma-probe-result.md) completed its baseline
 and a non-tied training group, then exhausted GPU memory during loss-forward output

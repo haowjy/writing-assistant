@@ -79,7 +79,12 @@ class TaskGraphTaskV1:
 
 def task_graph_resume_preflight(output: Path | str, checkpoint: Path | str) -> int:
     """Verify the checkpoint and refuse groups at/after its global step, model-free."""
+    output = Path(output)
     checkpoint = Path(checkpoint)
+    if checkpoint.resolve().parent != output.resolve():
+        raise TaskGraphResumeRefused(
+            "resume checkpoint must be inside the experiment output directory"
+        )
     try:
         marker = json.loads((checkpoint / "complete.json").read_text())
         checkpoint_identity = marker["identity"]

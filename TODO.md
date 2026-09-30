@@ -10,12 +10,17 @@ projects, supported by a maintained wiki, with better prose alongside it.
 
 Task-graph Phase 8 training passed its GPU probe
 ([result and runbook](docs/task-graph-training.md)). Its follow-ups are in
-[src/.context/TODO.md](src/.context/TODO.md): S14 legacy retirement, the core `ask_author`
+[src/.context/TODO.md](src/.context/TODO.md): the core `ask_author`
 deletion, and the eligibility policy decision before any long run. Open task-graph
 environment items are in the
 [work checklist](work/TODO.md#task-graph-environment-open-follow-ups-after-phase-8).
 
-## Next: DAPO over two complete training passes
+## Historical: DAPO over two complete training passes (retired)
+
+This records the state of the standalone DAPO experiment when its runners were retired.
+The source and protocols are preserved at commit `9cb9944`, in `main`'s history. The
+remaining checkboxes below are historical follow-ups, not active work; the current
+training path is [task-graph training](docs/task-graph-training.md).
 
 - [x] Add identity-bound DAPO through public TRL. Verify unequal-length, masked CPU
   accumulation against dense updates and Adam moments, plus exact checkpoint resume
@@ -26,7 +31,7 @@ environment items are in the
 - [x] Implement approved ordinary TRL continuation through ties without resampling;
   keep default halt for the old probe. CPU proof verifies exact resume, momentum and
   float32 residual behavior. Tied groups are not skipped updates; unavailable rewards halt.
-- [x] Prepare a separately bound [full48 mechanical reward](docs/grpo-full48.md),
+- [x] Prepare a separately bound [full48 mechanical reward](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-full48.md),
   preserving originals and closing unchanged/missing-delivery shortcuts. Offline
   fixtures cover all 48; semantic quality and intermediate faithfulness remain unjudged.
 - [x] Install approved pinned TRL `6c5f135` and Liger `0.8.3` in an isolated CPU
@@ -35,12 +40,12 @@ environment items are in the
 - [x] Accept the maintained upstream numerical variant explicitly; native BF16 parity
   is not claimed. Add source-pinned opt-in compatibility and pass live BF16 CPU
   Gemma4 train-entry, masked group4 accumulation, chunk boundaries, changed-observation
-  conditioning and exact pause/resume checks. See [runtime usage](docs/grpo.md).
-- [x] Build the separate [full48 runtime](docs/grpo-full48.md) with intact-task budgets,
+  conditioning and exact pause/resume checks. See [archived runtime usage](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md).
+- [x] Build the separate [full48 runtime](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-full48.md) with intact-task budgets,
   collision-free seeds, finite-work supervision and fail-closed checkpoint recovery.
   Bind production preparation/execution to the qualified streaming implementation;
   CPU proof verifies pass-one pause/resume and exact optimizer/token state.
-- [x] Add the inspect-first [production GPU fit gate](docs/grpo-gpu-fit.md), with
+- [x] Add the inspect-first [production GPU fit gate](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-gpu-fit.md), with
   complete-process ownership admission shared by fit and full48 train/resume.
 - [x] Execute the one-attempt native Gemma 32,768-token controlled fit after approved
   desktop admission. Native 32,767+1 generation passed; training OOMed during the
@@ -99,14 +104,14 @@ environment items are in the
 
 ## Completed: short-context GRPO engineering proof
 
-- [x] Prepare the bounded [Gemma E2B GRPO probe](docs/grpo-probe.md): three training
+- [x] Prepare the bounded [Gemma E2B GRPO probe](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-probe.md): three training
   tasks, six development cases at two seeds, four attempts per training group, three
   optimizer steps, 4096-token context, and a 60-minute aggregate GPU-stage ceiling.
   Validate mechanical rewards on 91 fixture cases and native-token fits on all nine tasks.
   No SFT stage, semantic judge, download, or paid call is required for this engineering run.
 - [x] Connect generation, workspace tools, rewards, and GRPO updates. Verify candidate
   token masks, real tiny-CPU adapter updates, save/reload, and exact checkpoint resume.
-  See [GRPO usage and checkpoint methodology](docs/grpo.md).
+  See [archived GRPO usage and checkpoint methodology](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md).
 - [x] Run the frozen probe on the **RTX 3090** and preserve the
   [measured result](work/research-plan/gemma-probe-result.md): 12 baseline attempts,
   then CUDA OOM before the first optimizer update. The first training group had

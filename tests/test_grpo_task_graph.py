@@ -185,6 +185,39 @@ class TaskGraphSettingsTests(unittest.TestCase):
             with self.assertRaises(TaskGraphResumeRefused):
                 task_graph_resume_preflight(output, checkpoint)
 
+    def test_resume_preflight_refuses_another_runs_checkpoint_without_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "run-b"
+            output.mkdir()
+            (output / "sentinel").write_text("unchanged")
+            checkpoint = root / "run-a" / "checkpoint-2"
+            checkpoint.mkdir(parents=True)
+            (checkpoint / "complete.json").write_text("not read")
+            before = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+
+            with (
+                patch("writing_agent.grpo_task_graph.verify_checkpoint") as verify,
+                self.assertRaises(TaskGraphResumeRefused),
+            ):
+                task_graph_resume_preflight(output, checkpoint)
+            verify.assert_not_called()
+
+            after = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+            self.assertEqual(after, before)
+
     def test_resume_preflight_runs_before_trainer_api_or_model_setup(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
@@ -208,6 +241,48 @@ class TaskGraphSettingsTests(unittest.TestCase):
                     )
                 load_api.assert_not_called()
             model_factory.assert_not_called()
+
+    def test_external_resume_is_refused_before_model_api_or_output_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "run-b"
+            output.mkdir()
+            (output / "sentinel").write_text("unchanged")
+            checkpoint = root / "run-a" / "checkpoint-2"
+            checkpoint.mkdir(parents=True)
+            (checkpoint / "complete.json").write_text("not read")
+            model_factory = Mock(side_effect=AssertionError("model loaded before refusal"))
+            before = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+
+            with patch("writing_agent.grpo_task_graph.load_trainer_api") as load_api:
+                with self.assertRaises(TaskGraphResumeRefused):
+                    train_task_graph(
+                        (),
+                        output,
+                        settings=_settings(),
+                        model=None,
+                        model_factory=model_factory,
+                        tokenizer=None,
+                        manifest_descriptors=(),
+                        runtime_identity={"fixture": True},
+                        resume_from_checkpoint=checkpoint,
+                    )
+                load_api.assert_not_called()
+            model_factory.assert_not_called()
+            after = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+            self.assertEqual(after, before)
 
     def test_step_reservation_prevents_a_second_attempt_even_before_group_seal(self):
         with tempfile.TemporaryDirectory() as temporary:

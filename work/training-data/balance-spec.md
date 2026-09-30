@@ -157,7 +157,7 @@ Every axis carries exactly one ring. "Values" is the vocabulary or bin set.
 | R2 | prose distribution | `prose.score_prose` D1/D2/D4, opening-stem collision rate, self-BLEU | This is the metric the design is trying to move; it cannot be a generation constraint without gaming it. |
 | R3 | continuity realization | semantic continuity score vs the `continuity_challenge` assignment | Whether a challenge was actually exercised is a quality outcome. |
 | R4 | length delta | delivered words − declared budget | Diagnostic for the overshoot defect; reporting it keeps the cause visible without hard-coding a policy. |
-| R5 | group reward variance | `frac_reward_zero_std`, per-group reward std | The GRPO health metric from `reward.py`/`rl-algorithm-decision.md`; a leading indicator of reward overfitting. |
+| R5 | group reward variance | `frac_reward_zero_std`, per-group reward std | The GRPO health metric from the [retired reward prototype](https://github.com/haowjy/writing-assistant/blob/9cb9944/src/writing_agent/reward.py) and `rl-algorithm-decision.md`; a leading indicator of reward overfitting. |
 | R6 | reference distance | MMD (only above the sample floor) | Needs ≥20 samples; reported when available, never gating. |
 | R7 | tool/step/artifact counts | harness traces | Diagnoses whether a task silently needed more tools than budgeted. |
 | R8 | lineage/overlap audit | `holdout_audit`, hash overlap | Confirms H13 after the fact; a build-time invariant, reported per release. |
@@ -278,7 +278,7 @@ trajectory is poor is still a useful GRPO prompt, but must not enter SFT. Conver
 SFT must not re-use the frozen test prompts for demonstration.
 
 **Why RL needs a large distinct-prompt pool.** GRPO normalizes rewards within a group
-of rollouts on the *same* prompt (`reward.py`: within-group standardised rewards).
+of rollouts on the *same* prompt (the [historical reward prototype](https://github.com/haowjy/writing-assistant/blob/9cb9944/src/writing_agent/reward.py) used within-group standardised rewards).
 If the same handful of prompts is recycled every step, the group statistics become
 correlated across steps, the policy memorizes the prompt, and the advantage signal
 turns low-entropy — visible as a rising `frac_reward_zero_std` and as `all-tie`

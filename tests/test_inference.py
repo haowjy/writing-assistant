@@ -117,6 +117,116 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(result[0]["status"], "planned")
 
 
+class CandidateFailureClassificationTests(unittest.TestCase):
+    class InputIds:
+        def __init__(self, count):
+            self.shape = (1, count)
+
+        def __getitem__(self, index):
+            if index != 0:
+                raise IndexError(index)
+            return CandidateFailureClassificationTests.Tokens(range(self.shape[-1]))
+
+    class Inputs(dict):
+        def to(self, _device):
+            return self
+
+    class Tokens(list):
+        def tolist(self):
+            return list(self)
+
+        def __getitem__(self, index):
+            value = super().__getitem__(index)
+            return self.__class__(value) if isinstance(index, slice) else value
+
+    class Generated:
+        def __init__(self, row):
+            self.row = row
+
+        def __getitem__(self, index):
+            if index != 0:
+                raise IndexError(index)
+            return CandidateFailureClassificationTests.Tokens(self.row)
+
+    class TinyTokenizer:
+        pad_token_id = 0
+
+        def __init__(self, input_lengths=(2,), *, parse_error=None):
+            self.input_lengths = iter(input_lengths)
+            self.parse_error = parse_error
+
+        def apply_chat_template(self, messages, **_kwargs):
+            return str(messages)
+
+        def __call__(self, _text, **_kwargs):
+            count = next(self.input_lengths)
+            return CandidateFailureClassificationTests.Inputs(
+                input_ids=CandidateFailureClassificationTests.InputIds(count)
+            )
+
+        def decode(self, _output, **_kwargs):
+            return "Draft text."
+
+        def parse_response(self, _text, *, prefix):
+            if self.parse_error:
+                raise ValueError(self.parse_error)
+            return {"role": "assistant", "content": "Draft text."}
+
+    class TinyModel:
+        device = "cpu"
+        generation_config = type("GenerationConfig", (), {"eos_token_id": 1})()
+
+    def _evaluate(self, tokenizer, sampled, *, config=CONFIG, followups=None):
+        sampled = iter(sampled)
+
+        def generate(_model, inputs, _generation, *, seed):
+            del seed
+            prompt_length = inputs["input_ids"].shape[-1]
+            row = [*range(prompt_length), *next(sampled)]
+            return self.Generated(row)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("writing_agent.inference.generate_with_seed", side_effect=generate):
+                return run_agent(
+                    TransformersBackend(self.TinyModel(), tokenizer, config),
+                    Workspace(Path(temporary)),
+                    [{"role": "user", "content": "Draft."}],
+                    followups=followups,
+                )
+
+    def test_generation_token_limit_is_a_candidate_failure(self):
+        result = self._evaluate(
+            self.TinyTokenizer(),
+            [[7, 8]],
+            config={**CONFIG, "max_tokens": 2},
+        )
+        self.assertEqual(result["failure_class"], "candidate_invalid", result)
+
+    def test_native_tokenizer_parse_error_is_a_candidate_failure(self):
+        result = self._evaluate(
+            self.TinyTokenizer(parse_error="json: could not parse after dialect transforms"),
+            [[7, 1]],
+        )
+        self.assertEqual(result["failure_class"], "candidate_invalid", result)
+
+    def test_context_exhausted_by_prior_candidate_turn_is_a_candidate_failure(self):
+        result = self._evaluate(
+            self.TinyTokenizer(input_lengths=(2, 4)),
+            [[7, 1]],
+            config={**CONFIG, "max_tokens": 2, "context_tokens": 5},
+            followups=["Revise."],
+        )
+        self.assertEqual(result["failure_class"], "candidate_invalid", result)
+
+    def test_initial_prompt_context_overflow_remains_infrastructure(self):
+        result = self._evaluate(
+            self.TinyTokenizer(),
+            [],
+            config={**CONFIG, "max_tokens": 2, "context_tokens": 3},
+        )
+        self.assertEqual(result["failure_class"], "infrastructure", result)
+
+
 @unittest.skipUnless(importlib.util.find_spec("torch"), "optional inference dependencies")
 class GenerationTests(unittest.TestCase):
     def setUp(self):

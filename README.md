@@ -7,7 +7,7 @@ to the source texts. This repository does not vendor model weights or book corpo
 `src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
 residue. Supervised training is `scripts/train_sft.py`; the task-graph trainer is the
 only supported DAPO path and [trains on verified task-graph rollouts](docs/task-graph-training.md).
-The standalone legacy DAPO runners remain in repository history at commit `9cb9944`. The
+The standalone legacy DAPO runners remain at commit `9cb9944`, in `main`'s history. The
 [deterministic group coordinator](docs/task-graph-groups.md) prepares offline comparison
 and segment-credit artifacts.
 

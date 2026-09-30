@@ -102,7 +102,7 @@ semantic or literary judging was performed.
 
 ## Reproduce or inspect
 
-Use the [probe guide](../../docs/grpo-probe.md) for a new, separately scoped run.
+Use the [probe guide](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-probe.md) for a new, separately scoped run.
 Do not rerun completed phases. The local evidence directory in the main checkout is
 `runs/grpo-gemma-probe-microbatch-v1`, binding
 `d5cbd1680f87fed7d04a561102599d2ed7c4f98a9f8887eb7dd813d432493b4f`.

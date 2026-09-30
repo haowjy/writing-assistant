@@ -147,6 +147,15 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(candidate["failure_class"], "candidate_invalid")
         self.assertEqual(infrastructure["failure_class"], "infrastructure")
 
+    def test_tool_call_without_id_is_a_candidate_failure(self):
+        response = {
+            "role": "assistant",
+            "tool_calls": [{"function": {"name": "list_dir", "arguments": {}}}],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            result = run_agent(ScriptedBackend([response]), Workspace(Path(temporary)), [])
+        self.assertEqual(result["failure_class"], "candidate_invalid")
+
     def test_continue_after_saved_answer_and_external_followup(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Workspace(Path(tmp))

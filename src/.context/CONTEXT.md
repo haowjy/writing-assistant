@@ -491,8 +491,8 @@ An explicit training microbatch divides the full group, and the trainer updates 
 group. The task-graph resume preflight checks durable reservations before loading weights.
 
 The legacy standalone DAPO rollout, probe, full48, GPU-fit and fork runners, along with the
-`trl-1.13` route, were retired after P1 passed; their source remains in repository history
-at commit `9cb9944` (`feat/dapo-full-rounds`). They have no import path from the task-graph
+`trl-1.13` route, were retired after P1 passed; their source remains in commit `9cb9944`, in
+`main`'s history. They have no import path from the task-graph
 trainer. The short [retirement pointer](../../docs/grpo.md) records the boundary.
 `grpo_gpu.py` retains the D23 display policy and ownership gate used by the task-graph probe;
 `training_stages.py` remains its generic stage supervisor. The separate
@@ -515,13 +515,9 @@ table; an inconsistent table is rejected at import. Coverage reports the level a
 withheld points.
 Prepared requests are not generated or accepted training tasks.
 
-`reward.py` retains a standalone reward-design hypothesis for research; the task-graph
-trainer does not consume it. The task-graph's `RewardV1` is the sole training reward owner.
-The helper maps quality, intent and continuity from anchored 1-5 ratings and mechanics
-from applicable deterministic checks. A withheld judgment is unavailable rather than
-zero, and critical criteria can only be declared before sampling. `scoring.py` continues
-to compute no combined writing score. The research script binds reward hashes to source
-inventory and generator instructions.
+The task-graph's `RewardV1` is the sole training reward owner. The former standalone
+holistic reward experiment was retired because Phase 9 design §2.1 rejects 1–5 scalar
+rewards; it remains reproducible from commit `9cb9944` in `main`'s history.
 Variation vocabulary is caller-supplied data.
 Source-preserving continuations receive no genre blend and retain source style.
 Tropes, situations and continuity challenges remain authoring suggestions until the

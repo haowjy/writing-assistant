@@ -9,7 +9,7 @@ so the fit gate remains closed and full48 production training did not start.
 
 The attempt used profile identity
 `93510c26b10fc685b1813be2617d678e93e4ddcb032f3d4cb4d039cd41998f8f` and the
-source-pinned environment described in [the fit protocol](../../docs/grpo-gpu-fit.md).
+source-pinned environment described in [the fit protocol](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-gpu-fit.md).
 It retained the fixed 32768-token ledgers, BF16 base, FP32 rank-8 LoRA adapters,
 public streaming DAPO path, microbatch one, accumulation four, nonreentrant
 checkpointing, SDPA, and unchanged ownership thresholds. There was no retry or

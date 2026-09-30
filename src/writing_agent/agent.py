@@ -173,7 +173,7 @@ def run_agent(
                             },
                         }
                     )
-                    raise ValueError("Tool call needs an id")
+                    raise CandidateResponseError("Tool call needs an id")
                 calls += 1
                 try:
                     function = call["function"]

@@ -8,7 +8,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from writing_agent.grpo_runtime import (
+    SOURCE_PINS,
     STREAMING,
+    RuntimeImportMismatch,
+    RuntimeSourceMismatch,
     implementation_plan,
     python_tree_hash,
     validate_streaming_model,
@@ -59,12 +62,16 @@ class RuntimeAdmissionTests(unittest.TestCase):
             (root / "__init__.py").write_text("not the approved archive")
             dist = SimpleNamespace(version="1.14.0.dev0", locate_file=lambda module: root)
             with (
+                patch(
+                    "writing_agent.grpo_runtime.SOURCE_PINS",
+                    {"trl": SOURCE_PINS["trl"]},
+                ),
                 patch("writing_agent.grpo_runtime.distribution", return_value=dist),
                 patch(
                     "writing_agent.grpo_runtime.find_spec",
                     return_value=SimpleNamespace(origin=str(root / "__init__.py")),
                 ),
-                self.assertRaises(ValueError),
+                self.assertRaises(RuntimeSourceMismatch),
             ):
                 verify_runtime(STREAMING)
             with (
@@ -73,7 +80,7 @@ class RuntimeAdmissionTests(unittest.TestCase):
                     "writing_agent.grpo_runtime.find_spec",
                     return_value=SimpleNamespace(origin="/shadow/trl/__init__.py"),
                 ),
-                self.assertRaises(ValueError),
+                self.assertRaises(RuntimeImportMismatch),
             ):
                 verify_runtime(STREAMING)
 

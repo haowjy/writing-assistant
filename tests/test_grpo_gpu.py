@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 from writing_agent.grpo_gpu import (
     CUDA_ALLOCATOR_CONF,
-    HEADLESS_POLICY,
     admit_gpu,
     configure_cuda_allocator,
     ownership_report,
@@ -50,15 +49,6 @@ class OwnershipTests(unittest.TestCase):
                     self.assertTrue(result["admitted"])
                     self.assertEqual(result["consumers"][0]["type"], kind)
         self.assertFalse(ownership_report(xml([(1, "python", "C", 0)]))["admitted"])
-
-    def test_headless_policy_requires_empty_inventory_and_24000_mib_free(self):
-        self.assertTrue(ownership_report(xml(free=24000), policy=HEADLESS_POLICY)["admitted"])
-        self.assertFalse(ownership_report(xml(free=23999), policy=HEADLESS_POLICY)["admitted"])
-        self.assertFalse(
-            ownership_report(xml([(1, "cosmic-comp", "G", 1)], free=24000), policy=HEADLESS_POLICY)[
-                "admitted"
-            ]
-        )
 
     def test_expandable_allocator_is_set_before_torch_import(self):
         env = {k: v for k, v in os.environ.items() if k not in CUDA_ALLOCATOR_CONF["environment"]}
