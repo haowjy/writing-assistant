@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from writing_agent.task_graph import canonical_json, safe_path, validate_file_tree
+from writing_agent.task_graph import (
+    canonical_json,
+    safe_path,
+    tool_call_id,
+    validate_file_tree,
+)
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
 from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_wire import decode_canonical_value
@@ -462,7 +467,7 @@ def _names_ask_author(raw: Any) -> bool:
 def parse_calls(
     message: SampledMessageV1,
     *,
-    id_prefix: str,
+    action_id: str,
     allowed: frozenset[str],
     prior_raw_ids: Iterable[str] = (),
     ask_semantics: Callable[[dict[str, Any]], None] | None = None,
@@ -504,7 +509,7 @@ def parse_calls(
                 reason = str(exc)
         entries.append(
             ToolQueueEntry(
-                f"{id_prefix}:{index}",
+                tool_call_id(action_id, index),
                 call.name if reason is None else "invalid_call",
                 call.arguments if reason is None else {},
                 reason,
