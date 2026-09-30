@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Commit truncated or malformed native tool output as parse-failed turns, including incomplete
+  call headers and reserved sentinels, while keeping parser configuration errors fail-closed.
+
 - Share one adapter tensor hash, bounded/unbounded u32 decoder and durable atomic file writer
   across native training and trace evidence.
 

@@ -12,6 +12,10 @@ from pathlib import Path
 
 from writing_agent.backends import Completion
 from writing_agent.catalog import fingerprint
+from writing_agent.native_protocol import (
+    NativeResponseParseError,
+    is_native_output_parse_error,
+)
 from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
@@ -103,27 +107,12 @@ def render_messages(messages: list[dict]) -> list[dict]:
     return rendered
 
 
-class NativeResponseParseError(ValueError):
-    """The tokenizer could not parse sampled native response text."""
-
-
-def _is_malformed_native_output_error(error: ValueError) -> bool:
-    """Recognize the pinned Gemma parser's malformed-output failures, not arbitrary bugs."""
-    message = str(error)
-    return message.startswith(
-        (
-            "json: could not parse after dialect transforms",
-            "Required response_template fields missing from parsed output:",
-        )
-    )
-
-
 def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
     try:
         message = tokenizer.parse_response(text, prefix=prefix)
     except ValueError as exc:
-        if not _is_malformed_native_output_error(exc):
+        if not is_native_output_parse_error(exc):
             raise
         raise NativeResponseParseError("Tokenizer could not parse the native response") from exc
     calls = message.get("tool_calls", [])
