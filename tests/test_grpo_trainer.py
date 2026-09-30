@@ -56,6 +56,52 @@ class RolloutFactoryTests(unittest.TestCase):
             self.assertEqual(len(received[0]), 32)
             self.assertTrue((output / "invocations" / received[0] / "started.json").is_file())
 
+    def test_trainer_callback_factory_receives_live_peft_model(self):
+        class StopAtCallback(Exception):
+            pass
+
+        class Dropout:
+            pass
+
+        model = SimpleNamespace(modules=lambda: [])
+        tokenizer = SimpleNamespace(padding_side="right")
+        api = SimpleNamespace(
+            set_seed=lambda seed: None,
+            get_peft_model=lambda model, config: model,
+            torch=SimpleNamespace(nn=SimpleNamespace(Dropout=Dropout)),
+            TrainerCallback=object,
+            GRPOConfig=lambda **kwargs: object(),
+        )
+        settings = SimpleNamespace(seed=7, max_steps=1)
+        received = []
+
+        def make_callback(live_model):
+            received.append(live_model)
+            raise StopAtCallback
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(StopAtCallback):
+                run_trainer(
+                    api=api,
+                    tasks=[],
+                    output=Path(tmp) / "training",
+                    settings=settings,
+                    plan={},
+                    identity="identity",
+                    manifest={},
+                    model=model,
+                    tokenizer=tokenizer,
+                    lora_config=object(),
+                    trainer_config_values={},
+                    make_rollouts=lambda _invocation_id: object(),
+                    resume_from_checkpoint=None,
+                    resume_checkpoint_identity=None,
+                    stop_after_steps=None,
+                    trainer_callback_factory=make_callback,
+                )
+
+        self.assertEqual(received, [model])
+
 
 if __name__ == "__main__":
     unittest.main()

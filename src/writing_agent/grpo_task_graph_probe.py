@@ -359,42 +359,43 @@ def _require_latest_checkpoint(training_root: Path, checkpoint: Path) -> int:
 
 
 @contextmanager
-def _stage_observers(stage_dir: Path, *, cpu: bool):
+def _stage_observers(stage_dir: Path, sample_backend_factory):
     """Record finite optimizer gradients and per-decision generation wall time."""
     import torch
-
-    smoke = _smoke_helpers()
-    from writing_agent.native_gemma import NativeGemmaSampleBackend
+    from transformers import TrainerCallback
 
     gradient_steps: list[dict[str, Any]] = []
     timings: list[dict[str, Any]] = []
-    adamw_step = torch.optim.AdamW.step
-    sample_methods = [(NativeGemmaSampleBackend, NativeGemmaSampleBackend.sample)]
-    if cpu:
-        sample_methods.append((smoke.ScriptedNativeBackend, smoke.ScriptedNativeBackend.sample))
 
-    def checked_step(optimizer, *args, **kwargs):
-        finite = True
-        tensors = 0
-        for group in optimizer.param_groups:
-            for parameter in group["params"]:
+    class FiniteGradientCallback(TrainerCallback):
+        def __init__(self, model):
+            self.model = model
+
+        def on_pre_optimizer_step(self, args, state, control, **kwargs):
+            tensors = 0
+            finite = True
+            for parameter in self.model.parameters():
                 gradient = parameter.grad
                 if gradient is not None:
                     tensors += 1
                     finite = finite and bool(torch.isfinite(gradient).all().item())
-        gradient_steps.append(
-            {"step": len(gradient_steps) + 1, "tensor_count": tensors, "finite": finite}
-        )
-        if not finite or tensors == 0:
-            raise FloatingPointError("optimizer received missing or non-finite gradients")
-        return adamw_step(optimizer, *args, **kwargs)
+            gradient_steps.append(
+                {"step": len(gradient_steps) + 1, "tensor_count": tensors, "finite": finite}
+            )
+            if not finite or tensors == 0:
+                raise FloatingPointError("optimizer received missing or non-finite gradients")
+            return control
 
-    torch.optim.AdamW.step = checked_step
-    for cls, original in sample_methods:
+    class TimedSampleBackend:
+        def __init__(self, backend):
+            self._backend = backend
 
-        def timed_sample(instance, prepared, _original=original):
+        def __getattr__(self, name):
+            return getattr(self._backend, name)
+
+        def sample(self, prepared):
             started = time.perf_counter()
-            result = _original(instance, prepared)
+            result = self._backend.sample(prepared)
             usage = result.usage
             timings.append(
                 {
@@ -405,13 +406,15 @@ def _stage_observers(stage_dir: Path, *, cpu: bool):
             )
             return result
 
-        cls.sample = timed_sample
+    def timed_factory(*args, **kwargs):
+        return TimedSampleBackend(sample_backend_factory(*args, **kwargs))
+
+    def gradient_callback_factory(model):
+        return FiniteGradientCallback(model)
+
     try:
-        yield
+        yield timed_factory, gradient_callback_factory
     finally:
-        torch.optim.AdamW.step = adamw_step
-        for cls, original in sample_methods:
-            cls.sample = original
         save_json(
             stage_dir / "gradient-observer.json",
             {
@@ -480,12 +483,23 @@ def _run_cpu_training(
 
     torch.set_num_threads(2)
     smoke = _smoke_helpers()
-    with _stage_observers(stage_dir, cpu=True):
+    configs = smoke._BUILDER.load_probe_tasks()
+    plans = smoke._plans(configs, smoke.settings(), all_tie=all_tie)
+
+    def sample_backend_factory(*args, **kwargs):
+        return smoke.ScriptedNativeBackend(*args, plans=plans, **kwargs)
+
+    with _stage_observers(stage_dir, sample_backend_factory) as (
+        timed_factory,
+        gradient_callback_factory,
+    ):
         return smoke._make_run(
             training_root,
             resume=resume,
             stop_after_steps=stop_after_steps,
             all_tie=all_tie,
+            sample_backend_factory=timed_factory,
+            trainer_callback_factory=gradient_callback_factory,
         )
 
 
@@ -522,13 +536,17 @@ def _run_gpu_training(
         "revision": settings.revision,
         "execution": "phase8-p1-3090-v1",
     }
-    with _stage_observers(stage_dir, cpu=False):
+    with _stage_observers(stage_dir, NativeGemmaSampleBackend) as (
+        timed_factory,
+        gradient_callback_factory,
+    ):
         return smoke._make_run(
             training_root,
             resume=resume,
             stop_after_steps=stop_after_steps,
             model_factory=load_base,
-            sample_backend_factory=NativeGemmaSampleBackend,
+            sample_backend_factory=timed_factory,
+            trainer_callback_factory=gradient_callback_factory,
             runtime_identity=runtime_identity,
         )
 

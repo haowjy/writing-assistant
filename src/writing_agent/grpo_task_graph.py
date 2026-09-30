@@ -767,6 +767,7 @@ def train_task_graph(
     stop_after_steps: int | None = None,
     resume_checkpoint_identity: str | None = None,
     sample_backend_factory: Callable[..., Any] = NativeGemmaSampleBackend,
+    trainer_callback_factory: Callable[[Any], Any] | None = None,
     tokenizer_root: Path | str | None = None,
     adapter_name: str = "default",
 ) -> dict[str, Any]:
@@ -923,6 +924,7 @@ def train_task_graph(
             resume_from_checkpoint=resume_from_checkpoint,
             resume_checkpoint_identity=resume_checkpoint_identity,
             stop_after_steps=stop_after_steps,
+            trainer_callback_factory=trainer_callback_factory,
         )
 
     result = observer.run(run)

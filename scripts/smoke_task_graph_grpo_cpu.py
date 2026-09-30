@@ -313,6 +313,7 @@ def _make_run(
     stop_after_steps=None,
     model_factory=None,
     sample_backend_factory=None,
+    trainer_callback_factory=None,
     runtime_identity=None,
     all_tie=False,
 ):
@@ -383,6 +384,7 @@ def _make_run(
         resume_from_checkpoint=resume,
         stop_after_steps=stop_after_steps,
         sample_backend_factory=sample_backend_factory,
+        trainer_callback_factory=trainer_callback_factory,
         tokenizer_root=TOKENIZER_PATH,
     )
 

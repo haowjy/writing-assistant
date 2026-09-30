@@ -96,6 +96,7 @@ def run_trainer(
     resume_from_checkpoint,
     resume_checkpoint_identity,
     stop_after_steps,
+    trainer_callback_factory=None,
 ):
     """Resume safely, construct one trainer, and persist its adapter and evidence."""
     output = Path(output)
@@ -190,6 +191,9 @@ def run_trainer(
 
     args = api.GRPOConfig(**trainer_config_values)
     try:
+        callbacks = [CheckpointLifecycle()]
+        if trainer_callback_factory is not None:
+            callbacks.append(trainer_callback_factory(model))
         trainer = api.GRPOTrainer(
             model=model,
             processing_class=tokenizer,
@@ -197,7 +201,7 @@ def run_trainer(
             train_dataset=api.Dataset.from_list([{"prompt": task["id"]} for task in tasks]),
             reward_funcs=saved_rewards,
             rollout_func=rollouts,
-            callbacks=[CheckpointLifecycle()],
+            callbacks=callbacks,
         )
         if trainer.accelerator.num_processes != 1:
             raise ValueError("Only a single accelerator process is supported")
