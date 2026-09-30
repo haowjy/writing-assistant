@@ -163,7 +163,13 @@ def read_member_tool_outcomes(start: Any, final: Any) -> dict[str, Any]:
     outcomes = []
     counts: Counter[str] = Counter()
     protocol_rejection_count = 0
-    for call_id in sorted(calls):
+
+    def call_order(call_id: str) -> tuple[int, int]:
+        source = final.call_sources[call_id]
+        action_ordinal = int(source.action_id.rsplit(":action:", 1)[1])
+        return action_ordinal, source.queue_index
+
+    for call_id in sorted(calls, key=call_order):
         call = calls[call_id]
         result = (
             {"code": "not_executed_incomplete"}

@@ -413,7 +413,6 @@ _TOKEN_LIMIT_STOP_REASONS = {
 TERMINATION_STOP_REASONS = frozenset(
     {
         *_TOKEN_LIMIT_STOP_REASONS.values(),
-        "context_tokens_budget",
         "unterminated_tool_call",
         "unterminated_final_answer",
         "unparsed_tool_call",

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Sort native tool-outcome reports by writer-action ordinal and call index.
+
 - Name the outside-packet canary for its actual scope: detecting a bulk private-store dump,
   not leakage of an admitted evaluator check spec.
 
