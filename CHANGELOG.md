@@ -12,6 +12,8 @@
 
 - Bind task-graph experiment identities to the native sampler, audit, and core task-graph sources.
 
+- Label criterion 4's byte-tampering checks as store-integrity controls, not audit proof.
+
 - Use one fail-closed verdict rule in both the task-graph probe worker and parent.
 
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,

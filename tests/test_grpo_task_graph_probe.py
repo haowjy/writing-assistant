@@ -22,8 +22,10 @@ from writing_agent.grpo_task_graph_probe import (
     prepare,
 )
 from writing_agent.grpo_task_graph_probe_evidence import (
+    CRITERION_DESCRIPTIONS,
     _criterion,
     _criterion_1,
+    _store_integrity_controls_refused,
     inspect_run,
 )
 from writing_agent.grpo_task_graph_probe_evidence import (
@@ -37,6 +39,22 @@ class TaskGraphProbeTests(unittest.TestCase):
     def test_desktop_probe_policy_extends_the_shared_gpu_policy(self):
         self.assertEqual(N3_POLICY, {**DISPLAY_POLICY, "mode": "desktop"})
         self.assertIs(N3_POLICY["names"], DISPLAY_POLICY["names"])
+
+    def test_criterion_4_names_store_integrity_controls_and_requires_all_refusals(self):
+        description = CRITERION_DESCRIPTIONS["criterion_4"].lower()
+        self.assertIn("store-integrity controls", description)
+        self.assertNotIn("tamper controls", description)
+
+        controls = {f"control-{index}": True for index in range(6)}
+        self.assertTrue(
+            _store_integrity_controls_refused({"all_refused": True, "controls": controls})
+        )
+        for name in controls:
+            with self.subTest(admitted=name):
+                admitted = {**controls, name: False}
+                self.assertFalse(
+                    _store_integrity_controls_refused({"all_refused": True, "controls": admitted})
+                )
 
     def test_inspect_is_read_only_and_prepare_persists_its_pre_run_record(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -371,7 +389,10 @@ class TaskGraphProbeTests(unittest.TestCase):
                 ),
                 patch(
                     "writing_agent.grpo_task_graph_probe_evidence._tamper_controls",
-                    return_value={"all_refused": True},
+                    return_value={
+                        "controls": {f"control-{index}": True for index in range(6)},
+                        "all_refused": True,
+                    },
                 ),
                 patch(
                     "writing_agent.grpo_task_graph_probe_evidence._checkpoint_evidence",
@@ -419,6 +440,11 @@ class TaskGraphProbeTests(unittest.TestCase):
             self.assertEqual(result["verdict"], "fail")
             self.assertTrue(result["criteria"]["criterion_1"]["computed"])
             self.assertFalse(result["criteria"]["criterion_1"]["passed"])
+            criterion_4 = result["criteria"]["criterion_4"]
+            self.assertTrue(criterion_4["computed"])
+            self.assertTrue(criterion_4["passed"])
+            self.assertIn("store_integrity_controls", criterion_4["evidence"])
+            self.assertNotIn("tamper_controls", criterion_4["evidence"])
             self.assertEqual(
                 result["criteria"]["criterion_1"]["evidence"][
                     "protocol_shaped_tool_rejection_count"

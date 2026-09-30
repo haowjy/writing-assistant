@@ -35,8 +35,8 @@ CRITERION_DESCRIPTIONS = {
         "and PEFT reload matches."
     ),
     "criterion_4": (
-        "Offline inspection re-derives all ledgers/admissions with zero mismatches and all "
-        "tamper controls refuse."
+        "Offline inspection re-derives all ledgers/admissions with zero mismatches and all six "
+        "store-integrity controls are refused by content addressing."
     ),
     "criterion_5": (
         "Every applicable run-time, GPU-memory, RSS, aggregate GPU-time, and run-directory "
@@ -403,6 +403,16 @@ def _criterion(computed: bool, passed: bool, evidence: dict[str, Any], missing=(
     }
 
 
+def _store_integrity_controls_refused(evidence: dict[str, Any]) -> bool:
+    controls = evidence.get("controls")
+    return bool(
+        evidence.get("all_refused") is True
+        and isinstance(controls, dict)
+        and len(controls) == 6
+        and all(refused is True for refused in controls.values())
+    )
+
+
 def _criterion_1(groups: list[dict[str, Any]], *, group_count: int, group_errors: list[str]):
     """Compute criterion 1 only when every member's committed tool outcomes are available."""
     group_statuses = [group["decision"].status for group in groups]
@@ -736,14 +746,14 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             and criterion_3_evidence.get("resident_trainable_hash_matches_export") is True
         )
 
-        tamper_evidence: dict[str, Any] = {}
-        tamper_error = None
+        store_integrity_evidence: dict[str, Any] = {}
+        store_integrity_error = None
         try:
             if not groups:
-                raise ValueError("no group is available for tamper controls")
-            tamper_evidence = _tamper_controls(training_root, run_dir, groups[0])
+                raise ValueError("no group is available for store-integrity controls")
+            store_integrity_evidence = _tamper_controls(training_root, run_dir, groups[0])
         except Exception as exc:
-            tamper_error = f"{type(exc).__name__}: {exc}"
+            store_integrity_error = f"{type(exc).__name__}: {exc}"
         mismatch_counts = [report.get("mismatch_count") for report in reports]
         inspector_ok = (
             all(
@@ -759,12 +769,12 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             "inspection_reports": reports,
             "mismatch_counts": mismatch_counts,
             "inspections_byte_identical": inspections_identical,
-            "tamper_controls": tamper_evidence,
+            "store_integrity_controls": store_integrity_evidence,
             "inspection_errors": inspection_errors + group_errors,
         }
         criterion_4_computed = (
             bool(reports)
-            and not tamper_error
+            and not store_integrity_error
             and not inspection_errors
             and not group_errors
             and len(reports) == 6
@@ -773,10 +783,10 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             criterion_4_computed
             and inspector_ok
             and inspections_identical
-            and tamper_evidence.get("all_refused") is True
+            and _store_integrity_controls_refused(store_integrity_evidence)
         )
-        if tamper_error:
-            criterion_4_evidence["tamper_error"] = tamper_error
+        if store_integrity_error:
+            criterion_4_evidence["store_integrity_error"] = store_integrity_error
 
         resources = _resource_stages(run_dir)
         ceilings = prepared["ceilings"]
@@ -889,7 +899,9 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
                 criterion_4_computed,
                 criterion_4_pass,
                 criterion_4_evidence,
-                [] if criterion_4_computed else [tamper_error or "offline inspection evidence"],
+                []
+                if criterion_4_computed
+                else [store_integrity_error or "offline inspection evidence"],
             ),
             "criterion_5": _criterion(criterion_5_computed, criterion_5_pass, criterion_5_evidence),
             "criterion_6": _criterion(True, criterion_6_pass, criterion_6_evidence),
@@ -901,8 +913,8 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             failures.extend(group_errors)
         if inspection_errors:
             failures.extend(inspection_errors)
-        if tamper_error:
-            failures.append(tamper_error)
+        if store_integrity_error:
+            failures.append(store_integrity_error)
         if criterion_3_error:
             failures.append(criterion_3_error)
         result = {
