@@ -39,6 +39,8 @@ from writing_agent.grpo_runtime import (
 from writing_agent.inference import PROTOCOL, checkpoint_identity
 from writing_agent.workspace import TOOL_SCHEMAS
 
+OPTIONAL_WANDB_BINDINGS = {"WANDB_CONSOLE": "off", "WANDB_RESUME": "allow"}
+
 
 def canonical_json_value(value):
     """Normalize JSON-equivalent mappings (notably integer config keys)."""
@@ -302,6 +304,14 @@ def train_grpo(
             existing = os.environ.get(key)
             if existing is not None and existing.lower() != expected.lower():
                 raise ValueError(f"Existing {key} conflicts with frozen W&B binding")
+        for key, expected in OPTIONAL_WANDB_BINDINGS.items():
+            if key not in wandb_environment:
+                continue
+            if str(wandb_environment[key]).lower() != expected:
+                raise ValueError(f"W&B environment does not satisfy the frozen {key} binding")
+            existing = os.environ.get(key)
+            if existing is not None and existing.lower() != expected:
+                raise ValueError(f"Existing {key} conflicts with frozen W&B binding")
         import sys
 
         active_wandb = sys.modules.get("wandb")
@@ -316,6 +326,9 @@ def train_grpo(
     if wandb_reporting:
         for key, value in required_env.items():
             os.environ[key] = str(value)
+        for key in OPTIONAL_WANDB_BINDINGS:
+            if key in wandb_environment:
+                os.environ[key] = str(wandb_environment[key])
     from writing_agent.grpo_trainer import load_trainer_api, run_trainer
 
     api = load_trainer_api()

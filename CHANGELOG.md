@@ -7,6 +7,9 @@
 
 - Derive reward scaling from the runtime profile, preserving legacy plan identities.
 
+- Preserve the checkpoint fork's W&B console privacy and resume bindings without forwarding
+  unapproved environment keys.
+
 - Use one fail-closed verdict rule in both the task-graph probe worker and parent.
 
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,

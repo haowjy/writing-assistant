@@ -130,6 +130,42 @@ class ForkAdmissionTests(unittest.TestCase):
         self.assertEqual(config["env"]["WANDB_CONSOLE"], "off")
         self.assertIn("task text", config["privacy"]["deny"])
 
+    def test_train_grpo_exports_fork_privacy_keys_without_secrets(self):
+        from scripts.smoke_grpo_cpu import toy_reward
+        from tests.test_grpo import REVISION, task
+        from writing_agent.grpo import GRPOSettings, train_grpo
+
+        binding = native_wandb_config(run_id="fork-run-1")["env"]
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {}, clear=True):
+            with (
+                patch.dict("sys.modules", {"wandb": None}),
+                patch("writing_agent.grpo.verify_runtime", return_value=None),
+                patch(
+                    "writing_agent.grpo_trainer.load_trainer_api",
+                    side_effect=RuntimeError("stop after environment export"),
+                ),
+                self.assertRaisesRegex(RuntimeError, "stop after environment export"),
+            ):
+                train_grpo(
+                    [task()],
+                    Path(tmp) / "run",
+                    settings=GRPOSettings(revision=REVISION),
+                    reward_spec={
+                        "id": "fixture",
+                        "config": {},
+                        "mode": "mechanical-only-smoke",
+                    },
+                    admission={"mode": "engineered-fixture", "label": "test-only"},
+                    reward_callback=toy_reward,
+                    execute=True,
+                    report_to="wandb",
+                    wandb_run_name=binding["WANDB_RUN_ID"],
+                    wandb_environment=binding,
+                )
+            self.assertEqual(os.environ.get("WANDB_CONSOLE"), "off")
+            self.assertEqual(os.environ.get("WANDB_RESUME"), "allow")
+            self.assertNotIn("WANDB_API_KEY", os.environ)
+
     def test_wandb_existing_wrong_project_is_rejected(self):
         config = native_wandb_config(run_id="run-31")
         fake = SimpleNamespace(
