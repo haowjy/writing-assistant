@@ -284,6 +284,27 @@ def task_graph_experiment_manifest(
     }
 
 
+def _task_graph_identity(experiment: Mapping[str, Any], *, source_root: Path | None = None):
+    """Bind the frozen task-graph experiment to its trainer-side source files."""
+    source_root = Path(source_root) if source_root is not None else Path(__file__).parent
+    manifest = {
+        "identity_version": "task-graph-experiment-v1",
+        "experiment": experiment,
+        "code": {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(
+                {
+                    *source_root.glob("grpo*.py"),
+                    *source_root.glob("native_*.py"),
+                    *source_root.glob("task_graph*.py"),
+                }
+            )
+        },
+    }
+    manifest = json.loads(json.dumps(manifest, sort_keys=True, separators=(",", ":")))
+    return fingerprint(manifest), manifest
+
+
 def _native_policy(
     task: TaskGraphTaskV1,
     manifest: RuntimeManifestV2,
@@ -841,16 +862,7 @@ def train_task_graph(
         implementation=runtime,
         runtime_identity=runtime_identity,
     )
-    manifest = {
-        "identity_version": "task-graph-experiment-v1",
-        "experiment": experiment,
-        "code": {
-            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(Path(__file__).parent.glob("grpo*.py"))
-        },
-    }
-    manifest = json.loads(json.dumps(manifest, sort_keys=True, separators=(",", ":")))
-    identity = fingerprint(manifest)
+    identity, manifest = _task_graph_identity(experiment)
     plan = {
         "settings": asdict(settings),
         "runtime": runtime,

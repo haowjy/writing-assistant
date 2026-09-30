@@ -10,6 +10,8 @@
 - Preserve the checkpoint fork's W&B console privacy and resume bindings without forwarding
   unapproved environment keys.
 
+- Bind task-graph experiment identities to the native sampler, audit, and core task-graph sources.
+
 - Use one fail-closed verdict rule in both the task-graph probe worker and parent.
 
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
