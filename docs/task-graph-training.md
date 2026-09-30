@@ -123,8 +123,9 @@ It had two causes:
 
 **What the model did.** The lead read this from the store, not from the admission records:
 
-- **Every member wrote a scene.** All 14 `write_file` calls returned `ok`, and no turn failed
-  to parse. All 26 decisions ended `native_stop`, and no member emitted a thought.
+- **Every member wrote a scene.** All 14 tool calls (12 `write_file`, 2 `read_file`) returned
+  `ok`, and no turn failed to parse. All 26 decisions ended `native_stop`, and no member
+  emitted a thought.
 - **Rewards had a spread in every group:** t1 0, 0.35, 0.55, 0.55; t2 0.6, 0.6, 0.8, 0.8;
   t3 0.55, 0.55, 0.55, 0.8. No member wrote `field-notes.txt`. Several paraphrased the
   stated detail and missed `stated_detail`.
