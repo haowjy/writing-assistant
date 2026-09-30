@@ -5,6 +5,9 @@
 - Derive V2 total, prefill and cached-input usage from the committed token ledger before
   charging a native turn.
 
+- Refuse native group sealing when the entry declares an aggregate total-token limit that
+  native rule 3 does not derive; remove that limit from the Phase 8 probe tasks.
+
 - Skip tokenizer/model-backed native tests when their optional dependencies are absent, while
   keeping dependency-free import checks active.
 

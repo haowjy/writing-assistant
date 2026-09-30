@@ -338,6 +338,7 @@ def _bound_native_lineage(
     *,
     mode: str = "context_token_limited",
     max_tokens: int = 4,
+    seal_group: bool = True,
 ):
     tokenizer = TokenizerDescriptorV1(
         model_id="tests/toy-tokenizer",
@@ -371,6 +372,8 @@ def _bound_native_lineage(
     coordinator = GroupCoordinatorV1(fixture.env, session=session)
     # Seal from the root, then bind the already sealed group to its member session.
     fixture.env.session = None
+    if not seal_group:
+        return fixture, session, policy, fixture.runtime
     spec = coordinator.seal(
         fixture.runtime.checkpoint_id,
         policy=policy,
@@ -495,6 +498,27 @@ class WriterTurnV2Tests(unittest.TestCase):
             usage={key: value for key, value in no_total.usage.items() if key != "total_tokens"},
         )
         derive_writer_turn_v2(self.view, no_total, self.reader)
+
+    def test_native_group_seal_refuses_total_token_budget_at_its_contract_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            fixture, session, policy, runtime = _bound_native_lineage(
+                Path(root), mode="total_token_limited", seal_group=False
+            )
+            coordinator = GroupCoordinatorV1(fixture.env, session=session)
+            with self.assertRaises(AdapterContractError) as caught:
+                coordinator.seal(
+                    runtime.checkpoint_id,
+                    policy=policy,
+                    group_seed=18,
+                    group_sequence=94,
+                    member_count=2,
+                    runner_mode="fixture",
+                    training_mode="native",
+                )
+            self.assertTrue(
+                str(caught.exception).startswith("entry.budget_contract.max_total_tokens:"),
+                str(caught.exception),
+            )
 
     def test_rule_3_rejects_false_token_limit_context_limit_and_nonfinal_stop(self):
         early_stop = _turn(

@@ -13,6 +13,8 @@ policy, an optional native-training mode and one seed slot per member. `training
 omitted when absent, so existing group identities stay fixed. A native-training group
 requires `RuntimeManifestV2`, all three native sampling capabilities, and descriptor pins
 that match both the sealed policy and entry rendering; V1 remains the evaluation contract.
+Native group sealing refuses `max_total_tokens`: rule 3 does not derive that aggregate
+counter, so it cannot safely control native lineage termination.
 Each member is its own new-core lineage that starts
 from the shared entry checkpoint with a `MemberStartV1`. The gate verifies everything about
 a member's history, including `view.group`, and binds every policy pin as it derives each

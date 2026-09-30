@@ -258,6 +258,13 @@ class GroupCoordinatorV1:
         policy: dict[str, str] | None = None,
         rendering: dict[str, Any] | None = None,
     ) -> None:
+        if training_mode == "native":
+            budget_contract = self.environment.graph.node(environment["node_id"]).contract.budget_contract
+            if budget_contract.max_total_tokens is not None:
+                raise AdapterContractError(
+                    "entry.budget_contract.max_total_tokens: native training cannot derive "
+                    "the aggregate total-token limit"
+                )
         token_limited = self._entry_has_token_limits(environment)
         should_validate = (
             runner_mode == "real" or training_mode == "native" or self._is_v2_manifest(adapter_ref)
