@@ -370,6 +370,9 @@ class TaskGraphRollouts:
     ) -> None:
         self.task_ids = tuple(item["id"] for item in tasks)
         self.task_entries = {entry.task_id: entry for entry in task_entries}
+        self.environments = {
+            task_id: entry.environment for task_id, entry in self.task_entries.items()
+        }
         if set(self.task_ids) != set(self.task_entries):
             raise ValueError("TRL task IDs differ from task-graph entry registry")
         self.settings = settings
@@ -409,15 +412,16 @@ class TaskGraphRollouts:
         expected = self.task_ids[step % len(self.task_ids)]
         if task_id != expected:
             raise TaskGraphTrainingError("rollout task differs from the frozen ordered schedule")
-        task = self.task_entries[task_id]
         self._refuse_existing_step(step)
         self._ensure_runtime(trainer)
+        task = self.task_entries[task_id]
+        environment = self.environments[task_id]
         reservation = _reserve_step(self.output / "groups", step, task_id)
         try:
             _assert_active_adapter(trainer.model, self.adapter_name)
             adapter_before = self._behavior_policy_ref(trainer.model, step)
             group_seed = derive_group_seed(self.settings.seed, "task-graph-step", step)
-            coordinator = GroupCoordinatorV1(task.environment, session=self.session)
+            coordinator = GroupCoordinatorV1(environment, session=self.session)
             policy = _native_policy(
                 task,
                 self.runtime_manifest,
@@ -434,7 +438,6 @@ class TaskGraphRollouts:
                 runner_mode="real",
                 training_mode="native",
             )
-            task.environment.session = self.session
             _atomic_json(
                 reservation,
                 {
@@ -452,12 +455,12 @@ class TaskGraphRollouts:
                     runtime = coordinator.start(spec, ordinal, policy=spec.policy)
                     start_checkpoint = runtime.checkpoint_id
                     _assert_active_adapter(trainer.model, self.adapter_name)
-                    run = RolloutDriver(task.environment, gatherers).run(runtime, max_steps=256)
+                    run = RolloutDriver(environment, gatherers).run(runtime, max_steps=256)
                     if run.directive.kind != "done":
                         raise TaskGraphTrainingError(
                             f"task-graph member halted with directive {run.directive.kind}"
                         )
-                    view = task.environment.verify(run.runtime)
+                    view = environment.verify(run.runtime)
                     terminal_ref = run.runtime.state.outcome_ref
                     availability_ref = view.outcome.reward_ref
                     if availability_ref is not None:
@@ -564,8 +567,6 @@ class TaskGraphRollouts:
                     receipt["group_id"] = locals()["spec"].group_id
                 _atomic_json(reservation, receipt)
             raise
-        finally:
-            task.environment.session = None
 
     def _ensure_runtime(self, trainer) -> None:
         if self._manifest_checked:
@@ -599,8 +600,10 @@ class TaskGraphRollouts:
         session = RuntimeSession.create(self.store, dependencies).bind(
             self.store, self.runtime_manifest.identity()
         )
-        for task in self.task_entries.values():
-            task.environment.session = None
+        self.environments = {
+            task_id: task.environment.with_session(session)
+            for task_id, task in self.task_entries.items()
+        }
         self.backend, self.session = backend, session
         self._tools, self._evaluator = tools, evaluator
         self._manifest_checked = True
@@ -838,7 +841,6 @@ def train_task_graph(
     if runtime_manifest.decoding.max_tokens_per_decision != settings.max_tokens:
         raise ValueError("native per-decision cap differs from GRPO settings")
     for entry in task_entries:
-        entry.environment.session = None
         runtime_handle = entry.environment.open(entry.entry_checkpoint_id)
         view = entry.environment.verify(runtime_handle)
         budget = view.budget["limits"]

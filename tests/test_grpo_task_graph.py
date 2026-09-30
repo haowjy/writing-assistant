@@ -96,6 +96,7 @@ def _rollouts_scaffold(root: Path, status: str):
     rollouts = object.__new__(TaskGraphRollouts)
     rollouts.task_ids = ("task-1",)
     rollouts.task_entries = {"task-1": task}
+    rollouts.environments = {"task-1": task.environment}
     rollouts.settings = SimpleNamespace(group_size=2, max_steps=1, seed=5)
     rollouts.output = root
     rollouts.runtime_manifest = object()

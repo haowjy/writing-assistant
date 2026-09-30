@@ -80,7 +80,7 @@ class GroupCoordinatorV1:
     ):
         self.environment = environment
         self.store = environment.store
-        self.session = session or environment.session
+        self.session = session if session is not None else environment.session
         self.groups_root = self.store.root / "groups"
         self.groups_root.mkdir(mode=0o700, exist_ok=True)
 
@@ -193,8 +193,8 @@ class GroupCoordinatorV1:
 
     def _entry_contract(self, checkpoint_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         view = self.environment.verify(
-            self.environment.open(checkpoint_id, group_session=True),
-            group_session=True,
+            self.environment.open(checkpoint_id, caller_is_group_session=True),
+            caller_is_group_session=True,
         )
         return (
             resolve_group_environment(
@@ -304,11 +304,11 @@ class GroupCoordinatorV1:
     def _require_bound_group_session(self, spec: GroupSpecV1, rendering: dict[str, Any]) -> None:
         if spec.runner_mode != "real" and spec.training_mode != "native":
             return
-        if self.session is None or self.environment.session is None:
+        if self.session is None:
             raise AdapterContractError("real group members require a bound runtime session")
         self._require_group_seal(spec)
         token_limited = self._entry_has_token_limits(spec.environment)
-        self.environment.session.require_seal(
+        self.session.require_seal(
             spec.policy["adapter_ref"],
             token_limited=token_limited,
             training_mode=spec.training_mode,
