@@ -143,7 +143,7 @@ def _bounded_call(value: Any) -> bool:
 
 def intake_message(message: Any) -> SampledMessageV1:
     """Return the canonical, replayable SampledMessageV1 form of an adapter message."""
-    if not isinstance(message, dict):
+    if not isinstance(message, Mapping):
         message = {}
     raw_calls = message.get("tool_calls", [])
     was_list = isinstance(raw_calls, list)
@@ -160,6 +160,11 @@ def intake_message(message: Any) -> SampledMessageV1:
         content=_encode_value(message.get("content")),
         tool_calls_was_list=was_list,
         calls=calls,
+        reasoning=(_encode_value(message["reasoning"]) if "reasoning" in message else None),
+        thinking=_encode_value(message["thinking"]) if "thinking" in message else None,
+        reasoning_content=(
+            _encode_value(message["reasoning_content"]) if "reasoning_content" in message else None
+        ),
     )
 
 

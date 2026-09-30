@@ -92,15 +92,6 @@ class RuntimeSession:
         """Check the gate-verified group contract against the executing manifest."""
         spec = view.group
         if spec is None:
-            manifest = self.dependencies.manifest()
-            if isinstance(manifest, RuntimeManifestV2):
-                require_native_manifest_binding(
-                    manifest,
-                    self.manifest_ref,
-                    policy=None,
-                    rendering=view.context.rendering,
-                    require_capabilities=False,
-                )
             return
         lineage = view.state.position["lineage_id"]
         if lineage not in {member.member_id for member in spec.members}:

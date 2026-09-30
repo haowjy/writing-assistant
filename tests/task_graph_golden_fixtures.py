@@ -288,6 +288,18 @@ def build_records_golden() -> dict[str, object]:
     return {"transition_semantics": SEMANTICS_V1, "records": records}
 
 
+def build_records_v2_golden() -> dict[str, object]:
+    """Pin the additive V2 wire records independently from the V1 goldens."""
+    records = {
+        record.RECORD_TYPE: _entry(record)
+        for record in record_examples()
+        if record.RECORD_TYPE in POST_GOLDEN_RECORD_TYPES
+    }
+    if set(records) != POST_GOLDEN_RECORD_TYPES:
+        raise AssertionError("V2 golden examples do not cover all additive records")
+    return {"transition_semantics": SEMANTICS_V1, "records": records}
+
+
 def _rollout_samples() -> tuple[SampleResult, ...]:
     def call(name: str, arguments: dict[str, object], call_id: str) -> dict[str, object]:
         return {
@@ -437,9 +449,10 @@ def _write_json(path: Path, body: dict[str, object]) -> None:
 
 
 def regenerate_goldens() -> None:
-    """Rewrite the three fixtures explicitly; never called by tests."""
+    """Rewrite the fixtures explicitly; never called by tests."""
     _write_json(FIXTURES / "task_graph_hashes.json", build_hash_golden())
     _write_json(FIXTURES / "task_graph_records_golden.json", build_records_golden())
+    _write_json(FIXTURES / "task_graph_records_v2_golden.json", build_records_v2_golden())
     with TemporaryDirectory() as root:
         rollout = build_rollout_golden(Path(root) / "rollout")
     _write_json(FIXTURES / "task_graph_rollout_golden.json", rollout)

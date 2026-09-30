@@ -151,9 +151,10 @@ copy can drift from the derive, or classify the same failure differently.
 |---|---|---|
 | Writer action ID | `task_graph_derive_writer.writer_action_id` | `step_input` fills `SamplerInput.action_id` |
 | Group member lookup | `task_graph_derive_writer.group_member` | `step_input` fills the sealed `writer_seed` |
-| V1 group sampling claims (seed, model, `policy_ref` and sealed refs) | `bind_group_sampling_claims`, called by `derive_writer_turn` and wrapped as `AdapterContractProjectionError` | `step_input` puts the pins in `SamplerInput`, and `SamplingRunner` passes them to the backend; nothing producer-side checks them |
+| Group sampling claims (seed, model, `policy_ref` and sealed refs) | `bind_group_sampling_claims`, called by `derive_writer_turn`; V2 context claims are bound at top level | `step_input` puts the pins in `SamplerInput`, and `SamplingRunner` passes them to the backend; nothing producer-side checks them |
 | Writer-turn context claims (`context_revision_ref`, `context_content_hash`, rendering) | `decode_and_bind_sampling` in `task_graph_sampling`, for every lineage and both turn versions | `step_input` sets the one `context_content_hash` from `view.context.content_ref`; the derive binds each present claim |
 | V2 ledger, sampling pins, chained token prefix and derived termination | `decode_and_bind_sampling` in `task_graph_sampling` | `step_input` exposes only `NativeSamplingBudget` allocations for native groups |
+| V2 manifest policy and rendering pins | `require_native_manifest_binding` in `task_graph_native_contracts` | Both `RuntimeSession` and V2 derive binding call the same check |
 | Whether a message part carries sampled content (MEDIUM-1) | `_build_assistant_message` in `derive_writer` writes the `no-sampled-content` sentinel | Group segment credit skips exactly that sentinel ([group-coordination.md](group-coordination.md)) |
 | Pre-dispatch tool error | `task_graph_derive_writer.tool_dispatch_error` | `step_input` fills `ToolInput.dispatch_permitted` |
 | Usage evidence under a token limit | `sampling_usage_requirements` in `task_graph_sampling`, called by both writer derives | None. `SamplerInput` carries no usage requirement |
@@ -230,6 +231,10 @@ head. A parentless checkpoint counts as the head while its lineage has no head y
   `commit_observer`, if set, sees each `StepResult`.
 - `start_member(entry_checkpoint_id, start)` opens the shared entry checkpoint and commits
   a `MemberStartV1`. This starts a new lineage whose first commit's parent is that entry.
+
+Real-mode groups and all `training_mode="native"` groups require a bound session at member
+start, open/resume and commit, regardless of runner mode. A native fixture cannot skip the
+session/manifest re-check merely because it is not using the real runner.
 
 `RuntimeHandle` holds `checkpoint_id`, `state` and the verified `context`; it has no
 workspace.

@@ -13,6 +13,7 @@ from writing_agent.task_graph import (
     MessageV1,
     Phase,
     freeze,
+    thaw,
 )
 from writing_agent.task_graph_admission import (
     AdmissionPolicyV1 as AdmissionPolicy,
@@ -37,13 +38,14 @@ from writing_agent.task_graph_errors import (
     WriterRuntimeError,
 )
 from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader, derive_input
+from writing_agent.task_graph_native_contracts import NativeSamplingBudget
 from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_record_contracts import ExecutionVersionsV1
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1 as AdmissionPolicyRecord,
 )
 from writing_agent.task_graph_records import MemberStartV1, WriterTurnV2
-from writing_agent.task_graph_sampling import NativeSamplingBudget, NativeSamplingHistory
+from writing_agent.task_graph_sampling import NativeSamplingHistory
 from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
 
@@ -237,8 +239,11 @@ class RolloutEnvironment:
         """Verify once, then return the directive and its authorized port input."""
         view = self._verify(runtime)
         directive = next_step(view)
-        if view.group is not None and view.group.runner_mode == "real" and self.session is None:
-            raise AdapterContractError("real group member requires a bound runtime session")
+        requires_group_session = view.group is not None and (
+            view.group.runner_mode == "real" or view.group.training_mode == "native"
+        )
+        if requires_group_session and self.session is None:
+            raise AdapterContractError("runtime view requires a sealed runtime session")
         if (
             directive.kind == "sample_writer"
             and view.node.contract.budget_contract.usage_charged_limits()
@@ -423,9 +428,11 @@ class RolloutEnvironment:
     ) -> None:
         budget = view.node.contract.budget_contract
         token_limited = bool(budget.usage_charged_limits())
-        real_group_member = view.group is not None and view.group.runner_mode == "real"
+        requires_group_session = view.group is not None and (
+            view.group.runner_mode == "real" or view.group.training_mode == "native"
+        )
         if self.session is None:
-            if real_group_member and require_group_session:
+            if requires_group_session and require_group_session:
                 raise AdapterContractError("runtime view requires a sealed runtime session")
             return
 
@@ -437,9 +444,8 @@ class RolloutEnvironment:
                 self.session.require_seal(
                     sealed_ref,
                     token_limited=token_limited,
-                    rendering=view.context.rendering,
+                    rendering=thaw(view.context.rendering),
                 )
-                self.session.require_member_seal(view)
         except Exception as exc:
             raise AdapterContractError(
                 "runtime session seal does not match the verified view"

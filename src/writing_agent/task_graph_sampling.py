@@ -8,32 +8,17 @@ from typing import Any, Protocol
 
 from writing_agent.task_graph import canonical_bytes
 from writing_agent.task_graph_errors import ProjectionError
+from writing_agent.task_graph_native_contracts import require_native_manifest_binding
 from writing_agent.task_graph_record_contracts import GroupSpecV1
 from writing_agent.task_graph_records import (
     RECORD_TYPES,
+    RendererDescriptorV1,
     RuntimeManifestV1,
     RuntimeManifestV2,
     WriterTurnV1,
     WriterTurnV2,
     decode_runtime_manifest,
 )
-
-NATIVE_TRACE_REASON = "native token alignment and loss masks are not implemented in Phase 4"
-TOOL_RESPONSE_STOP_TOKEN_ID = 50
-
-
-@dataclass(frozen=True)
-class NativeSamplingBudget:
-    """Public allocation inputs for a native sampler, never the full runtime ledger."""
-
-    remaining_generated_tokens: int | None
-    max_context_tokens: int | None
-
-    def __post_init__(self) -> None:
-        for name in ("remaining_generated_tokens", "max_context_tokens"):
-            value = getattr(self, name)
-            if value is not None and (type(value) is not int or value < 0):
-                raise ValueError(f"{name} must be a nonnegative integer or None")
 
 
 @dataclass(frozen=True)
@@ -88,38 +73,19 @@ def persist_logprob_trace(
     return trace
 
 
-@dataclass(frozen=True)
-class EligibilityDecisionV1:
-    native_on_policy_eligible: bool = False
-    trace_reason: str = NATIVE_TRACE_REASON
-    training_status: str = "ineligible"
-    training_reason: str = "native_action_trace_unavailable"
-
-    def training_wire(self, outcome_ref: str) -> dict[str, Any]:
-        return {
-            "record_type": "TrainingEligibilityV1",
-            "schema": 1,
-            "terminal_outcome_ref": outcome_ref,
-            "status": self.training_status,
-            "reason": self.training_reason,
-        }
-
-
-CURRENT_ELIGIBILITY = EligibilityDecisionV1()
-
-
 def bind_group_sampling_claims(
     policy: Mapping[str, str],
     writer_seed: int,
     claims: Mapping[str, Any],
     *,
     model_id: str,
+    require_context_claims: bool = True,
 ) -> None:
     """Compare present adapter claims with the member's sealed sampling policy."""
     if not isinstance(claims, Mapping):
         raise ProjectionError("group writer sample must include adapter claims")
     context_claims = {"context_revision_ref", "context_content_hash", "rendering"}
-    if not context_claims <= claims.keys():
+    if require_context_claims and not context_claims <= claims.keys():
         raise ProjectionError("group writer sample omits active context claims")
     for field, expected in policy.items():
         if field in claims and canonical_bytes(claims[field]) != canonical_bytes(expected):
@@ -155,7 +121,7 @@ def decode_and_bind_sampling(
     budget: Mapping[str, Any],
     lineage_id: str,
     reader: Any,
-) -> None:
+) -> RuntimeManifestV1 | RuntimeManifestV2 | None:
     """Dispatch sampling evidence by record type and bind it to its pinned context."""
     record_type = getattr(turn, "RECORD_TYPE", None)
     if record_type == WriterTurnV1.RECORD_TYPE and isinstance(turn, WriterTurnV1):
@@ -163,7 +129,7 @@ def decode_and_bind_sampling(
         if isinstance(manifest, RuntimeManifestV2):
             raise ProjectionError("input.record_type: WriterTurnV1 cannot use RuntimeManifestV2")
         _decode_v1_sampling(turn, context, reader)
-        return
+        return manifest
     if record_type != WriterTurnV2.RECORD_TYPE or not isinstance(turn, WriterTurnV2):
         raise ProjectionError("input.record_type: sampling input is not a writer-turn record")
     if group is None:
@@ -174,6 +140,7 @@ def decode_and_bind_sampling(
     _decode_v2_sampling(
         turn, context, group, manifest, samples, head_event_id, budget, lineage_id, reader
     )
+    return manifest
 
 
 def _sampling_manifest(
@@ -310,17 +277,16 @@ def _decode_v2_sampling(
         "renderer_ref": manifest.renderer.identity(),
         "seed": member.writer_seed,
     }
-    if manifest.identity() != group.policy["adapter_ref"]:
-        raise ProjectionError("input.sampling_pins.manifest_ref: differs from sealed group policy")
     for field, expected in expected_pins.items():
         if turn.sampling_pins[field] != expected:
             raise ProjectionError(f"input.sampling_pins.{field}: differs from sealed policy")
-    if manifest.decoding.identity() != group.policy["decoding_ref"]:
-        raise ProjectionError("input.sampling_pins.decoding_ref: differs from manifest")
-    if manifest.renderer.template_ref != group.policy["template_ref"]:
-        raise ProjectionError("input.sampling_pins.template_ref: differs from manifest")
-    if manifest.tokenizer.identity() != group.policy["tokenizer_ref"]:
-        raise ProjectionError("input.sampling_pins.tokenizer_ref: differs from manifest")
+    require_native_manifest_binding(
+        manifest,
+        group.policy["adapter_ref"],
+        policy=group.policy,
+        rendering=context.rendering,
+        require_capabilities=group.training_mode == "native",
+    )
 
     prior_sample = next(iter(reversed(samples)), None)
     if prior_sample is not None and not _has_context_root_change(
@@ -455,11 +421,16 @@ def _validate_termination(
         allowed <= 0 and limiting_term == "context" and not generated_ids
     ):
         raise ProjectionError("input.termination: context_limit does not match token counts")
+    if kind == "context_limit":
+        if turn.raw_output_ref is not None:
+            raise ProjectionError("input.raw_output_ref: zero-generation context_limit has output")
+        if turn.message.content not in (None, "") or turn.message.calls:
+            raise ProjectionError("input.message: zero-generation context_limit must be empty")
     if kind != "context_limit":
         raise ProjectionError("input.termination.kind: unsupported termination")
 
 
-def termination_stop_reason(turn: WriterTurnV2) -> str | None:
+def termination_stop_reason(turn: WriterTurnV2, renderer: RendererDescriptorV1) -> str | None:
     """Map a validated native termination and sampled message to its writer outcome."""
     termination = turn.termination
     kind = termination["kind"]
@@ -472,8 +443,9 @@ def termination_stop_reason(turn: WriterTurnV2) -> str | None:
     if kind == "context_limit":
         return "context_tokens_budget"
     has_tool_calls = turn.message.tool_calls_was_list and bool(turn.message.calls)
-    if has_tool_calls and termination["stop_token_id"] != TOOL_RESPONSE_STOP_TOKEN_ID:
+    tool_response_stop = renderer.tool_response_stop_token_id
+    if has_tool_calls and termination["stop_token_id"] != tool_response_stop:
         return "unterminated_tool_call"
-    if not has_tool_calls and termination["stop_token_id"] == TOOL_RESPONSE_STOP_TOKEN_ID:
+    if not has_tool_calls and termination["stop_token_id"] == tool_response_stop:
         return "unterminated_final_answer"
     return None

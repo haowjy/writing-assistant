@@ -142,6 +142,9 @@ class SampledMessageV1(WireRecord):
     content: Annotated[Any, CanonicalIntake()]
     tool_calls_was_list: Annotated[bool, Bool()]
     calls: Annotated[Any, _JSON]
+    reasoning: Annotated[Any, CanonicalIntake()] = None
+    thinking: Annotated[Any, CanonicalIntake()] = None
+    reasoning_content: Annotated[Any, CanonicalIntake()] = None
 
     def check(self) -> None:
         if not self.tool_calls_was_list:
@@ -158,6 +161,10 @@ class SampledMessageV1(WireRecord):
                 validate_canonical_value(call["value"])
             elif call["value"] != {"$noncanonical": "bounded-call"}:
                 raise ValueError("unbounded calls require the bounded-call marker")
+
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"reasoning", "thinking", "reasoning_content"}
+    )
 
 
 @dataclass(frozen=True)
@@ -222,6 +229,9 @@ class WriterTurnV2(WireRecord):
             raise ValueError("native adapter trace contains a forbidden claim")
 
 
+RENDERER_STOP_TOKEN_ROLES = ("eos", "end_of_turn", "tool_response")
+
+
 @dataclass(frozen=True)
 class RendererDescriptorV1(WireRecord):
     implementation: Annotated[str, Str(nonempty=True)]
@@ -232,6 +242,11 @@ class RendererDescriptorV1(WireRecord):
     enable_thinking: Annotated[bool, Bool()]
     suffix_rules_version: Annotated[str, Str(nonempty=True)]
     RECORD_TYPE: ClassVar[str] = "RendererDescriptorV1"
+
+    @property
+    def tool_response_stop_token_id(self) -> int:
+        """Return the renderer-pinned token ID assigned the tool-response role."""
+        return self.stop_token_ids[RENDERER_STOP_TOKEN_ROLES.index("tool_response")]
 
     def check(self) -> None:
         if (
