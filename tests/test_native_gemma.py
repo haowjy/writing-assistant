@@ -20,6 +20,7 @@ from writing_agent.native_gemma import (
     NativeGemmaSampleBackend,
     make_native_manifest_descriptors,
 )
+from writing_agent.native_protocol import ProtocolError
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_errors import AdapterContractError
@@ -154,6 +155,7 @@ def _prepared(descriptors, *, messages=None, ordinal=0, history=None, max_contex
         adapter_ref="1" * 64,
         decision_ordinal=ordinal,
         native_history=history,
+        action_id=f"test-member:action:{ordinal}",
     )
 
 
@@ -219,8 +221,34 @@ class NativeGemmaTests(unittest.TestCase):
         self.assertEqual(result.usage["prefill_tokens"], len(result.input_token_ids))
         self.assertEqual(result.usage["cached_input_tokens"], 0)
 
-    def test_external_suffix_matches_tool_results_by_order_not_event_call_id(self):
+    def test_unset_optional_generation_defaults_are_neutral(self):
+        config = self.model.generation_config
+        names = ("min_length", "typical_p", "repetition_penalty", "no_repeat_ngram_size")
+        original = {name: getattr(config, name) for name in names}
+        try:
+            for name in names:
+                setattr(config, name, None)
+            result = self.backend.sample(_prepared(self.descriptors))
+        finally:
+            for name, value in original.items():
+                setattr(config, name, value)
+
+        self.assertEqual(len(result.generated_token_ids), 1)
+        self.assertEqual(result.termination["kind"], "native_stop")
+
+    def test_non_neutral_generation_defaults_remain_refused(self):
+        config = self.model.generation_config
+        original = config.min_length
+        try:
+            config.min_length = 2
+            with self.assertRaisesRegex(ProtocolError, "min_length"):
+                self.backend.sample(_prepared(self.descriptors))
+        finally:
+            config.min_length = original
+
+    def test_external_suffix_pairs_tool_results_by_exact_call_id(self):
         from writing_agent.inference import parse_response
+        from writing_agent.native_protocol import bind_native_tool_call_ids
 
         raw = (
             '<|tool_call>call:write_file{content:<|"|>x<|"|>,'
@@ -228,7 +256,9 @@ class NativeGemmaTests(unittest.TestCase):
         )
         generated = tuple(self.tokenizer.encode(raw, add_special_tokens=False))
         action_id = "member:action:0"
-        parsed = parse_response(self.tokenizer, raw, prefix="")
+        parsed = bind_native_tool_call_ids(
+            parse_response(self.tokenizer, raw, prefix=""), action_id
+        )
         turn = WriterTurnV2(
             action_id=action_id,
             context_revision_ref="a" * 64,
@@ -267,7 +297,7 @@ class NativeGemmaTests(unittest.TestCase):
                 content=(
                     {
                         "type": "tool_call",
-                        "id": "call_0",
+                        "id": "member:call:0:0",
                         "name": "write_file",
                         "arguments": {"path": "scene.txt", "content": "x"},
                     },
@@ -293,6 +323,25 @@ class NativeGemmaTests(unittest.TestCase):
         )
 
         self.assertTrue(suffix)
+
+        mismatched = (
+            messages[0],
+            MessageV1(
+                role="tool",
+                content=(
+                    {
+                        "type": "tool_result",
+                        "call_id": "member:call:wrong:0",
+                        "content": {"ok": True, "result": "written"},
+                    },
+                ),
+                origin=action_id,
+            ),
+        )
+        with self.assertRaises(ProtocolError):
+            NativeGemmaRenderer(self.tokenizer, self.descriptors[0]).external_suffix(
+                history, mismatched
+            )
 
     def test_generation_keeps_no_past_key_values_between_sample_calls(self):
         original = self.model.generate
@@ -637,6 +686,8 @@ class NativeGemmaTests(unittest.TestCase):
                 ("termination", first_view.samples[0].turn_ref, "termination"),
                 ("v1_manifest", spec.policy["adapter_ref"], "manifest"),
             )
+            # Store-layer controls: changing an envelope body breaks its content hash, so
+            # LineageGate refuses before the tokenizer-backed admission audit can run.
             for label, ref, kind in tamper_cases:
                 with self.subTest(tamper=label), tempfile.TemporaryDirectory() as tamper_tmp:
                     copied = Path(tamper_tmp) / "store"

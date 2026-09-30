@@ -21,8 +21,21 @@
 
 - Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
 
+- Bind native Gemma tool calls to deterministic task-graph action IDs, pair replayed results
+  exactly, and halt the CPU trace check on protocol-shaped tool-result errors while recording
+  per-call outcomes and final-file changes.
+
+- Treat Transformers 5's unset neutral generation controls as no-ops while continuing to
+  refuse non-neutral defaults; persist failed trace timings as canonical nanoseconds.
+
+- Add an offline, CPU-only native Gemma task-graph trace checker that records group admission,
+  on-policy drift, prefill and generation timing, peak RSS, deterministic offline inspection,
+  and protocol-shape classification for audit refusals.
+
 - Audit native training batches against committed context and pinned tokenizer files before
   training; offline inspection re-derives the batch and admission without network access.
+- Offline inspection now persists and re-derives tokenizer-file hash refusals through the
+  admission audit instead of stopping at tokenizer load.
 
 - Derive V2 total, prefill and cached-input usage from the committed token ledger before
   charging a native turn.

@@ -16,6 +16,7 @@ from typing import Any
 
 from writing_agent.inference import parse_response
 from writing_agent.native_gemma import NativeGemmaRenderer
+from writing_agent.native_protocol import bind_native_tool_call_ids
 from writing_agent.task_graph import (
     EventV1,
     canonical_bytes,
@@ -272,7 +273,9 @@ def _derive_admission(
                 if not isinstance(decoded, str) or raw_output != decoded.encode("utf-8"):
                     raise _AuditCheckFailure("raw_output_and_message")
                 prefix = tokenizer.decode(evidence.input_ids, skip_special_tokens=False)
-                parsed = parse_response(tokenizer, decoded, prefix=prefix)
+                parsed = bind_native_tool_call_ids(
+                    parse_response(tokenizer, decoded, prefix=prefix), evidence.turn.action_id
+                )
                 if intake_message(dict(parsed)).to_wire() != evidence.turn.message.to_wire():
                     raise _AuditCheckFailure("raw_output_and_message")
 
@@ -542,12 +545,13 @@ def _load_pinned_tokenizer(manifest: RuntimeManifestV2):
                 local_files_only=True,
             )
         )
-    for name, expected in descriptor.files_sha256.items():
+    # Keep file-integrity mismatches in the durable audit path. The offline inspector
+    # must be able to load the local tokenizer and re-derive `tokenizer_files` refusal,
+    # rather than failing before it can reproduce TrainingAdmissionV1.
+    for name in descriptor.files_sha256:
         relative = Path(name)
         if relative.is_absolute() or ".." in relative.parts:
             raise TrainingExportError("tokenizer_file_path", "tokenizer descriptor path is unsafe")
-        if hashlib.sha256((snapshot / relative).read_bytes()).hexdigest() != expected:
-            raise TrainingExportError("tokenizer_file_hash", "cached tokenizer file hash differs")
     tokenizer = AutoTokenizer.from_pretrained(str(snapshot), local_files_only=True)
     return tokenizer, snapshot
 
