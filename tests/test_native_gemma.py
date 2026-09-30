@@ -797,6 +797,7 @@ class NativeGemmaTests(unittest.TestCase):
                 adapter_hash_after=policy["behavior_policy_ref"],
                 tokenizer_root=TOKENIZER_PATH,
             )
+            padded_coordinator.record_training_admission(padded_spec, padded_admission)
             self.assertEqual(
                 [member["failed_check"] for member in padded_admission.members],
                 ["external_suffix_and_context_limit"] * 2,
