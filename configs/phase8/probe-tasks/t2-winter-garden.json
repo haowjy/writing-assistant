@@ -2,24 +2,9 @@
   "schema": 1,
   "id": "t2-winter-garden",
   "public": {
-    "brief": "Write a short, original scene in scene.txt about tending a small winter greenhouse before dawn. Ask the author using decision id door_key about the color of a key, then use the answer. Include the disclosed public detail warm soil if it fits; field-notes.txt is optional. Keep the scene under 70 words.",
+    "brief": "Write a short, original scene in scene.txt about tending a small winter greenhouse before dawn. The greenhouse key is blue. Include the public detail warm soil if it fits; field-notes.txt is optional. Keep the scene under 70 words.",
     "initial_files": {
       "scene.txt": "Frost brightens the greenhouse panes."
-    },
-    "decision": {
-      "id": "door_key",
-      "label": "greenhouse key color",
-      "binding": "choice_92",
-      "question": "What color is the greenhouse key?"
-    },
-    "author_packet": {
-      "preferences": {
-        "choice_92": "blue"
-      }
-    },
-    "feedback": {
-      "id": "revision",
-      "utterance": "Revise one sentence so the key and warm soil connect in the same scene."
     }
   },
   "probe_settings": {
@@ -28,21 +13,20 @@
     "max_tokens_per_decision": 512,
     "max_generated_tokens": 1536,
     "max_writer_turns": 6,
-    "max_tool_calls": 8,
-    "max_author_calls": 2
+    "max_tool_calls": 8
   },
   "checks": {
     "required_id": "scene_nonempty",
     "components": {
       "scene_nonempty": 1000,
-      "disclosed_decision": 2500,
+      "stated_detail": 2500,
       "public_detail": 2000,
       "scene_word_range": 2500,
       "field_notes_nonempty": 2000
     },
     "optional": [
       {
-        "id": "disclosed_decision",
+        "id": "stated_detail",
         "kind": "contains",
         "path": "scene.txt",
         "text": "blue key"
@@ -72,10 +56,6 @@
       "scene": "Frost softens the rows. A sparrow tests the roof.",
       "notes": null
     },
-    "decision_phrase": {
-      "scene": "The blue key glints beside the greenhouse door.",
-      "notes": null
-    },
     "phrase_and_detail": {
       "scene": "The blue key warms in her hand above the warm soil.",
       "notes": null
@@ -87,6 +67,10 @@
     "all_optional": {
       "scene": "The blue key warms in her hand above the warm soil. She opens the door slowly, smelling mint and rain, while the first pale stripe of morning crosses each patient green leaf.",
       "notes": "The mint survived the night."
+    },
+    "stated_detail": {
+      "scene": "The blue key glints beside the greenhouse door.",
+      "notes": null
     }
   }
 }

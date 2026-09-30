@@ -21,14 +21,9 @@ from writing_agent.task_graph_admission import (
     admit_graph,
 )
 from writing_agent.task_graph_contracts import (
-    AuthorPacketV1,
     CheckContractV1,
-    DecisionBindingsV1,
     EvaluatorPacketV1,
-    InteractionContractV1,
-    InteractionPolicyV1,
     RewardContractV1,
-    ScriptedAuthorV1,
 )
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry
 from writing_agent.task_graph_environment import RolloutEnvironment
@@ -253,8 +248,6 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
     public = config["public"]
     limits = config["probe_settings"]
     checks_config = config["checks"]
-    decision = public["decision"]
-    feedback = public["feedback"]
     check_ids = (checks_config["required_id"], *(item["id"] for item in checks_config["optional"]))
 
     request_ref = reader.add({"kind": "probe-public-request", "schema": 1, "text": public["brief"]})
@@ -307,6 +300,7 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
             "required": False,
             "path": "scene.txt",
             "private_fixture_canary": PRIVATE_STORE_DUMP_CANARY,
+            "unused_author_preference_canary": AUTHOR_PACKET_CANARY,
         },
     )
     reader.private[canary_check.identity()] = canary_check.to_dict()
@@ -315,62 +309,17 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
     packet = EvaluatorPacketV1(reward_contract_ref=reward.identity(), check_ids=check_ids)
     reader.private[reward.identity()] = reward.to_dict()
     reader.private[packet.identity()] = packet.to_dict()
-    author_packet = AuthorPacketV1(
-        preferences={
-            **public["author_packet"]["preferences"],
-            "unused_private_preference": AUTHOR_PACKET_CANARY,
-        },
-        requirements={},
-    )
-    answer = author_packet.preferences[decision["binding"]]
-    script = ScriptedAuthorV1(
-        answers={
-            decision["id"]: {
-                "mode": "fixed_answer",
-                "utterance": f"Use the {answer} choice.",
-                "value": answer,
-                "selector": None,
-                "prerequisite_check_ids": [],
-            }
-        },
-        feedback=(
-            {
-                "id": feedback["id"],
-                "utterance": feedback["utterance"],
-                "prerequisite_check_ids": [],
-                "requirement_update_ref": None,
-            },
-        ),
-    )
-    policy = InteractionPolicyV1(
-        public_decisions=({"id": decision["id"], "label": decision["label"]},),
-        mandatory_feedback=(feedback["id"],),
-    )
-    bindings = DecisionBindingsV1(bindings={decision["id"]: decision["binding"]})
-    for record in (author_packet, script, bindings):
-        reader.private[record.identity()] = record.to_dict()
-    reader.public[policy.identity()] = policy.to_dict()
 
     old_contract = old_node.contract
     entry_contract = replace(
         old_contract.entry_contract,
         request_ref=request_ref,
         files_ref=files_ref,
-        tool_allowlist=(*old_contract.entry_contract.tool_allowlist, "ask_author"),
-    )
-    interaction = InteractionContractV1(
-        mode="scripted_author",
-        script_ref=script.identity(),
-        author_packet_ref=author_packet.identity(),
-        interaction_policy_ref=policy.identity(),
-        decision_bindings_ref=bindings.identity(),
-        mandatory_feedback=(feedback["id"],),
     )
     budgets = replace(
         old_contract.budget_contract,
         max_steps=limits["max_writer_turns"],
         max_tool_calls=limits["max_tool_calls"],
-        max_author_calls=limits["max_author_calls"],
         max_generated_tokens=limits["max_generated_tokens"],
         max_context_tokens=limits["max_context_tokens"],
     )
@@ -383,7 +332,6 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
     contract = replace(
         old_contract,
         entry=entry_contract,
-        interaction=interaction,
         budgets=budgets,
         completion=completion,
         mandatory_checks=(checks[0].identity(),),

@@ -2,24 +2,9 @@
   "schema": 1,
   "id": "t1-lighthouse",
   "public": {
-    "brief": "Write a short, original scene in scene.txt about a lighthouse keeper preparing for a boat at low tide. The lantern color is your choice: ask the author using decision id lantern_tone, then use the answer. field-notes.txt is optional. Keep the scene under 70 words.",
+    "brief": "Write a short, original scene in scene.txt about a lighthouse keeper preparing for a boat at low tide. The lantern is amber. field-notes.txt is optional. Keep the scene under 70 words.",
     "initial_files": {
       "scene.txt": "A keeper waits beside the lighthouse window."
-    },
-    "decision": {
-      "id": "lantern_tone",
-      "label": "lighthouse lantern color",
-      "binding": "choice_91",
-      "question": "Which color should the lighthouse lantern be?"
-    },
-    "author_packet": {
-      "preferences": {
-        "choice_91": "amber"
-      }
-    },
-    "feedback": {
-      "id": "revision",
-      "utterance": "Revise one sentence so the lantern and low tide belong to the same moment."
     }
   },
   "probe_settings": {
@@ -28,21 +13,20 @@
     "max_tokens_per_decision": 512,
     "max_generated_tokens": 1536,
     "max_writer_turns": 6,
-    "max_tool_calls": 8,
-    "max_author_calls": 2
+    "max_tool_calls": 8
   },
   "checks": {
     "required_id": "scene_nonempty",
     "components": {
       "scene_nonempty": 1000,
-      "disclosed_decision": 2500,
+      "stated_detail": 2500,
       "public_detail": 2000,
       "scene_word_range": 2500,
       "field_notes_nonempty": 2000
     },
     "optional": [
       {
-        "id": "disclosed_decision",
+        "id": "stated_detail",
         "kind": "contains",
         "path": "scene.txt",
         "text": "amber lantern"
@@ -72,10 +56,6 @@
       "scene": "Rain gathers on the pier. Mara watches the dark water.",
       "notes": null
     },
-    "decision_phrase": {
-      "scene": "The amber lantern trembles above the quiet harbor.",
-      "notes": null
-    },
     "phrase_and_detail": {
       "scene": "The amber lantern steadies the boat; low tide exposes silver stones.",
       "notes": null
@@ -87,6 +67,10 @@
     "all_optional": {
       "scene": "The amber lantern steadies the boat; low tide exposes the silver stones. Mara counts returning windows, listens to the ropes creak, and leaves a warm cup beside the open chart.",
       "notes": "A boat crossed at low tide."
+    },
+    "stated_detail": {
+      "scene": "The amber lantern trembles above the quiet harbor.",
+      "notes": null
     }
   }
 }

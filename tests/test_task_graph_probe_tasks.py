@@ -12,7 +12,10 @@ from tests.task_graph_rollout_fixtures import (
     build_rollout_fixture,
     run_slice,
 )
+from writing_agent.task_graph_contracts import writer_tool_schemas
+from writing_agent.task_graph_derive_entry import SYSTEM_PROMPT
 from writing_agent.task_graph_ports import SampleResult
+from writing_agent.task_graph_probe_tasks import AUTHOR_PACKET_CANARY, PRIVATE_STORE_DUMP_CANARY
 
 BUILDER_PATH = Path(__file__).parents[1] / "configs/phase8/probe-tasks/build.py"
 _BUILDER_SPEC = importlib.util.spec_from_file_location("phase8_probe_task_builder", BUILDER_PATH)
@@ -34,7 +37,6 @@ def _sample(message: dict) -> SampleResult:
 
 
 def _samples(config: dict, example: dict) -> tuple[SampleResult, ...]:
-    decision = config["public"]["decision"]
     calls = [
         _tool_call(
             "write_file",
@@ -46,26 +48,6 @@ def _samples(config: dict, example: dict) -> tuple[SampleResult, ...]:
         )
     ]
     samples = [_sample({"role": "assistant", "content": "", "tool_calls": calls})]
-    samples.append(
-        _sample(
-            {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [
-                    _tool_call(
-                        "ask_author",
-                        {
-                            "question": decision["question"],
-                            "decision_ids": [decision["id"]],
-                            "proposals": [],
-                            "option_refs": [],
-                        },
-                        f"{config['id']}-ask",
-                    )
-                ],
-            }
-        )
-    )
     writes = [
         _tool_call(
             "write_file",
@@ -91,13 +73,6 @@ def _samples(config: dict, example: dict) -> tuple[SampleResult, ...]:
                     "tool_calls": [],
                 }
             ),
-            _sample(
-                {
-                    "role": "assistant",
-                    "content": "I applied the feedback revision.",
-                    "tool_calls": [],
-                }
-            ),
         )
     )
     return tuple(samples)
@@ -107,7 +82,7 @@ def _run(config: dict, samples: tuple[SampleResult, ...]):
     with tempfile.TemporaryDirectory() as temporary:
         fixture = build_rollout_fixture(
             Path(temporary) / "rollout",
-            mode="feedback",
+            mode="halt",
             sample_results=samples,
             entry_fixture=_BUILDER.build_admitted_entry(config),
         )
@@ -133,9 +108,22 @@ class ProbeTaskGraphTests(unittest.TestCase):
                 "t3-coastal-post",
             ],
         )
+        stated_details = {
+            "t1-lighthouse": "amber lantern",
+            "t2-winter-garden": "blue key",
+            "t3-coastal-post": "copper bell",
+        }
+        public_details = {
+            "t1-lighthouse": "low tide",
+            "t2-winter-garden": "warm soil",
+            "t3-coastal-post": "salt grass",
+        }
         for config in self.configs:
             with self.subTest(task=config["id"]):
                 settings = config["probe_settings"]
+                self.assertNotIn("decision", config["public"])
+                self.assertNotIn("author_packet", config["public"])
+                self.assertNotIn("feedback", config["public"])
                 self.assertEqual(settings["max_context_tokens"], 4096)
                 self.assertEqual(settings["max_tokens_per_decision"], 512)
                 self.assertEqual(settings["training_mode"], "native")
@@ -144,8 +132,32 @@ class ProbeTaskGraphTests(unittest.TestCase):
                 self.assertEqual(len(entry.graph.instance.nodes), 1)
                 node = entry.graph.node(entry.node_id)
                 self.assertEqual(node.spec.kind, "writer")
-                self.assertEqual(node.contract.interaction_contract.mode, "scripted_author")
-                self.assertEqual(len(node.contract.interaction_contract.mandatory_feedback), 1)
+                self.assertEqual(node.contract.interaction_contract.mode, "none")
+                self.assertEqual(node.contract.interaction_contract.mandatory_feedback, ())
+                self.assertIsNone(node.contract.interaction_contract.script_ref)
+                self.assertIsNone(node.contract.interaction_contract.author_packet_ref)
+                self.assertIsNone(node.author_packet)
+                self.assertIsNone(node.script)
+                self.assertNotIn("ask_author", node.contract.entry_contract.tool_allowlist)
+                tool_manifest = writer_tool_schemas(
+                    node.contract.entry_contract.tool_allowlist, node.interaction_policy
+                )
+                tool_names = {tool["function"]["name"] for tool in tool_manifest}
+                self.assertNotIn("ask_author", tool_names)
+                brief = config["public"]["brief"]
+                self.assertIn(stated_details[config["id"]].split()[0], brief)
+                self.assertIn(public_details[config["id"]], brief)
+                writer_view = repr((SYSTEM_PROMPT, brief, tool_manifest)).lower()
+                self.assertNotIn("ask_author", writer_view)
+                self.assertNotIn("ask the author", writer_view)
+                self.assertNotIn("max_author_calls", config["probe_settings"])
+                stated_check = node.checks["stated_detail"]
+                self.assertEqual(stated_check.spec["kind"], "contains")
+                self.assertEqual(stated_check.spec["path"], "scene.txt")
+                self.assertEqual(stated_check.spec["text"], stated_details[config["id"]])
+                public_check = node.checks["public_detail"]
+                self.assertEqual(public_check.spec["kind"], "contains")
+                self.assertEqual(public_check.spec["text"], public_details[config["id"]])
                 self.assertEqual(
                     {check.evaluator_version for check in node.checks.values()},
                     {"deterministic-v1"},
@@ -155,23 +167,28 @@ class ProbeTaskGraphTests(unittest.TestCase):
                     ["scene_nonempty"],
                 )
                 self.assertEqual(len(node.checks) - 1, 4)
-                decision = config["public"]["decision"]
-                self.assertEqual(
-                    node.author_packet.preferences[decision["binding"]],
-                    config["public"]["author_packet"]["preferences"][decision["binding"]],
-                )
                 budget = node.contract.budget_contract
                 self.assertEqual(budget.max_generated_tokens, 1536)
                 self.assertEqual(budget.max_context_tokens, 4096)
                 self.assertIsNone(budget.max_total_tokens)
                 self.assertEqual(budget.max_steps, 6)
                 self.assertEqual(budget.max_tool_calls, 8)
-                self.assertEqual(budget.max_author_calls, 2)
+                self.assertEqual(budget.max_author_calls, 0)
+                self.assertTrue(
+                    any(
+                        body.get("spec", {}).get("unused_author_preference_canary")
+                        == AUTHOR_PACKET_CANARY
+                        and body.get("spec", {}).get("private_fixture_canary")
+                        == PRIVATE_STORE_DUMP_CANARY
+                        for body in entry.reader.private.values()
+                        if isinstance(body, dict)
+                    )
+                )
 
-    def test_scripted_lineages_reach_five_reward_levels_through_author_and_feedback(self):
+    def test_scripted_lineages_reach_five_reward_levels_without_author_calls(self):
         cases = (
             ("t1-lighthouse", "nonempty_only", 1000),
-            ("t1-lighthouse", "decision_phrase", 3500),
+            ("t1-lighthouse", "stated_detail", 3500),
             ("t2-winter-garden", "phrase_and_detail", 5500),
             ("t3-coastal-post", "word_range", 8000),
             ("t3-coastal-post", "all_optional", 10000),
@@ -185,14 +202,14 @@ class ProbeTaskGraphTests(unittest.TestCase):
             )
             with self.subTest(task=task_id, lineage=lineage_id):
                 self.assertEqual(outcome.task_status, "complete")
-                self.assertEqual(counts["author"], 2, "ask_author answer plus mandatory feedback")
+                self.assertEqual(counts["author"], 0)
                 self.assertEqual(reward["numerator"], expected_score)
                 observed[lineage_id] = reward["numerator"]
         self.assertEqual(
             observed,
             {
                 "nonempty_only": 1000,
-                "decision_phrase": 3500,
+                "stated_detail": 3500,
                 "phrase_and_detail": 5500,
                 "word_range": 8000,
                 "all_optional": 10000,

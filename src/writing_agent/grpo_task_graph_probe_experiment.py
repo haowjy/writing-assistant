@@ -123,16 +123,6 @@ def _fixture_actions(config: dict[str, Any], lineage: str) -> tuple[str, ...]:
     first = _tool_call(
         "write_file", {"path": "scene.txt", "content": public["initial_files"]["scene.txt"]}
     )
-    decision = public["decision"]
-    ask = _tool_call(
-        "ask_author",
-        {
-            "question": decision["question"],
-            "decision_ids": [decision["id"]],
-            "proposals": [],
-            "option_refs": [],
-        },
-    )
     writes = [_tool_call("write_file", {"path": "scene.txt", "content": example["scene"]})]
     if example["notes"] is not None:
         writes.append(
@@ -140,10 +130,8 @@ def _fixture_actions(config: dict[str, Any], lineage: str) -> tuple[str, ...]:
         )
     return (
         first + "<|tool_response>",
-        ask + "<|tool_response>",
         "".join(writes) + "<|tool_response>",
         "The scene is ready for review.<turn|>",
-        "I applied the feedback revision.<turn|>",
     )
 
 
@@ -152,7 +140,7 @@ def fixture_plans(configs, recipe: GRPOSettings | None = None, *, all_tie: bool 
     recipe = settings() if recipe is None else recipe
     variants = (
         ("nonempty_only",) * 4,
-        ("nonempty_only", "decision_phrase", "phrase_and_detail", "all_optional"),
+        ("nonempty_only", "stated_detail", "phrase_and_detail", "all_optional"),
         ("all_optional",) * 4,
     )
     result = {}

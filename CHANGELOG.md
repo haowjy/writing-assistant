@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- State each Phase 8 probe detail in its task brief and run the probe and CPU fixtures without
+  author-tool calls or feedback turns.
+
 - Sort native tool-outcome reports by writer-action ordinal and call index.
 
 - Name the outside-packet canary for its actual scope: detecting a bulk private-store dump,

@@ -18,6 +18,7 @@ from writing_agent.grpo_task_graph_probe import (
     _latest_checkpoint,
     _require_latest_checkpoint,
     _select_verdict,
+    _work_dir,
     inspect,
     prepare,
 )
@@ -100,6 +101,35 @@ class TaskGraphProbeTests(unittest.TestCase):
             "assert 'writing_agent.grpo_probe' not in sys.modules"
         )
         subprocess.run([sys.executable, "-c", code], check=True)
+
+    def test_work_dir_comes_from_run_path_and_rejects_disagreeing_ambient_value(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            work_dir = root / "task-graph-training"
+            (work_dir / "env-phase8").mkdir(parents=True)
+            (work_dir / "env-phase8" / "environment.json").write_text("{}")
+            run_dir = work_dir / "runs" / "attempt"
+            run_dir.mkdir(parents=True)
+            other = root / "other-work-item"
+            other.mkdir()
+
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(_work_dir(run_dir), work_dir.resolve())
+            with patch.dict(os.environ, {"MERIDIAN_ACTIVE_WORK_DIR": str(work_dir)}):
+                self.assertEqual(_work_dir(run_dir), work_dir.resolve())
+            with patch.dict(os.environ, {"MERIDIAN_ACTIVE_WORK_DIR": str(other)}):
+                with self.assertRaisesRegex(ProbeError, "disagrees with the run directory"):
+                    _work_dir(run_dir)
+
+    def test_work_dir_falls_back_to_first_environment_ancestor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            work_dir = Path(temporary) / "task-graph-training"
+            (work_dir / "env-phase8").mkdir(parents=True)
+            (work_dir / "env-phase8" / "environment.json").write_text("{}")
+            run_dir = work_dir / "artifacts" / "nested" / "attempt"
+            run_dir.mkdir(parents=True)
+            with patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(_work_dir(run_dir), work_dir.resolve())
 
     def test_non_latest_resume_checkpoint_is_refused_before_model_preflight(self):
         with tempfile.TemporaryDirectory() as tmp:

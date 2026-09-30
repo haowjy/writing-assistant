@@ -83,15 +83,25 @@ def _prepare_digest(record: dict[str, Any]) -> str:
 
 
 def _work_dir(run_dir: Path) -> Path:
+    resolved_run = run_dir.expanduser().resolve()
+    if resolved_run.parent.name == "runs":
+        work_dir = resolved_run.parent.parent
+    else:
+        work_dir = next(
+            (
+                parent
+                for parent in resolved_run.parents
+                if (parent / "env-phase8" / "environment.json").is_file()
+            ),
+            None,
+        )
+    if work_dir is None:
+        raise ProbeError("cannot locate the task-graph-training work item from run directory")
+
     configured = os.environ.get("MERIDIAN_ACTIVE_WORK_DIR")
-    if configured:
-        return Path(configured).resolve()
-    if run_dir.parent.name == "runs":
-        return run_dir.parent.parent.resolve()
-    for parent in run_dir.parents:
-        if (parent / "env-phase8" / "environment.json").is_file():
-            return parent
-    raise ProbeError("cannot locate the task-graph-training work item")
+    if configured and Path(configured).expanduser().resolve() != work_dir:
+        raise ProbeError("MERIDIAN_ACTIVE_WORK_DIR disagrees with the run directory")
+    return work_dir
 
 
 def _git(*args: str) -> str:
