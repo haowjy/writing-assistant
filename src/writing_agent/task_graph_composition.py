@@ -61,6 +61,7 @@ class RuntimeSession:
         *,
         token_limited: bool = False,
         training_mode: str | None = None,
+        group_session: bool = False,
         policy=None,
         rendering=None,
     ) -> None:
@@ -71,6 +72,8 @@ class RuntimeSession:
             or manifest.identity() != adapter_ref
         ):
             raise AdapterContractError("sealed adapter manifest differs from executing runtime")
+        if isinstance(manifest, RuntimeManifestV2) and not group_session:
+            raise AdapterContractError("RuntimeManifestV2 sampling requires a sealed group session")
         if training_mode == "native" and not isinstance(manifest, RuntimeManifestV2):
             raise AdapterContractError("native training requires RuntimeManifestV2")
         if isinstance(manifest, RuntimeManifestV2):
@@ -102,6 +105,7 @@ class RuntimeSession:
             spec.policy["adapter_ref"],
             token_limited=token_limited,
             training_mode=spec.training_mode,
+            group_session=True,
             policy=spec.policy,
             rendering=view.context.rendering,
         )

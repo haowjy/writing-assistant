@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import math
+import tempfile
 import unittest
+from copy import deepcopy
 from dataclasses import replace
 from fractions import Fraction
+from pathlib import Path
+from unittest.mock import patch
 
 from tests.task_graph_fixtures import MemoryArtifactReader
-from tests.test_task_graph_v2_writer import _native_view, _turn
+from tests.task_graph_rollout_fixtures import run_slice
+from tests.test_task_graph_v2_writer import _bound_native_lineage, _native_view, _turn
 from writing_agent.task_graph import CheckpointV1, EventV1, domain_hash
+from writing_agent.task_graph_controller import next_step
 from writing_agent.task_graph_eligibility import decide_eligibility
+from writing_agent.task_graph_gate import StoreArtifactReader
+from writing_agent.task_graph_group import GroupCoordinatorV1, GroupInvariantError
 from writing_agent.task_graph_group_contract import derive_group_seed
 from writing_agent.task_graph_group_records import (
     GroupAdvantageV1,
@@ -28,13 +36,17 @@ from writing_agent.task_graph_record_contracts import (
 )
 from writing_agent.task_graph_records import (
     ContextOperationInputV1,
+    EnvironmentStepV1,
     OutcomeV1,
+    WriterTurnV1,
 )
 from writing_agent.task_graph_training_export import (
+    TrainingExportError,
     export_training_batch,
     read_advantage_f64,
     training_turn_spans,
 )
+from writing_agent.task_graph_training_records import TrainingBatchV1
 from writing_agent.task_graph_transition import SampleRef
 
 
@@ -223,6 +235,7 @@ def _build_group(
     reset_member=None,
     reset_operation="compact",
     member_count=None,
+    budget_charged_member=None,
 ):
     fixture, base_view, _manifest = _native_view()
     reader = fixture.reader
@@ -268,7 +281,11 @@ def _build_group(
                 lineage_id=member.member_id,
                 rollout_id=member.member_id,
                 node_visit_id="visit-1",
-                kind="writer_action",
+                kind=(
+                    "budget_charged"
+                    if budget_charged_member == ordinal and turn_ordinal == 0
+                    else "writer_action"
+                ),
                 actor="writer",
                 audience=("trainer", "writer"),
                 payload_ref=turn_ref,
@@ -426,6 +443,165 @@ def _build_group(
 
 
 class TrainingBatchExportTests(unittest.TestCase):
+    def test_real_coordinator_exports_tool_suffix_and_trailing_context_limit(self):
+        tool_call = {
+            "id": "write-1",
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "arguments": {"path": "draft.txt", "content": "x"},
+            },
+        }
+        with tempfile.TemporaryDirectory() as root:
+            fixture, session, base_spec, _runtime = _bound_native_lineage(
+                Path(root) / "group", mode="context_token_limited", max_tokens=4
+            )
+            coordinator = GroupCoordinatorV1(fixture.env, session=session)
+            spec = coordinator.seal(
+                fixture.runtime.checkpoint_id,
+                policy=dict(base_spec.policy),
+                group_seed=18,
+                group_sequence=94,
+                member_count=2,
+                runner_mode="real",
+                training_mode="native",
+            )
+            reader = StoreArtifactReader(fixture.store)
+
+            for ordinal, member in enumerate(spec.members):
+                runtime = coordinator.start(spec, ordinal, policy=spec.policy)
+                view = fixture.env.verify(runtime)
+                first_turn = _turn(
+                    view,
+                    reader,
+                    input_ids=(10, 11),
+                    generated_ids=(12, 50),
+                    stop_token_id=50,
+                    calls=(tool_call,),
+                    content="",
+                    sampling_pins={"seed": member.writer_seed},
+                )
+                runtime = fixture.env.commit(runtime, first_turn).runtime
+                runtime = run_slice(
+                    fixture,
+                    runtime=runtime,
+                    until=lambda directive: directive.kind == "sample_writer",
+                )
+                view = fixture.env.verify(runtime)
+                if ordinal == 0:
+                    final_turn = _turn(
+                        view,
+                        reader,
+                        input_ids=(10, 11, 12, 50, 77, 78),
+                        generated_ids=(20, 21, 22, 23),
+                        termination_kind="token_limit",
+                        stop_token_id=None,
+                        limit="decision",
+                        sampling_pins={"seed": member.writer_seed},
+                    )
+                else:
+                    context_cap = view.budget["limits"]["context_tokens"]
+                    final_turn = _turn(
+                        view,
+                        reader,
+                        input_ids=(10, 11, 12, 50) + tuple(range(300, 300 + context_cap)),
+                        generated_ids=(),
+                        termination_kind="context_limit",
+                        stop_token_id=None,
+                        limit="context",
+                        content="",
+                        sampling_pins={"seed": member.writer_seed},
+                    )
+                terminal_runtime = fixture.env.commit(runtime, final_turn).runtime
+                terminal = fixture.env.verify(terminal_runtime)
+                self.assertEqual(next_step(terminal).kind, "publish_reward")
+                final = fixture.env.verify(
+                    fixture.env.commit(
+                        terminal_runtime,
+                        EnvironmentStepV1(directive={"kind": "publish_reward"}),
+                    ).runtime
+                )
+                self.assertEqual(final.outcome.training_eligibility, "structurally_eligible")
+                result = GroupMemberResultV1(
+                    group_id=spec.group_id,
+                    member_id=member.member_id,
+                    start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
+                        "start_checkpoint_id"
+                    ],
+                    final_checkpoint_id=final.checkpoint_id,
+                    terminal_outcome_ref=terminal.state.outcome_ref,
+                    availability_ref=final.outcome.reward_ref,
+                    execution_status="valid",
+                )
+                coordinator.collect(spec, result)
+
+            decision = coordinator.finalize(spec)
+            exported = export_training_batch(spec, decision, reader)
+            artifacts = {artifact.ref: artifact.value for artifact in exported.artifacts}
+            members = exported.batch.members
+
+            def token_ids(ref):
+                data = artifacts[ref]
+                return tuple(
+                    int.from_bytes(data[offset : offset + 4], "little")
+                    for offset in range(0, len(data), 4)
+                )
+
+            self.assertEqual(
+                token_ids(members[0]["completion_ids_ref"]), (12, 50, 77, 78, 20, 21, 22, 23)
+            )
+            self.assertEqual(artifacts[members[0]["env_mask_ref"]], bytes((1, 1, 0, 0, 1, 1, 1, 1)))
+            self.assertEqual(
+                [
+                    (span["ext_start"], span["completion_start"], span["completion_end"])
+                    for span in members[0]["turn_spans"]
+                ],
+                [(0, 0, 2), (2, 4, 8)],
+            )
+            self.assertEqual(token_ids(members[1]["completion_ids_ref"]), (12, 50))
+            self.assertEqual(artifacts[members[1]["env_mask_ref"]], bytes((1, 1)))
+            self.assertEqual(
+                [
+                    (span["ext_start"], span["completion_start"], span["completion_end"])
+                    for span in members[1]["turn_spans"]
+                ],
+                [(0, 0, 2)],
+            )
+            self.assertIn("trailing_context_limit_turn_ref", members[1])
+            self.assertNotIn("trailing_context_limit_turn_ref", members[0])
+
+            credits = [
+                GroupSegmentCreditV1.from_dict(reader.artifact(ref))
+                for ref in decision.segment_credit_refs
+            ]
+            self.assertEqual(
+                [
+                    (
+                        credit.member_id,
+                        credit.segment_kind,
+                        credit.completion_start,
+                        credit.completion_end,
+                    )
+                    for credit in credits
+                ],
+                [
+                    (spec.members[0].member_id, "tool_syntax", 0, 2),
+                    (spec.members[0].member_id, "assistant_ending", 0, 2),
+                    (spec.members[0].member_id, "assistant_text", 4, 8),
+                    (spec.members[0].member_id, "assistant_ending", 4, 8),
+                    (spec.members[1].member_id, "tool_syntax", 0, 2),
+                    (spec.members[1].member_id, "assistant_ending", 0, 2),
+                    (spec.members[1].member_id, "assistant_ending", None, None),
+                ],
+            )
+
+            with patch(
+                "writing_agent.task_graph_group.training_turn_spans",
+                side_effect=GroupError("eligible layout is inconsistent"),
+            ):
+                with self.assertRaises(GroupInvariantError):
+                    coordinator.finalize(spec)
+
     def test_round_trip_reconstructs_last_generated_prefix_and_masks(self):
         reader, spec, decision, _turn_specs_by_member, turn_records = _build_group()
 
@@ -509,6 +685,7 @@ class TrainingBatchExportTests(unittest.TestCase):
         for artifact in exported.artifacts:
             reader.byte_values[artifact.ref] = artifact.value
         advantages = [read_advantage_f64(member, reader) for member in exported.batch.members]
+        self.assertEqual(advantages[0].hex(), "-0x1.6a09e667f3bcdp+0")
         self.assertAlmostEqual(advantages[0], -math.sqrt(2), places=15)
         self.assertAlmostEqual(advantages[1], 1 / math.sqrt(2), places=15)
         self.assertAlmostEqual(advantages[2], 1 / math.sqrt(2), places=15)
@@ -521,20 +698,23 @@ class TrainingBatchExportTests(unittest.TestCase):
         reader, spec, _decision, _turn_specs_by_member, _turn_records = _build_group()
         for status in ("pending", "invalid"):
             decision = GroupDecisionV1(group_id=spec.group_id, status=status, reason=status)
-            with self.subTest(status=status), self.assertRaises(GroupError):
+            with self.subTest(status=status), self.assertRaises(TrainingExportError) as caught:
                 export_training_batch(spec, decision, reader)
+            self.assertEqual(caught.exception.reason_code, "group_not_exportable")
 
     def test_non_structurally_eligible_member_refuses_export(self):
         reader, spec, decision, _turn_specs_by_member, _turn_records = _build_group(
             statuses=["ineligible", "structurally_eligible"]
         )
-        with self.assertRaises(GroupError):
+        with self.assertRaises(TrainingExportError) as caught:
             export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "member_not_eligible")
 
     def test_multiple_context_roots_refuse_export(self):
         reader, spec, decision, _turn_specs_by_member, _turn_records = _build_group(reset_member=0)
-        with self.assertRaisesRegex(GroupError, "multiple context roots"):
+        with self.assertRaises(TrainingExportError) as caught:
             export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "invalid_member_layout")
 
     def test_carry_context_change_is_ineligible_and_refused_by_export(self):
         reader, spec, decision, _, turns = _build_group(
@@ -548,20 +728,131 @@ class TrainingBatchExportTests(unittest.TestCase):
 
         self.assertEqual(eligibility.status, "ineligible")
         self.assertEqual(eligibility.reason, "multi_segment_context")
-        with self.assertRaises(GroupError):
+        with self.assertRaises(TrainingExportError) as caught:
             export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "invalid_member_layout")
 
     def test_empty_mask_refuses_export(self):
         turns = [_turn_specs(empty=True), _turn_specs()]
         reader, spec, decision, _, _turn_records = _build_group(turns_by_member=turns)
-        with self.assertRaisesRegex(GroupError, "empty generated-token mask"):
+        with self.assertRaises(TrainingExportError) as caught:
             export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "empty_generated_mask")
 
     def test_over_cap_member_refuses_export(self):
         turns = [[_turn_specs()[0]], [_turn_specs()[0]]]
         reader, spec, decision, _, _turn_records = _build_group(cap=2, turns_by_member=turns)
-        with self.assertRaisesRegex(GroupError, "exceeds max_context_tokens"):
+        with self.assertRaises(TrainingExportError) as caught:
             export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "invalid_member_layout")
+
+    def test_export_reports_machine_reasons_for_uncovered_layout_and_advantage_refusals(self):
+        scenarios = (
+            (
+                "budget charged event",
+                lambda: _build_group(budget_charged_member=0),
+                "invalid_member_layout",
+            ),
+            (
+                "zero generation before last action",
+                lambda: _build_group(
+                    turns_by_member=[
+                        [
+                            {
+                                "input_ids": (10, 11, 12),
+                                "generated_ids": (),
+                                "termination_kind": "context_limit",
+                                "stop_token_id": None,
+                                "limit": "context",
+                                "content": "",
+                            },
+                            _turn_specs()[0],
+                        ],
+                        _turn_specs(),
+                    ]
+                ),
+                "invalid_member_layout",
+            ),
+            (
+                "broken token prefix",
+                lambda: _build_group(
+                    turns_by_member=[
+                        [
+                            _turn_specs()[0],
+                            {
+                                **_turn_specs()[1],
+                                "input_ids": (99, 100, 101, 102, 103),
+                            },
+                        ],
+                        _turn_specs(),
+                    ]
+                ),
+                "invalid_member_layout",
+            ),
+        )
+        for label, build, expected_reason in scenarios:
+            with self.subTest(scenario=label):
+                reader, spec, decision, _, _ = build()
+                with self.assertRaises(TrainingExportError) as caught:
+                    export_training_batch(spec, decision, reader)
+                self.assertEqual(caught.exception.reason_code, expected_reason)
+
+    def test_export_refuses_v1_turns_and_ready_zero_variance_groups_by_code(self):
+        reader, spec, decision, _, turns = _build_group()
+        native_turn = turns[0][0]
+        legacy_turn = WriterTurnV1(
+            action_id=native_turn.action_id,
+            context_revision_ref=native_turn.context_revision_ref,
+            raw_output_ref=None,
+            usage={},
+            adapter_trace=None,
+            message=native_turn.message,
+        )
+        reader.public[native_turn.identity()] = legacy_turn.to_wire()
+        with self.assertRaises(TrainingExportError) as caught:
+            export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "invalid_member_layout")
+
+        reader, spec, decision, _, _ = _build_group(tie=True)
+        decision = replace(decision, status="ready", reason="group_relative")
+        with self.assertRaises(TrainingExportError) as caught:
+            export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "advantage_status_mismatch")
+
+    def test_export_refuses_segment_credit_span_mismatch_by_code(self):
+        reader, spec, decision, _, _ = _build_group()
+        credit = GroupSegmentCreditV1.from_dict(reader.artifact(decision.segment_credit_refs[0]))
+        wrong_credit_ref = reader.add(replace(credit, completion_start=1).to_wire())
+        decision = replace(
+            decision,
+            segment_credit_refs=(wrong_credit_ref, *decision.segment_credit_refs[1:]),
+        )
+        with self.assertRaises(TrainingExportError) as caught:
+            export_training_batch(spec, decision, reader)
+        self.assertEqual(caught.exception.reason_code, "segment_credit_mismatch")
+
+    def test_training_batch_record_checks_reject_duplicate_members_bad_spans_and_audit_overlap(
+        self,
+    ):
+        reader, spec, decision, _, _ = _build_group()
+        batch = export_training_batch(spec, decision, reader).batch.to_wire()
+
+        duplicate = deepcopy(batch)
+        duplicate["members"][1]["member_id"] = duplicate["members"][0]["member_id"]
+        with self.assertRaises(GroupError):
+            TrainingBatchV1.from_dict(duplicate)
+
+        bad_span = deepcopy(batch)
+        bad_span["members"][0]["turn_spans"][0]["completion_end"] = 0
+        with self.assertRaises(GroupError):
+            TrainingBatchV1.from_dict(bad_span)
+
+        audit_overlap = deepcopy(batch)
+        audit_overlap["members"][0]["trailing_context_limit_turn_ref"] = audit_overlap["members"][
+            0
+        ]["turn_spans"][0]["turn_ref"]
+        with self.assertRaises(GroupError):
+            TrainingBatchV1.from_dict(audit_overlap)
 
     def test_group_segment_credit_omits_none_token_spans(self):
         legacy = GroupSegmentCreditV1(

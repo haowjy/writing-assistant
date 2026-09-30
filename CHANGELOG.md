@@ -5,6 +5,16 @@
 - Derive V2 total, prefill and cached-input usage from the committed token ledger before
   charging a native turn.
 
+- Keep overrun lineages out of native training eligibility; coordinator finalization only
+  derives token spans for eligible members, and eligible-layout contradictions are invariant
+  breaches.
+
+- Export V2 advantages with a high-precision exact-expression conversion, and expose stable
+  reason codes for training-export refusals.
+
+- Share native token layout between group coordination and training export, and refuse V2
+  runtime sessions outside group sampling.
+
 - Refuse native group sealing when the entry declares an aggregate total-token limit that
   native rule 3 does not derive; remove that limit from the Phase 8 probe tasks.
 

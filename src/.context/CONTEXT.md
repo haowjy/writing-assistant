@@ -130,8 +130,10 @@ retains its smoke-evaluation and training-format workflows.
   `TaskGraphRollouts`. See
   [group-coordination.md](group-coordination.md), and
   [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
-  [task_graph_training_export.py](../writing_agent/task_graph_training_export.py) separately
-  derives a `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
+  [task_graph_training_layout.py](../writing_agent/task_graph_training_layout.py) owns the
+  pure native token layout shared by group segment-credit spans and export. The
+  [training export](../writing_agent/task_graph_training_export.py) derives a
+  `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
   reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one

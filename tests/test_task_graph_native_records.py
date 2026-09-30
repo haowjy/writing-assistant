@@ -372,6 +372,7 @@ class NativeRecordTests(unittest.TestCase):
         session.require_seal(
             manifest.identity(),
             training_mode="native",
+            group_session=True,
             policy=policy,
             rendering=rendering,
         )
@@ -380,6 +381,7 @@ class NativeRecordTests(unittest.TestCase):
                 session.require_seal(
                     manifest.identity(),
                     training_mode="native",
+                    group_session=True,
                     policy={**policy, field: "e" * 64},
                     rendering=rendering,
                 )
@@ -387,8 +389,24 @@ class NativeRecordTests(unittest.TestCase):
             session.require_seal(
                 manifest.identity(),
                 training_mode="native",
+                group_session=True,
                 policy=policy,
                 rendering={**rendering, "tool_schema_ref": "f" * 64},
+            )
+
+    def test_non_group_session_refuses_v2_manifest_at_seal(self):
+        _tokenizer, _decoding, _renderer, manifest, policy, rendering = native_descriptors()
+
+        class ManifestDependencies:
+            def manifest(self):
+                return manifest
+
+        session = RuntimeSession(ManifestDependencies(), manifest.identity(), manifest.identity())
+        with self.assertRaises(AdapterContractError):
+            session.require_seal(
+                manifest.identity(),
+                policy=policy,
+                rendering=rendering,
             )
 
 

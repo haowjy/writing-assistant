@@ -59,7 +59,14 @@ from writing_agent.task_graph_records import (
     WriterTurnV2,
     decode_runtime_manifest,
 )
-from writing_agent.task_graph_training_export import training_turn_spans
+from writing_agent.task_graph_training_layout import (
+    max_context_tokens_for_group,
+    training_turn_spans,
+)
+
+
+class GroupInvariantError(RuntimeError):
+    """Verified eligible group evidence cannot be laid out for training export."""
 
 
 class GroupCoordinatorV1:
@@ -185,7 +192,10 @@ class GroupCoordinatorV1:
             os.unlink(temporary)
 
     def _entry_contract(self, checkpoint_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
-        view = self.environment.verify(self.environment.open(checkpoint_id))
+        view = self.environment.verify(
+            self.environment.open(checkpoint_id, group_session=True),
+            group_session=True,
+        )
         return (
             resolve_group_environment(
                 self.store,
@@ -259,7 +269,9 @@ class GroupCoordinatorV1:
         rendering: dict[str, Any] | None = None,
     ) -> None:
         if training_mode == "native":
-            budget_contract = self.environment.graph.node(environment["node_id"]).contract.budget_contract
+            budget_contract = self.environment.graph.node(
+                environment["node_id"]
+            ).contract.budget_contract
             if budget_contract.max_total_tokens is not None:
                 raise AdapterContractError(
                     "entry.budget_contract.max_total_tokens: native training cannot derive "
@@ -284,6 +296,7 @@ class GroupCoordinatorV1:
                 adapter_ref,
                 token_limited=token_limited,
                 training_mode=training_mode,
+                group_session=True,
                 policy=policy,
                 rendering=rendering,
             )
@@ -299,6 +312,7 @@ class GroupCoordinatorV1:
             spec.policy["adapter_ref"],
             token_limited=token_limited,
             training_mode=spec.training_mode,
+            group_session=True,
             policy=spec.policy,
             rendering=rendering,
         )
@@ -815,14 +829,19 @@ class GroupCoordinatorV1:
             spec.training_mode == "native"
             and view.outcome.training_eligibility == "structurally_eligible"
         ):
-            entry_budget = self.store.get_artifact(spec.environment["budget_ref"])
-            max_context_tokens = entry_budget["limits"].get("context_tokens")
-            token_spans = training_turn_spans(
-                view.checkpoint_id,
-                result.member_id,
-                StoreArtifactReader(self.store),
-                max_context_tokens=max_context_tokens,
-            )
+            reader = StoreArtifactReader(self.store)
+            max_context_tokens = max_context_tokens_for_group(spec, reader)
+            try:
+                token_spans = training_turn_spans(
+                    view.checkpoint_id,
+                    result.member_id,
+                    reader,
+                    max_context_tokens=max_context_tokens,
+                )
+            except GroupError as exc:
+                raise GroupInvariantError(
+                    "structurally eligible native member has an invalid training layout"
+                ) from exc
         contexts, messages = self._sample_content_index(view)
         for sample in view.samples:
             if sample.outcome != "action":

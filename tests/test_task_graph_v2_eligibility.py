@@ -46,7 +46,7 @@ class EligibilityDecisionTests(unittest.TestCase):
             lineage_id=lineage_id,
             rollout_id=lineage_id,
             node_visit_id=self.view.state.position["visit_id"],
-            kind="writer_action",
+            kind="budget_charged" if outcome == "budget_stop" else "writer_action",
             actor="writer",
             audience=("controller", "trainer"),
             payload_ref=turn_ref,
@@ -166,9 +166,14 @@ class EligibilityDecisionTests(unittest.TestCase):
             limit="context",
             content="",
         )
-        view, _ = self._sampled(turn, outcome="budget_stop")
+        view, _ = self._sampled(turn)
 
         self._assert_reason(view, "no_sampled_actions")
+
+    def test_budget_charged_sample_is_ineligible_for_native_training(self):
+        view, _ = self._sampled(outcome="budget_stop")
+
+        self._assert_reason(view, "budget_overrun")
 
     def test_invalid_execution_gets_defensive_reason(self):
         view, _ = self._sampled()

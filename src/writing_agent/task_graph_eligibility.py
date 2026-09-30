@@ -32,6 +32,7 @@ class EligibilityDecisionV1:
             "manifest_capability_missing",
             "group_training_mode_absent",
             "multi_segment_context",
+            "budget_overrun",
             "reasoning_content_present",
             "no_sampled_actions",
             "execution_not_valid",
@@ -120,6 +121,9 @@ def decide_eligibility(view: LineageView, reader: ArtifactReader) -> Eligibility
 
     if context_root_changed_after(reader, view.head_event_id, None):
         return EligibilityDecisionV1("ineligible", "multi_segment_context")
+
+    if any(sample.outcome == "budget_stop" for sample in view.samples):
+        return EligibilityDecisionV1("ineligible", "budget_overrun")
 
     if any(
         turn.message.reasoning is not None
