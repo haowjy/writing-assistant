@@ -4,6 +4,7 @@
 
 - Treat only recognized Gemma malformed-response errors as model parse failures; surface
   unexpected parser errors as protocol failures.
+- Refuse false `native_parse_failed` claims at decode.
 
 - Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
   rollout classes.

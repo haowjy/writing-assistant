@@ -224,6 +224,10 @@ class NativeRecordTests(unittest.TestCase):
         claimed_parse_failure = replace(turn, native_parse_failed=True)
         self.assertIs(claimed_parse_failure.to_wire()["native_parse_failed"], True)
         self.assertEqual(turn.identity(), replace(turn, native_parse_failed=None).identity())
+        false_parse_claim = turn.to_wire()
+        false_parse_claim["native_parse_failed"] = False
+        with self.assertRaises(ValueError):
+            WriterTurnV2.from_dict(false_parse_claim)
 
         bad_count = turn.to_wire()
         bad_count["generated_token_count"] = -1

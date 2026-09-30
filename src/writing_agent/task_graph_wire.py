@@ -50,6 +50,11 @@ class Bool:
 
 
 @dataclass(frozen=True)
+class TrueOnly:
+    """A presence claim whose only permitted boolean value is true."""
+
+
+@dataclass(frozen=True)
 class JsonValue:
     """Any ordinary canonical JSON value (not the adapter-intake marker dialect)."""
 
@@ -306,7 +311,10 @@ def _walk_spec(
     if edges is None:
         edges = []
     if value is _NO_VALUE and (
-        isinstance(spec, (Str, Int, Bool, Enum, JsonValue, CanonicalIntake, MessageValue))
+        isinstance(
+            spec,
+            (Str, Int, Bool, TrueOnly, Enum, JsonValue, CanonicalIntake, MessageValue),
+        )
         or spec is type(None)
     ):
         return value
@@ -345,6 +353,10 @@ def _walk_spec(
                 raise TypeError(f"{label} must be a boolean")
         elif type(value) is not str or value not in spec.values:
             raise ValueError(f"{label} has an unsupported value")
+        return value
+    elif isinstance(spec, TrueOnly):
+        if value is not True:
+            raise ValueError(f"{label} may only be true when present")
         return value
     elif isinstance(spec, ListOf):
         if value is _NO_VALUE:
