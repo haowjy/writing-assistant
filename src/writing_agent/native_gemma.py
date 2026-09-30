@@ -10,12 +10,12 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from writing_agent.inference import generate_with_seed, parse_response, render_messages
+from writing_agent.inference import generate_with_seed, render_messages
 from writing_agent.native_protocol import (
     NATIVE_STOP_TOKENS,
     ProtocolError,
-    bind_native_tool_call_ids,
     native_suffix,
+    parse_native_response,
 )
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_errors import AdapterContractError
@@ -368,14 +368,13 @@ class NativeGemmaSampleBackend:
 
         raw_output = self.tokenizer.decode(output_ids, skip_special_tokens=False)
         prompt = self.tokenizer.decode(input_ids, skip_special_tokens=False)
-        try:
-            message = bind_native_tool_call_ids(
-                parse_response(self.tokenizer, raw_output, prefix=prompt), prepared.action_id
-            )
-        except (AttributeError, TypeError, ValueError) as exc:
-            raise ProtocolError(
-                "Gemma output does not satisfy its native response grammar"
-            ) from exc
+        parsed = parse_native_response(
+            self.tokenizer,
+            raw_output,
+            prefix=prompt,
+            action_id=prepared.action_id,
+            termination=termination,
+        )
         usage = {
             "prompt_tokens": len(input_ids),
             "completion_tokens": len(output_ids),
@@ -390,8 +389,9 @@ class NativeGemmaSampleBackend:
             logprobs,
             termination,
             usage,
-            message,
+            parsed.message,
             raw_output,
+            trace={"native_parse_failed": True} if parsed.failed else None,
         )
 
     def _result(
@@ -404,6 +404,7 @@ class NativeGemmaSampleBackend:
         usage: Mapping[str, Any],
         message: Mapping[str, Any],
         raw_output: str | None = None,
+        trace: Mapping[str, Any] | None = None,
     ) -> SampleResultV2:
         renderer, _tokenizer, decoding = self.manifest_descriptors
         return SampleResultV2(
@@ -421,6 +422,7 @@ class NativeGemmaSampleBackend:
                 "seed": prepared.writer_seed,
             },
             raw_output=raw_output,
+            trace=trace,
         )
 
     def _assert_active_adapter(self) -> None:

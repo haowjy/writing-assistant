@@ -417,6 +417,8 @@ def termination_stop_reason(turn: WriterTurnV2, renderer: RendererDescriptorV1) 
         }[termination["limit"]]
     if kind == "context_limit":
         return "context_tokens_budget"
+    if turn.native_parse_failed is True:
+        return "unparsed_tool_call"
     has_tool_calls = turn.message.tool_calls_was_list and bool(turn.message.calls)
     tool_response_stop = renderer.tool_response_stop_token_id
     if has_tool_calls and termination["stop_token_id"] != tool_response_stop:

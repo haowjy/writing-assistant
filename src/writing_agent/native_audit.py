@@ -14,9 +14,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from writing_agent.inference import parse_response
 from writing_agent.native_gemma import NativeGemmaRenderer
-from writing_agent.native_protocol import bind_native_tool_call_ids
+from writing_agent.native_protocol import parse_native_response
 from writing_agent.task_graph import (
     EventV1,
     canonical_bytes,
@@ -265,7 +264,10 @@ def _derive_admission(
 
             for evidence in turns:
                 if not evidence.generated_ids:
-                    if evidence.turn.raw_output_ref is not None:
+                    if (
+                        evidence.turn.raw_output_ref is not None
+                        or evidence.turn.native_parse_failed is not None
+                    ):
                         raise _AuditCheckFailure("raw_output_and_message")
                     continue
                 raw_output = _raw_output(store, evidence.turn.raw_output_ref)
@@ -273,10 +275,24 @@ def _derive_admission(
                 if not isinstance(decoded, str) or raw_output != decoded.encode("utf-8"):
                     raise _AuditCheckFailure("raw_output_and_message")
                 prefix = tokenizer.decode(evidence.input_ids, skip_special_tokens=False)
-                parsed = bind_native_tool_call_ids(
-                    parse_response(tokenizer, decoded, prefix=prefix), evidence.turn.action_id
+                parsed = parse_native_response(
+                    tokenizer,
+                    decoded,
+                    prefix=prefix,
+                    action_id=evidence.turn.action_id,
+                    termination=evidence.turn.termination,
                 )
-                if intake_message(dict(parsed)).to_wire() != evidence.turn.message.to_wire():
+                expected_claim = True if parsed.failed else None
+                if evidence.turn.native_parse_failed is not expected_claim:
+                    raise _AuditCheckFailure("raw_output_and_message")
+                if parsed.failed and (
+                    evidence.turn.message.content != decoded or evidence.turn.message.calls
+                ):
+                    raise _AuditCheckFailure("raw_output_and_message")
+                if (
+                    intake_message(dict(parsed.message)).to_wire()
+                    != evidence.turn.message.to_wire()
+                ):
                     raise _AuditCheckFailure("raw_output_and_message")
 
             expected_policy = spec.policy["behavior_policy_ref"]

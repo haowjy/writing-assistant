@@ -2,12 +2,54 @@
 
 import copy
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
 
 NATIVE_STOP_TOKENS = ("<eos>", "<turn|>", "<|tool_response>")
 
 
 class ProtocolError(RuntimeError):
     """Unsupported native framing is an infrastructure failure."""
+
+
+@dataclass(frozen=True)
+class NativeParseResult:
+    """One native parse outcome, including the adapter's parse-failure claim."""
+
+    message: Mapping[str, Any]
+    failed: bool
+
+
+def parse_native_response(
+    tokenizer,
+    raw_text: str,
+    *,
+    prefix: str,
+    action_id: str,
+    termination: Mapping[str, Any],
+) -> NativeParseResult:
+    """Parse and bind a sampled native response, retaining malformed output as text.
+
+    A tokenizer parse failure is model output, not a sampler fault. Keep the decoded
+    response as ordinary assistant content and let the committed turn claim the failure;
+    the tokenizer-backed audit independently reproduces that claim.
+    """
+    if not isinstance(termination, Mapping) or termination.get("kind") not in {
+        "native_stop",
+        "token_limit",
+    }:
+        raise ProtocolError("Native response parsing requires a sampled termination")
+
+    from writing_agent.inference import parse_response
+
+    try:
+        message = parse_response(tokenizer, raw_text, prefix=prefix)
+    except (AttributeError, TypeError, ValueError):
+        return NativeParseResult(
+            {"role": "assistant", "content": raw_text, "tool_calls": []},
+            True,
+        )
+    return NativeParseResult(bind_native_tool_call_ids(message, action_id), False)
 
 
 def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):

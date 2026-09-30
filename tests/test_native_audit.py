@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.test_native_gemma import (
     TOKENIZER_PATH,
@@ -310,6 +311,133 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
             after=self.policy["behavior_policy_ref"],
         )
         return store, admission
+
+    def _forced_native_group(self, raw_output, *, parse_failure_claim=None):
+        from types import SimpleNamespace
+
+        from writing_agent.native_gemma import (
+            NativeGemmaSampleBackend,
+            make_native_manifest_descriptors,
+        )
+
+        generated_ids = tuple(self.tokenizer.encode(raw_output, add_special_tokens=False))
+        descriptors = make_native_manifest_descriptors(
+            self.tokenizer,
+            model_id="google/gemma-4-E2B-it",
+            revision=TOKENIZER_REVISION,
+            tokenizer_files_sha256=_tokenizer_file_hashes(),
+            template_ref=H,
+            tool_schema_ref=P,
+            max_tokens_per_decision=len(generated_ids),
+        )
+        original_sample = NativeGemmaSampleBackend.sample
+
+        def force_generation(model, inputs, generation, *, seed):
+            prompt_ids = inputs["input_ids"]
+            for index, token_id in enumerate(generated_ids):
+                scores = self.torch.full(
+                    (1, self.tokenizer.vocab_size), float("-inf"), dtype=self.torch.float32
+                )
+                scores[0, token_id] = 0.0
+                prior = self.torch.tensor(
+                    [(*prompt_ids[0].tolist(), *generated_ids[:index])], dtype=self.torch.long
+                )
+                generation["logits_processor"](prior, scores)
+            generated = self.torch.tensor(
+                [(*prompt_ids[0].tolist(), *generated_ids)], dtype=self.torch.long
+            )
+            return SimpleNamespace(sequences=generated)
+
+        def sample(self, prepared):
+            with patch("writing_agent.native_gemma.generate_with_seed", force_generation):
+                result = original_sample(self, prepared)
+            if parse_failure_claim is None:
+                return result
+            trace = dict(result.trace or {})
+            if parse_failure_claim:
+                trace["native_parse_failed"] = True
+            else:
+                trace.pop("native_parse_failed", None)
+            return replace(result, trace=trace or None)
+
+        with patch.object(NativeGemmaSampleBackend, "sample", sample):
+            return _build_group(
+                self.root,
+                self.model,
+                self.tokenizer,
+                descriptors,
+                member_count=2,
+            )
+
+    def _assert_parse_failure_group(self, raw_output, expected_stop_reason):
+        from writing_agent.native_audit import require_training_admission
+        from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader
+        from writing_agent.task_graph_group_records import GroupMemberResultV1
+        from writing_agent.task_graph_records import WriterTurnV2
+
+        fixture, spec, decision, policy = self._forced_native_group(raw_output)
+        result = GroupMemberResultV1.from_dict(
+            fixture.store.get_artifact(decision.member_result_refs[0])
+        )
+        final = LineageGate().view(fixture.store, result.final_checkpoint_id)
+        self.assertEqual(final.outcome.task_status, "incomplete")
+        self.assertEqual(final.outcome.execution_status, "valid")
+        self.assertEqual(final.outcome.stop_reason, expected_stop_reason)
+        self.assertEqual(final.outcome.training_eligibility, "structurally_eligible")
+        turn = WriterTurnV2.from_dict(
+            StoreArtifactReader(fixture.store).artifact(final.samples[0].turn_ref)
+        )
+        self.assertIs(turn.native_parse_failed, True)
+        self.assertEqual(turn.message.content, raw_output)
+        self.assertEqual(turn.message.calls, ())
+
+        admission = self._audit(
+            fixture.store,
+            spec,
+            decision,
+            self.tokenizer,
+            tokenizer_root=TOKENIZER_PATH,
+            after=policy["behavior_policy_ref"],
+        )
+        require_training_admission(admission)
+        self.assertEqual(admission.members[0]["status"], "admitted")
+
+    def test_unparsed_truncated_and_malformed_calls_commit_and_audit_as_incomplete(self):
+        self._assert_parse_failure_group(
+            '<|tool_call>call:write_file{content:<|"|>A keeper waits by the',
+            "decision_token_limit",
+        )
+        self._assert_parse_failure_group(
+            "<|tool_call>call:write_file{content:A keeper,path:scene.txt"
+            "<tool_call|><|tool_response>",
+            "unparsed_tool_call",
+        )
+
+    def test_audit_refuses_both_directions_of_a_false_parse_failure_claim(self):
+        cases = (
+            ("A parseable answer.<turn|>", True),
+            (
+                "<|tool_call>call:write_file{content:A keeper,path:scene.txt"
+                "<tool_call|><|tool_response>",
+                False,
+            ),
+        )
+        for raw_output, claim in cases:
+            with self.subTest(claim=claim):
+                fixture, spec, decision, policy = self._forced_native_group(
+                    raw_output,
+                    parse_failure_claim=claim,
+                )
+                admission = self._audit(
+                    fixture.store,
+                    spec,
+                    decision,
+                    self.tokenizer,
+                    tokenizer_root=TOKENIZER_PATH,
+                    after=policy["behavior_policy_ref"],
+                )
+                self.assertEqual(admission.members[0]["status"], "refused")
+                self.assertEqual(admission.members[0]["failed_check"], "raw_output_and_message")
 
     def test_renderer_initial_context_rejects_only_its_lying_member(self):
         store, admission = self._audit_sample_lies()

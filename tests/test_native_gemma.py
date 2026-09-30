@@ -247,8 +247,7 @@ class NativeGemmaTests(unittest.TestCase):
             config.min_length = original
 
     def test_external_suffix_pairs_tool_results_by_exact_call_id(self):
-        from writing_agent.inference import parse_response
-        from writing_agent.native_protocol import bind_native_tool_call_ids
+        from writing_agent.native_protocol import parse_native_response
 
         raw = (
             '<|tool_call>call:write_file{content:<|"|>x<|"|>,'
@@ -256,9 +255,13 @@ class NativeGemmaTests(unittest.TestCase):
         )
         generated = tuple(self.tokenizer.encode(raw, add_special_tokens=False))
         action_id = "member:action:0"
-        parsed = bind_native_tool_call_ids(
-            parse_response(self.tokenizer, raw, prefix=""), action_id
-        )
+        parsed = parse_native_response(
+            self.tokenizer,
+            raw,
+            prefix="",
+            action_id=action_id,
+            termination={"kind": "native_stop"},
+        ).message
         turn = WriterTurnV2(
             action_id=action_id,
             context_revision_ref="a" * 64,
