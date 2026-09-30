@@ -210,33 +210,14 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
                 runner_mode="real",
                 training_mode="native",
             )
-            for ordinal, member in enumerate(spec.members):
+            for ordinal in range(len(spec.members)):
                 backend.member_ordinal = ordinal
                 runtime = coordinator.start(spec, ordinal, policy=policy)
                 result = RolloutDriver(fixture.env, make_gatherers(fixture, sampler=backend)).run(
                     runtime, max_steps=80
                 )
                 self.assertEqual(result.directive.kind, "done")
-                view = fixture.env.verify(result.runtime)
-                outcome_ref = result.runtime.state.outcome_ref
-                if view.outcome.reward_ref is not None:
-                    outcome_ref = fixture.store.get_artifact(view.outcome.reward_ref)[
-                        "terminal_outcome_ref"
-                    ]
-                coordinator.collect(
-                    spec,
-                    GroupMemberResultV1(
-                        group_id=spec.group_id,
-                        member_id=member.member_id,
-                        start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
-                            "start_checkpoint_id"
-                        ],
-                        final_checkpoint_id=result.runtime.checkpoint_id,
-                        terminal_outcome_ref=outcome_ref,
-                        availability_ref=view.outcome.reward_ref,
-                        execution_status="valid",
-                    ),
-                )
+                coordinator.collect_completed(spec, ordinal, result.runtime)
             return fixture, spec, coordinator, coordinator.finalize(spec), policy
 
         with tempfile.TemporaryDirectory(prefix="native-call-ids-") as temporary:

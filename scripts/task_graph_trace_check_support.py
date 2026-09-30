@@ -172,12 +172,9 @@ def adapter_tensor_hash(model, torch) -> str:
 
 class SampleTrace:
     def __init__(self) -> None:
-        self.member_ordinal: int | None = None
+        self.member_ordinals: dict[int, int] | None = None
         self.current: dict[str, Any] | None = None
         self.events: list[dict[str, Any]] = []
-
-    def begin_member(self, ordinal: int) -> None:
-        self.member_ordinal = ordinal
 
     def backend(self, delegate):
         trace = self
@@ -187,8 +184,13 @@ class SampleTrace:
             manifest_descriptors = delegate.manifest_descriptors
 
             def sample(self, prepared):
+                if trace.member_ordinals is None:
+                    raise RuntimeError("trace check lacks the trainer's member seed mapping")
+                member_ordinal = trace.member_ordinals.get(prepared.writer_seed)
+                if member_ordinal is None:
+                    raise RuntimeError("trainer sampled an unregistered task-graph writer seed")
                 event = {
-                    "member_ordinal": trace.member_ordinal,
+                    "member_ordinal": member_ordinal,
                     "decision_ordinal": prepared.decision_ordinal,
                     "action_id": prepared.action_id,
                     "input_tokens": None,
@@ -283,46 +285,6 @@ def decision_summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for event in events
     ]
-
-
-def native_policy(
-    store, rendering, manifest, model_ref: str, adapter_hash: str, experiment_ref: str
-):
-    from writing_agent.task_graph_record_contracts import POLICY_FIELDS, ContextPolicyV1
-
-    policy = {
-        field: store.put_artifact({"pin": field})
-        for field in POLICY_FIELDS
-        if field != "rng_derivation_version"
-    }
-    policy.update(
-        model_ref=model_ref,
-        behavior_policy_ref=store.put_artifact(
-            {
-                "kind": "trace-check-behavior-policy-v1",
-                "model_id": MODEL_ID,
-                "revision": MODEL_REVISION,
-                "adapter_tensor_sha256": adapter_hash,
-                "global_step": 0,
-                "experiment_ref": experiment_ref,
-            }
-        ),
-        tokenizer_ref=manifest.tokenizer.identity(),
-        template_ref=rendering["template_ref"],
-        adapter_ref=manifest.identity(),
-        decoding_ref=manifest.decoding.identity(),
-        context_policy_ref=store.put_artifact(
-            ContextPolicyV1(
-                "compact", summarizer_version="visible-text-v1", max_summary_chars=20
-            ).to_wire()
-        ),
-        rng_derivation_version="sha256-domain-v1",
-    )
-    return policy
-
-
-def start_receipt_ordinal(coordinator, spec, ordinal: int) -> str:
-    return coordinator._start_receipt(spec, ordinal)["start_checkpoint_id"]
 
 
 def member_summaries(store, coordinator, spec, decision, trace, admission=None):

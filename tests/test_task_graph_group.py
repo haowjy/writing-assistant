@@ -313,13 +313,56 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         return runtime, GroupMemberResultV1(
             group_id=spec.group_id,
             member_id=spec.members[ordinal].member_id,
-            start_checkpoint_id=self.coordinator._start_receipt(spec, ordinal)[
+            start_checkpoint_id=self.coordinator.start_receipt(spec, ordinal)[
                 "start_checkpoint_id"
             ],
             final_checkpoint_id=runtime.checkpoint_id,
             terminal_outcome_ref=outcome_ref,
             availability_ref=view.outcome.reward_ref,
             execution_status="valid",
+        )
+
+    def test_collect_completed_derives_terminal_and_availability_from_verified_view(self):
+        spec = self.group()
+        runtime, _manual_result = self.run_member(spec, 0)
+
+        result_ref = self.coordinator.collect_completed(spec, 0, runtime)
+        result = GroupMemberResultV1.from_dict(self.store.get_artifact(result_ref))
+        view = self.env.verify(runtime)
+        expected_terminal_ref = view.state.outcome_ref
+        if view.outcome.reward_status == "available":
+            expected_terminal_ref = self.store.get_artifact(view.outcome.reward_ref)[
+                "terminal_outcome_ref"
+            ]
+
+        self.assertEqual(result.member_id, spec.members[0].member_id)
+        self.assertEqual(
+            result.start_checkpoint_id,
+            self.coordinator.start_receipt(spec, 0)["start_checkpoint_id"],
+        )
+        self.assertEqual(result.final_checkpoint_id, runtime.checkpoint_id)
+        self.assertEqual(result.terminal_outcome_ref, expected_terminal_ref)
+        self.assertEqual(
+            result.availability_ref,
+            view.outcome.reward_ref if view.outcome.reward_status == "available" else None,
+        )
+
+    def test_group_sequence_index_returns_the_verified_sealed_spec(self):
+        spec = self.group(sequence=89)
+        (self.coordinator.groups_root / "step-000089").write_bytes(
+            canonical_bytes(
+                {
+                    "schema": 1,
+                    "step": 89,
+                    "task_id": "task-1",
+                    "group_id": spec.group_id,
+                    "status": "sealed",
+                }
+            )
+        )
+
+        self.assertEqual(
+            GroupCoordinatorV1.groups_by_sequence(self.coordinator.groups_root)[89], spec
         )
 
     def test_full_contract_drift_and_start_isolation(self):
@@ -545,7 +588,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         result = GroupMemberResultV1(
             group_id=spec.group_id,
             member_id=member.member_id,
-            start_checkpoint_id=self.coordinator._start_receipt(spec, 0)["start_checkpoint_id"],
+            start_checkpoint_id=self.coordinator.start_receipt(spec, 0)["start_checkpoint_id"],
             final_checkpoint_id=orphan["checkpoint_id"],
             terminal_outcome_ref=published_view.state.outcome_ref,
             execution_status="valid",
@@ -638,7 +681,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         pending_result = GroupMemberResultV1(
             group_id=spec.group_id,
             member_id=member0.member_id,
-            start_checkpoint_id=self.coordinator._start_receipt(spec, 0)["start_checkpoint_id"],
+            start_checkpoint_id=self.coordinator.start_receipt(spec, 0)["start_checkpoint_id"],
             final_checkpoint_id=runtime0.checkpoint_id,
             terminal_outcome_ref=pending_view.state.outcome_ref,
             execution_status="valid",
@@ -901,9 +944,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             result = GroupMemberResultV1(
                 group_id=spec.group_id,
                 member_id=member.member_id,
-                start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
-                    "start_checkpoint_id"
-                ],
+                start_checkpoint_id=coordinator.start_receipt(spec, ordinal)["start_checkpoint_id"],
                 final_checkpoint_id=runtime.checkpoint_id,
                 terminal_outcome_ref=reward["terminal_outcome_ref"],
                 availability_ref=view.outcome.reward_ref,
@@ -997,7 +1038,7 @@ class TestGroupCoordinatorCore(unittest.TestCase):
             )
             transition = derive_writer_turn(replace(view, group=None), turn, self.env.reader)
             self.env._persist_transition(transition)
-            start = self.coordinator._start_receipt(spec, 0)
+            start = self.coordinator.start_receipt(spec, 0)
             base_head = self.store.read_head(spec.members[0].member_id)
             with patch.object(self.store, "_verifier", BypassVerifier()):
                 forged_head = self.store.publish(
@@ -1037,11 +1078,11 @@ class TestGroupCoordinatorCore(unittest.TestCase):
         runtime, result = self.run_member(spec, 0)
         actual_view = self.env.verify(runtime)
         foreign_view = replace(actual_view, group=other)
-        receipt = self.coordinator._start_receipt(spec, 0)
+        receipt = self.coordinator.start_receipt(spec, 0)
         member_head = self.store.read_head(spec.members[0].member_id)
         with (
             patch.object(self.coordinator, "resume", return_value=spec),
-            patch.object(self.coordinator, "_start_receipt", return_value=receipt),
+            patch.object(self.coordinator, "start_receipt", return_value=receipt),
             patch.object(self.env, "verify", return_value=foreign_view),
         ):
             with self.assertRaises(GroupError):

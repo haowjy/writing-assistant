@@ -65,10 +65,10 @@ def audit_training_batch(
     adapter_hash_after: str,
     tokenizer_root: Path | str | None = None,
 ) -> TrainingAdmissionV1:
-    """Export, audit and persist one native batch and its admission record.
+    """Export, audit and persist one native batch and return its admission record.
 
-    A refusal is still persisted and returned. The training caller must require an
-    all-admitted result before exposing the referenced batch to TRL.
+    The group coordinator owns durable group receipts. A refusal is still returned;
+    the caller must require an all-admitted result before exposing its batch to TRL.
     """
     reader = StoreArtifactReader(store)
     exported = export_training_batch(spec, decision, reader)
@@ -85,14 +85,6 @@ def audit_training_batch(
     )
     if admission.batch_ref != batch_ref:
         raise TrainingExportError("batch_identity_mismatch", "persisted batch ref differs")
-    admission_ref = store.put_artifact(admission.to_wire())
-    _write_group_receipt(store.root, spec.group_id, "training-batch.json", {"batch_ref": batch_ref})
-    _write_group_receipt(
-        store.root,
-        spec.group_id,
-        "training-admission.json",
-        {"admission_ref": admission_ref},
-    )
     return admission
 
 
@@ -591,33 +583,6 @@ def _read_receipt(path: Path, expected: Mapping[str, Any]) -> dict[str, Any]:
         if required is not None and value.get(key) != required:
             raise ProjectionError(f"offline receipt binding differs: {path.name}.{key}")
     return value
-
-
-def _write_group_receipt(root: Path, group_id: str, name: str, body: Mapping[str, Any]) -> None:
-    directory = root / "groups" / group_id
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path = directory / name
-    encoded = canonical_bytes(dict(body))
-    if path.exists():
-        if path.read_bytes() != encoded:
-            raise ProjectionError(f"immutable training receipt differs: {name}")
-        _fsync_directory(directory)
-        return
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{name}.", dir=directory)
-    try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "wb", closefd=True) as stream:
-            stream.write(encoded)
-            stream.flush()
-            os.fsync(stream.fileno())
-        try:
-            os.link(temporary, path)
-        except FileExistsError:
-            if path.read_bytes() != encoded:
-                raise ProjectionError(f"immutable training receipt differs: {name}") from None
-        _fsync_directory(directory)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
 
 
 def _write_report(path: Path, encoded: bytes) -> None:

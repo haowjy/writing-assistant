@@ -43,13 +43,11 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     instrument_generation_time,
     load_model_and_tokenizer,
     member_summaries,
-    native_policy,
     offline_cpu_environment,
     on_policy_drift,
     peak_rss_bytes,
     prefill_metrics,
     same_incomplete_reason,
-    start_receipt_ordinal,
     tokenizer_files,
     tool_result_protocol_errors,
     trace_completion_outcome,
@@ -133,10 +131,12 @@ def _write_halt(
 
 
 def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
-    from tests.task_graph_rollout_fixtures import build_rollout_fixture, make_gatherers
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from writing_agent.grpo_task_graph import TaskGraphRollouts, TaskGraphTaskV1
     from writing_agent.native_audit import (
         TrainingAuditError,
-        audit_training_batch,
         inspect_group_offline,
         require_training_admission,
     )
@@ -144,9 +144,10 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         NativeGemmaSampleBackend,
         make_native_manifest_descriptors,
     )
-    from writing_agent.task_graph_composition import RuntimeSession
+    from writing_agent.task_graph_environment import RolloutEnvironment
+    from writing_agent.task_graph_gate import LineageGate
     from writing_agent.task_graph_group import GroupCoordinatorV1
-    from writing_agent.task_graph_group_records import GroupMemberResultV1
+    from writing_agent.task_graph_group_contract import derive_group_seed
     from writing_agent.task_graph_local import (
         DeterministicEvaluator,
         LocalTextToolProvider,
@@ -157,8 +158,13 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         bind_native_tokenizer,
         build_admitted_entry,
         load_probe_task,
+        persist_entry,
     )
-    from writing_agent.task_graph_rollout import RolloutDriver
+    from writing_agent.task_graph_probe_experiment import (
+        settings as probe_settings,
+    )
+    from writing_agent.task_graph_record_contracts import ContextPolicyV1
+    from writing_agent.task_graph_store import TaskGraphStore
     from writing_agent.task_graph_training_records import TrainingBatchV1
 
     root = Path(__file__).resolve().parents[1]
@@ -220,11 +226,12 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         json.dumps(experiment_identity, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     trace = SampleTrace()
-    fixture = build_rollout_fixture(
-        output_dir / "task-graph",
-        mode="slice",
-        entry_fixture=entry,
-    )
+    training_output = output_dir / "task-graph"
+    gate = LineageGate()
+    store = TaskGraphStore(training_output, verifier=gate)
+    entry_checkpoint_id = persist_entry(store, entry)
+    environment = RolloutEnvironment(store, entry.graph, None, gate, entry.graph.policy)
+    task = TaskGraphTaskV1(config["id"], environment, entry_checkpoint_id)
     model_ref_value = {
         "kind": "trace-check-model-v1",
         "model_id": model_id,
@@ -233,109 +240,92 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         "device": "cpu",
         "checkpoint_path": str(args.model_path.resolve()) if args.model_path else None,
     }
-    model_ref = fixture.store.put_artifact(model_ref_value)
+    model_ref = store.put_artifact(model_ref_value)
     native_backend = NativeGemmaSampleBackend(
         model,
         tokenizer,
         manifest_descriptors=(renderer, tokenizer_descriptor, decoding),
         model_ref=model_ref,
     )
-    backend = trace.backend(native_backend)
     instrument_generation_time(model, trace)
 
     tools = LocalTextToolProvider()
     dependencies = RuntimeDependenciesV1(
-        backend,
+        native_backend,
         LocalWorkspaceEnvironment(tools),
         tools,
         DeterministicEvaluator(),
     )
-    unbound = RuntimeSession.create(fixture.store, dependencies)
-    fixture.env.session = unbound.bind(fixture.store, unbound.manifest_ref)
+    runtime_manifest = dependencies.manifest()
     adapter_hash_before = adapter_tensor_hash(model, torch)
-    policy = native_policy(
-        fixture.store,
-        fixture.runtime.context.rendering,
-        dependencies.manifest(),
-        model_ref,
-        adapter_hash_before,
-        experiment_ref,
-    )
-    coordinator = GroupCoordinatorV1(fixture.env, session=fixture.env.session)
-    spec = coordinator.seal(
-        fixture.runtime.checkpoint_id,
-        policy=policy,
-        group_seed=817231,
-        group_sequence=1,
-        member_count=2,
-        runner_mode="real",
-        training_mode="native",
-    )
-    state.update(group_id=spec.group_id, entry_checkpoint_id=fixture.runtime.checkpoint_id)
-    write_json(output_dir / "group.json", {"group_id": spec.group_id, "spec_ref": spec.identity()})
+    rollout_settings = replace(probe_settings(), group_size=2, max_steps=1, microbatch_size=1)
+    group_seed = derive_group_seed(rollout_settings.seed, "task-graph-step", 0)
+    trace.member_ordinals = {
+        derive_group_seed(group_seed, "writer", ordinal): ordinal
+        for ordinal in range(rollout_settings.group_size)
+    }
 
+    def traced_backend_factory(*backend_args, **backend_kwargs):
+        return trace.backend(NativeGemmaSampleBackend(*backend_args, **backend_kwargs))
+
+    rollouts = TaskGraphRollouts(
+        "trace-check",
+        tasks=[{"id": config["id"]}],
+        settings=rollout_settings,
+        output=training_output,
+        task_entries=(task,),
+        runtime_manifest=runtime_manifest,
+        manifest_descriptors=(renderer, tokenizer_descriptor, decoding),
+        model_ref=model_ref,
+        experiment_identity=experiment_ref,
+        base_revision=rollout_settings.revision,
+        tokenizer_root=args.tokenizer_root.expanduser().resolve(),
+        sample_backend_factory=traced_backend_factory,
+    )
+    trainer = SimpleNamespace(
+        state=SimpleNamespace(global_step=0), model=model, processing_class=tokenizer
+    )
     halt = None
-    for ordinal, member in enumerate(spec.members):
-        trace.begin_member(ordinal)
-        state.update(stage="sample_member", member_ordinal=ordinal)
-        try:
-            runtime = coordinator.start(spec, ordinal, policy=policy)
-            result = RolloutDriver(fixture.env, make_gatherers(fixture, sampler=backend)).run(
-                runtime, max_steps=80
-            )
-            if result.directive.kind != "done":
-                raise RuntimeError(
-                    "rollout stopped at directive "
-                    f"{result.directive.kind!r} before terminal outcome"
-                )
-            view = fixture.env.verify(result.runtime)
-            terminal_ref = result.runtime.state.outcome_ref
-            if view.outcome.reward_ref is not None:
-                reward = fixture.store.get_artifact(view.outcome.reward_ref)
-                terminal_ref = reward["terminal_outcome_ref"]
-            coordinator.collect(
-                spec,
-                GroupMemberResultV1(
-                    group_id=spec.group_id,
-                    member_id=member.member_id,
-                    start_checkpoint_id=start_receipt_ordinal(coordinator, spec, ordinal),
-                    final_checkpoint_id=result.runtime.checkpoint_id,
-                    terminal_outcome_ref=terminal_ref,
-                    availability_ref=view.outcome.reward_ref,
-                    execution_status="valid",
-                ),
-            )
-        except Exception as exc:
-            failure = {
-                "member_ordinal": ordinal,
-                "member_id": member.member_id,
-                "type": type(exc).__name__,
-                "message": str(exc),
-                "stage": state.get("stage"),
-                "sample_trace": trace_events_for_artifact(
-                    [event for event in trace.events if event["member_ordinal"] == ordinal]
-                ),
-            }
-            failure["protocol_shape"] = classify_protocol_shape(failure)
-            evidence_ref = fixture.store.put_artifact({"kind": "trace-check-failure-v1", **failure})
-            try:
-                coordinator.collect_invalid(
-                    spec,
-                    ordinal,
-                    reason=f"trace_check_{failure['protocol_shape']}: {type(exc).__name__}",
-                    evidence_ref=evidence_ref,
-                )
-            except Exception as collect_error:
-                failure["collect_invalid_error"] = {
-                    "type": type(collect_error).__name__,
-                    "message": str(collect_error),
-                }
-            halt = failure
-            break
-
-    state["stage"] = "finalize_group"
-    decision = coordinator.finalize(spec)
-    store = fixture.store
+    state["stage"] = "trainer_member_loop"
+    try:
+        rollouts([config["id"]] * rollout_settings.group_size, trainer)
+    except Exception as exc:
+        ordinal = next(
+            (
+                event["member_ordinal"]
+                for event in reversed(trace.events)
+                if event["member_ordinal"] is not None
+            ),
+            0,
+        )
+        failure = {
+            "member_ordinal": ordinal,
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "stage": state.get("stage"),
+            "sample_trace": trace_events_for_artifact(
+                [event for event in trace.events if event["member_ordinal"] == ordinal]
+            ),
+        }
+        failure["protocol_shape"] = classify_protocol_shape(failure)
+        halt = failure
+    spec = rollouts.last_spec
+    if spec is None:
+        raise RuntimeError("trainer rollout loop did not seal a trace-check group")
+    state.update(group_id=spec.group_id, entry_checkpoint_id=entry_checkpoint_id)
+    write_json(output_dir / "group.json", {"group_id": spec.group_id, "spec_ref": spec.identity()})
+    coordinator = GroupCoordinatorV1(rollouts.environments[config["id"]], session=rollouts.session)
+    decision = rollouts.last_decision or coordinator.finalize(spec)
+    context_policy = ContextPolicyV1.from_dict(
+        store.get_artifact(spec.policy["context_policy_ref"])
+    )
+    entry_view = environment.verify(environment.open(entry_checkpoint_id))
+    scripted_author = store.get_artifact(spec.policy["simulator_ref"])
+    if context_policy.mode != "carry" or scripted_author != {
+        "implementation": "scripted-author-v1",
+        "script_ref": entry_view.node.contract.interaction_contract.script_ref,
+    }:
+        raise RuntimeError("trainer rollout group differs from carry/scripted-author policy")
     members = member_summaries(
         store,
         coordinator,
@@ -368,6 +358,10 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         "decision_ref": decision.identity(),
         "group_status": decision.status,
         "group_reason": decision.reason,
+        "group_policy": {
+            "context_policy": context_policy.mode,
+            "scripted_author_ref": spec.policy["simulator_ref"],
+        },
         "budgets": expected,
         "members": members,
         "tool_result_protocol_errors": tool_result_errors,
@@ -404,22 +398,12 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         write_json(output_dir / "report.json", report)
         return report
 
-    state["stage"] = "export_audit_admit"
+    state["stage"] = "inspect_trainer_admission"
     adapter_hash_after = adapter_tensor_hash(model, torch)
     report["adapter_hash_after"] = adapter_hash_after
-    admission = audit_training_batch(
-        store,
-        spec,
-        decision,
-        tokenizer,
-        adapter_hash_before=policy["behavior_policy_ref"],
-        adapter_hash_after=(
-            policy["behavior_policy_ref"]
-            if adapter_hash_after == adapter_hash_before
-            else fixture.store.put_artifact({"adapter_hash": adapter_hash_after})
-        ),
-        tokenizer_root=args.tokenizer_root.expanduser().resolve(),
-    )
+    admission = rollouts.last_admission
+    if admission is None:
+        raise RuntimeError("trainer rollout loop did not audit its training batch")
     report["members"] = member_summaries(
         store,
         coordinator,

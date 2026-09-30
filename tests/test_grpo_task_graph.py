@@ -88,6 +88,21 @@ def _rollouts_scaffold(root: Path, status: str):
         def finalize(self, _spec):
             return decision
 
+        def record_training_admission(self, _spec, admission):
+            admission_ref = store.put_artifact(admission.to_wire())
+            directory = root / "groups" / group_id
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "training-batch.json").write_text(
+                json.dumps({"batch_ref": admission.batch_ref})
+            )
+            (directory / "training-admission.json").write_text(
+                json.dumps({"admission_ref": admission_ref})
+            )
+
+        def record_training_consumed(self, _spec, receipt):
+            directory = root / "groups" / group_id
+            (directory / "trainer-consumed.json").write_text(json.dumps(receipt))
+
     coordinator = Coordinator()
     task = SimpleNamespace(
         environment=SimpleNamespace(store=store, session=None),
@@ -116,6 +131,9 @@ def _rollouts_scaffold(root: Path, status: str):
     rollouts._ensure_runtime = lambda _trainer: None
     rollouts._behavior_policy_ref = lambda _model, _step: pin
     rollouts._gatherers = lambda _task: None
+    rollouts.last_spec = None
+    rollouts.last_decision = None
+    rollouts.last_admission = None
     return rollouts, coordinator, decision, store
 
 

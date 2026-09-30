@@ -82,7 +82,6 @@ def _build_group(root, model, tokenizer, descriptors, *, member_count, lies_by_o
     from writing_agent.native_gemma import NativeGemmaSampleBackend
     from writing_agent.task_graph_composition import RuntimeSession
     from writing_agent.task_graph_group import GroupCoordinatorV1
-    from writing_agent.task_graph_group_records import GroupMemberResultV1
     from writing_agent.task_graph_local import (
         DeterministicEvaluator,
         LocalTextToolProvider,
@@ -151,7 +150,7 @@ def _build_group(root, model, tokenizer, descriptors, *, member_count, lies_by_o
         for ordinal, check in (lies_by_ordinal or {}).items()
     }
 
-    for ordinal, member in enumerate(spec.members):
+    for ordinal in range(len(spec.members)):
         runtime = coordinator.start(spec, ordinal, policy=policy)
         result = RolloutDriver(
             fixture.env,
@@ -159,26 +158,7 @@ def _build_group(root, model, tokenizer, descriptors, *, member_count, lies_by_o
         ).run(runtime, max_steps=80)
         if result.directive.kind != "done":
             raise AssertionError(f"native fixture did not finish member {ordinal}")
-        view = fixture.env.verify(result.runtime)
-        outcome_ref = result.runtime.state.outcome_ref
-        if view.outcome.reward_ref is not None:
-            outcome_ref = fixture.store.get_artifact(view.outcome.reward_ref)[
-                "terminal_outcome_ref"
-            ]
-        coordinator.collect(
-            spec,
-            GroupMemberResultV1(
-                group_id=spec.group_id,
-                member_id=member.member_id,
-                start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
-                    "start_checkpoint_id"
-                ],
-                final_checkpoint_id=result.runtime.checkpoint_id,
-                terminal_outcome_ref=outcome_ref,
-                availability_ref=view.outcome.reward_ref,
-                execution_status="valid",
-            ),
-        )
+        coordinator.collect_completed(spec, ordinal, result.runtime)
 
     decision = coordinator.finalize(spec)
     if decision.status not in {"ready", "tie"}:
@@ -270,8 +250,11 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
 
     def _audit(self, store, spec, decision, tokenizer, *, tokenizer_root, after):
         from writing_agent.native_audit import audit_training_batch
+        from writing_agent.task_graph_environment import RolloutEnvironment
+        from writing_agent.task_graph_gate import LineageGate
+        from writing_agent.task_graph_group import GroupCoordinatorV1
 
-        return audit_training_batch(
+        admission = audit_training_batch(
             store,
             spec,
             decision,
@@ -280,6 +263,15 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
             adapter_hash_after=after,
             tokenizer_root=tokenizer_root,
         )
+        environment = RolloutEnvironment(
+            store,
+            self.fixture.entry.graph,
+            None,
+            LineageGate(),
+            self.fixture.entry.graph.policy,
+        )
+        GroupCoordinatorV1(environment).record_training_admission(spec, admission)
+        return admission
 
     def _assert_durable_refusal(self, store, admission, expected):
         from writing_agent.native_audit import TrainingAuditError, require_training_admission

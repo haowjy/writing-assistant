@@ -139,8 +139,9 @@ retains its smoke-evaluation and training-format workflows.
   `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
   reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
   [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
-  exported token layouts and pinned tokenizer files, then stores `TrainingAdmissionV1`.
-  Only all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
+  exported token layouts and pinned tokenizer files, then returns `TrainingAdmissionV1`.
+  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts. Only
+  all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
   and admission derivation from stored evidence and the pinned local tokenizer without
   network access; its canonical report contains no prompt, packet, context or token data.
   [task_graph_probe_experiment.py](../writing_agent/task_graph_probe_experiment.py) owns

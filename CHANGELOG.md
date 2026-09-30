@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Route verified member completion, admission and trainer-consumption receipts through the
+  locked group coordinator; share one strict group/step sequence index for refusal and resume.
+
 - Plant Phase 8 privacy canaries in private task records and fail criterion 6 if either reaches
   run artifacts outside the store's private area.
 

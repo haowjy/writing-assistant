@@ -31,7 +31,7 @@ from writing_agent.native_audit import (
     require_training_admission,
 )
 from writing_agent.native_gemma import NativeGemmaSampleBackend
-from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json, thaw
+from writing_agent.task_graph import canonical_bytes, domain_hash, thaw
 from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import DriverBudgetError
@@ -45,9 +45,8 @@ from writing_agent.task_graph_gatherers import (
 )
 from writing_agent.task_graph_group import GroupCoordinatorV1
 from writing_agent.task_graph_group_contract import derive_group_seed
-from writing_agent.task_graph_group_records import GroupMemberResultV1
 from writing_agent.task_graph_local import DeterministicEvaluator, LocalTextToolProvider
-from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupSpecV1
+from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupError
 from writing_agent.task_graph_records import RuntimeManifestV2, WriterTurnV2
 from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_token_ledger import decode_u32_token_ids
@@ -89,36 +88,12 @@ def task_graph_resume_preflight(output: Path | str, checkpoint: Path | str) -> i
     except (OSError, TypeError, KeyError, json.JSONDecodeError, ValueError) as exc:
         raise TaskGraphResumeRefused("resume checkpoint is incomplete or invalid") from exc
     groups = Path(output) / "groups"
-    if groups.exists():
-        for child in groups.iterdir():
-            if child.name.startswith("step-"):
-                try:
-                    reserved = int(child.name[5:])
-                except ValueError as exc:
-                    raise TaskGraphResumeRefused("malformed task-graph step reservation") from exc
-                if reserved >= step:
-                    raise TaskGraphResumeRefused(
-                        "task-graph evidence exists at or after the checkpoint step"
-                    )
-                continue
-            if not child.is_dir():
-                if child.name.startswith(".step-") and child.name.endswith(".lock"):
-                    continue
-                raise TaskGraphResumeRefused("unrecognized task-graph group evidence")
-            receipt = child / "spec.json"
-            if not receipt.exists():
-                # GroupCoordinator persists the spec artifact before its receipt. A
-                # reservation under step-N is created first by this trainer, so any
-                # receipt-less hash directory is foreign or interrupted evidence.
-                raise TaskGraphResumeRefused("unindexed task-graph group evidence")
-            try:
-                spec = GroupSpecV1.from_dict(load_canonical_json(receipt.read_bytes()))
-            except (OSError, TypeError, ValueError) as exc:
-                raise TaskGraphResumeRefused("task-graph group receipt is invalid") from exc
-            if spec.group_sequence >= step:
-                raise TaskGraphResumeRefused(
-                    "task-graph group exists at or after the checkpoint step"
-                )
+    try:
+        existing = GroupCoordinatorV1.groups_by_sequence(groups)
+    except (GroupError, OSError) as exc:
+        raise TaskGraphResumeRefused("unrecognized task-graph group evidence") from exc
+    if any(sequence >= step for sequence in existing):
+        raise TaskGraphResumeRefused("task-graph evidence exists at or after the checkpoint step")
     return step
 
 
@@ -401,10 +376,16 @@ class TaskGraphRollouts:
         self._tools = None
         self._evaluator = None
         self._manifest_checked = False
+        self.last_spec = None
+        self.last_decision = None
+        self.last_admission = None
 
     def __call__(self, prompts, trainer):
         if len(prompts) != self.settings.group_size or len(set(prompts)) != 1:
             raise TaskGraphTrainingError("expected exactly one complete same-task group")
+        self.last_spec = None
+        self.last_decision = None
+        self.last_admission = None
         step = trainer.state.global_step
         if not 0 <= step < self.settings.max_steps:
             raise TaskGraphTrainingError("task-graph schedule exceeded its frozen step budget")
@@ -439,6 +420,7 @@ class TaskGraphRollouts:
                 runner_mode="real",
                 training_mode="native",
             )
+            self.last_spec = spec
             _atomic_json(
                 reservation,
                 {
@@ -451,33 +433,16 @@ class TaskGraphRollouts:
             )
             gatherers = self._gatherers(task)
             failure = None
-            for ordinal, member in enumerate(spec.members):
+            for ordinal in range(len(spec.members)):
                 try:
                     runtime = coordinator.start(spec, ordinal, policy=spec.policy)
-                    start_checkpoint = runtime.checkpoint_id
                     _assert_active_adapter(trainer.model, self.adapter_name)
                     run = RolloutDriver(environment, gatherers).run(runtime, max_steps=256)
                     if run.directive.kind != "done":
                         raise TaskGraphTrainingError(
                             f"task-graph member halted with directive {run.directive.kind}"
                         )
-                    view = environment.verify(run.runtime)
-                    terminal_ref = run.runtime.state.outcome_ref
-                    availability_ref = view.outcome.reward_ref
-                    if availability_ref is not None:
-                        terminal_ref = self.store.get_artifact(availability_ref)[
-                            "terminal_outcome_ref"
-                        ]
-                    result = GroupMemberResultV1(
-                        group_id=spec.group_id,
-                        member_id=member.member_id,
-                        start_checkpoint_id=start_checkpoint,
-                        final_checkpoint_id=run.runtime.checkpoint_id,
-                        terminal_outcome_ref=terminal_ref,
-                        availability_ref=availability_ref,
-                        execution_status="valid",
-                    )
-                    coordinator.collect(spec, result)
+                    coordinator.collect_completed(spec, ordinal, run.runtime)
                 except Exception as exc:
                     failure = exc
                     reason = (
@@ -493,6 +458,7 @@ class TaskGraphRollouts:
                     break
 
             decision = coordinator.finalize(spec)
+            self.last_decision = decision
             decision_ref = self.store.put_artifact(decision.to_wire())
             if failure is not None or decision.status in {"pending", "invalid"}:
                 _atomic_json(
@@ -526,6 +492,8 @@ class TaskGraphRollouts:
                 adapter_hash_after=adapter_after,
                 tokenizer_root=self.tokenizer_root,
             )
+            coordinator.record_training_admission(spec, admission)
+            self.last_admission = admission
             batch = TrainingBatchV1.from_dict(self.store.get_artifact(admission.batch_ref))
             members = self._training_rows(batch)
             self._save_consumed_batch(
@@ -539,6 +507,7 @@ class TaskGraphRollouts:
                 adapter_before,
                 adapter_after,
                 task_id,
+                coordinator,
             )
             require_training_admission(admission)
             if adapter_before != adapter_after:
@@ -637,26 +606,12 @@ class TaskGraphRollouts:
 
     def _refuse_existing_step(self, step: int) -> None:
         groups = self.output / "groups"
-        reservation = groups / f"step-{step:06d}"
-        if reservation.exists():
+        try:
+            existing = GroupCoordinatorV1.groups_by_sequence(groups)
+        except (GroupError, OSError) as exc:
+            raise TaskGraphTrainingError("task-graph group evidence is unrecognized") from exc
+        if step in existing:
             raise TaskGraphTrainingError("a task-graph group already exists for this step")
-        if groups.exists():
-            for child in groups.iterdir():
-                if (
-                    not child.is_dir()
-                    or child.name.startswith(".")
-                    or child.name.startswith("step-")
-                ):
-                    continue
-                path = child / "spec.json"
-                if not path.exists():
-                    raise TaskGraphTrainingError("unindexed task-graph group prevents sealing")
-                try:
-                    spec = GroupSpecV1.from_dict(load_canonical_json(path.read_bytes()))
-                except (OSError, ValueError, TypeError) as exc:
-                    raise TaskGraphTrainingError("task-graph group receipt is invalid") from exc
-                if spec.group_sequence == step:
-                    raise TaskGraphTrainingError("a task-graph group already exists for this step")
 
     def _training_rows(self, batch: TrainingBatchV1) -> list[dict[str, Any]]:
         reader = StoreArtifactReader(self.store)
@@ -707,10 +662,10 @@ class TaskGraphRollouts:
         adapter_before,
         adapter_after,
         task_id,
+        coordinator,
     ) -> None:
         batch_ref = admission.batch_ref
         admission_ref = admission.identity()
-        self.store.put_artifact(admission.to_wire())
         receipt = {
             "schema": 1,
             "step": step,
@@ -733,7 +688,7 @@ class TaskGraphRollouts:
             reservation_status = "audit-refused"
         else:
             reservation_status = "consumed"
-        _atomic_json(self.output / "groups" / spec.group_id / "trainer-consumed.json", receipt)
+        coordinator.record_training_consumed(spec, receipt)
         save_json(
             self.output / "batches" / f"step-{step:06d}.json",
             {**receipt, "members": members},

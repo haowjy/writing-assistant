@@ -629,33 +629,14 @@ class NativeGemmaTests(unittest.TestCase):
                 runner_mode="real",
                 training_mode="native",
             )
-            for ordinal, member in enumerate(spec.members):
+            for ordinal in range(len(spec.members)):
                 runtime = coordinator.start(spec, ordinal, policy=policy)
                 result = RolloutDriver(
                     fixture.env,
                     make_gatherers(fixture, sampler=backend),
                 ).run(runtime, max_steps=80)
                 self.assertEqual(result.directive.kind, "done")
-                view = fixture.env.verify(result.runtime)
-                outcome_ref = result.runtime.state.outcome_ref
-                if view.outcome.reward_ref is not None:
-                    outcome_ref = fixture.store.get_artifact(view.outcome.reward_ref)[
-                        "terminal_outcome_ref"
-                    ]
-                coordinator.collect(
-                    spec,
-                    GroupMemberResultV1(
-                        group_id=spec.group_id,
-                        member_id=member.member_id,
-                        start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
-                            "start_checkpoint_id"
-                        ],
-                        final_checkpoint_id=result.runtime.checkpoint_id,
-                        terminal_outcome_ref=outcome_ref,
-                        availability_ref=view.outcome.reward_ref,
-                        execution_status="valid",
-                    ),
-                )
+                coordinator.collect_completed(spec, ordinal, result.runtime)
             decision = coordinator.finalize(spec)
             self.assertIn(decision.status, {"ready", "tie"})
             admission = audit_training_batch(
@@ -798,32 +779,13 @@ class NativeGemmaTests(unittest.TestCase):
                 runner_mode="real",
                 training_mode="native",
             )
-            for ordinal, member in enumerate(padded_spec.members):
+            for ordinal in range(len(padded_spec.members)):
                 runtime = padded_coordinator.start(padded_spec, ordinal, policy=policy)
                 result = RolloutDriver(
                     fixture.env,
                     make_gatherers(fixture, sampler=padded_backend),
                 ).run(runtime, max_steps=80)
-                view = fixture.env.verify(result.runtime)
-                outcome_ref = result.runtime.state.outcome_ref
-                if view.outcome.reward_ref is not None:
-                    outcome_ref = fixture.store.get_artifact(view.outcome.reward_ref)[
-                        "terminal_outcome_ref"
-                    ]
-                padded_coordinator.collect(
-                    padded_spec,
-                    GroupMemberResultV1(
-                        group_id=padded_spec.group_id,
-                        member_id=member.member_id,
-                        start_checkpoint_id=padded_coordinator._start_receipt(padded_spec, ordinal)[
-                            "start_checkpoint_id"
-                        ],
-                        final_checkpoint_id=result.runtime.checkpoint_id,
-                        terminal_outcome_ref=outcome_ref,
-                        availability_ref=view.outcome.reward_ref,
-                        execution_status="valid",
-                    ),
-                )
+                padded_coordinator.collect_completed(padded_spec, ordinal, result.runtime)
             padded_decision = padded_coordinator.finalize(padded_spec)
             padded_admission = audit_training_batch(
                 fixture.store,
