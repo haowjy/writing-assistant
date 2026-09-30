@@ -45,10 +45,13 @@ scripted path asks the author and receives both the public answer and feedback.
 
 `probe_settings` in each JSON config is the one place for the probe limits and the
 group-only native setting. The S10 loader applies fields present in the current contracts:
-`max_generated_tokens=1536`, `max_total_tokens=26112`, six writer turns, eight tool calls,
-and two author calls (one answer plus one feedback). The aggregate total-token allowance is
-the no-earlier-stop ceiling `6 × 4096 + 1536`; unrelated workspace/read budgets retain the
-base entry fixture's constraints.
+`max_generated_tokens=1536`, six writer turns, eight tool calls, and two author calls (one
+answer plus one feedback). The former aggregate allowance `6 × 4096 + 1536` was described as
+a no-earlier-stop ceiling, but a trailing zero-generation context-limit turn is charged its
+full input and can exceed it. Native rule 3 does not derive `max_total_tokens`, so native
+training now refuses that limit rather than allowing it to change termination. Compute stays
+bounded by writer turns, the per-decision and context caps, and the stage supervisor's
+ceilings; unrelated workspace/read budgets retain the base entry fixture's constraints.
 
 Two declared values cannot yet bind to runtime records: `max_context_tokens=4096` waits for
 S4's context-limit field, and `training_mode="native"` waits for S3's group-contract field.

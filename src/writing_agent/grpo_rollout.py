@@ -12,14 +12,10 @@ from writing_agent.inference import (
     ContextBudgetExceeded,
     TransformersBackend,
     parse_response,
-    render_messages,
 )
+from writing_agent.native_protocol import NATIVE_STOP_TOKENS, ProtocolError, native_suffix
 from writing_agent.reward import Reward, group_advantages
 from writing_agent.workspace import Workspace
-
-
-class ProtocolError(RuntimeError):
-    """Unsupported framing is infrastructure failure, never a bad-candidate reward."""
 
 
 class CandidateOutputError(ValueError):
@@ -28,58 +24,6 @@ class CandidateOutputError(ValueError):
 
 class GroupPending(RuntimeError):
     """No optimizer step is allowed for this group."""
-
-
-def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):
-    """Derive only external bytes using a minimal dummy chat, as TRL does.
-
-    Never render the sampled action: argument sorting and old-thinking removal are
-    noninvertible. Require an explicit supported sampled stop. Gemma's
-    tool-response opener is itself sampled; its body is external. For a final
-    answer, retain either sampled <turn|> or <eos> and append only the template's
-    external newline and next user turn. Never insert a replacement <turn|>.
-    """
-    if not raw_ids or not external:
-        raise ProtocolError("Missing sampled boundary or environment suffix")
-    calls = assistant.get("tool_calls") or []
-    if calls:
-        # The sampled assistant bytes, including any content before a tool call,
-        # are already in the ledger. Only derive bytes after the sampled boundary.
-        if any(m["role"] != "tool" for m in external) or len(external) != len(calls):
-            raise ProtocolError("Tool suffix requires one response per call")
-        dummy = {"role": "assistant", "content": "", "tool_calls": copy.deepcopy(calls)}
-        for call in dummy["tool_calls"]:
-            call["function"]["arguments"] = {}
-        boundary = "<|tool_response>"
-    else:
-        if len(external) != 1 or external[0]["role"] != "user":
-            raise ProtocolError("Only a single user follow-up is supported")
-        dummy = {"role": "assistant", "content": "dummy reply"}
-        boundary = "<turn|>"
-    boundary_ids = tokenizer.encode(boundary, add_special_tokens=False)
-    final_eos = not calls and raw_ids[-1] == tokenizer.convert_tokens_to_ids("<eos>")
-    if len(boundary_ids) != 1 or (raw_ids[-1] != boundary_ids[0] and not final_eos):
-        raise ProtocolError(f"Unsupported raw stopping boundary; expected {boundary}")
-    messages = [{"role": "user", "content": "dummy"}, dummy]
-
-    def encode(history, generation):
-        text = tokenizer.apply_chat_template(
-            render_messages(history),
-            tokenize=False,
-            add_generation_prompt=generation,
-            enable_thinking=thinking,
-        )
-        return tokenizer.encode(text, add_special_tokens=False)
-
-    prefix = encode(messages, False)
-    positions = [i for i, token in enumerate(prefix) if token == boundary_ids[0]]
-    if not positions:
-        raise ProtocolError("Native template is missing the expected suffix boundary")
-    prefix = prefix[: positions[-1] + 1]
-    full = encode(messages + external, True)
-    if full[: len(prefix)] != prefix:
-        raise ProtocolError("Native environment suffix is not token-prefix stable")
-    return full[len(prefix) :]
 
 
 class NativeRolloutBackend(TransformersBackend):
@@ -108,9 +52,7 @@ class NativeRolloutBackend(TransformersBackend):
             expected = 1.0 if name in {"typical_p", "repetition_penalty"} else None
             if getattr(defaults, name, None) not in (expected, None, 0):
                 raise ProtocolError(f"Unsupported sampling processor: {name}")
-        expected_stops = [
-            tokenizer.convert_tokens_to_ids(t) for t in ("<eos>", "<turn|>", "<|tool_response>")
-        ]
+        expected_stops = [tokenizer.convert_tokens_to_ids(token) for token in NATIVE_STOP_TOKENS]
         stops = defaults.eos_token_id
         if not isinstance(stops, list) or set(stops) != set(expected_stops):
             raise ProtocolError("Native GRPO requires the pinned Gemma stop set")

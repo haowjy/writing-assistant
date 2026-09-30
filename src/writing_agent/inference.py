@@ -116,6 +116,33 @@ def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     return message
 
 
+def generate_with_seed(model, inputs, generation: dict, *, seed: int):
+    """Run one live-model generation call without leaking RNG or module modes."""
+    import torch
+
+    device = model.device
+    inputs = (
+        inputs.to(device)
+        if hasattr(inputs, "to")
+        else {
+            key: value.to(device) if hasattr(value, "to") else value
+            for key, value in inputs.items()
+        }
+    )
+    devices = [device.index or 0] if device.type == "cuda" else []
+    modes = [(module, module.training) for module in model.modules()]
+    try:
+        model.eval()
+        with torch.random.fork_rng(devices=devices), torch.inference_mode():
+            torch.random.default_generator.manual_seed(seed)
+            for index in devices:
+                torch.cuda.default_generators[index].manual_seed(seed)
+            return model.generate(**inputs, **generation)
+    finally:
+        for module, training in modes:
+            module.training = training
+
+
 class ContextBudgetExceeded(ValueError):
     """An explicit context limit, with no history truncation."""
 
@@ -169,8 +196,6 @@ class TransformersBackend:
     def complete(
         self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
     ) -> Completion:
-        import torch
-
         prompt, inputs = self.prepare_inputs(messages, tools)
         inputs = inputs.to(self.model.device)
         input_tokens = inputs["input_ids"].shape[-1]
@@ -205,23 +230,9 @@ class TransformersBackend:
             generation.update(temperature=temperature, top_p=self.config["top_p"])
         if temperature > 0:
             generation.update({k: self.config[k] for k in ("min_p", "top_k") if k in self.config})
-        device = self.model.device
-        devices = [device.index or 0] if device.type == "cuda" else []
-        # Keep a training caller's RNG and per-module train/eval modes intact.
-        modes = [(module, module.training) for module in self.model.modules()]
-        try:
-            self.model.eval()
-            with torch.random.fork_rng(devices=devices), torch.inference_mode():
-                torch.random.default_generator.manual_seed(self.config["seed"] + self.calls)
-                for index in devices:
-                    torch.cuda.default_generators[index].manual_seed(
-                        self.config["seed"] + self.calls
-                    )
-                self.calls += 1
-                output = self.model.generate(**inputs, **generation)[0][input_tokens:]
-        finally:
-            for module, training in modes:
-                module.training = training
+        seed = self.config["seed"] + self.calls
+        self.calls += 1
+        output = generate_with_seed(self.model, inputs, generation, seed=seed)[0][input_tokens:]
         eos = self.model.generation_config.eos_token_id
         eos = eos if isinstance(eos, list) else [eos]
         text = self.tokenizer.decode(output, skip_special_tokens=False)

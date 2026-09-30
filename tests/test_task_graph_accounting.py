@@ -58,6 +58,43 @@ class AccountingTests(unittest.TestCase):
         budget["consumed"]["generated_tokens"] = 0
         self.assertEqual(exhausted_stop_reason(budget), "context_budget")
 
+    def test_context_token_charge_is_a_high_water_mark(self):
+        budget = {
+            "schema": 1,
+            "limits": {"context_tokens": 10},
+            "consumed": {"context_tokens": 7},
+            "read_tokenizer": "whitespace-v1",
+        }
+        charged, exceeded = sampled_usage_charge(
+            budget, {"prompt_tokens": 8, "completion_tokens": 2}
+        )
+        self.assertIsNone(exceeded)
+        self.assertEqual(charged["consumed"]["context_tokens"], 10)
+
+        next_charge, exceeded = sampled_usage_charge(
+            charged, {"prompt_tokens": 8, "completion_tokens": 2}
+        )
+        self.assertIsNone(exceeded)
+        self.assertEqual(next_charge["consumed"]["context_tokens"], 10)
+        self.assertIsNone(exhausted_stop_reason(next_charge))
+        self.assertEqual(budget["consumed"]["context_tokens"], 7)
+
+    def test_context_limit_overrun_is_defensive_except_for_derived_context_limit(self):
+        budget = {
+            "limits": {"context_tokens": 5},
+            "consumed": {"context_tokens": 4},
+            "read_tokenizer": "whitespace-v1",
+        }
+        usage = {"prompt_tokens": 6, "completion_tokens": 0}
+        charged, exceeded = sampled_usage_charge(budget, usage)
+        self.assertEqual(exceeded, "context_tokens")
+        self.assertEqual(charged["consumed"]["context_tokens"], 6)
+
+        charged, exceeded = sampled_usage_charge(budget, usage, allow_context_overrun=True)
+        self.assertIsNone(exceeded)
+        self.assertEqual(charged["consumed"]["context_tokens"], 6)
+        self.assertIsNone(exhausted_stop_reason(budget | {"consumed": charged["consumed"]}))
+
 
 if __name__ == "__main__":
     unittest.main()

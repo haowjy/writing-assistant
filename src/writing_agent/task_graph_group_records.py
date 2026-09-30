@@ -239,7 +239,10 @@ class GroupSegmentCreditV1(WireRecord):
     native_optimizer_eligible: Annotated[bool, Bool()] = False
     token_mask_ref: Annotated[None, UnionOf((type(None),))] = None
     logprob_ref: Annotated[None, UnionOf((type(None),))] = None
+    completion_start: Annotated[int | None, Int(optional=True)] = None
+    completion_end: Annotated[int | None, Int(optional=True)] = None
     RECORD_TYPE: ClassVar[str] = "GroupSegmentCreditV1"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"completion_start", "completion_end"})
 
     def check(self) -> None:
         if (
@@ -269,6 +272,12 @@ class GroupSegmentCreditV1(WireRecord):
                 self.native_optimizer_eligible
                 or self.token_mask_ref is not None
                 or self.logprob_ref is not None
+                or (self.completion_start is None) != (self.completion_end is None)
+                or (
+                    self.completion_start is not None
+                    and self.completion_end is not None
+                    and self.completion_end <= self.completion_start
+                )
             )
         ):
             raise GroupError("segment credit cannot assert native or non-writer eligibility")

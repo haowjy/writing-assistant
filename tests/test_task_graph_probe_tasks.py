@@ -139,6 +139,7 @@ class ProbeTaskGraphTests(unittest.TestCase):
                 self.assertEqual(settings["max_context_tokens"], 4096)
                 self.assertEqual(settings["max_tokens_per_decision"], 512)
                 self.assertEqual(settings["training_mode"], "native")
+                self.assertNotIn("max_total_tokens", settings)
                 entry = _BUILDER.build_admitted_entry(config)
                 self.assertEqual(len(entry.graph.instance.nodes), 1)
                 node = entry.graph.node(entry.node_id)
@@ -161,7 +162,7 @@ class ProbeTaskGraphTests(unittest.TestCase):
                 )
                 budget = node.contract.budget_contract
                 self.assertEqual(budget.max_generated_tokens, 1536)
-                self.assertEqual(budget.max_total_tokens, 26112)
+                self.assertIsNone(budget.max_total_tokens)
                 self.assertEqual(budget.max_steps, 6)
                 self.assertEqual(budget.max_tool_calls, 8)
                 self.assertEqual(budget.max_author_calls, 2)

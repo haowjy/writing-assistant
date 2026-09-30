@@ -15,6 +15,7 @@ from writing_agent.task_graph_wire import (
     ListOf,
     RecordOf,
     Str,
+    UnionOf,
     WireRecord,
     obj,
 )
@@ -48,6 +49,29 @@ SEMANTICS_V1 = "task-graph-derive-v1"
 
 def _group_hash(value: Any) -> str:
     return domain_hash("payload", value)
+
+
+def group_identity(
+    group_sequence: int,
+    environment: Mapping[str, Any],
+    policy: Mapping[str, str],
+    group_seed: int,
+    runner_mode: str,
+    member_count: int,
+    training_mode: str | None,
+) -> str:
+    identity = [
+        "GroupIdV1",
+        group_sequence,
+        environment,
+        policy,
+        group_seed,
+        runner_mode,
+        member_count,
+    ]
+    if training_mode is not None:
+        identity.extend(("training_mode", training_mode))
+    return _group_hash(identity)
 
 
 def _group_seed(group_seed: int, role: str, ordinal: int | None = None) -> int:
@@ -111,23 +135,23 @@ class GroupSpecV1(WireRecord):
         ListOf(RecordOf(GroupMemberSpecV1), min_items=2, max_items=64),
     ]
     schema: Annotated[int, Int(equals=1)] = 1
+    training_mode: Annotated[str | None, UnionOf((Enum(frozenset({"native"})), type(None)))] = None
     RECORD_TYPE: ClassVar[str] = "GroupSpecV1"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"training_mode"})
 
     @property
     def record_type(self) -> str:
         return self.RECORD_TYPE
 
     def check(self) -> None:
-        expected = _group_hash(
-            [
-                "GroupIdV1",
-                self.group_sequence,
-                self.environment,
-                self.policy,
-                self.group_seed,
-                self.runner_mode,
-                len(self.members),
-            ],
+        expected = group_identity(
+            self.group_sequence,
+            self.environment,
+            self.policy,
+            self.group_seed,
+            self.runner_mode,
+            len(self.members),
+            self.training_mode,
         )
         if self.group_id != expected:
             raise GroupError("group ID does not bind its contract and sequence")

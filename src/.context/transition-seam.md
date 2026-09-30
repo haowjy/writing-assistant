@@ -35,13 +35,13 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 
 | Rank | Modules |
 |---|---|
-| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_operation` |
+| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_training_records`, `task_graph_native_contracts`, `task_graph_operation` |
 | 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
 | 2 | `task_graph_store` |
-| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
+| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `task_graph_eligibility`, `_author`, `_outcome`, `_context` |
 | 4 | `task_graph_gate`, `task_graph_group_contract` |
 | 5 | `task_graph_environment` |
-| 6 | `task_graph_group`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
+| 6 | `task_graph_group`, `task_graph_training_export`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
 
 - **`TYPE_CHECKING` imports count for layer order, not for cycles.** The layer test walks
   type-only imports; the SCC test ignores them. A type-only import is not a way around the
@@ -58,11 +58,12 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
   `ArtifactReader` (I7).
 
 The core keeps pure helpers in the same concern modules:
-- `derive_writer` uses `decode_writer_turn_sampling` and `bind_group_sampling_claims` from
+- `derive_writer` uses `decode_and_bind_sampling` and `bind_group_sampling_claims` from
   `task_graph_sampling`, and `validate_ask_semantics` from `task_graph_scripted`;
 - `derive_author` uses `resolve_script_reply`, `scripted_author_reply`,
   `ScriptCoverageError` and `validate_ask_semantics` from `task_graph_scripted`;
-- `derive_outcome` uses `CURRENT_ELIGIBILITY` from `task_graph_sampling`;
+- `derive_outcome` uses `decide_eligibility` from `task_graph_eligibility`, which reads
+  committed writer-turn and manifest evidence to persist the ordered structural reason;
 - the gatherers use `ArtifactSink` and `persist_logprob_trace` from `task_graph_sampling`,
   and `scripted_author_reply` from `task_graph_scripted`.
 
@@ -75,16 +76,44 @@ Choose the module by concern:
 
 | Module | Holds |
 |---|---|
-| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, `RuntimePortDescriptorV1`, and `RuntimeManifestV1`; registries and reference closure |
+| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, runtime manifest V1/V2 and descriptor records, `WriterTurnV1`/`WriterTurnV2`, and `TrainingAdmissionV1`; registries and reference closure |
 | `task_graph_group_records` | Pure group result and credit `WireRecord` classes (`GroupDecisionV1`, `GroupAdvantageV1`, `GroupSegmentCreditV1`, and related records) |
+| `task_graph_training_records` | Codec-registered `TrainingBatchV1` record for a finalized group export |
 | `task_graph` | Core environment records and context materialization |
 | `task_graph_record_contracts` | Sealed contracts with binding rules: `GroupSpecV1`, `GroupMemberSpecV1`, `ContextPolicyV1`, `ExecutionVersionsV1`, `SEMANTICS_V1`, `GroupError`, `CompactionError` |
 | `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, and group seeds |
 
-`WriterTurnV1` currently contains `action_id`, `context_revision_ref`, `raw_output_ref`,
+`WriterTurnV1` contains `action_id`, `context_revision_ref`, `raw_output_ref`,
 `usage`, `adapter_trace`, and `message`; optional trace context claims are bound when present.
 There is no separate writer-request record. `EnvironmentStateV1.history` stores nonnegative
 `action_count` and `tool_result_count`; tool-queue entries require a `rejection` field.
+`WriterTurnV2` is additive and carries byte references to the full input and generated token
+IDs, generated-token logprobs, termination, and sampling pins. `RuntimeManifestV2` carries the
+three native sampling capabilities and rendering, tokenizer, and decoding descriptors.
+`task_graph_native_contracts` owns the public native sampling allocation and the shared
+manifest-policy-rendering binding used by seal and derive paths.
+`task_graph_training_export` reads a finalized group's V2 member chains and emits the
+hash-addressed batch plus token and float64 byte artifacts; it is a consumer-side pure
+projection, not a commit derive. It uses the shared u32 ledger codec and context-root walk;
+any intervening context change, including `carry`, blocks export just as it blocks structural
+eligibility.
+`SampledMessageV1` keeps optional reasoning/thinking side channels for eligibility while
+omitting them when absent, preserving prior wire identities. Structural training eligibility
+is decided from committed V2 evidence and the sealed native group; it never records the
+reserved `eligible` status.
+`GroupSpecV1.training_mode` is omitted when `None`, preserving existing group identities.
+`decode_and_bind_sampling` dispatches both writer-turn record types and refuses cross-version
+turn/manifest pairs. V2 checks token counts, logprob shape, sealed pins, trace claims, and the
+exact prior-input-plus-generated prefix on the current context root. It derives the token cap
+as the minimum of per-decision, remaining generated, and remaining context limits (ties are
+decision, generated budget, then context); false stop and limit claims are rejected at their
+first differing path. Valid token/context limits and malformed native stops commit an
+incomplete writer outcome instead of an adapter-provided halt. Present V2 adapter-trace
+claims still bind to the sealed group policy. A zero-generation `context_limit` cannot carry
+message content, calls, or a raw-output reference, and mapped incomplete outcomes commit
+directly to terminal state with the overrun path's candidate-checkpoint shape.
+The V2 sampler and native history share the u32 little-endian token codec and the strict
+context-event ancestry check in `task_graph_token_ledger` and `task_graph_context_roots`.
 
 The steps:
 
@@ -259,25 +288,26 @@ An empty required set never counts as a pass.
     `awaiting_checks`; check-result transitions stay within that active batch
     (`tests/test_task_graph_derive_outcome.py`).
 - **O1: a writer turn without sampling evidence is charged 0 tokens.** Entries without
-  generated- or total-token limits seed no corresponding counters. `derive_writer_turn`
-  requires usage evidence under a token limit (missing usage is
-  `AdapterContractProjectionError`) and binds usage to token IDs only when IDs are present,
-  matching the persisted sampling evidence contract.
+  usage-charged limits seed no corresponding counters. `BudgetContractV1.usage_charged_limits`
+  is the sole owner of generated, cumulative total, and context-token limits. The writer
+  derive requires their corresponding usage evidence; V2 additionally binds usage counts to
+  token IDs and charges `context_tokens` as the per-turn high-water mark
+  `prompt_tokens + completion_tokens`, never as a cumulative sum. Reaching the high-water cap
+  does not drain a cumulative controller budget: the next native sample must still be allowed
+  to return the zero-generation `context_limit` record that seals the lineage incomplete.
   - **The contract can declare a token limit.** `BudgetContractV1.max_generated_tokens` is
     optional. It is listed in `_Contract.OMIT_NONE_FIELDS`, so it is left out of the
     canonical form when `None`, and every existing contract keeps its identity. This field
     departs from the design package. It exists so that the `token_limited` rollout fixture
     carries a real limit, which makes missing usage and `budget_charged` reachable.
-  - **Why a hook and not a new contract version.** A `BudgetContractV2` would force
-    version dispatch in admission and `derive_entry` for one optional field. A token-limits
-    sub-contract becomes the right shape once `total_tokens` limits arrive.
-  - **Open before native training:** admission accepts a token-limited node
-    whatever adapter later runs it, and the only guard is the derive's
-    `AdapterContractError`, raised after the port call. In a group, that becomes a member
-    failure mid-rollout. The follow-up adds a usage-reporting capability to
-    `RuntimeManifestV1`. It refuses, at seal and bind time (`require_seal`,
-    `GroupCoordinatorV1.seal`), a manifest without that capability when the entry budget
-    has token limits. It also wires `total_tokens` the same way as `generated_tokens`.
+  - **Why optional fields and not a new contract version.** A `BudgetContractV2` would force
+    version dispatch in admission and `derive_entry` for optional token limits. Each unset
+    limit is omitted from canonical form, preserving existing contract identities.
+  - **Token-limited seals:** admission remains adapter-independent, but a real group refuses
+    a manifest without `usage_reporting` before sampling. V1 keeps that single capability;
+    V2 declares `usage_reporting`, `native_token_ledger` and `sampled_logprobs`, and a native
+    group requires all three plus rendering and policy-pin agreement. `total_tokens` is a
+    cumulative compute budget; `max_context_tokens` is the independent high-water context cap.
 - **One validator for the sampled message, not a sentinel.** The records codec and
   `task_graph_calls` once accepted different values for the same message, so the store
   could persist a `WriterTurnV1` that `parse_calls` rejects. That is a producer/replay split

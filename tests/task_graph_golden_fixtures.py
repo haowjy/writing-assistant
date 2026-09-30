@@ -8,10 +8,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from tests.task_graph_fixtures import make_entry_fixture
+from tests.task_graph_record_fixtures import record_examples, shared_payload_examples
 from tests.task_graph_rollout_fixtures import build_rollout_fixture
 from tests.test_task_graph import H as HASH_FIXTURE_REF
 from tests.test_task_graph import TaskGraphRecordsTest
-from tests.test_task_graph_records import record_examples, shared_payload_examples
 from writing_agent.task_graph import (
     CheckpointV1,
     CommitV1,
@@ -27,6 +27,7 @@ from writing_agent.task_graph import (
     tree_hash,
 )
 from writing_agent.task_graph_contracts import BudgetContractV1
+from writing_agent.task_graph_group_records import GroupSegmentCreditV1
 from writing_agent.task_graph_ports import SampleResult
 from writing_agent.task_graph_record_contracts import SEMANTICS_V1, ExecutionVersionsV1
 from writing_agent.task_graph_records import (
@@ -43,6 +44,17 @@ from writing_agent.task_graph_records import (
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BYTE_GOLDEN = b"golden\x00bytes"
+POST_GOLDEN_RECORD_TYPES = frozenset(
+    {
+        "WriterTurnV2",
+        "RendererDescriptorV1",
+        "TokenizerDescriptorV1",
+        "DecodingDescriptorV1",
+        "RuntimeManifestV2",
+        "TrainingAdmissionV1",
+        "TrainingBatchV1",
+    }
+)
 ZERO_HASH = "0" * 64
 HASH_REF = HASH_FIXTURE_REF
 
@@ -216,6 +228,8 @@ def build_records_golden() -> dict[str, object]:
     records: dict[str, object] = {}
     for record in record_examples():
         record_type = record.RECORD_TYPE
+        if record_type in POST_GOLDEN_RECORD_TYPES:
+            continue
         if record_type is not None:
             records[record_type] = _entry(record)
         elif isinstance(record, ExecutionVersionsV1):
@@ -265,7 +279,7 @@ def build_records_golden() -> dict[str, object]:
     state_after_two_actions = replace(state, history=history)
     records["EnvironmentStateV1"] = _entry(state_after_two_actions)
 
-    if set(records) != set(RECORD_TYPES) | {
+    if set(records) | POST_GOLDEN_RECORD_TYPES != set(RECORD_TYPES) | {
         "BudgetContractV1",
         "ContextContentV1",
         "ContextRevisionV1",
@@ -274,6 +288,51 @@ def build_records_golden() -> dict[str, object]:
     }:
         raise AssertionError("task-graph golden examples do not cover the current wire records")
     return {"transition_semantics": SEMANTICS_V1, "records": records}
+
+
+def build_records_v2_golden() -> dict[str, object]:
+    """Pin the additive V2 wire records independently from the V1 goldens."""
+    records = {
+        record.RECORD_TYPE: _entry(record)
+        for record in record_examples()
+        if record.RECORD_TYPE in POST_GOLDEN_RECORD_TYPES
+    }
+    if set(records) != POST_GOLDEN_RECORD_TYPES:
+        raise AssertionError("V2 golden examples do not cover all additive records")
+    batch = next(record for record in record_examples() if record.RECORD_TYPE == "TrainingBatchV1")
+    audit_members = tuple(
+        {
+            **dict(member),
+            **({"trailing_context_limit_turn_ref": "e" * 64} if index == 0 else {}),
+        }
+        for index, member in enumerate(batch.members)
+    )
+    batch_with_audit = replace(batch, members=audit_members)
+    first_member = batch.members[0]
+    first_span = first_member["turn_spans"][0]
+    segment_credit = GroupSegmentCreditV1(
+        group_id=batch.group_id,
+        member_id=first_member["member_id"],
+        action_id=first_span["action_id"],
+        action_ref=HASH_REF,
+        message_ref=HASH_REF,
+        trace_ref=first_span["turn_ref"],
+        original_context_ref=HASH_REF,
+        original_context_content_hash=HASH_REF,
+        advantage_ref=first_member["advantage_ref"],
+        segment_kind="assistant_ending",
+        completion_start=first_span["completion_start"],
+        completion_end=first_span["completion_end"],
+    )
+    optional_field_examples = {
+        "GroupSegmentCreditV1_with_token_spans": _entry(segment_credit),
+        "TrainingBatchV1_with_trailing_context_limit_turn_ref": _entry(batch_with_audit),
+    }
+    return {
+        "transition_semantics": SEMANTICS_V1,
+        "records": records,
+        "optional_field_examples": optional_field_examples,
+    }
 
 
 def _rollout_samples() -> tuple[SampleResult, ...]:
@@ -425,9 +484,10 @@ def _write_json(path: Path, body: dict[str, object]) -> None:
 
 
 def regenerate_goldens() -> None:
-    """Rewrite the three fixtures explicitly; never called by tests."""
+    """Rewrite the fixtures explicitly; never called by tests."""
     _write_json(FIXTURES / "task_graph_hashes.json", build_hash_golden())
     _write_json(FIXTURES / "task_graph_records_golden.json", build_records_golden())
+    _write_json(FIXTURES / "task_graph_records_v2_golden.json", build_records_v2_golden())
     with TemporaryDirectory() as root:
         rollout = build_rollout_golden(Path(root) / "rollout")
     _write_json(FIXTURES / "task_graph_rollout_golden.json", rollout)

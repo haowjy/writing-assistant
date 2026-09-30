@@ -28,7 +28,6 @@ from writing_agent.task_graph_records import (
     EvaluatorResultV1,
     OutcomeV1,
 )
-from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY
 from writing_agent.task_graph_transition import (
     CheckpointChain,
     ContextView,
@@ -268,9 +267,7 @@ class OutcomeLifecycleTests(unittest.TestCase):
             reward_value["check_result_refs"], [checked.view.outcome.checks[0]["result_ref"]]
         )
         self.assertEqual(eligibility["status"], "ineligible")
-        self.assertEqual(eligibility["reason"], CURRENT_ELIGIBILITY.training_reason)
-        self.assertFalse(CURRENT_ELIGIBILITY.native_on_policy_eligible)
-        self.assertEqual(CURRENT_ELIGIBILITY.training_status, "ineligible")
+        self.assertEqual(eligibility["reason"], "native_action_trace_unavailable")
         for field in (
             "task_status",
             "execution_status",

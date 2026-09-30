@@ -14,9 +14,26 @@ from typing import Any, Protocol
 from writing_agent.task_graph import canonical_json, validate_hash
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_evaluation import EvaluationEvidenceV1, EvaluationRequestV1
-from writing_agent.task_graph_records import RuntimeManifestV1, RuntimePortDescriptorV1
-
-USAGE_REPORTING_CAPABILITY = "usage_reporting"
+from writing_agent.task_graph_native_contracts import (
+    NATIVE_TOKEN_LEDGER_CAPABILITY,  # noqa: F401 - public re-export
+    NATIVE_TRAINING_CAPABILITIES,  # noqa: F401 - public re-export
+    SAMPLED_LOGPROBS_CAPABILITY,  # noqa: F401 - public re-export
+    USAGE_REPORTING_CAPABILITY,  # noqa: F401 - public re-export
+    NativeSamplingBudget,
+    NativeSamplingHistory,
+    manifest_sampling_capabilities,  # noqa: F401 - public re-export
+    manifest_supports_usage_reporting,  # noqa: F401 - public re-export
+    require_native_manifest_binding,  # noqa: F401 - public re-export
+)
+from writing_agent.task_graph_records import (
+    NATIVE_RUNTIME_CAPABILITIES,
+    DecodingDescriptorV1,
+    RendererDescriptorV1,
+    RuntimeManifestV1,
+    RuntimeManifestV2,
+    RuntimePortDescriptorV1,
+    TokenizerDescriptorV1,
+)
 
 
 @dataclass(frozen=True)
@@ -43,7 +60,7 @@ class PortDescriptorV1:
         if (
             not isinstance(self.capabilities, tuple)
             or self.capabilities != tuple(sorted(set(self.capabilities)))
-            or set(self.capabilities) - {USAGE_REPORTING_CAPABILITY}
+            or set(self.capabilities) - NATIVE_RUNTIME_CAPABILITIES
             or (self.capabilities and self.role != "sampling")
         ):
             raise ValueError("port capabilities must be supported, sorted, and role-specific")
@@ -80,6 +97,10 @@ class PreparedSamplingInput:
     messages_json: str
     tools_json: str
     rendering_json: str
+    native_sampling_budget: NativeSamplingBudget | None = None
+    adapter_ref: str | None = None
+    decision_ordinal: int | None = None
+    native_history: NativeSamplingHistory | None = None
 
     def __post_init__(self) -> None:
         validate_hash(self.context_content_hash)
@@ -94,9 +115,18 @@ class PreparedSamplingInput:
             self.decoding_ref,
             self.tokenizer_ref,
             self.template_ref,
+            self.adapter_ref,
         ):
             if reference is not None:
                 validate_hash(reference)
+        if self.decision_ordinal is not None and (
+            type(self.decision_ordinal) is not int or self.decision_ordinal < 0
+        ):
+            raise ValueError("prepared decision ordinal must be a nonnegative integer")
+        if self.native_history is not None and not isinstance(
+            self.native_history, NativeSamplingHistory
+        ):
+            raise TypeError("prepared native history must be typed committed sampling evidence")
 
 
 @dataclass(frozen=True)
@@ -154,10 +184,58 @@ class SampleResult:
             object.__setattr__(self, field, copied)
 
 
+@dataclass(frozen=True)
+class SampleResultV2:
+    """Port result with typed token and sampled-logprob evidence, before persistence."""
+
+    message: Mapping[str, Any]
+    input_token_ids: tuple[int, ...]
+    generated_token_ids: tuple[int, ...]
+    usage: Mapping[str, Any]
+    logprobs: BinaryLogprobEvidence
+    termination: Mapping[str, Any]
+    sampling_pins: Mapping[str, Any]
+    raw_output: str | bytes | None = None
+    trace: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.message, Mapping):
+            raise AdapterContractError("sample message must be a parsed object")
+        for field in ("input_token_ids", "generated_token_ids"):
+            values = getattr(self, field)
+            if not isinstance(values, tuple) or any(
+                type(token) is not int or token < 0 for token in values
+            ):
+                raise AdapterContractError(f"sample {field} must be a tuple of token IDs")
+        if self.logprobs.shape != (len(self.generated_token_ids),):
+            raise AdapterContractError("sample logprob shape differs from generated token IDs")
+        if self.raw_output is not None and not isinstance(self.raw_output, (str, bytes)):
+            raise AdapterContractError("sample raw output must be exact text or bytes")
+
+        for field in ("message", "usage", "termination", "sampling_pins", "trace"):
+            value = getattr(self, field)
+            if value is None:
+                continue
+            if not isinstance(value, Mapping):
+                raise AdapterContractError(f"sample {field} must be a parsed object")
+            try:
+                copied = json.loads(canonical_json(value))
+            except (TypeError, ValueError, UnicodeError, RecursionError) as exc:
+                raise AdapterContractError(f"sample {field} is not canonical JSON") from exc
+            object.__setattr__(self, field, copied)
+
+
 class SampleBackend(Protocol):
     descriptor: PortDescriptorV1
 
     def sample(self, prepared: PreparedSamplingInput) -> SampleResult: ...
+
+
+class SampleBackendV2(Protocol):
+    descriptor: PortDescriptorV1
+    manifest_descriptors: tuple[RendererDescriptorV1, TokenizerDescriptorV1, DecodingDescriptorV1]
+
+    def sample(self, prepared: PreparedSamplingInput) -> SampleResultV2: ...
 
 
 @dataclass(frozen=True)
@@ -270,7 +348,7 @@ class Evaluator(Protocol):
 
 @dataclass(frozen=True)
 class RuntimeDependenciesV1:
-    sampling: SampleBackend
+    sampling: SampleBackend | SampleBackendV2
     environment: ExecutionEnvironment
     tools: ToolProvider
     evaluator: Evaluator
@@ -280,7 +358,7 @@ class RuntimeDependenciesV1:
             if getattr(self, role).descriptor.role != role:
                 raise ValueError(f"runtime {role} has a descriptor for another port")
 
-    def manifest(self) -> RuntimeManifestV1:
+    def manifest(self) -> RuntimeManifestV1 | RuntimeManifestV2:
         ports = tuple(
             sorted(
                 (
@@ -290,11 +368,23 @@ class RuntimeDependenciesV1:
                 key=lambda item: item.role,
             )
         )
-        return RuntimeManifestV1(schema=1, ports=ports)
-
-
-def manifest_supports_usage_reporting(manifest: RuntimeManifestV1) -> bool:
-    """Whether the sealed sampling descriptor promises token usage evidence."""
-    sampler = next(port for port in manifest.ports if port.role == "sampling")
-    capabilities = sampler.configuration.get("capabilities", ())
-    return USAGE_REPORTING_CAPABILITY in capabilities
+        native = getattr(self.sampling, "manifest_descriptors", None)
+        if native is None:
+            return RuntimeManifestV1(schema=1, ports=ports)
+        if (
+            not isinstance(native, tuple)
+            or len(native) != 3
+            or not isinstance(native[0], RendererDescriptorV1)
+            or not isinstance(native[1], TokenizerDescriptorV1)
+            or not isinstance(native[2], DecodingDescriptorV1)
+        ):
+            raise ValueError("native sampler manifest descriptors are invalid")
+        renderer, tokenizer, decoding = native
+        return RuntimeManifestV2(
+            schema=2,
+            ports=ports,
+            capabilities=tuple(sorted(NATIVE_RUNTIME_CAPABILITIES)),
+            renderer=renderer,
+            tokenizer=tokenizer,
+            decoding=decoding,
+        )
