@@ -62,7 +62,6 @@ def settings() -> GRPOSettings:
         revision=TOKENIZER_REVISION,
         runtime_profile="task-graph-v1",
         loss_type="dapo",
-        scale_rewards="none",
         enable_thinking=False,
         group_size=4,
         microbatch_size=1,

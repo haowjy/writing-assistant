@@ -73,7 +73,6 @@ class GRPOSettings:
     enable_thinking: bool = True
     gradient_checkpointing: bool = True
     gradient_checkpointing_use_reentrant: bool = False
-    scale_rewards: str = "group"  # TRL reward normalization, frozen in experiment identity.
 
     runtime_profile: str = "probe"  # Explicit admission/seed policy; not a TRL backend.
 
@@ -90,9 +89,7 @@ class GRPOSettings:
             raise ValueError("Unknown runtime admission profile")
         full48 = self.runtime_profile == "intact-full48-v1"
         task_graph = self.runtime_profile == "task-graph-v1"
-        if task_graph and (
-            self.loss_type != "dapo" or self.scale_rewards != "none" or self.enable_thinking
-        ):
+        if task_graph and (self.loss_type != "dapo" or self.enable_thinking):
             raise ValueError(
                 "Task-graph training requires DAPO, unscaled advantages and thinking disabled"
             )
@@ -100,8 +97,6 @@ class GRPOSettings:
             raise ValueError("Loss type must be grpo or dapo")
         if self.tie_policy not in ("halt", "continue"):
             raise ValueError("Tie policy must be halt or continue")
-        if self.scale_rewards not in ("group", "batch", "none"):
-            raise ValueError("Reward scaling must be group, batch or none")
         checkpoint_identity(self.model_id, self.revision)
         if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= (96 if full48 else 20)):
             raise ValueError("Serial probe requires group size 2..8 and optimizer steps 1..20")
@@ -444,7 +439,6 @@ def train_grpo(
         implementation_config=verified_runtime["config"] if verified_runtime else None,
         report_to=report_to,
         run_name=wandb_run_name,
-        scale_rewards=settings.scale_rewards,
     )
 
     rollout_builder = rollout_factory or RolloutGroups

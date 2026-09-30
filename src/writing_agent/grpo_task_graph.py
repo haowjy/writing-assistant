@@ -261,7 +261,8 @@ def task_graph_experiment_manifest(
             }
         )
     recipe = {
-        "settings": asdict(settings),
+        # Preserve the recipe shape while reward scaling is profile-derived, not an input.
+        "settings": {**asdict(settings), "scale_rewards": "none"},
         "loss_type": "dapo",
         "beta": 0,
         "num_iterations": 1,
@@ -867,7 +868,6 @@ def train_task_graph(
         use_cpu=next(model.parameters()).device.type == "cpu",
         bf16=next(model.parameters()).dtype == api.torch.bfloat16,
         implementation_config=runtime["config"],
-        scale_rewards="none",
     )
     observer = TaskGraphLossObserver(output)
     factory = partial(

@@ -91,27 +91,31 @@ class IntegrityTests(unittest.TestCase):
                     )
             self.assertFalse(output.exists())
 
-    def test_reward_scaling_is_explicit_and_identity_bound(self):
-        spec = {"id": "fixture-v1", "config": {}, "mode": "mechanical-only-smoke"}
-        admission = {"mode": "engineered-fixture", "label": "test-only"}
-        default = GRPOSettings(revision=REVISION)
-        unscaled = replace(default, scale_rewards="none")
-        with tempfile.TemporaryDirectory() as tmp:
-            default_plan = inspect_grpo(
-                [task()], tmp, settings=default, reward_spec=spec, admission=admission
-            )
-            unscaled_plan = inspect_grpo(
-                [task()], tmp, settings=unscaled, reward_spec=spec, admission=admission
-            )
-        self.assertEqual(default_plan["settings"]["scale_rewards"], "group")
-        self.assertEqual(unscaled_plan["settings"]["scale_rewards"], "none")
-        self.assertNotEqual(fingerprint(default_plan), fingerprint(unscaled_plan))
-        config = trainer_config(default, "unused", use_cpu=True, bf16=False)
-        self.assertEqual(config["scale_rewards"], "group")
-        unscaled_config = trainer_config(
-            unscaled, "unused", use_cpu=True, bf16=False, scale_rewards="none"
+    def test_reward_scaling_is_derived_from_runtime_profile(self):
+        legacy = GRPOSettings(revision=REVISION)
+        task_graph = GRPOSettings(
+            revision=REVISION,
+            runtime_profile="task-graph-v1",
+            loss_type="dapo",
+            enable_thinking=False,
         )
-        self.assertEqual(unscaled_config["scale_rewards"], "none")
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = inspect_grpo(
+                [task()],
+                tmp,
+                settings=legacy,
+                reward_spec={"id": "fixture-v1", "config": {}, "mode": "mechanical-only-smoke"},
+                admission={"mode": "engineered-fixture", "label": "test-only"},
+            )
+
+        self.assertNotIn("scale_rewards", plan["settings"])
+        self.assertEqual(
+            trainer_config(legacy, "unused", use_cpu=True, bf16=False)["scale_rewards"], "group"
+        )
+        self.assertEqual(
+            trainer_config(task_graph, "unused", use_cpu=True, bf16=False)["scale_rewards"],
+            "none",
+        )
 
     def test_tie_policy_is_explicit_and_identity_bound(self):
         settings = GRPOSettings(revision=REVISION)

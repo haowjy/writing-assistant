@@ -5,6 +5,8 @@
 - Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
   rollout classes.
 
+- Derive reward scaling from the runtime profile, preserving legacy plan identities.
+
 - Use one fail-closed verdict rule in both the task-graph probe worker and parent.
 
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
@@ -24,7 +26,7 @@
 
 - Set only validated W&B environment bindings, and only after runtime admission succeeds.
 
-- Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
+- Derive TRL reward scaling from the runtime profile, preserving legacy plan identities.
 
 - Bind native Gemma tool calls to deterministic task-graph action IDs, pair replayed results
   exactly, and halt the CPU trace check on protocol-shaped tool-result errors while recording

@@ -34,7 +34,6 @@ def _settings(**overrides) -> GRPOSettings:
         "revision": "a" * 40,
         "runtime_profile": "task-graph-v1",
         "loss_type": "dapo",
-        "scale_rewards": "none",
         "enable_thinking": False,
         "group_size": 4,
         "microbatch_size": 1,
@@ -123,21 +122,17 @@ class TaskGraphSettingsTests(unittest.TestCase):
     def test_profile_is_dapo_unscaled_nonthinking_and_keeps_every_checkpoint(self):
         settings = _settings()
         settings.validate()
-        values = trainer_config(settings, "unused", use_cpu=True, bf16=False, scale_rewards="none")
+        values = trainer_config(settings, "unused", use_cpu=True, bf16=False)
         self.assertEqual(values["loss_type"], "dapo")
         self.assertEqual(values["scale_rewards"], "none")
         self.assertIsNone(values["save_total_limit"])
         legacy = trainer_config(
-            _settings(runtime_profile="probe", scale_rewards="batch"),
-            "unused",
-            use_cpu=True,
-            bf16=False,
+            _settings(runtime_profile="probe"), "unused", use_cpu=True, bf16=False
         )
         self.assertEqual(legacy["scale_rewards"], "group")
 
         for override in (
             {"loss_type": "grpo"},
-            {"scale_rewards": "group"},
             {"enable_thinking": True},
         ):
             with self.subTest(override=override), self.assertRaises(ValueError):
