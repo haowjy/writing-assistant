@@ -7,7 +7,7 @@ from dataclasses import replace
 from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
 from writing_agent.task_graph_contracts import CheckContractV1, EvaluatorPacketV1, RewardContractV1
 from writing_agent.task_graph_derive_entry import derive_entry
-from writing_agent.task_graph_probe_experiment import (
+from writing_agent.task_graph_probe_tasks import (
     EntryFixture,
     MemoryArtifactReader,
     make_entry_fixture,

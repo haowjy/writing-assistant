@@ -194,6 +194,40 @@ import writing_agent.native_protocol
                 termination={"kind": "native_stop"},
             )
 
+    def test_configuration_value_error_remains_an_infrastructure_error(self):
+        class MisconfiguredTokenizer:
+            def parse_response(self, _text, *, prefix):
+                raise ValueError(
+                    "`parse_response` requires `prefix=` (the prompt that came before generation)"
+                )
+
+        with self.assertRaises(ProtocolError):
+            parse_native_response(
+                MisconfiguredTokenizer(),
+                "plain text",
+                prefix="",
+                action_id="member:action:0",
+                termination={"kind": "native_stop"},
+            )
+
+    def test_reserved_sentinel_error_is_a_model_parse_failure(self):
+        class SentinelTokenizer:
+            def parse_response(self, _text, *, prefix):
+                raise ValueError(
+                    "json: input contains reserved sentinel characters (\\x01/\\x02); "
+                    "cannot parse safely."
+                )
+
+        result = parse_native_response(
+            SentinelTokenizer(),
+            "<|tool_call>call:write_file{content:\x01",
+            prefix="",
+            action_id="member:action:0",
+            termination={"kind": "token_limit"},
+        )
+        self.assertTrue(result.failed)
+        self.assertEqual(result.message["tool_calls"], [])
+
     def test_unexpected_parser_exceptions_are_infrastructure_errors(self):
         for error_type in (AttributeError, TypeError, ValueError):
             with (
@@ -222,11 +256,69 @@ class NativeProtocolTokenizerTests(unittest.TestCase):
     def setUpClass(cls):
         from transformers import AutoTokenizer
 
-        cls.tokenizer = AutoTokenizer.from_pretrained(
-            TOKENIZER_ID,
-            revision=TOKENIZER_REVISION,
-            local_files_only=True,
+        try:
+            cls.tokenizer = AutoTokenizer.from_pretrained(
+                TOKENIZER_ID,
+                revision=TOKENIZER_REVISION,
+                local_files_only=True,
+            )
+        except OSError as exc:
+            raise unittest.SkipTest(
+                "requires the cached Gemma tokenizer; tests never download model files"
+            ) from exc
+
+    def test_every_p1_call_prefix_parses_or_commits_as_failed(self):
+        prompt = self.tokenizer.apply_chat_template(
+            [{"role": "user", "content": "Write."}],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
         )
+        quote = '<|"|>'
+        calls = (
+            "<|tool_call>call:write_file{content:"
+            f"{quote}A keeper waits.{quote},path:{quote}scene.txt{quote}"
+            "}<tool_call|><|tool_response>",
+            "<|tool_call>call:ask_author{question:"
+            f"{quote}Which ending?{quote}"
+            "}<tool_call|><|tool_response>",
+            "<|tool_call>call:read_file{path:"
+            f"{quote}brief.md{quote}"
+            "}<tool_call|><|tool_response>",
+        )
+        parsed_count = 0
+        flagged_count = 0
+        for termination_kind in ("token_limit", "native_stop"):
+            for call in calls:
+                token_ids = self.tokenizer.encode(call, add_special_tokens=False)
+                for prefix_length in range(len(token_ids) + 1):
+                    raw_text = self.tokenizer.decode(
+                        token_ids[:prefix_length], skip_special_tokens=False
+                    )
+                    with self.subTest(
+                        termination=termination_kind,
+                        prefix_length=prefix_length,
+                        raw_text=raw_text,
+                    ):
+                        result = parse_native_response(
+                            self.tokenizer,
+                            raw_text,
+                            prefix=prompt,
+                            action_id="member:action:0",
+                            termination={"kind": termination_kind},
+                        )
+                        self.assertIsInstance(result.failed, bool)
+                        if result.failed:
+                            flagged_count += 1
+                            self.assertEqual(
+                                result.message,
+                                {"role": "assistant", "content": raw_text, "tool_calls": []},
+                            )
+                        else:
+                            parsed_count += 1
+                            self.assertEqual(result.message["role"], "assistant")
+        self.assertGreater(parsed_count, 0)
+        self.assertGreater(flagged_count, 0)
 
     def _token_id(self, token):
         token_ids = self.tokenizer.encode(token, add_special_tokens=False)

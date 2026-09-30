@@ -22,18 +22,20 @@ from writing_agent.catalog import save_json
 from writing_agent.grpo_gpu import DISPLAY_POLICY
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_probe_evidence import _select_verdict
-from writing_agent.task_graph_probe_experiment import (
-    CONFIG_DIR,
+from writing_agent.grpo_task_graph_probe_experiment import (
     TOKENIZER_PATH,
-    build_admitted_entry,
     fixture_plans,
-    load_probe_task,
-    load_probe_tasks,
     make_task_graph_run,
     tiny_gemma,
 )
-from writing_agent.task_graph_probe_experiment import (
+from writing_agent.grpo_task_graph_probe_experiment import (
     settings as probe_settings,
+)
+from writing_agent.task_graph_probe_tasks import (
+    CONFIG_DIR,
+    build_admitted_entry,
+    load_probe_task,
+    load_probe_tasks,
 )
 from writing_agent.training_stages import (
     StageAttemptError,

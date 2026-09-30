@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.catalog import save_json
+from writing_agent.grpo_task_graph_probe_experiment import (
+    TOKENIZER_PATH,
+    tiny_gemma,
+)
+from writing_agent.grpo_task_graph_probe_experiment import (
+    settings as probe_settings,
+)
 from writing_agent.grpo_task_graph_probe_privacy import (
     criterion_6 as build_criterion_6,
 )
@@ -22,13 +29,6 @@ from writing_agent.grpo_task_graph_probe_privacy import (
 )
 from writing_agent.task_graph import canonical_bytes, load_canonical_json
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
-from writing_agent.task_graph_probe_experiment import (
-    TOKENIZER_PATH,
-    tiny_gemma,
-)
-from writing_agent.task_graph_probe_experiment import (
-    settings as probe_settings,
-)
 from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
 from writing_agent.training_stages import _disk_bytes
 
@@ -55,9 +55,9 @@ CRITERION_DESCRIPTIONS = {
         "ceiling held."
     ),
     "criterion_6": (
-        "The two inspections are byte-identical; planted private-record canaries are absent "
-        "outside the store's private area; and each member's sampler inputs are re-derived from "
-        "that member's verified lineage."
+        "The two inspections are byte-identical; each planted private-record canary is present "
+        "inside training/private and absent outside it; and each member's sampler inputs are "
+        "re-derived from that member's verified lineage."
     ),
 }
 
@@ -161,6 +161,7 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
                         "member_id": member.member_id,
                         "sampler_inputs_bound_to_own_lineage": lineage_bound,
                         "eligibility": eligibility,
+                        "stop_reason": view.outcome.stop_reason,
                         "turns": member_terminations,
                         "tool_outcomes": tool_outcomes,
                     }
@@ -582,18 +583,28 @@ def _ledger_metrics(groups: list[dict[str, Any]]) -> dict[str, Any]:
     prefill = 0
     unique = 0
     terminations: dict[str, int] = {}
+    stop_reasons: dict[str, int] = {}
+    stop_reasons_per_member: dict[str, dict[str, int]] = {}
+    native_parse_failed_count = 0
     rewards = []
     for group in groups:
         rewards.extend(float(value) for value in group["rewards"])
         for kind, count in group["terminations"].items():
             terminations[kind] = terminations.get(kind, 0) + count
         for member in group["members"]:
+            member_counts = {}
+            reason = member["stop_reason"]
+            if reason is not None:
+                member_counts[reason] = 1
+                stop_reasons[reason] = stop_reasons.get(reason, 0) + 1
+            stop_reasons_per_member[member["member_id"]] = member_counts
             turns = member["turns"]
             if not turns:
                 raise ValueError("group member has no native token ledger")
             for turn in turns:
                 usage = turn.usage
                 prefill += usage["prefill_tokens"]
+                native_parse_failed_count += turn.native_parse_failed is True
             unique += turns[-1].input_token_count + turns[-1].generated_token_count
     if unique <= 0 or not rewards:
         raise ValueError("ledger or reward measurements are unavailable")
@@ -605,6 +616,11 @@ def _ledger_metrics(groups: list[dict[str, Any]]) -> dict[str, Any]:
         "reward_max": max(rewards),
         "reward_spread": max(rewards) - min(rewards),
         "termination_classes": terminations,
+        "stop_reason_counts": {
+            "per_member": dict(sorted(stop_reasons_per_member.items())),
+            "totals": dict(sorted(stop_reasons.items())),
+        },
+        "native_parse_failed_count": native_parse_failed_count,
     }
 
 

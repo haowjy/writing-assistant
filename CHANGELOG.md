@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+- Sort native tool-outcome reports by writer-action ordinal and call index.
+
+- Name the outside-packet canary for its actual scope: detecting a bulk private-store dump,
+  not leakage of an admitted evaluator check spec.
+
+- Require every planted privacy canary to be present in `training/private` as criterion 6's
+  positive control, in addition to checking for leaks outside it.
+
+- Report per-member terminal stop reasons and total native parse-failed turns in probe
+  measurements.
+
+- Separate pure Phase 8 probe-task loading and admission from its trainer recipe and
+  tokenizer-bound run composition.
+
+- Commit truncated or malformed native tool output as parse-failed turns, including incomplete
+  call headers and reserved sentinels, while keeping parser configuration errors fail-closed.
+
 - Share one adapter tensor hash, bounded/unbounded u32 decoder and durable atomic file writer
   across native training and trace evidence.
 

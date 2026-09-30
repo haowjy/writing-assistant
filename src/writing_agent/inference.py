@@ -103,36 +103,16 @@ def render_messages(messages: list[dict]) -> list[dict]:
     return rendered
 
 
-class NativeResponseParseError(ValueError):
-    """The tokenizer could not parse sampled native response text."""
-
-
-def _is_malformed_native_output_error(error: ValueError) -> bool:
-    """Recognize the pinned Gemma parser's malformed-output failures, not arbitrary bugs."""
-    message = str(error)
-    return message.startswith(
-        (
-            "json: could not parse after dialect transforms",
-            "Required response_template fields missing from parsed output:",
-        )
-    )
-
-
 def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
-    try:
-        message = tokenizer.parse_response(text, prefix=prefix)
-    except ValueError as exc:
-        if not _is_malformed_native_output_error(exc):
-            raise
-        raise NativeResponseParseError("Tokenizer could not parse the native response") from exc
+    message = tokenizer.parse_response(text, prefix=prefix)
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
-        raise NativeResponseParseError("Native tool-call output was not completely parsed")
+        raise ValueError("Native tool-call output was not completely parsed")
     for i, call in enumerate(calls):
         call["id"] = f"call_{i}"
         if not isinstance(call["function"]["arguments"], dict):
-            raise NativeResponseParseError("Native tool arguments must be an object")
+            raise ValueError("Native tool arguments must be an object")
     return message
 
 

@@ -17,20 +17,20 @@ from writing_agent.catalog import save_json
 from writing_agent.grpo import file_hashes
 from writing_agent.grpo_checkpoint import verify_checkpoint
 from writing_agent.grpo_task_graph import TaskGraphLossObserver
+from writing_agent.grpo_task_graph_probe_experiment import (
+    TOKENIZER_PATH,
+    fixture_plans,
+    make_task_graph_run,
+    settings,
+    tiny_gemma,
+)
 from writing_agent.native_gemma import (
     NativeGemmaRenderer,
     NativeGemmaSampleBackend,
 )
 from writing_agent.native_protocol import parse_native_response
 from writing_agent.task_graph_ports import BinaryLogprobEvidence, SampleResultV2
-from writing_agent.task_graph_probe_experiment import (
-    TOKENIZER_PATH,
-    fixture_plans,
-    load_probe_tasks,
-    make_task_graph_run,
-    settings,
-    tiny_gemma,
-)
+from writing_agent.task_graph_probe_tasks import load_probe_tasks
 
 
 class ScriptedNativeBackend:

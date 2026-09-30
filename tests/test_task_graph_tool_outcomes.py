@@ -151,7 +151,13 @@ class TaskGraphToolOutcomeTests(unittest.TestCase):
             )
             outcomes = read_member_tool_outcomes(start, final)
             call_ids = [item["call_id"] for item in outcomes["calls"]]
-            self.assertEqual(call_ids, sorted(call_ids))
+            self.assertEqual(
+                call_ids,
+                [
+                    f"{start.state.position['lineage_id']}:call:0:{index}"
+                    for index in range(len(calls))
+                ],
+            )
 
             later_sample = replace(final.samples[-1], action_id="later:action:0")
             nonfinal_action = replace(final, samples=(*final.samples, later_sample))

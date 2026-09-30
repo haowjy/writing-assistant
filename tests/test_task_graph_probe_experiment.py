@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 
-from writing_agent.task_graph_probe_experiment import (
+from writing_agent.task_graph_probe_tasks import (
     AUTHOR_PACKET_CANARY,
-    EVALUATOR_PACKET_CANARY,
+    CONFIG_DIR,
+    PRIVATE_STORE_DUMP_CANARY,
     build_admitted_entry,
     load_probe_tasks,
 )
 
 
 class ProbeTaskGraphIdentityTests(unittest.TestCase):
+    def test_loader_accepts_an_explicit_config_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            task_dir = Path(temporary)
+            shutil.copyfile(CONFIG_DIR / "t1-lighthouse.json", task_dir / "t1-lighthouse.json")
+            tasks = load_probe_tasks(task_dir)
+
+        self.assertEqual([task["id"] for task in tasks], ["t1-lighthouse"])
+
     def test_graphs_match_the_planted_canary_task_identities(self):
         expected = {
             "t1-lighthouse": (
@@ -35,9 +47,9 @@ class ProbeTaskGraphIdentityTests(unittest.TestCase):
             private_records = repr(entry.reader.private.values())
             public_records = repr(entry.reader.public.values())
             self.assertIn(AUTHOR_PACKET_CANARY, private_records)
-            self.assertIn(EVALUATOR_PACKET_CANARY, private_records)
+            self.assertIn(PRIVATE_STORE_DUMP_CANARY, private_records)
             self.assertNotIn(AUTHOR_PACKET_CANARY, public_records)
-            self.assertNotIn(EVALUATOR_PACKET_CANARY, public_records)
+            self.assertNotIn(PRIVATE_STORE_DUMP_CANARY, public_records)
         self.assertEqual(expected, actual)
 
 

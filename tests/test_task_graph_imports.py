@@ -50,7 +50,11 @@ NEW_SEAM_MODULES = {
     "writing_agent.task_graph_ports",
     "writing_agent.task_graph_local",
     "writing_agent.task_graph_composition",
+    "writing_agent.task_graph_probe_tasks",
 }
+FORBIDDEN_MODEL_IMPORTS = frozenset(
+    {"torch", "transformers", "peft", "trl", "tokenizers", "accelerate"}
+)
 FORBIDDEN_IMPORT_PATTERNS = {
     re.compile(r"^writing_agent\.task_graph_(?:gatherers|rollout)(?:\..+)?$"): frozenset(
         {"writing_agent.task_graph_transition"}
@@ -70,6 +74,7 @@ LAYER_RANKS = {
             "task_graph_record_contracts",
             "task_graph_payloads",
             "task_graph_operation",
+            "task_graph_token_ledger",
         )
     },
     **{
@@ -86,9 +91,12 @@ LAYER_RANKS = {
             "task_graph_evaluation",
             "task_graph_controller",
             "task_graph_artifacts",
+            "task_graph_context_roots",
+            "task_graph_group_index",
         )
     },
     "writing_agent.task_graph_store": 2,
+    "writing_agent.task_graph_closure": 2,
     **{
         f"writing_agent.{name}": 3
         for name in (
@@ -113,6 +121,7 @@ LAYER_RANKS = {
     "writing_agent.task_graph_composition": 6,
     "writing_agent.task_graph_gatherers": 6,
     "writing_agent.task_graph_rollout": 6,
+    "writing_agent.task_graph_probe_tasks": 6,
 }
 
 
@@ -122,6 +131,36 @@ def _module_name(path: Path) -> str:
     if parts[-1] == "__init__":
         parts.pop()
     return ".".join(("writing_agent", *parts))
+
+
+def _import_targets(tree: ast.Module) -> set[str]:
+    """Return modules named by import statements, including from-import aliases."""
+    targets = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            targets.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:
+                parent = ["writing_agent"][: 1 - node.level + 1]
+                base = ".".join((*parent, *([base] if base else [])))
+            if base:
+                targets.add(base)
+                targets.update(f"{base}.{alias.name}" for alias in node.names)
+    return targets
+
+
+def _forbidden_task_graph_import(target: str) -> bool:
+    if target.split(".", 1)[0] in FORBIDDEN_MODEL_IMPORTS:
+        return True
+    return target.startswith(
+        (
+            "writing_agent.grpo",
+            "writing_agent.native_",
+            "writing_agent.inference",
+            "writing_agent.training_stages",
+        )
+    )
 
 
 def _add_edge(graph: dict[str, set[str]], source: str, target: str) -> None:
@@ -294,6 +333,16 @@ class TaskGraphImportTests(unittest.TestCase):
                     with self.subTest(module=module_path.name, line=node.lineno):
                         self.assertFalse(imported.name.startswith("_"))
                         self.assertFalse(imported.asname and imported.asname.startswith("_"))
+
+    def test_every_task_graph_module_stays_below_the_model_stack(self) -> None:
+        for module_path in sorted(SOURCE_PACKAGE.glob("task_graph*.py")):
+            module = _module_name(module_path)
+            tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+            targets = _import_targets(tree)
+            forbidden = sorted(target for target in targets if _forbidden_task_graph_import(target))
+            with self.subTest(module=module):
+                self.assertEqual([], forbidden, f"{module} imports above the core: {forbidden}")
+                self.assertIn(module, LAYER_RANKS, f"missing layer rank for {module}")
 
     def test_new_seam_modules_are_not_in_import_cycles(self) -> None:
         graph = build_import_graph()
