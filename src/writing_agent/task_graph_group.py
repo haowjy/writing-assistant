@@ -29,7 +29,7 @@ from writing_agent.task_graph_group_contract import (
     resolve_group_environment,
     validate_group_policy,
 )
-from writing_agent.task_graph_group_index import groups_by_sequence as _groups_by_sequence
+from writing_agent.task_graph_group_index import groups_by_sequence as read_groups_by_sequence
 from writing_agent.task_graph_group_records import (
     GroupAdvantageV1,
     GroupDecisionV1,
@@ -181,7 +181,7 @@ class GroupCoordinatorV1:
     @staticmethod
     def groups_by_sequence(groups_root: Path | str) -> dict[int, GroupSpecV1 | None]:
         """Return sealed group specs and active step reservations by sequence."""
-        return _groups_by_sequence(groups_root)
+        return read_groups_by_sequence(groups_root)
 
     def _entry_contract(self, checkpoint_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         view = self.environment.verify(
