@@ -27,6 +27,8 @@
 
 - Derive tool-call rejection codes from exact committed error text and make P1 criterion 1
   fail on protocol-shaped native-intake rejections in any member.
+- Bind scripted CPU-probe tool IDs exactly like native sampling so the dry run exercises the
+  committed call/result identity contract.
 
 - Treat Transformers 5's unset neutral generation controls as no-ops while continuing to
   refuse non-neutral defaults; persist failed trace timings as canonical nanoseconds.

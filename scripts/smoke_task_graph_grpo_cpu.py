@@ -34,6 +34,7 @@ from writing_agent.native_gemma import (
     NativeGemmaSampleBackend,
     make_native_manifest_descriptors,
 )
+from writing_agent.native_protocol import bind_native_tool_call_ids
 from writing_agent.task_graph_derive_entry import derive_entry
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_gate import LineageGate
@@ -253,10 +254,13 @@ class ScriptedNativeBackend:
         values = tuple(float(value) for value in logprobs.tolist())
         stop_id = generated[-1]
         return SampleResultV2(
-            message=parse_response(
-                self.tokenizer,
-                raw,
-                prefix=self.tokenizer.decode(input_ids, skip_special_tokens=False),
+            message=bind_native_tool_call_ids(
+                parse_response(
+                    self.tokenizer,
+                    raw,
+                    prefix=self.tokenizer.decode(input_ids, skip_special_tokens=False),
+                ),
+                prepared.action_id,
             ),
             input_token_ids=tuple(input_ids),
             generated_token_ids=generated,
