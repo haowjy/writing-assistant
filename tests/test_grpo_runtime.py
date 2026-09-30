@@ -28,9 +28,8 @@ except PackageNotFoundError:
 
 class RuntimeAdmissionTests(unittest.TestCase):
     def test_wandb_environment_is_unchanged_when_runtime_admission_fails(self):
-        from test_grpo import REVISION, task
-
         from scripts.smoke_grpo_cpu import toy_reward
+        from tests.test_grpo import REVISION, task
 
         bindings = {
             "WANDB_RUN_ID": "admission-failure",
@@ -73,7 +72,7 @@ class RuntimeAdmissionTests(unittest.TestCase):
             self.assertEqual(dict(os.environ), before)
 
     def test_legacy_plan_shape_and_explicit_streaming_identity(self):
-        from test_grpo import REVISION, task
+        from tests.test_grpo import REVISION, task
 
         common = dict(
             tasks=[task()],

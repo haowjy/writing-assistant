@@ -417,6 +417,7 @@ class TaskGraphRollouts:
         task = self.task_entries[task_id]
         environment = self.environments[task_id]
         reservation = _reserve_step(self.output / "groups", step, task_id)
+        spec = None
         try:
             _assert_active_adapter(trainer.model, self.adapter_name)
             adapter_before = self._behavior_policy_ref(trainer.model, step)
@@ -477,19 +478,17 @@ class TaskGraphRollouts:
                         execution_status="valid",
                     )
                     coordinator.collect(spec, result)
-                except DriverBudgetError as exc:
-                    failure = exc
-                    current = exc.runtime
-                    coordinator.collect_invalid(
-                        spec, ordinal, reason=f"DriverBudgetError: {exc.max_steps}"
-                    )
-                    break
                 except Exception as exc:
                     failure = exc
+                    reason = (
+                        f"DriverBudgetError: {exc.max_steps}"
+                        if isinstance(exc, DriverBudgetError)
+                        else f"{type(exc).__name__}: {exc}"
+                    )
                     coordinator.collect_invalid(
                         spec,
                         ordinal,
-                        reason=f"{type(exc).__name__}: {exc}"[:512],
+                        reason=reason[:512],
                     )
                     break
 
@@ -527,7 +526,6 @@ class TaskGraphRollouts:
                 adapter_hash_after=adapter_after,
                 tokenizer_root=self.tokenizer_root,
             )
-            admission_ref = admission.identity()
             batch = TrainingBatchV1.from_dict(self.store.get_artifact(admission.batch_ref))
             members = self._training_rows(batch)
             self._save_consumed_batch(
@@ -563,8 +561,8 @@ class TaskGraphRollouts:
                 if receipt.get("status") in {"sealing", "sealed"}:
                     receipt["status"] = "halted"
                 receipt["failure"] = f"{type(exc).__name__}: {exc}"[:1024]
-                if isinstance(locals().get("spec"), GroupSpecV1):
-                    receipt["group_id"] = locals()["spec"].group_id
+                if spec is not None:
+                    receipt["group_id"] = spec.group_id
                 _atomic_json(reservation, receipt)
             raise
 
