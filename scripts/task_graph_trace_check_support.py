@@ -377,9 +377,11 @@ def same_incomplete_reason(members: list[dict[str, Any]]) -> str | None:
 
 
 def classify_protocol_shape(error: dict[str, Any]) -> str:
-    text = " ".join(
-        str(error.get(key, "")) for key in ("type", "message", "failed_check", "reason_code")
-    ).lower()
+    values = [error.get(key, "") for key in ("type", "message", "failed_check", "reason_code")]
+    failed_checks = error.get("failed_checks", ())
+    if isinstance(failed_checks, (list, tuple, set)):
+        values.extend(failed_checks)
+    text = " ".join(map(str, values)).lower()
     if any(word in text for word in ("external_suffix", "suffix", "delta", "tool result")):
         return "delta"
     if any(word in text for word in ("termination", "stop token", "token_limit", "context_limit")):

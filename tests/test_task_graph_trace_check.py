@@ -9,7 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from scripts.task_graph_trace_check import claim_output_directory, main, parse_args
-from scripts.task_graph_trace_check_support import same_incomplete_reason
+from scripts.task_graph_trace_check_support import classify_protocol_shape, same_incomplete_reason
 
 
 class TaskGraphTraceCheckCliTests(unittest.TestCase):
@@ -61,6 +61,28 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
         self.assertEqual(same_incomplete_reason(members), "context_tokens_budget")
         members[1]["stop_reason"] = "decision_token_limit"
         self.assertIsNone(same_incomplete_reason(members))
+
+    def test_audit_refusal_classifies_failed_checks_as_protocol_shape(self):
+        self.assertEqual(
+            classify_protocol_shape(
+                {
+                    "type": "TrainingAuditError",
+                    "message": "native training audit refused one or more members",
+                    "failed_checks": ["external_suffix_and_context_limit"],
+                }
+            ),
+            "delta",
+        )
+        self.assertEqual(
+            classify_protocol_shape(
+                {
+                    "type": "TrainingAuditError",
+                    "message": "native training audit refused one or more members",
+                    "failed_checks": ["raw_output_and_message"],
+                }
+            ),
+            "parse",
+        )
 
 
 if __name__ == "__main__":
