@@ -14,11 +14,43 @@ from writing_agent.grpo_task_graph_probe import (
     _latest_checkpoint,
     _require_latest_checkpoint,
     _select_verdict,
+    inspect,
+    prepare,
 )
 from writing_agent.grpo_task_graph_probe_evidence import _criterion, inspect_run
 
 
 class TaskGraphProbeTests(unittest.TestCase):
+    def test_inspect_is_read_only_and_prepare_persists_its_pre_run_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "run"
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "HF_HUB_OFFLINE": "1",
+                        "TRANSFORMERS_OFFLINE": "1",
+                        "PYTHONDONTWRITEBYTECODE": "1",
+                        "CUDA_VISIBLE_DEVICES": "",
+                    },
+                ),
+                patch(
+                    "writing_agent.grpo_task_graph_probe._prepare_record",
+                    return_value={
+                        "schema": 1,
+                        "run_id": "run",
+                        "recipe": {"execution_mode": "cpu-dry-run"},
+                        "source": {"commit": "commit", "tree": "tree"},
+                    },
+                ),
+            ):
+                before = inspect(root, mode="cpu-dry-run")
+                self.assertFalse(root.exists())
+                prepare(root, mode="cpu-dry-run")
+
+            self.assertFalse(before["writes"])
+            self.assertEqual(json.loads((root / "inspect.json").read_text()), before)
+
     def test_import_is_legacy_probe_and_torch_free(self):
         code = (
             "import sys; import writing_agent.grpo_task_graph_probe; "

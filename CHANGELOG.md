@@ -15,6 +15,8 @@
 
 - Require both offline inspection rounds to cover all three groups before criterion 4 can pass.
 
+- Keep `inspect` read-only and persist its pre-run record from `prepare`.
+
 - Set only validated W&B environment bindings, and only after runtime admission succeeds.
 
 - Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).

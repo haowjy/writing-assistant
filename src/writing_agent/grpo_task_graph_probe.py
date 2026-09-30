@@ -277,9 +277,11 @@ def prepare(run_dir: Path, *, mode: str) -> dict[str, Any]:
     if run_dir.exists():
         raise ProbeError("probe run directory must not exist before prepare")
     _offline_requirements(cpu=mode.startswith("cpu"))
+    inspection = inspect(run_dir, mode=mode)
     record = _prepare_record(run_dir, mode=mode)
     record["integrity_sha256"] = _prepare_digest(record)
     run_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
+    save_json(run_dir / "inspect.json", inspection)
     save_json(run_dir / "prepare.json", record)
     return {"phase": "prepare", "path": str(run_dir / "prepare.json"), "source": record["source"]}
 
