@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Report per-member terminal stop reasons and total native parse-failed turns in probe
+  measurements.
+
 - Separate pure Phase 8 probe-task loading and admission from its trainer recipe and
   tokenizer-bound run composition.
 

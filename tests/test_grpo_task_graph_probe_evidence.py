@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import tempfile
 import unittest
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
+from writing_agent.grpo_task_graph_probe_evidence import _ledger_metrics
 from writing_agent.grpo_task_graph_probe_privacy import (
     criterion_6,
     scan_run_privacy,
@@ -20,6 +22,54 @@ from writing_agent.task_graph_probe_tasks import (
 
 
 class ProbePrivacyEvidenceTests(unittest.TestCase):
+    def test_measurements_report_member_stop_reasons_and_parse_failures(self):
+        groups = [
+            {
+                "rewards": [Fraction(0), Fraction(0)],
+                "terminations": {"token_limit:decision": 2},
+                "members": [
+                    {
+                        "member_id": "member-1",
+                        "stop_reason": "unparsed_tool_call",
+                        "turns": [
+                            SimpleNamespace(
+                                usage={"prefill_tokens": 10},
+                                input_token_count=12,
+                                generated_token_count=3,
+                                native_parse_failed=True,
+                            )
+                        ],
+                    },
+                    {
+                        "member_id": "member-2",
+                        "stop_reason": "decision_token_limit",
+                        "turns": [
+                            SimpleNamespace(
+                                usage={"prefill_tokens": 11},
+                                input_token_count=13,
+                                generated_token_count=4,
+                                native_parse_failed=None,
+                            )
+                        ],
+                    },
+                ],
+            }
+        ]
+
+        measurements = _ledger_metrics(groups)
+
+        self.assertEqual(
+            measurements["stop_reason_counts"],
+            {
+                "per_member": {
+                    "member-1": {"unparsed_tool_call": 1},
+                    "member-2": {"decision_token_limit": 1},
+                },
+                "totals": {"unparsed_tool_call": 1, "decision_token_limit": 1},
+            },
+        )
+        self.assertEqual(measurements["native_parse_failed_count"], 1)
+
     def _criterion(self, root: Path):
         scan = scan_run_privacy(root)
         sibling_scope = {
