@@ -431,7 +431,7 @@ class TaskGraphProbeTests(unittest.TestCase):
                     return_value=[],
                 ),
                 patch(
-                    "writing_agent.grpo_task_graph_probe_evidence._privacy_scan",
+                    "writing_agent.grpo_task_graph_probe_privacy.scan_run_privacy",
                     return_value={
                         "hits": [],
                         "checked_files": 0,

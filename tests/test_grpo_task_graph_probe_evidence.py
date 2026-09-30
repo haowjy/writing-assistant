@@ -8,10 +8,10 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from writing_agent.grpo_task_graph_probe_evidence import (
-    _criterion_6,
-    _privacy_scan,
-    _sibling_input_scope,
+from writing_agent.grpo_task_graph_probe_privacy import (
+    criterion_6,
+    scan_run_privacy,
+    verify_member_input_scope,
 )
 from writing_agent.task_graph_probe_experiment import (
     AUTHOR_PACKET_CANARY,
@@ -21,14 +21,14 @@ from writing_agent.task_graph_probe_experiment import (
 
 class ProbePrivacyEvidenceTests(unittest.TestCase):
     def _criterion(self, root: Path):
-        scan = _privacy_scan(root)
+        scan = scan_run_privacy(root)
         sibling_scope = {
             "verified": True,
             "member_count": 4,
             "scope": "test double for the offline native audit's per-member reconstruction",
             "limits": "Only the stated member lineage scope is claimed.",
         }
-        result = _criterion_6(
+        result = criterion_6(
             inspections_byte_identical=True,
             privacy=scan,
             frozen_public_task_scope=True,
@@ -106,9 +106,9 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
             for _ in range(6)
         ]
 
-        verified = _sibling_input_scope([group], reports, inspections_byte_identical=True)
+        verified = verify_member_input_scope([group], reports, inspections_byte_identical=True)
         group["members"][0]["sampler_inputs_bound_to_own_lineage"] = False
-        refused = _sibling_input_scope([group], reports, inspections_byte_identical=True)
+        refused = verify_member_input_scope([group], reports, inspections_byte_identical=True)
 
         self.assertTrue(verified["verified"])
         self.assertIn("not absence of arbitrary shared public text", verified["limits"])

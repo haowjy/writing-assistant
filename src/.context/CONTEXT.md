@@ -147,7 +147,8 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_probe_experiment.py](../writing_agent/task_graph_probe_experiment.py) owns
   the Phase 8 probe recipe, admitted task loader and shared run composition; task configs
   are data inputs, while the CPU scripted sampler remains in the smoke script. Criterion 6
-  scans run artifacts for the private author/check canaries outside `training/private`; its
+  uses [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
+  to scan run artifacts for private author/check canaries outside `training/private`; its
   sibling scope reports per-member input reconstruction from that member's verified lineage,
   not general absence of unplanted shared or sibling-derived text.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
