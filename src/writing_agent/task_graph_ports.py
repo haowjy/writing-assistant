@@ -20,6 +20,7 @@ from writing_agent.task_graph_native_contracts import (
     SAMPLED_LOGPROBS_CAPABILITY,  # noqa: F401 - public re-export
     USAGE_REPORTING_CAPABILITY,  # noqa: F401 - public re-export
     NativeSamplingBudget,
+    NativeSamplingHistory,
     manifest_sampling_capabilities,  # noqa: F401 - public re-export
     manifest_supports_usage_reporting,  # noqa: F401 - public re-export
     require_native_manifest_binding,  # noqa: F401 - public re-export
@@ -33,7 +34,6 @@ from writing_agent.task_graph_records import (
     RuntimePortDescriptorV1,
     TokenizerDescriptorV1,
 )
-from writing_agent.task_graph_sampling import NativeSamplingHistory
 
 
 @dataclass(frozen=True)

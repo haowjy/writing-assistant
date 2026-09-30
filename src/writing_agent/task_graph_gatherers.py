@@ -42,6 +42,7 @@ from writing_agent.task_graph_records import (
 )
 from writing_agent.task_graph_sampling import ArtifactSink, persist_logprob_trace
 from writing_agent.task_graph_scripted import scripted_author_reply
+from writing_agent.task_graph_token_ledger import encode_u32_token_ids
 
 
 class SamplingRunner:
@@ -135,9 +136,11 @@ class SamplingRunner:
                     if isinstance(result.raw_output, bytes)
                     else self.artifacts.put_artifact(result.raw_output)
                 )
-            input_ref = self.artifacts.put_bytes_artifact(_u32_token_bytes(result.input_token_ids))
+            input_ref = self.artifacts.put_bytes_artifact(
+                encode_u32_token_ids(result.input_token_ids)
+            )
             generated_ref = self.artifacts.put_bytes_artifact(
-                _u32_token_bytes(result.generated_token_ids)
+                encode_u32_token_ids(result.generated_token_ids)
             )
             logprobs_ref = self.artifacts.put_bytes_artifact(result.logprobs.data)
             return WriterTurnV2(
@@ -163,12 +166,6 @@ class SamplingRunner:
             raise AdapterContractError(
                 "native sample violates the V2 writer-turn contract"
             ) from exc
-
-
-def _u32_token_bytes(tokens: tuple[int, ...]) -> bytes:
-    if any(token >= 2**32 for token in tokens):
-        raise ValueError("native token ID exceeds the u32 ledger codec")
-    return b"".join(token.to_bytes(4, "little") for token in tokens)
 
 
 class ToolRunner:

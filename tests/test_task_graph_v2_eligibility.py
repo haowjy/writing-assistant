@@ -27,10 +27,39 @@ class EligibilityDecisionTests(unittest.TestCase):
         turn = _turn(self.view, self.reader) if turn is None else turn
         turn_ref = turn.identity()
         self.reader.public[turn_ref] = turn.to_wire()
-        sample = SampleRef(turn.action_id, "e" * 64, turn_ref, outcome)
+        lineage_id = self.view.state.position["lineage_id"]
+        start = EventV1(
+            seq=1,
+            lineage_id=lineage_id,
+            rollout_id=lineage_id,
+            node_visit_id=self.view.state.position["visit_id"],
+            kind="rollout_started",
+            actor="environment",
+            audience=("controller",),
+            payload_ref="d" * 64,
+            versions_ref=self.view.state.versions_ref,
+            provenance_ref=self.view.state.provenance_ref,
+        )
+        sample_event = EventV1(
+            previous=start.identity(),
+            seq=2,
+            lineage_id=lineage_id,
+            rollout_id=lineage_id,
+            node_visit_id=self.view.state.position["visit_id"],
+            kind="writer_action",
+            actor="writer",
+            audience=("controller", "trainer"),
+            payload_ref=turn_ref,
+            versions_ref=self.view.state.versions_ref,
+            provenance_ref=self.view.state.provenance_ref,
+        )
+        self.reader.events[start.identity()] = start.to_dict()
+        self.reader.events[sample_event.identity()] = sample_event.to_dict()
+        sample = SampleRef(turn.action_id, sample_event.identity(), turn_ref, outcome)
         view = replace(
             self.view,
             samples=(sample,),
+            head_event_id=sample_event.identity(),
             outcome=replace(self.view.outcome, execution_status="valid"),
         )
         return view, turn
@@ -89,29 +118,16 @@ class EligibilityDecisionTests(unittest.TestCase):
 
         self._assert_reason(view, "group_training_mode_absent")
 
-    def test_context_reset_gets_multi_segment_reason(self):
+    def test_carry_context_event_is_conservatively_multi_segment(self):
         view, _ = self._sampled()
         lineage_id = view.state.position["lineage_id"]
-        start = EventV1(
-            previous=None,
-            seq=1,
-            lineage_id=lineage_id,
-            rollout_id=lineage_id,
-            node_visit_id=view.state.position["visit_id"],
-            kind="rollout_started",
-            actor="environment",
-            audience=("controller",),
-            payload_ref="d" * 64,
-            versions_ref=view.state.versions_ref,
-            provenance_ref=view.state.provenance_ref,
-        )
-        policy = ContextPolicyV1(operation="drop")
+        policy = ContextPolicyV1(operation="carry")
         self.reader.public[policy.identity()] = policy.to_wire()
         operation = ContextOperationInputV1(policy_ref=policy.identity())
         self.reader.public[operation.identity()] = operation.to_wire()
         context_changed = EventV1(
-            previous=start.identity(),
-            seq=2,
+            previous=view.head_event_id,
+            seq=3,
             lineage_id=lineage_id,
             rollout_id=lineage_id,
             node_visit_id=view.state.position["visit_id"],
@@ -122,7 +138,6 @@ class EligibilityDecisionTests(unittest.TestCase):
             versions_ref=view.state.versions_ref,
             provenance_ref=view.state.provenance_ref,
         )
-        self.reader.events[start.identity()] = start.to_dict()
         self.reader.events[context_changed.identity()] = context_changed.to_dict()
         view = replace(view, head_event_id=context_changed.identity())
 

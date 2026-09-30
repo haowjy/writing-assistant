@@ -11,6 +11,7 @@ from writing_agent.task_graph_records import (
     NATIVE_RUNTIME_CAPABILITIES,
     RuntimeManifestV1,
     RuntimeManifestV2,
+    WriterTurnV2,
 )
 
 NATIVE_TRAINING_CAPABILITIES = NATIVE_RUNTIME_CAPABILITIES
@@ -31,6 +32,29 @@ class NativeSamplingBudget:
             value = getattr(self, name)
             if value is not None and (type(value) is not int or value < 0):
                 raise ValueError(f"{name} must be a nonnegative integer or None")
+
+
+@dataclass(frozen=True)
+class NativeSamplingHistory:
+    """Committed native token prefix for continuing a sampled writer turn."""
+
+    turn: WriterTurnV2
+    input_token_ids: tuple[int, ...]
+    generated_token_ids: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.turn, WriterTurnV2):
+            raise TypeError("native sampling history requires a committed WriterTurnV2")
+        for name in ("input_token_ids", "generated_token_ids"):
+            values = getattr(self, name)
+            if not isinstance(values, tuple) or any(
+                type(token) is not int or token < 0 for token in values
+            ):
+                raise TypeError(f"native history {name} must be a tuple of token IDs")
+        if len(self.input_token_ids) != self.turn.input_token_count:
+            raise ValueError("native history input count differs from its turn")
+        if len(self.generated_token_ids) != self.turn.generated_token_count:
+            raise ValueError("native history generated count differs from its turn")
 
 
 def require_native_manifest_binding(

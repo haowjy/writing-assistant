@@ -21,6 +21,7 @@ from writing_agent.task_graph_admission import (
 from writing_agent.task_graph_admission import (
     AdmittedGraphV1,
 )
+from writing_agent.task_graph_context_roots import context_root_changed_after
 from writing_agent.task_graph_controller import Directive, next_step
 from writing_agent.task_graph_derive_entry import EntryParamsV1, derive_entry
 from writing_agent.task_graph_derive_writer import (
@@ -38,15 +39,15 @@ from writing_agent.task_graph_errors import (
     WriterRuntimeError,
 )
 from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader, derive_input
-from writing_agent.task_graph_native_contracts import NativeSamplingBudget
+from writing_agent.task_graph_native_contracts import NativeSamplingBudget, NativeSamplingHistory
 from writing_agent.task_graph_operation import operation_scoped
 from writing_agent.task_graph_record_contracts import ExecutionVersionsV1
 from writing_agent.task_graph_records import (
     AdmissionPolicyV1 as AdmissionPolicyRecord,
 )
 from writing_agent.task_graph_records import MemberStartV1, WriterTurnV2
-from writing_agent.task_graph_sampling import NativeSamplingHistory
 from writing_agent.task_graph_store import TaskGraphStore
+from writing_agent.task_graph_token_ledger import decode_u32_token_ids
 from writing_agent.task_graph_transition import InputRecord, LineageView, ToolSpec, Transition
 
 
@@ -322,14 +323,22 @@ class RolloutEnvironment:
         if not view.samples:
             return None
         previous = view.samples[-1]
-        if _context_root_changed_after(self.reader, view.head_event_id, previous.event_id):
+        try:
+            context_changed = context_root_changed_after(
+                self.reader, view.head_event_id, previous.event_id
+            )
+        except ProjectionError as exc:
+            raise AdapterContractError(
+                "native sampler history is outside the active event ancestry"
+            ) from exc
+        if context_changed:
             return None
         try:
             turn = WriterTurnV2.from_dict(self.reader.artifact(previous.turn_ref))
-            input_ids = _read_u32_tokens(
+            input_ids = decode_u32_token_ids(
                 self.reader.bytes_artifact(turn.input_token_ids_ref), turn.input_token_count
             )
-            generated_ids = _read_u32_tokens(
+            generated_ids = decode_u32_token_ids(
                 self.reader.bytes_artifact(turn.generated_token_ids_ref), turn.generated_token_count
             )
             return NativeSamplingHistory(turn, input_ids, generated_ids)
@@ -539,26 +548,6 @@ class RolloutEnvironment:
         for artifact in transition.artifacts:
             if artifact.kind == "context_revision":
                 self.store.persist_artifact(artifact)
-
-
-def _context_root_changed_after(reader, head_event_id: str | None, sample_event_id: str) -> bool:
-    current = head_event_id
-    while current is not None and current != sample_event_id:
-        event = reader.artifact(current, domain="event")
-        if event.get("kind") == "context_changed":
-            return True
-        current = event.get("previous")
-    if current != sample_event_id:
-        raise AdapterContractError("native sampler history is outside the active event ancestry")
-    return False
-
-
-def _read_u32_tokens(data: bytes, count: int) -> tuple[int, ...]:
-    if not isinstance(data, bytes) or len(data) != 4 * count:
-        raise ValueError("native token bytes do not match their committed count")
-    return tuple(
-        int.from_bytes(data[offset : offset + 4], "little") for offset in range(0, len(data), 4)
-    )
 
 
 __all__ = [

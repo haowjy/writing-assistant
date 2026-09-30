@@ -15,6 +15,10 @@ from writing_agent.native_protocol import NATIVE_STOP_TOKENS, ProtocolError, nat
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_group_contract import derive_group_seed
+from writing_agent.task_graph_native_contracts import (
+    NATIVE_TRAINING_CAPABILITIES,
+    NativeSamplingHistory,
+)
 from writing_agent.task_graph_ports import (
     BinaryLogprobEvidence,
     PortDescriptorV1,
@@ -26,10 +30,9 @@ from writing_agent.task_graph_records import (
     RendererDescriptorV1,
     TokenizerDescriptorV1,
 )
-from writing_agent.task_graph_sampling import NativeSamplingHistory
 
 NATIVE_STOP_TOKEN_IDS = (1, 106, 50)
-NATIVE_CAPABILITIES = ("native_token_ledger", "sampled_logprobs", "usage_reporting")
+NATIVE_CAPABILITIES = tuple(sorted(NATIVE_TRAINING_CAPABILITIES))
 
 
 class NativeGemmaRenderer:

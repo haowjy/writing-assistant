@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any, Protocol
 
 from writing_agent.task_graph import canonical_bytes
+from writing_agent.task_graph_context_roots import context_root_changed_after
 from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_native_contracts import require_native_manifest_binding
 from writing_agent.task_graph_record_contracts import GroupSpecV1
@@ -19,29 +19,7 @@ from writing_agent.task_graph_records import (
     WriterTurnV2,
     decode_runtime_manifest,
 )
-
-
-@dataclass(frozen=True)
-class NativeSamplingHistory:
-    """Persisted token prefix for the previous committed native writer turn."""
-
-    turn: WriterTurnV2
-    input_token_ids: tuple[int, ...]
-    generated_token_ids: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.turn, WriterTurnV2):
-            raise TypeError("native sampling history requires a committed WriterTurnV2")
-        for name in ("input_token_ids", "generated_token_ids"):
-            values = getattr(self, name)
-            if not isinstance(values, tuple) or any(
-                type(token) is not int or token < 0 for token in values
-            ):
-                raise TypeError(f"native history {name} must be a tuple of token IDs")
-        if len(self.input_token_ids) != self.turn.input_token_count:
-            raise ValueError("native history input count differs from its turn")
-        if len(self.generated_token_ids) != self.turn.generated_token_count:
-            raise ValueError("native history generated count differs from its turn")
+from writing_agent.task_graph_token_ledger import decode_u32_token_ids
 
 
 class ArtifactSink(Protocol):
@@ -289,9 +267,17 @@ def _decode_v2_sampling(
     )
 
     prior_sample = next(iter(reversed(samples)), None)
-    if prior_sample is not None and not _has_context_root_change(
-        reader, head_event_id, prior_sample.event_id
-    ):
+    context_changed = False
+    if prior_sample is not None:
+        try:
+            context_changed = context_root_changed_after(
+                reader, head_event_id, prior_sample.event_id
+            )
+        except ProjectionError as exc:
+            raise ProjectionError(
+                "input.input_token_ids_ref: prior sample event ancestry is invalid"
+            ) from exc
+    if prior_sample is not None and not context_changed:
         previous_turn = _read_previous_turn(reader, prior_sample.turn_ref)
         if not isinstance(previous_turn, WriterTurnV2):
             raise ProjectionError(
@@ -322,11 +308,10 @@ def _read_token_ids(reader: Any, ref: str, count: int, *, path: str) -> tuple[in
         data = reader.bytes_artifact(ref)
     except (KeyError, TypeError, ValueError) as exc:
         raise ProjectionError(f"{path}: unavailable") from exc
-    if not isinstance(data, bytes) or len(data) != 4 * count:
-        raise ProjectionError(f"{path}: byte count differs from declared token count")
-    return tuple(
-        int.from_bytes(data[offset : offset + 4], "little") for offset in range(0, len(data), 4)
-    )
+    try:
+        return decode_u32_token_ids(data, count)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ProjectionError(f"{path}: byte count differs from declared token count") from exc
 
 
 def _read_previous_turn(reader: Any, ref: str) -> WriterTurnV1 | WriterTurnV2:
@@ -339,23 +324,6 @@ def _read_previous_turn(reader: Any, ref: str) -> WriterTurnV1 | WriterTurnV2:
     except (AttributeError, KeyError, TypeError, ValueError) as exc:
         raise ProjectionError("input.input_token_ids_ref: previous turn is invalid") from exc
     raise ProjectionError("input.record_type: previous sample is not a writer turn")
-
-
-def _has_context_root_change(reader: Any, head_event_id: str | None, sample_event_id: str) -> bool:
-    current = head_event_id
-    while current is not None and current != sample_event_id:
-        try:
-            event = reader.artifact(current, domain="event")
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ProjectionError("input.input_token_ids_ref: prior event is unavailable") from exc
-        if event.get("kind") == "context_changed":
-            return True
-        current = event.get("previous")
-    if current != sample_event_id:
-        raise ProjectionError(
-            "input.input_token_ids_ref: prior sample is not in the event ancestry"
-        )
-    return False
 
 
 def _allowed_tokens(

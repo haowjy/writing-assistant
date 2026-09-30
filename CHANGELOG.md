@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Native token history and the u32 ledger codec now have shared owners. Context ancestry
+  checks require the sample or rollout-start boundary to be present; structural eligibility
+  treats every intervening context event as a multi-segment member.
+
 - Share Gemma native suffix and stop-set rules through `native_protocol`; accept task-graph
   author replies and check-driven continuations only when their context delta is
   template-prefix stable.

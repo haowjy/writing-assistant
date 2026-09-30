@@ -20,9 +20,9 @@ from writing_agent.native_gemma import (
 )
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_errors import AdapterContractError
+from writing_agent.task_graph_native_contracts import NativeSamplingBudget
 from writing_agent.task_graph_ports import PreparedSamplingInput, RuntimeDependenciesV1
 from writing_agent.task_graph_records import RuntimeManifestV2, WriterTurnV2
-from writing_agent.task_graph_sampling import NativeSamplingBudget
 
 TOKENIZER_REVISION = "3e22461f65e89153144f8adb70e3b8c2cc9845a7"
 TOKENIZER_PATH = (

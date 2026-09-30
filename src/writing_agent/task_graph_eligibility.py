@@ -5,12 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from writing_agent.task_graph import EventV1
+from writing_agent.task_graph_context_roots import context_root_changed_after
 from writing_agent.task_graph_errors import ProjectionError
-from writing_agent.task_graph_record_contracts import ContextPolicyV1
+from writing_agent.task_graph_native_contracts import manifest_sampling_capabilities
 from writing_agent.task_graph_records import (
     NATIVE_RUNTIME_CAPABILITIES,
-    ContextOperationInputV1,
     RuntimeManifestV1,
     RuntimeManifestV2,
     WriterTurnV1,
@@ -86,32 +85,6 @@ def _manifest(
     return decode_runtime_manifest(reader.artifact(manifest_ref))
 
 
-def _sampling_capabilities(manifest: RuntimeManifestV2) -> frozenset[str]:
-    sampler = next(port for port in manifest.ports if port.role == "sampling")
-    port_capabilities = frozenset(sampler.configuration.get("capabilities", ()))
-    return frozenset(manifest.capabilities) & port_capabilities
-
-
-def _has_context_reset(view: LineageView, reader: ArtifactReader) -> bool:
-    """Whether this member sampled after compaction, seed, or drop."""
-    event_ref = view.head_event_id
-    seen: set[str] = set()
-    while event_ref is not None:
-        if event_ref in seen:
-            raise ProjectionError("event.previous: lineage event history contains a cycle")
-        seen.add(event_ref)
-        event = EventV1.from_dict(reader.artifact(event_ref, domain="event"))
-        if event.kind == "rollout_started":
-            break
-        if event.kind == "context_changed":
-            operation = ContextOperationInputV1.from_dict(reader.artifact(event.payload_ref))
-            policy = ContextPolicyV1.from_dict(reader.artifact(operation.policy_ref))
-            if policy.operation in {"compact", "seed", "drop"}:
-                return True
-        event_ref = event.previous
-    return False
-
-
 def _member_of_native_group(view: LineageView) -> bool:
     group = view.group
     if group is None or group.training_mode != "native":
@@ -137,13 +110,15 @@ def decide_eligibility(view: LineageView, reader: ArtifactReader) -> Eligibility
         return EligibilityDecisionV1("ineligible", "native_action_trace_unavailable")
 
     required = NATIVE_RUNTIME_CAPABILITIES
-    if isinstance(manifest, RuntimeManifestV2) and required - _sampling_capabilities(manifest):
+    if isinstance(manifest, RuntimeManifestV2) and required - manifest_sampling_capabilities(
+        manifest
+    ):
         return EligibilityDecisionV1("ineligible", "manifest_capability_missing")
 
     if not _member_of_native_group(view):
         return EligibilityDecisionV1("ineligible", "group_training_mode_absent")
 
-    if _has_context_reset(view, reader):
+    if context_root_changed_after(reader, view.head_event_id, None):
         return EligibilityDecisionV1("ineligible", "multi_segment_context")
 
     if any(

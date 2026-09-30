@@ -106,6 +106,8 @@ incomplete writer outcome instead of an adapter-provided halt. Present V2 adapte
 claims still bind to the sealed group policy. A zero-generation `context_limit` cannot carry
 message content, calls, or a raw-output reference, and mapped incomplete outcomes commit
 directly to terminal state with the overrun path's candidate-checkpoint shape.
+The V2 sampler and native history share the u32 little-endian token codec and the strict
+context-event ancestry check in `task_graph_token_ledger` and `task_graph_context_roots`.
 
 The steps:
 
