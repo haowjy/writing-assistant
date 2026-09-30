@@ -101,6 +101,7 @@ class PreparedSamplingInput:
     adapter_ref: str | None = None
     decision_ordinal: int | None = None
     native_history: NativeSamplingHistory | None = None
+    action_id: str | None = None
 
     def __post_init__(self) -> None:
         validate_hash(self.context_content_hash)
@@ -123,6 +124,10 @@ class PreparedSamplingInput:
             type(self.decision_ordinal) is not int or self.decision_ordinal < 0
         ):
             raise ValueError("prepared decision ordinal must be a nonnegative integer")
+        if self.action_id is not None and (
+            not isinstance(self.action_id, str) or not self.action_id
+        ):
+            raise ValueError("prepared action ID must be nonempty text")
         if self.native_history is not None and not isinstance(
             self.native_history, NativeSamplingHistory
         ):

@@ -11,7 +11,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from writing_agent.inference import generate_with_seed, parse_response, render_messages
-from writing_agent.native_protocol import NATIVE_STOP_TOKENS, ProtocolError, native_suffix
+from writing_agent.native_protocol import (
+    NATIVE_STOP_TOKENS,
+    ProtocolError,
+    bind_native_tool_call_ids,
+    native_suffix,
+)
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_group_contract import derive_group_seed
@@ -82,15 +87,27 @@ class NativeGemmaRenderer:
             index
             for index, message in enumerate(messages)
             if message.get("origin") == history.turn.action_id
+            and message.get("role") == "assistant"
         ]
         if len(positions) != 1:
             raise ProtocolError("Committed assistant turn is not unique in the active context")
         position = positions[0]
         prior_message = messages[position]
-        if prior_message.get("role") != "assistant" or not prior_message.get("loss_eligible"):
+        if not prior_message.get("loss_eligible"):
             raise ProtocolError("Committed writer action is not the active sampled assistant turn")
         assistant = _sampled_assistant(history.turn)
         external = _gemma_messages(messages[position + 1 :])
+        sampled_call_ids = [call["id"] for call in assistant["tool_calls"]]
+        tool_messages = [message for message in external if message.get("role") == "tool"]
+        if len(tool_messages) != len(sampled_call_ids):
+            raise ProtocolError("Task-graph tool results differ from sampled tool calls")
+        result_call_ids = [message.get("tool_call_id") for message in tool_messages]
+        if (
+            len(set(sampled_call_ids)) != len(sampled_call_ids)
+            or len(set(result_call_ids)) != len(result_call_ids)
+            or set(result_call_ids) != set(sampled_call_ids)
+        ):
+            raise ProtocolError("Task-graph tool result IDs do not match sampled tool calls")
         suffix = native_suffix(
             self.tokenizer,
             assistant,
@@ -244,6 +261,8 @@ class NativeGemmaSampleBackend:
             raise AdapterContractError("Native sampler model differs from the sealed pin")
         if prepared.writer_seed is None or prepared.decision_ordinal is None:
             raise AdapterContractError("Native sampler requires a writer seed and decision ordinal")
+        if prepared.action_id is None:
+            raise AdapterContractError("Native sampler requires the committed writer action ID")
         if prepared.native_sampling_budget is None:
             raise AdapterContractError(
                 "Native sampler requires the derive-provided sampling budget"
@@ -350,7 +369,9 @@ class NativeGemmaSampleBackend:
         raw_output = self.tokenizer.decode(output_ids, skip_special_tokens=False)
         prompt = self.tokenizer.decode(input_ids, skip_special_tokens=False)
         try:
-            message = parse_response(self.tokenizer, raw_output, prefix=prompt)
+            message = bind_native_tool_call_ids(
+                parse_response(self.tokenizer, raw_output, prefix=prompt), prepared.action_id
+            )
         except (AttributeError, TypeError, ValueError) as exc:
             raise ProtocolError(
                 "Gemma output does not satisfy its native response grammar"
@@ -420,24 +441,26 @@ class NativeGemmaSampleBackend:
         config = getattr(self.model, "generation_config", None)
         if config is None:
             return
-        expected = {
-            "min_length": 0,
-            "min_new_tokens": None,
-            "min_p": None,
-            "typical_p": 1.0,
-            "repetition_penalty": 1.0,
-            "no_repeat_ngram_size": 0,
-            "forced_bos_token_id": None,
-            "forced_eos_token_id": None,
-            "suppress_tokens": None,
-            "begin_suppress_tokens": None,
-            "bad_words_ids": None,
-            "sequence_bias": None,
-            "exponential_decay_length_penalty": None,
+        neutral_values = {
+            # Transformers 5 represents unset generation controls with None; older releases
+            # used the equivalent no-op values below.
+            "min_length": (0, None),
+            "min_new_tokens": (None,),
+            "min_p": (None,),
+            "typical_p": (1.0, None),
+            "repetition_penalty": (1.0, None),
+            "no_repeat_ngram_size": (0, None),
+            "forced_bos_token_id": (None,),
+            "forced_eos_token_id": (None,),
+            "suppress_tokens": (None,),
+            "begin_suppress_tokens": (None,),
+            "bad_words_ids": (None,),
+            "sequence_bias": (None,),
+            "exponential_decay_length_penalty": (None,),
         }
-        for name, value in expected.items():
-            actual = getattr(config, name, value)
-            if actual != value:
+        for name, allowed in neutral_values.items():
+            actual = getattr(config, name, allowed[0])
+            if actual not in allowed:
                 raise ProtocolError(f"Unexpected non-neutral generation setting: {name}")
 
 

@@ -97,4 +97,43 @@ def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):
     return full[len(prefix) :]
 
 
-__all__ = ["NATIVE_STOP_TOKENS", "ProtocolError", "native_suffix"]
+def bind_native_tool_call_ids(message, action_id):
+    """Bind parsed calls to core IDs derived from the committed writer action.
+
+    Task-graph tool results use ``<lineage>:call:<ordinal>:<index>``. Gemma's
+    parser-local IDs restart for every response, so native sampling assigns that
+    same identity before intake; the audit uses this function to reproduce it.
+    """
+    if not isinstance(message, Mapping):
+        raise ProtocolError("Parsed native response must be a message")
+    if not isinstance(action_id, str) or any(
+        character.isspace() or ord(character) < 0x20 for character in action_id
+    ):
+        raise ProtocolError("Native tool calls require a logical writer action ID")
+    lineage_id, separator, ordinal_text = action_id.rpartition(":action:")
+    if (
+        not separator
+        or not lineage_id
+        or not ordinal_text.isascii()
+        or not ordinal_text.isdecimal()
+        or (len(ordinal_text) > 1 and ordinal_text.startswith("0"))
+    ):
+        raise ProtocolError("Native tool calls require a canonical writer action ID")
+    result = copy.deepcopy(message)
+    calls = result.get("tool_calls", [])
+    if not isinstance(calls, list) or any(
+        not isinstance(call, Mapping) or not isinstance(call.get("function"), Mapping)
+        for call in calls
+    ):
+        raise ProtocolError("Parsed native tool calls are malformed")
+    for index, call in enumerate(calls):
+        call["id"] = f"{lineage_id}:call:{ordinal_text}:{index}"
+    return result
+
+
+__all__ = [
+    "NATIVE_STOP_TOKENS",
+    "ProtocolError",
+    "bind_native_tool_call_ids",
+    "native_suffix",
+]

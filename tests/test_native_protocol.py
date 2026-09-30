@@ -145,6 +145,26 @@ import writing_agent.native_protocol
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_native_call_ids_match_the_core_lineage_call_identity(self):
+        from writing_agent.native_protocol import bind_native_tool_call_ids
+
+        message = {
+            "role": "assistant",
+            "tool_calls": [
+                {"id": "call_0", "function": {"name": "write_file", "arguments": {}}},
+                {"id": "call_1", "function": {"name": "patch_file", "arguments": {}}},
+            ],
+        }
+        self.assertEqual(
+            [
+                call["id"]
+                for call in bind_native_tool_call_ids(message, "member-7:action:3")["tool_calls"]
+            ],
+            ["member-7:call:3:0", "member-7:call:3:1"],
+        )
+        with self.assertRaises(ProtocolError):
+            bind_native_tool_call_ids(message, "not-an-action-id")
+
 
 @unittest.skipUnless(
     importlib.util.find_spec("transformers") is not None,

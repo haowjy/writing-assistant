@@ -79,6 +79,7 @@ class SamplingRunner:
             adapter_ref=port.adapter_ref,
             decision_ordinal=port.decision_ordinal,
             native_history=port.native_history,
+            action_id=port.action_id,
         )
         result = self.backend.sample(prepared)
         if isinstance(result, SampleResultV2):
