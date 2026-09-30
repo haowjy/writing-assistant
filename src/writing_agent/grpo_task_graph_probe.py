@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.catalog import save_json
+from writing_agent.grpo_gpu import DISPLAY_POLICY
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_probe_evidence import _select_verdict
 from writing_agent.training_stages import (
@@ -44,26 +45,7 @@ CEILINGS = {
     "peak_rss_bytes": 24 * GIB,
     "run_directory_growth_bytes": 3 * GIB,
 }
-N3_POLICY = {
-    "mode": "desktop",
-    "names": [
-        "cosmic-comp",
-        "cosmic-panel",
-        "cosmic-bg",
-        "cosmic-app-library",
-        "cosmic-edit",
-        "cosmic-settings",
-        "cosmic-files",
-        "xdg-desktop-portal-cosmic",
-        "xwayland",
-        "ghostty",
-        "chrome",
-        "cursor",
-    ],
-    "per_process_mib": 256,
-    "total_mib": 768,
-    "minimum_free_mib": 22000,
-}
+N3_POLICY = {**DISPLAY_POLICY, "mode": "desktop"}
 
 
 class ProbeError(RuntimeError):

@@ -11,7 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
+from writing_agent.grpo_gpu import DISPLAY_POLICY
 from writing_agent.grpo_task_graph_probe import (
+    N3_POLICY,
     ProbeError,
     _latest_checkpoint,
     _require_latest_checkpoint,
@@ -32,6 +34,10 @@ from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
 
 
 class TaskGraphProbeTests(unittest.TestCase):
+    def test_desktop_probe_policy_extends_the_shared_gpu_policy(self):
+        self.assertEqual(N3_POLICY, {**DISPLAY_POLICY, "mode": "desktop"})
+        self.assertIs(N3_POLICY["names"], DISPLAY_POLICY["names"])
+
     def test_inspect_is_read_only_and_prepare_persists_its_pre_run_record(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "run"
