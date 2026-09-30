@@ -168,33 +168,48 @@ class _ObservationalLogitsProcessor:
         self._torch = torch
         self._tokens: list[int] = []
         self._values: list[float] = []
+        self._pending_logprobs = None
+        self._finished = False
 
     def __call__(self, input_ids, scores):
-        if scores.ndim != 2 or scores.shape[0] != 1:
+        if (
+            scores.ndim != 2
+            or scores.shape[0] != 1
+            or input_ids.ndim != 2
+            or input_ids.shape[0] != 1
+            or input_ids.shape[1] == 0
+        ):
             raise ProtocolError("Native Gemma sampling is serial and single-sequence")
-        token_id = self._sample_without_advancing_rng(scores)
-        logprob = self._torch.log_softmax(scores[0].float(), dim=-1)[token_id]
-        self._tokens.append(token_id)
-        self._values.append(float(logprob.detach().cpu()))
+        if self._finished:
+            raise ProtocolError("Observational processor cannot run after finish")
+        if self._pending_logprobs is not None:
+            self._record(int(input_ids[0, -1]), self._pending_logprobs)
+        self._pending_logprobs = self._torch.log_softmax(scores[0].float(), dim=-1)
         return scores
 
-    def _sample_without_advancing_rng(self, scores) -> int:
-        torch = self._torch
-        cpu_state = torch.random.get_rng_state()
-        cuda_state = (
-            torch.cuda.get_rng_state(scores.device) if scores.device.type == "cuda" else None
-        )
-        try:
-            token = torch.multinomial(scores.softmax(dim=-1), num_samples=1)
-        finally:
-            torch.random.set_rng_state(cpu_state)
-            if cuda_state is not None:
-                torch.cuda.set_rng_state(cuda_state, device=scores.device)
-        return int(token[0, 0])
+    def _record(self, token_id: int, logprobs) -> None:
+        if token_id < 0 or token_id >= logprobs.shape[0]:
+            raise ProtocolError("Generated token is outside the observed logit row")
+        self._tokens.append(token_id)
+        self._values.append(float(logprobs[token_id].detach().cpu()))
 
     def finish(self, generated_ids: tuple[int, ...]) -> tuple[float, ...]:
-        if generated_ids != tuple(self._tokens):
+        if self._finished:
+            raise ProtocolError("Observational processor finish may only run once")
+        if not generated_ids:
+            if self._pending_logprobs is not None or self._tokens:
+                raise ProtocolError("Observational processor disagrees with native sampled tokens")
+            self._finished = True
+            return ()
+        if (
+            self._pending_logprobs is None
+            or len(generated_ids) != len(self._tokens) + 1
+            or generated_ids[:-1] != tuple(self._tokens)
+        ):
             raise ProtocolError("Observational processor disagrees with native sampled tokens")
+        self._record(generated_ids[-1], self._pending_logprobs)
+        self._pending_logprobs = None
+        self._finished = True
         return tuple(self._values)
 
 
