@@ -48,7 +48,6 @@ class RolloutFactoryTests(unittest.TestCase):
                     trainer_config_values={},
                     make_rollouts=make_rollouts,
                     resume_from_checkpoint=None,
-                    resume_checkpoint_identity=None,
                     stop_after_steps=None,
                 )
 
@@ -95,7 +94,6 @@ class RolloutFactoryTests(unittest.TestCase):
                     trainer_config_values={},
                     make_rollouts=lambda _invocation_id: object(),
                     resume_from_checkpoint=None,
-                    resume_checkpoint_identity=None,
                     stop_after_steps=None,
                     trainer_callback_factory=make_callback,
                 )

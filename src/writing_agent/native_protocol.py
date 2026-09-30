@@ -1,4 +1,4 @@
-"""Gemma native-chat framing shared by legacy and task-graph sampling."""
+"""Gemma native-chat framing shared by task-graph sampling and audit."""
 
 import copy
 from collections.abc import Mapping, Sequence

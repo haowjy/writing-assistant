@@ -9,8 +9,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from writing_agent.grpo import GRPOSettings, inspect_grpo, trainer_config
 from writing_agent.grpo_checkpoint import seal_directory
+from writing_agent.grpo_config import TaskGraphGRPOSettings, trainer_config
 from writing_agent.grpo_task_graph import (
     TaskGraphGroupPending,
     TaskGraphResumeRefused,
@@ -29,7 +29,7 @@ from writing_agent.task_graph_records import TrainingAdmissionV1
 from writing_agent.task_graph_store import TaskGraphStore
 
 
-def _settings(**overrides) -> GRPOSettings:
+def _settings(**overrides) -> TaskGraphGRPOSettings:
     values = {
         "model_id": "caller-owned/tiny-gemma4",
         "revision": "a" * 40,
@@ -44,7 +44,7 @@ def _settings(**overrides) -> GRPOSettings:
         "context_tokens": 4096,
     }
     values.update(overrides)
-    return GRPOSettings(**values)
+    return TaskGraphGRPOSettings(**values)
 
 
 def _checkpoint(root: Path, step: int) -> Path:
@@ -146,27 +146,13 @@ class TaskGraphSettingsTests(unittest.TestCase):
         self.assertEqual(values["loss_type"], "dapo")
         self.assertEqual(values["scale_rewards"], "none")
         self.assertIsNone(values["save_total_limit"])
-        legacy = trainer_config(
-            _settings(runtime_profile="probe"), "unused", use_cpu=True, bf16=False
-        )
-        self.assertEqual(legacy["scale_rewards"], "group")
-
         for override in (
             {"loss_type": "grpo"},
             {"enable_thinking": True},
+            {"runtime_profile": "probe"},
         ):
             with self.subTest(override=override), self.assertRaises(ValueError):
                 _settings(**override).validate()
-
-    def test_legacy_inspector_refuses_task_graph_profile_instead_of_using_old_admission(self):
-        with self.assertRaisesRegex(ValueError, "native group admission"):
-            inspect_grpo(
-                [],
-                "unused",
-                settings=_settings(),
-                reward_spec={"id": "unused", "config": {}, "mode": "mechanical-only-smoke"},
-                admission={"mode": "engineered-fixture", "label": "unused"},
-            )
 
     def test_behavior_policy_binds_base_adapter_step_and_experiment(self):
         baseline = task_graph_behavior_policy_ref("base-r1", "a" * 64, 2, "experiment")

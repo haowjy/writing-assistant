@@ -65,7 +65,6 @@ class TaskGraphIdentityTests(unittest.TestCase):
                     trainer_config_values={},
                     make_rollouts=lambda _invocation_id: None,
                     resume_from_checkpoint=checkpoint,
-                    resume_checkpoint_identity=None,
                     stop_after_steps=None,
                 )
 

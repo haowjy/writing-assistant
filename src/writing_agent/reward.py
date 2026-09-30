@@ -1,8 +1,8 @@
-"""Turn a judged rollout into the scalar a group-relative optimizer consumes.
+"""Turn a judged rollout into a bounded scalar reward.
 
-Training-side only. [scoring.py](scoring.py) owns the evaluation scorecard and
-deliberately computes no combined literary score; this module exists because RL needs
-one number per rollout, and it must not leak into the evaluation path.
+This is a standalone reward-design hypothesis. [scoring.py](scoring.py) owns the
+evaluation scorecard and deliberately computes no combined literary score; this module
+must not leak into the evaluation path.
 
 The scalar is version 0 of a hypothesis about what "good collaboration" means, not a
 validated measure of writing quality. Optimizing it can improve the measurement rather
@@ -205,39 +205,3 @@ def session_reward(
         value=combined,
         components={"stages": [r.value for r in stages], "final": final_state.value},
     )
-
-
-def group_advantages(rewards: list[Reward]) -> dict:
-    """Within-group standardised rewards, which is what a critic-free method consumes.
-
-    Group normalisation cancels a per-prompt offset or positive scale in the judge. It
-    does not cancel rank flips or length bias, and it hides an all-tie group entirely —
-    hence the zero-variance fraction, which is a curriculum signal rather than a
-    statistic to tolerate.
-    """
-    if not rewards:
-        raise ValueError("A rollout group needs at least one reward")
-    if any(not r.available for r in rewards):
-        return {
-            "status": "pending",
-            "advantages": [],
-            "reason": "Group has an unresolved reward; do not take an update from it",
-        }
-    values = [r.value for r in rewards]
-    mean = sum(values) / len(values)
-    variance = sum((value - mean) ** 2 for value in values) / len(values)
-    std = variance**0.5
-    # Variance is zero exactly when every reward is equal, so test the rewards rather than
-    # the derived deviation. Three rewards of 0.1 average to 0.10000000000000002, leaving
-    # a std near 1.4e-17; dividing that residue by itself yields a spurious advantage of
-    # +-1, so a tied group looks like a strong uniform signal instead of no signal at all.
-    zero_variance = max(values) == min(values)
-    advantages = [0.0] * len(values) if zero_variance else [(v - mean) / std for v in values]
-    return {
-        "status": "ok",
-        "advantages": [advantage + 0.0 for advantage in advantages],
-        "mean": mean,
-        "std": std,
-        "zero_variance": zero_variance,
-        "frac_zero_std": 1.0 if zero_variance else 0.0,
-    }

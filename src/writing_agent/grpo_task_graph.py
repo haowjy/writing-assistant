@@ -14,8 +14,8 @@ from typing import Any
 
 from writing_agent.atomic_io import atomic_write_json
 from writing_agent.catalog import fingerprint, save_json
-from writing_agent.grpo import GRPOSettings, trainer_config
 from writing_agent.grpo_checkpoint import verify_checkpoint
+from writing_agent.grpo_config import TaskGraphGRPOSettings, trainer_config
 from writing_agent.grpo_identity import adapter_tensor_hash, base_tensor_identity
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_errors import (
@@ -133,7 +133,7 @@ def task_graph_behavior_policy_ref(
 
 def task_graph_experiment_manifest(
     tasks: Sequence[TaskGraphTaskV1],
-    settings: GRPOSettings,
+    settings: TaskGraphGRPOSettings,
     runtime_manifest: RuntimeManifestV2,
     *,
     base_identity: Mapping[str, Any],
@@ -653,7 +653,7 @@ def train_task_graph(
     task_entries: Sequence[TaskGraphTaskV1],
     output: Path | str,
     *,
-    settings: GRPOSettings,
+    settings: TaskGraphGRPOSettings,
     model: Any | None,
     tokenizer: Any,
     manifest_descriptors: tuple,
@@ -662,7 +662,6 @@ def train_task_graph(
     implementation: str = STREAMING,
     resume_from_checkpoint: Path | str | None = None,
     stop_after_steps: int | None = None,
-    resume_checkpoint_identity: str | None = None,
     sample_backend_factory: Callable[..., Any] = NativeGemmaSampleBackend,
     trainer_callback_factory: Callable[[Any], Any] | None = None,
     tokenizer_root: Path | str | None = None,
@@ -818,7 +817,6 @@ def train_task_graph(
             trainer_config_values=trainer_config_values,
             make_rollouts=factory,
             resume_from_checkpoint=resume_from_checkpoint,
-            resume_checkpoint_identity=resume_checkpoint_identity,
             stop_after_steps=stop_after_steps,
             trainer_callback_factory=trainer_callback_factory,
         )

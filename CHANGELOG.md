@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Retire the standalone DAPO rollout, probe, full48, GPU-fit and checkpoint-fork runners;
+  task-graph training is the only supported DAPO path. Their source remains in history at
+  `9cb9944`. The task-graph experiment identity intentionally changes because its hashed
+  legacy sources are removed and the surviving task-graph configuration is simplified;
+  task-graph record hashes and goldens remain unchanged.
+- Classify only typed invalid model responses as candidate failures; unexpected harness
+  exceptions remain infrastructure failures.
+
 - Validate the S10b no-author trace-check budgets before model loading and record the
   trainer's none-interaction simulator shape in S11 evidence.
 

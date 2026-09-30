@@ -49,9 +49,3 @@ Nice-to-have follow-ups scoped to `src/`. None blocks correctness. Must-do items
   such as "amber lantern". A scene that honors "The lantern is amber." in other words misses
   it, and several P1 members did (review L5). That is harmless spread for a plumbing probe.
   Real training tasks should not reward a literal phrase when they mean "follow the brief".
-
-## Tests
-
-- [ ] **Split the oversize test modules.** `tests/test_task_graph_rollout_env.py` (1,238
-  lines) and `tests/test_grpo.py` (1,036) are over the 1,000-line cap. S14 shrinks
-  `test_grpo.py`; split the rest by concern.

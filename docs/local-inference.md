@@ -102,8 +102,8 @@ as a general file-content parser.
 
 ## Evaluation during training
 
-[GRPO training and checkpoint recovery](grpo.md) are separate from evaluation;
-the trainer never launches benchmarks or judges automatically. The evaluation
+[Task-graph training and checkpoint recovery](task-graph-training.md) are separate
+from evaluation; the trainer never launches benchmarks or judges automatically. The evaluation
 interface supports these two integration points:
 
 1. **Saved checkpoint evaluation:** a training job finishes a checkpoint save and

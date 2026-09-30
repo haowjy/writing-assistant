@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
 
-from writing_agent.backends import Completion
+from writing_agent.backends import CandidateResponseError, Completion
 from writing_agent.catalog import fingerprint
 from writing_agent.suite import run_selected
 
@@ -108,11 +108,11 @@ def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     message = tokenizer.parse_response(text, prefix=prefix)
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
-        raise ValueError("Native tool-call output was not completely parsed")
+        raise CandidateResponseError("Native tool-call output was not completely parsed")
     for i, call in enumerate(calls):
         call["id"] = f"call_{i}"
         if not isinstance(call["function"]["arguments"], dict):
-            raise ValueError("Native tool arguments must be an object")
+            raise CandidateResponseError("Native tool arguments must be an object")
     return message
 
 

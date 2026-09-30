@@ -5,9 +5,9 @@ to the source texts. This repository does not vendor model weights or book corpo
 `scripts/fetch_sources.py` downloads a cited source when you need it.
 `scripts/organize_sources.py` turns those downloads into the catalog.
 `src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
-residue. Supervised training is `scripts/train_sft.py`; the reward function is
-`src/writing_agent/reward.py`. A GRPO/DAPO trainer exists, and Phase 8
-[trains it on task-graph rollouts](docs/task-graph-training.md). The
+residue. Supervised training is `scripts/train_sft.py`; the task-graph trainer is the
+only supported DAPO path and [trains on verified task-graph rollouts](docs/task-graph-training.md).
+The standalone legacy DAPO runners remain in repository history at commit `9cb9944`. The
 [deterministic group coordinator](docs/task-graph-groups.md) prepares offline comparison
 and segment-credit artifacts.
 
@@ -95,16 +95,11 @@ an existing file.
 
 ## Training
 
-[GRPO usage and checkpoint methodology](docs/grpo.md) covers the inspect-first training
-entrypoint, candidate-token masks, separate inference adapters, and resumable checkpoints.
-The [prepared Gemma probe](docs/grpo-probe.md) freezes three training tasks, six development
-cases, mechanical rewards, token budgets, and supervised execution. A tiny CPU model
-verifies exact step-1→3 resume after checkpoint pruning. The real Gemma
-[microbatch probe](work/research-plan/gemma-microbatch-result.md) completed three updates,
-checkpoint resume, verified adapter reload, and matched development evaluation on the
-3090. No SFT demonstrations are required for GRPO.
-[Task-graph training](docs/task-graph-training.md) connects task-graph rollouts to that
-trainer and documents the bounded Phase 8 probe, its evidence and its pass criteria.
+[Task-graph training](docs/task-graph-training.md) documents the only supported DAPO path,
+its evidence and probe criteria. The earlier standalone runners are preserved in history at
+`9cb9944`; [the retired-training pointer](docs/grpo.md) records that boundary. The Phase 8
+RTX 3090 probe verified three updates, checkpoint resume, adapter reload and paired
+development evaluation; it does not establish writing improvement.
 
 ## Limits
 
@@ -116,7 +111,7 @@ Current scorers check literal output constraints, file outcomes, tool errors, an
 edit scope. Literary quality is unscored. There is no automatic canon
 commit policy: the prompt teaches the distinction, and tests check file outcomes.
 
-Short-context Gemma GRPO mechanics are verified; writing improvement is not.
+Task-graph DAPO mechanics are verified; writing improvement is not.
 Held-out long-form tasks exist but have not been run.
 See the [research wiki](wiki/index.md) for project concepts and the
 [research work plan](work/research-plan/index.md) for proposed experiments.

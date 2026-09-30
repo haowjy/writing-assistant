@@ -128,6 +128,24 @@ class AgentTests(unittest.TestCase):
             failed = run_agent(ScriptedBackend([]), Workspace(Path(tmp)), [])
         self.assertEqual(result["status"], "step_limit")
         self.assertEqual(failed["status"], "error")
+        self.assertEqual(failed["failure_class"], "infrastructure")
+
+    def test_candidate_protocol_failure_is_separate_from_harness_value_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            candidate = run_agent(
+                ScriptedBackend([{"role": "user", "content": "not an assistant"}]),
+                workspace,
+                [],
+            )
+            with patch.object(workspace, "snapshot", side_effect=ValueError("harness bug")):
+                infrastructure = run_agent(
+                    ScriptedBackend([{"role": "assistant", "content": "Hello."}]),
+                    workspace,
+                    [],
+                )
+        self.assertEqual(candidate["failure_class"], "candidate_invalid")
+        self.assertEqual(infrastructure["failure_class"], "infrastructure")
 
     def test_continue_after_saved_answer_and_external_followup(self):
         with tempfile.TemporaryDirectory() as tmp:

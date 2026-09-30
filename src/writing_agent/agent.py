@@ -5,7 +5,7 @@ import json
 import time
 from collections.abc import Callable
 
-from writing_agent.backends import Backend
+from writing_agent.backends import Backend, CandidateResponseError
 from writing_agent.workspace import (
     TOOL_SCHEMAS,
     Workspace,
@@ -129,18 +129,18 @@ def run_agent(
                     "latency_seconds": time.perf_counter() - before,
                 }
             )
-            if message.get("role") != "assistant":
-                raise ValueError("Backend must return an assistant message")
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                raise CandidateResponseError("Backend must return an assistant message")
             merge_usage(usage, completion.usage)
             tool_calls = message.get("tool_calls") or []
             if not isinstance(tool_calls, list):
-                raise ValueError("tool_calls must be a list")
+                raise CandidateResponseError("tool_calls must be a list")
             attempted_calls += len(tool_calls)
             history.append(message)
             if not tool_calls:
                 content = message.get("content")
                 if not isinstance(content, str) or not content.strip():
-                    raise ValueError("Final response must contain text")
+                    raise CandidateResponseError("Final response must contain text")
                 turn = {
                     "output": content,
                     "snapshot": workspace.snapshot(),
@@ -212,15 +212,14 @@ def run_agent(
                 history.append(reply)
                 emit({"type": "tool", "call": call, "observation": observation})
         return finish("step_limit")
+    except CandidateResponseError as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        emit({"type": "error", "error": error})
+        return finish("error", error=error, failure_class="candidate_invalid")
     except WorkspaceInfrastructureError as exc:
         error = f"{type(exc).__name__}: {exc}"
         emit({"type": "error", "error": error})
         return finish("error", error=error, failure_class="infrastructure")
-    except (ValueError, KeyError, TypeError) as exc:
-        # Malformed candidate actions are candidate failures, not host failures.
-        error = f"{type(exc).__name__}: {exc}"
-        emit({"type": "error", "error": error})
-        return finish("error", error=error, failure_class="candidate_invalid")
     except Exception as exc:
         # Unexpected harness/transport/filesystem failures must never become rewards.
         error = f"{type(exc).__name__}: {exc}"

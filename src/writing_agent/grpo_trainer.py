@@ -1,4 +1,4 @@
-"""Identity-agnostic GRPO trainer lifecycle shared by experiment profiles."""
+"""Task-graph GRPO trainer lifecycle, checkpointing, and adapter export."""
 
 import hashlib
 import json
@@ -94,7 +94,6 @@ def run_trainer(
     trainer_config_values,
     make_rollouts: Callable[[str], RolloutFunc],
     resume_from_checkpoint,
-    resume_checkpoint_identity,
     stop_after_steps,
     trainer_callback_factory=None,
 ):
@@ -103,26 +102,13 @@ def run_trainer(
     resumed_step = 0
     if resume_from_checkpoint is not None:
         resume_from_checkpoint = Path(resume_from_checkpoint)
-        external_resume = resume_from_checkpoint.resolve().parent != output.resolve()
         try:
             saved = json.loads((output / "experiment.json").read_text())
         except (OSError, json.JSONDecodeError):
-            if not external_resume:
-                raise ValueError("Missing/truncated experiment manifest") from None
-            # Imported fork evidence can exist before model admission; bind the
-            # new output identity without touching the external source.
-            save_json(output / "experiment.json", {"identity": identity, "manifest": manifest})
-        else:
-            if saved != {"identity": identity, "manifest": manifest}:
-                raise ValueError("Resume experiment identity changed")
-        if external_resume and resume_checkpoint_identity is None:
-            raise ValueError("External resume requires the source checkpoint identity")
-        if not external_resume and resume_checkpoint_identity is not None:
-            raise ValueError("Source checkpoint identity is only valid for an external resume")
-        resumed_step = verify_checkpoint(
-            resume_from_checkpoint,
-            resume_checkpoint_identity if external_resume else identity,
-        )
+            raise ValueError("Missing/truncated experiment manifest") from None
+        if saved != {"identity": identity, "manifest": manifest}:
+            raise ValueError("Resume experiment identity changed")
+        resumed_step = verify_checkpoint(resume_from_checkpoint, identity)
         if resumed_step >= settings.max_steps:
             raise ValueError("Checkpoint has already exhausted this experiment's step budget")
         partial_saves = []
