@@ -12,10 +12,6 @@ from pathlib import Path
 
 from writing_agent.backends import Completion
 from writing_agent.catalog import fingerprint
-from writing_agent.native_protocol import (
-    NativeResponseParseError,
-    is_native_output_parse_error,
-)
 from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
@@ -109,19 +105,14 @@ def render_messages(messages: list[dict]) -> list[dict]:
 
 def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
-    try:
-        message = tokenizer.parse_response(text, prefix=prefix)
-    except ValueError as exc:
-        if not is_native_output_parse_error(exc):
-            raise
-        raise NativeResponseParseError("Tokenizer could not parse the native response") from exc
+    message = tokenizer.parse_response(text, prefix=prefix)
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
-        raise NativeResponseParseError("Native tool-call output was not completely parsed")
+        raise ValueError("Native tool-call output was not completely parsed")
     for i, call in enumerate(calls):
         call["id"] = f"call_{i}"
         if not isinstance(call["function"]["arguments"], dict):
-            raise NativeResponseParseError("Native tool arguments must be an object")
+            raise ValueError("Native tool arguments must be an object")
     return message
 
 

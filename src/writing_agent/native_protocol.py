@@ -14,10 +14,6 @@ class ProtocolError(RuntimeError):
     """Unsupported native framing is an infrastructure failure."""
 
 
-class NativeResponseParseError(ValueError):
-    """The tokenizer could not parse sampled native response text."""
-
-
 def is_native_output_parse_error(error: ValueError) -> bool:
     """Recognize only pinned parser errors attributable to model-output text."""
     return str(error).startswith(
@@ -26,6 +22,8 @@ def is_native_output_parse_error(error: ValueError) -> bool:
             "json parser could not parse region as JSON",
             "json: input contains reserved sentinel characters",
             "Required response_template fields missing from parsed output:",
+            "Native tool-call output was not completely parsed",
+            "Native tool arguments must be an object",
         )
     )
 
@@ -62,11 +60,13 @@ def parse_native_response(
 
     try:
         message = parse_response(tokenizer, raw_text, prefix=prefix)
-    except NativeResponseParseError:
-        return NativeParseResult(
-            {"role": "assistant", "content": raw_text, "tool_calls": []},
-            True,
-        )
+    except ValueError as exc:
+        if is_native_output_parse_error(exc):
+            return NativeParseResult(
+                {"role": "assistant", "content": raw_text, "tool_calls": []},
+                True,
+            )
+        raise ProtocolError("Native response parser failed unexpectedly") from exc
     except Exception as exc:
         raise ProtocolError("Native response parser failed unexpectedly") from exc
     return NativeParseResult(bind_native_tool_call_ids(message, action_id), False)
@@ -187,7 +187,6 @@ def bind_native_tool_call_ids(message, action_id):
 
 __all__ = [
     "NATIVE_STOP_TOKENS",
-    "NativeResponseParseError",
     "ProtocolError",
     "bind_native_tool_call_ids",
     "is_native_output_parse_error",
