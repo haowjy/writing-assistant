@@ -15,6 +15,9 @@
 - Share native token layout between group coordination and training export, and refuse V2
   runtime sessions outside group sampling.
 
+- Attribute native rendering-pin failures to their rendering field rather than the adapter
+  trace projection.
+
 - Refuse native group sealing when the entry declares an aggregate total-token limit that
   native rule 3 does not derive; remove that limit from the Phase 8 probe tasks.
 

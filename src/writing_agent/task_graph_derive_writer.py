@@ -303,7 +303,15 @@ def _bind_writer_turn(
         )
     except ProjectionError as exc:
         raise AdapterContractProjectionError(str(exc)) from exc
-    except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
+    except AdapterContractError as exc:
+        message = str(exc)
+        if message.startswith("native renderer "):
+            field = message.removeprefix("native renderer ").split(" ", 1)[0]
+            raise AdapterContractProjectionError(
+                f"input.context.rendering.{field}: differs from native renderer"
+            ) from exc
+        raise AdapterContractProjectionError("input.adapter_trace: invalid") from exc
+    except (KeyError, TypeError, ValueError) as exc:
         raise AdapterContractProjectionError("input.adapter_trace: invalid") from exc
 
     member = group_member(view)

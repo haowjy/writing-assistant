@@ -488,9 +488,7 @@ class WriterTurnV2Tests(unittest.TestCase):
         _assert_path(self, self.view, bad_prefill, self.reader, "input.usage.prefill_tokens:")
 
         bad_cached = _turn(self.view, self.reader, usage={"cached_input_tokens": 1})
-        _assert_path(
-            self, self.view, bad_cached, self.reader, "input.usage.cached_input_tokens:"
-        )
+        _assert_path(self, self.view, bad_cached, self.reader, "input.usage.cached_input_tokens:")
 
         no_total = _turn(self.view, self.reader)
         no_total = replace(
@@ -725,7 +723,7 @@ class WriterTurnV2Tests(unittest.TestCase):
         view = replace(self.view, context=context)
         turn = replace(_turn(view, self.reader), adapter_trace=None)
 
-        _assert_path(self, view, turn, self.reader, "input.adapter_trace:")
+        _assert_path(self, view, turn, self.reader, "input.context.rendering.tool_schema_ref:")
 
     def test_v2_adapter_trace_claims_are_bound_to_the_group_policy(self):
         policy = self.view.group.policy
