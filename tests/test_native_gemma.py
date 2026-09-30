@@ -155,6 +155,7 @@ def _prepared(descriptors, *, messages=None, ordinal=0, history=None, max_contex
         adapter_ref="1" * 64,
         decision_ordinal=ordinal,
         native_history=history,
+        action_id=f"test-member:action:{ordinal}",
     )
 
 
@@ -245,8 +246,9 @@ class NativeGemmaTests(unittest.TestCase):
         finally:
             config.min_length = original
 
-    def test_external_suffix_matches_tool_results_by_order_not_event_call_id(self):
+    def test_external_suffix_pairs_tool_results_by_exact_call_id(self):
         from writing_agent.inference import parse_response
+        from writing_agent.native_protocol import bind_native_tool_call_ids
 
         raw = (
             '<|tool_call>call:write_file{content:<|"|>x<|"|>,'
@@ -254,7 +256,9 @@ class NativeGemmaTests(unittest.TestCase):
         )
         generated = tuple(self.tokenizer.encode(raw, add_special_tokens=False))
         action_id = "member:action:0"
-        parsed = parse_response(self.tokenizer, raw, prefix="")
+        parsed = bind_native_tool_call_ids(
+            parse_response(self.tokenizer, raw, prefix=""), action_id
+        )
         turn = WriterTurnV2(
             action_id=action_id,
             context_revision_ref="a" * 64,
@@ -293,7 +297,7 @@ class NativeGemmaTests(unittest.TestCase):
                 content=(
                     {
                         "type": "tool_call",
-                        "id": "call_0",
+                        "id": "member:call:0:0",
                         "name": "write_file",
                         "arguments": {"path": "scene.txt", "content": "x"},
                     },
@@ -319,6 +323,25 @@ class NativeGemmaTests(unittest.TestCase):
         )
 
         self.assertTrue(suffix)
+
+        mismatched = (
+            messages[0],
+            MessageV1(
+                role="tool",
+                content=(
+                    {
+                        "type": "tool_result",
+                        "call_id": "member:call:wrong:0",
+                        "content": {"ok": True, "result": "written"},
+                    },
+                ),
+                origin=action_id,
+            ),
+        )
+        with self.assertRaises(ProtocolError):
+            NativeGemmaRenderer(self.tokenizer, self.descriptors[0]).external_suffix(
+                history, mismatched
+            )
 
     def test_generation_keeps_no_past_key_values_between_sample_calls(self):
         original = self.model.generate

@@ -16,6 +16,7 @@ from typing import Any
 
 from writing_agent.inference import parse_response
 from writing_agent.native_gemma import NativeGemmaRenderer
+from writing_agent.native_protocol import bind_native_tool_call_ids
 from writing_agent.task_graph import (
     EventV1,
     canonical_bytes,
@@ -272,7 +273,9 @@ def _derive_admission(
                 if not isinstance(decoded, str) or raw_output != decoded.encode("utf-8"):
                     raise _AuditCheckFailure("raw_output_and_message")
                 prefix = tokenizer.decode(evidence.input_ids, skip_special_tokens=False)
-                parsed = parse_response(tokenizer, decoded, prefix=prefix)
+                parsed = bind_native_tool_call_ids(
+                    parse_response(tokenizer, decoded, prefix=prefix), evidence.turn.action_id
+                )
                 if intake_message(dict(parsed)).to_wire() != evidence.turn.message.to_wire():
                     raise _AuditCheckFailure("raw_output_and_message")
 

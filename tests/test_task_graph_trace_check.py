@@ -10,8 +10,12 @@ from pathlib import Path
 
 from scripts.task_graph_trace_check import claim_output_directory, main, parse_args
 from scripts.task_graph_trace_check_support import (
+    _tool_results_by_id,
     classify_protocol_shape,
+    decision_summaries,
     same_incomplete_reason,
+    tool_result_protocol_errors,
+    trace_completion_outcome,
     trace_events_for_artifact,
 )
 from writing_agent.task_graph import canonical_bytes
@@ -88,6 +92,12 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
             ),
             "parse",
         )
+        self.assertEqual(
+            classify_protocol_shape(
+                {"type": "ProtocolError", "message": "Task-graph tool result pairing mismatch"}
+            ),
+            "tool_result",
+        )
 
     def test_failure_trace_timing_is_canonical_integer_data(self):
         events = trace_events_for_artifact(
@@ -105,6 +115,100 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
         self.assertEqual(events[0]["sample_nanoseconds"], 2_000_000)
         self.assertNotIn("generate_seconds", events[0])
         canonical_bytes({"kind": "trace-check-failure-v1", "sample_trace": events})
+
+    def test_decision_report_preserves_each_tool_call_and_result(self):
+        calls = [{"id": "lineage:call:2:0", "name": "write_file", "result": "ok"}]
+        self.assertEqual(
+            decision_summaries(
+                [
+                    {
+                        "member_ordinal": 1,
+                        "decision_ordinal": 2,
+                        "generated_tokens": 34,
+                        "termination": {"kind": "native_stop"},
+                        "generate_seconds": 1.25,
+                        "tool_calls": calls,
+                    }
+                ]
+            ),
+            [
+                {
+                    "member_ordinal": 1,
+                    "decision_ordinal": 2,
+                    "generated_tokens": 34,
+                    "termination": {"kind": "native_stop"},
+                    "generate_seconds": 1.25,
+                    "tool_calls": calls,
+                }
+            ],
+        )
+
+    def test_tool_results_are_reported_and_only_protocol_shaped_errors_halt(self):
+        results = _tool_results_by_id(
+            [
+                {
+                    "role": "tool",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "call_id": "ok-id",
+                            "content": {"ok": True, "result": "written"},
+                        },
+                        {
+                            "type": "tool_result",
+                            "call_id": "argument-error-id",
+                            "content": {"ok": False, "error": "bad ask_author arguments"},
+                        },
+                        {
+                            "type": "tool_result",
+                            "call_id": "duplicate-id",
+                            "content": {"ok": False, "error": "Duplicate tool call id"},
+                        },
+                    ],
+                }
+            ]
+        )
+        self.assertEqual(
+            results,
+            {
+                "ok-id": "ok",
+                "argument-error-id": "bad ask_author arguments",
+                "duplicate-id": "Duplicate tool call id",
+            },
+        )
+        events = [
+            {
+                "member_ordinal": 0,
+                "decision_ordinal": 1,
+                "tool_calls": [
+                    {"name": "ask_author", "result": "bad ask_author arguments"},
+                    {"name": "write_file", "result": "Duplicate tool call id"},
+                ],
+            }
+        ]
+        self.assertEqual(
+            tool_result_protocol_errors(events),
+            [
+                {
+                    "member_ordinal": 0,
+                    "decision_ordinal": 1,
+                    "name": "write_file",
+                    "result": "Duplicate tool call id",
+                }
+            ],
+        )
+        self.assertEqual(
+            trace_completion_outcome(
+                tool_result_protocol_errors(events),
+                inspector_identical=True,
+                incomplete_reason=None,
+            )[0],
+            "halt",
+        )
+        self.assertEqual(
+            trace_completion_outcome([], inspector_identical=True, incomplete_reason=None),
+            ("pass", None),
+        )
 
 
 if __name__ == "__main__":

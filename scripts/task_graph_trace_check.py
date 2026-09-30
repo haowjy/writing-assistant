@@ -39,6 +39,7 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     SampleTrace,
     adapter_tensor_hash,
     classify_protocol_shape,
+    decision_summaries,
     instrument_generation_time,
     load_builder,
     load_model_and_tokenizer,
@@ -51,6 +52,8 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     same_incomplete_reason,
     start_receipt_ordinal,
     tokenizer_files,
+    tool_result_protocol_errors,
+    trace_completion_outcome,
     trace_events_for_artifact,
     with_context_cap_for_local_model,
     with_native_tokenizer,
@@ -331,7 +334,25 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
     state["stage"] = "finalize_group"
     decision = coordinator.finalize(spec)
     store = fixture.store
-    members = member_summaries(store, coordinator, spec, decision, trace)
+    members = member_summaries(
+        store,
+        coordinator,
+        spec,
+        decision,
+        trace,
+        initial_files=fixture.runtime.state.files,
+    )
+    tool_result_errors = tool_result_protocol_errors(trace.events)
+    tool_result_failure = (
+        {
+            "type": "ProtocolToolResultError",
+            "message": "trace contains a protocol-shaped tool result error",
+            "protocol_shape": "tool_result",
+            "tool_result_errors": tool_result_errors,
+        }
+        if tool_result_errors
+        else None
+    )
     report: dict[str, Any] = {
         "schema": 1,
         "status": "halt" if halt else "running",
@@ -348,19 +369,11 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         "group_reason": decision.reason,
         "budgets": expected,
         "members": members,
+        "tool_result_protocol_errors": tool_result_errors,
         "both_members_incomplete_same_reason": same_incomplete_reason(members) is not None,
         "same_incomplete_reason": same_incomplete_reason(members),
         "s10_revision_required": same_incomplete_reason(members) is not None,
-        "decision_generate_times": [
-            {
-                "member_ordinal": event["member_ordinal"],
-                "decision_ordinal": event["decision_ordinal"],
-                "generated_tokens": event["generated_tokens"],
-                "termination": event["termination"],
-                "generate_seconds": event["generate_seconds"],
-            }
-            for event in trace.events
-        ],
+        "decision_generate_times": decision_summaries(trace.events),
         "re_prefill": prefill_metrics(trace.events),
         "adapter_hash_before": adapter_hash_before,
         "adapter_hash_after": None,
@@ -371,11 +384,15 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
     state["report"] = report
     write_json(output_dir / "report.json", report)
     if halt:
+        if tool_result_failure is not None:
+            halt = tool_result_failure
+            report["halt"] = halt
         report["status"] = "halt"
         _write_halt(output_dir, state, halt, members=members)
+        write_json(output_dir / "report.json", report)
         return report
     if decision.status not in {"ready", "tie"}:
-        halt = {
+        halt = tool_result_failure or {
             "type": "GroupDecisionV1",
             "message": f"group finalized {decision.status}: {decision.reason}",
             "protocol_shape": "non-protocol-infrastructure",
@@ -403,7 +420,13 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         tokenizer_root=args.tokenizer_root.expanduser().resolve(),
     )
     report["members"] = member_summaries(
-        store, coordinator, spec, decision, trace, admission=admission
+        store,
+        coordinator,
+        spec,
+        decision,
+        trace,
+        admission=admission,
+        initial_files=fixture.runtime.state.files,
     )
     report["both_members_incomplete_same_reason"] = (
         same_incomplete_reason(report["members"]) is not None
@@ -417,12 +440,15 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         require_training_admission(admission)
     except TrainingAuditError as exc:
         refused = [item for item in exc.admission.members if item["status"] != "admitted"]
-        failure = {
-            "type": type(exc).__name__,
-            "message": str(exc),
-            "failed_checks": [item["failed_check"] for item in refused],
-        }
-        failure["protocol_shape"] = classify_protocol_shape(failure)
+        if tool_result_failure is not None:
+            failure = tool_result_failure
+        else:
+            failure = {
+                "type": type(exc).__name__,
+                "message": str(exc),
+                "failed_checks": [item["failed_check"] for item in refused],
+            }
+            failure["protocol_shape"] = classify_protocol_shape(failure)
         report["halt"] = failure
         report["status"] = "halt"
         _write_halt(output_dir, state, failure, members=report["members"])
@@ -436,24 +462,13 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
     inspect_two = inspect_group_offline(store.root, spec.group_id)
     report["inspector_byte_identical"] = inspect_one == inspect_two
     report["inspection_ref"] = hashlib.sha256(inspect_one).hexdigest()
-    report["status"] = "pass" if report["inspector_byte_identical"] else "fail"
-    if report["s10_revision_required"]:
-        report["status"] = "fail"
-        report["halt"] = {
-            "type": "FixtureIncompleteSignal",
-            "message": (
-                "both members ended incomplete for "
-                f"{report['same_incomplete_reason']}; revise S10 before R3"
-            ),
-            "protocol_shape": "termination",
-        }
-    if not report["inspector_byte_identical"]:
-        report["halt"] = {
-            "type": "InspectorNonDeterminism",
-            "message": "the two offline inspector outputs differ byte for byte",
-            "protocol_shape": "non-protocol-infrastructure",
-        }
-        _write_halt(output_dir, state, report["halt"], members=report["members"])
+    report["status"], report["halt"] = trace_completion_outcome(
+        tool_result_errors,
+        inspector_identical=report["inspector_byte_identical"],
+        incomplete_reason=(
+            report["same_incomplete_reason"] if report["s10_revision_required"] else None
+        ),
+    )
     if report["halt"] is None:
         state.update(stage="complete", protocol_shape=None)
     else:

@@ -11,7 +11,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from writing_agent.inference import generate_with_seed, parse_response, render_messages
-from writing_agent.native_protocol import NATIVE_STOP_TOKENS, ProtocolError, native_suffix
+from writing_agent.native_protocol import (
+    NATIVE_STOP_TOKENS,
+    ProtocolError,
+    bind_native_tool_call_ids,
+    native_suffix,
+)
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_group_contract import derive_group_seed
@@ -96,10 +101,13 @@ class NativeGemmaRenderer:
         tool_messages = [message for message in external if message.get("role") == "tool"]
         if len(tool_messages) != len(sampled_call_ids):
             raise ProtocolError("Task-graph tool results differ from sampled tool calls")
-        for message, call_id in zip(tool_messages, sampled_call_ids, strict=True):
-            # Task-graph tool results use event call IDs; Gemma's replay uses the
-            # sampled assistant call IDs. Their order is the committed call order.
-            message["tool_call_id"] = call_id
+        result_call_ids = [message.get("tool_call_id") for message in tool_messages]
+        if (
+            len(set(sampled_call_ids)) != len(sampled_call_ids)
+            or len(set(result_call_ids)) != len(result_call_ids)
+            or set(result_call_ids) != set(sampled_call_ids)
+        ):
+            raise ProtocolError("Task-graph tool result IDs do not match sampled tool calls")
         suffix = native_suffix(
             self.tokenizer,
             assistant,
@@ -253,6 +261,8 @@ class NativeGemmaSampleBackend:
             raise AdapterContractError("Native sampler model differs from the sealed pin")
         if prepared.writer_seed is None or prepared.decision_ordinal is None:
             raise AdapterContractError("Native sampler requires a writer seed and decision ordinal")
+        if prepared.action_id is None:
+            raise AdapterContractError("Native sampler requires the committed writer action ID")
         if prepared.native_sampling_budget is None:
             raise AdapterContractError(
                 "Native sampler requires the derive-provided sampling budget"
@@ -359,7 +369,9 @@ class NativeGemmaSampleBackend:
         raw_output = self.tokenizer.decode(output_ids, skip_special_tokens=False)
         prompt = self.tokenizer.decode(input_ids, skip_special_tokens=False)
         try:
-            message = parse_response(self.tokenizer, raw_output, prefix=prompt)
+            message = bind_native_tool_call_ids(
+                parse_response(self.tokenizer, raw_output, prefix=prompt), prepared.action_id
+            )
         except (AttributeError, TypeError, ValueError) as exc:
             raise ProtocolError(
                 "Gemma output does not satisfy its native response grammar"

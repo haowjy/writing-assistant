@@ -46,9 +46,15 @@ rendering, but no persisted request body or request-reference pair;
   allowance and `max_context_tokens`; it exposes no cumulative usage ledger. The gatherer
   forwards this allocation unchanged to `PreparedSamplingInput`.
 - Native sampling also receives the sealed `adapter_ref`, the action-count `decision_ordinal`,
-  and `native_history` rebuilt from the last committed `WriterTurnV2` and its token artifacts.
-  That ledger is re-prefilled per decision; no model KV cache crosses a sample call. The
-  concrete adapter is `native_gemma.NativeGemmaSampleBackend`.
+  the pending `action_id`, and `native_history` rebuilt from the last committed
+  `WriterTurnV2` and its token artifacts. That ledger is re-prefilled per decision; no model
+  KV cache crosses a sample call. The concrete adapter is
+  `native_gemma.NativeGemmaSampleBackend`.
+- Gemma's response parser invents IDs per response, so the native protocol binds each parsed
+  call to the task-graph call ID derived from the committed action ID and call index. This
+  makes raw call IDs, committed tool results, and the audit's re-parse agree by exact ID;
+  native suffix replay checks a one-to-one ID mapping and a fail-closed count, not positional
+  pairing.
 
 The rules:
 - **There is one content hash: `view.context.content_ref`.** `step_input` supplies it, and the

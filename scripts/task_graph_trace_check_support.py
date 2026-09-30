@@ -14,6 +14,7 @@ import platform
 import resource
 import struct
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -219,6 +220,7 @@ class SampleTrace:
                 event = {
                     "member_ordinal": trace.member_ordinal,
                     "decision_ordinal": prepared.decision_ordinal,
+                    "action_id": prepared.action_id,
                     "input_tokens": None,
                     "prefill_tokens": None,
                     "generated_tokens": None,
@@ -227,6 +229,7 @@ class SampleTrace:
                     "sample_seconds": None,
                     "context_delta_tokens": None,
                     "sample_error": None,
+                    "tool_calls": [],
                 }
                 history = prepared.native_history
                 if history is not None:
@@ -241,6 +244,17 @@ class SampleTrace:
                     event["prefill_tokens"] = int(result.usage.get("prefill_tokens", 0))
                     event["generated_tokens"] = len(result.generated_token_ids)
                     event["termination"] = dict(result.termination)
+                    event["tool_calls"] = [
+                        {
+                            "id": call.get("id"),
+                            "name": call.get("function", {}).get("name")
+                            if isinstance(call.get("function"), Mapping)
+                            else None,
+                            "result": "missing",
+                        }
+                        for call in result.message.get("tool_calls", ())
+                        if isinstance(call, Mapping)
+                    ]
                     prefix = event.get("prefix_tokens", 0)
                     event["context_delta_tokens"] = event["input_tokens"] - prefix
                     return result
@@ -286,6 +300,21 @@ def trace_events_for_artifact(events: list[dict[str, Any]]) -> list[dict[str, An
     return artifact_events
 
 
+def decision_summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep each sample's tool calls and resolved results in the human report."""
+    return [
+        {
+            "member_ordinal": event["member_ordinal"],
+            "decision_ordinal": event["decision_ordinal"],
+            "generated_tokens": event["generated_tokens"],
+            "termination": event["termination"],
+            "generate_seconds": event["generate_seconds"],
+            "tool_calls": event["tool_calls"],
+        }
+        for event in events
+    ]
+
+
 def native_policy(
     store, rendering, manifest, model_ref: str, adapter_hash: str, experiment_ref: str
 ):
@@ -326,7 +355,9 @@ def start_receipt_ordinal(coordinator, spec, ordinal: int) -> str:
     return coordinator._start_receipt(spec, ordinal)["start_checkpoint_id"]
 
 
-def member_summaries(store, coordinator, spec, decision, trace, admission=None):
+def member_summaries(
+    store, coordinator, spec, decision, trace, admission=None, *, initial_files=None
+):
     from writing_agent.task_graph_gate import LineageGate
     from writing_agent.task_graph_group_records import GroupMemberResultV1
 
@@ -364,9 +395,26 @@ def member_summaries(store, coordinator, spec, decision, trace, admission=None):
             "reward": None,
             "eligibility": None,
             "admission": admission_by_id.get(member.member_id),
+            "final_files_differ_from_initial": None,
+            "changed_paths": [],
         }
         if result is not None and result.final_checkpoint_id is not None:
             view = LineageGate().view(store, result.final_checkpoint_id)
+            initial = dict(initial_files or {})
+            final = dict(view.state.files)
+            changed_paths = sorted(
+                path
+                for path in initial.keys() | final.keys()
+                if initial.get(path) != final.get(path)
+            )
+            summary["final_files_differ_from_initial"] = bool(changed_paths)
+            summary["changed_paths"] = changed_paths
+            tool_results = _tool_results_by_id(view.context.messages)
+            for event in trace.events:
+                if event["member_ordinal"] != ordinal:
+                    continue
+                for call in event["tool_calls"]:
+                    call["result"] = tool_results.get(call["id"], "missing")
             summary["task_status"] = view.outcome.task_status
             summary["stop_reason"] = view.outcome.stop_reason
             summary["eligibility"] = view.outcome.training_eligibility
@@ -379,6 +427,87 @@ def member_summaries(store, coordinator, spec, decision, trace, admission=None):
                 }
         members.append(summary)
     return members
+
+
+def _tool_results_by_id(messages) -> dict[str, str]:
+    results = {}
+    for message in messages:
+        value = message.to_dict() if callable(getattr(message, "to_dict", None)) else message
+        if not isinstance(value, Mapping) or value.get("role") != "tool":
+            continue
+        for part in value.get("content", ()):
+            if not isinstance(part, Mapping) or part.get("type") != "tool_result":
+                continue
+            response = part.get("content")
+            if isinstance(response, Mapping) and response.get("ok") is True:
+                results[part["call_id"]] = "ok"
+            elif isinstance(response, Mapping) and response.get("ok") is False:
+                error = response.get("error")
+                results[part["call_id"]] = error if isinstance(error, str) else "tool call failed"
+            else:
+                results[part["call_id"]] = "malformed tool result"
+    return results
+
+
+def tool_result_protocol_errors(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return protocol-shaped tool-result failures without mistaking model errors for them."""
+    markers = (
+        "duplicate tool call id",
+        "unknown tool call",
+        "unknown call",
+        "no matching writer-call source",
+        "tool result does not name the queued call",
+        "tool result id mismatch",
+        "tool result pairing",
+        "call/result pairing",
+        "pairing error",
+        "task-graph tool result ids do not match",
+        "malformed tool result",
+    )
+    failures = []
+    for event in events:
+        for call in event.get("tool_calls", ()):
+            result = call.get("result")
+            if isinstance(result, str) and (
+                result == "missing" or any(marker in result.lower() for marker in markers)
+            ):
+                failures.append(
+                    {
+                        "member_ordinal": event.get("member_ordinal"),
+                        "decision_ordinal": event.get("decision_ordinal"),
+                        "name": call.get("name"),
+                        "result": result,
+                    }
+                )
+    return failures
+
+
+def trace_completion_outcome(
+    tool_errors: list[dict[str, Any]], *, inspector_identical: bool, incomplete_reason: str | None
+):
+    """Apply the terminal S11 verdict policy, with tool protocol errors taking precedence."""
+    if tool_errors:
+        return "halt", {
+            "type": "ProtocolToolResultError",
+            "message": "trace contains a protocol-shaped tool result error",
+            "protocol_shape": "tool_result",
+            "tool_result_errors": tool_errors,
+        }
+    if not inspector_identical:
+        return "fail", {
+            "type": "InspectorNonDeterminism",
+            "message": "the two offline inspector outputs differ byte for byte",
+            "protocol_shape": "non-protocol-infrastructure",
+        }
+    if incomplete_reason is not None:
+        return "fail", {
+            "type": "FixtureIncompleteSignal",
+            "message": (
+                f"both members ended incomplete for {incomplete_reason}; revise S10 before R3"
+            ),
+            "protocol_shape": "termination",
+        }
+    return "pass", None
 
 
 def same_incomplete_reason(members: list[dict[str, Any]]) -> str | None:
@@ -396,6 +525,22 @@ def classify_protocol_shape(error: dict[str, Any]) -> str:
     if isinstance(failed_checks, (list, tuple, set)):
         values.extend(failed_checks)
     text = " ".join(map(str, values)).lower()
+    if any(
+        marker in text
+        for marker in (
+            "duplicate tool call id",
+            "unknown tool call",
+            "unknown call",
+            "no matching writer-call source",
+            "tool result does not name the queued call",
+            "tool result id mismatch",
+            "tool result pairing",
+            "call/result pairing",
+            "pairing error",
+            "tool result ids do not match",
+        )
+    ):
+        return "tool_result"
     if any(word in text for word in ("external_suffix", "suffix", "delta", "tool result")):
         return "delta"
     if any(word in text for word in ("termination", "stop token", "token_limit", "context_limit")):
