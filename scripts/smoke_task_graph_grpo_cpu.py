@@ -282,7 +282,7 @@ class ScriptedNativeBackend:
         )
 
 
-def _plans(configs, settings_value):
+def _plans(configs, settings_value, *, all_tie=False):
     variants = (
         ("nonempty_only",) * 4,
         ("nonempty_only", "decision_phrase", "phrase_and_detail", "all_optional"),
@@ -291,7 +291,11 @@ def _plans(configs, settings_value):
     result = {}
     for step in range(settings_value.max_steps):
         config = configs[step % len(configs)]
-        choices = variants[step % len(variants)]
+        choices = (
+            ("nonempty_only",) * settings_value.group_size
+            if all_tie
+            else variants[step % len(variants)]
+        )
         group_seed = derive_group_seed(settings_value.seed, "task-graph-step", step)
         for ordinal, lineage in enumerate(choices):
             writer_seed = derive_group_seed(group_seed, "writer", ordinal)
@@ -299,7 +303,16 @@ def _plans(configs, settings_value):
     return result
 
 
-def _make_run(root: Path, *, resume: Path | None = None, stop_after_steps=None):
+def _make_run(
+    root: Path,
+    *,
+    resume: Path | None = None,
+    stop_after_steps=None,
+    model_factory=None,
+    sample_backend_factory=None,
+    runtime_identity=None,
+    all_tie=False,
+):
     import torch
     from transformers import AutoTokenizer
 
@@ -338,25 +351,35 @@ def _make_run(root: Path, *, resume: Path | None = None, stop_after_steps=None):
         NATIVE_STOP_TOKEN_IDS
     ):
         raise ValueError("cached Gemma tokenizer does not match native stop tokens")
-    runtime_identity = {
-        "model": "gemma4-e2b-tiny-random-fp32-cpu-v1",
-        "tokenizer_revision": TOKENIZER_REVISION,
-        "fixture_tasks": [config["id"] for config in configs],
-    }
+    if runtime_identity is None:
+        runtime_identity = {
+            "model": "gemma4-e2b-tiny-random-fp32-cpu-v1",
+            "tokenizer_revision": TOKENIZER_REVISION,
+            "fixture_tasks": [config["id"] for config in configs],
+        }
+    if model_factory is None:
+
+        def model_factory():
+            return tiny_gemma(tokenizer.vocab_size)
+
+    if sample_backend_factory is None:
+        plans = _plans(configs, recipe, all_tie=all_tie)
+
+        def sample_backend_factory(*args, **kwargs):
+            return ScriptedNativeBackend(*args, plans=plans, **kwargs)
+
     return train_task_graph(
         entries,
         root,
         settings=recipe,
         model=None,
-        model_factory=lambda: tiny_gemma(tokenizer.vocab_size),
+        model_factory=model_factory,
         tokenizer=tokenizer,
         manifest_descriptors=descriptors,
         runtime_identity=runtime_identity,
         resume_from_checkpoint=resume,
         stop_after_steps=stop_after_steps,
-        sample_backend_factory=lambda *args, **kwargs: ScriptedNativeBackend(
-            *args, plans=_plans(configs, recipe), **kwargs
-        ),
+        sample_backend_factory=sample_backend_factory,
         tokenizer_root=TOKENIZER_PATH,
     )
 
