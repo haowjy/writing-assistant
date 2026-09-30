@@ -260,6 +260,18 @@ def _targeted_cases():
 
 
 class IntakeAndParserTests(unittest.TestCase):
+    def test_native_parser_impossible_shapes_are_protocol_rejections(self):
+        expected = {
+            "tool_calls_not_array": "tool_calls must be an array",
+            "arguments_not_object": "Tool arguments must be an object",
+            "invalid_arguments_json": "Invalid tool arguments JSON",
+        }
+        for code, reason in expected.items():
+            with self.subTest(code=code):
+                self.assertIn(code, PROTOCOL_SHAPED_REJECTION_CODES)
+                self.assertEqual(REJECTION_MESSAGES[code], reason)
+                self.assertEqual(rejection_code_for_message(reason), code)
+
     def test_core_owns_canonical_action_to_tool_call_ids(self):
         from writing_agent.task_graph import tool_call_id
 
@@ -289,6 +301,9 @@ class IntakeAndParserTests(unittest.TestCase):
                     "invalid_function_envelope",
                     "missing_id",
                     "duplicate_id",
+                    "tool_calls_not_array",
+                    "arguments_not_object",
+                    "invalid_arguments_json",
                 }
             ),
         )

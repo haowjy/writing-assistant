@@ -75,13 +75,22 @@ _REJECTION_CODES_BY_MESSAGE = {message: code for code, message in REJECTION_MESS
 
 # Native parse_response owns the standard call/function envelope and rejects non-object
 # arguments before intake; bind_native_tool_call_ids then replaces every parser-local ID with
-# a unique action-derived ID. These four committed intake codes therefore indicate a broken
-# native parser/binder contract. Size limits and generated names/arguments remain model
-# behavior, as do ask-author shape/path validation and failures from an accepted tool call.
+# a unique action-derived ID. A non-array calls value, non-object arguments, malformed
+# arguments JSON, invalid envelopes, missing IDs, or duplicate IDs therefore indicate a
+# broken native parser/binder contract. Size limits and generated names/arguments remain
+# model behavior, as do ask-author shape/path validation and failures from an accepted call.
 # Argument syntax/content codes (including ask-author shape) and unsafe paths describe sampled
 # behavior; tool-execution failures describe the effect the sampled call requested.
 PROTOCOL_SHAPED_REJECTION_CODES = frozenset(
-    {"invalid_envelope", "invalid_function_envelope", "missing_id", "duplicate_id"}
+    {
+        "invalid_envelope",
+        "invalid_function_envelope",
+        "missing_id",
+        "duplicate_id",
+        "tool_calls_not_array",
+        "arguments_not_object",
+        "invalid_arguments_json",
+    }
 )
 # Accepted tool calls can fail with dynamic, call-specific workspace text. The reader assigns
 # this stable model-behavior code when the committed observation is not one of the fixed errors.
