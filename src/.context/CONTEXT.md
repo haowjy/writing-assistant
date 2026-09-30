@@ -135,6 +135,11 @@ retains its smoke-evaluation and training-format workflows.
   [training export](../writing_agent/task_graph_training_export.py) derives a
   `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
   reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
+  [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
+  exported token layouts and pinned tokenizer files, then stores `TrainingAdmissionV1`.
+  Only all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
+  and admission derivation from stored evidence and the pinned local tokenizer without
+  network access; its canonical report contains no prompt, packet, context or token data.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
