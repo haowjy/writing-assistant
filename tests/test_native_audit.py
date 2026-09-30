@@ -563,6 +563,99 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
         # be requested through export_training_batch. Exercise the audit's defensive edge.
         self.assertFalse(_batch_member_matches(CorruptMaskReader(), exported.batch, member, turns))
 
+    def test_audit_rejects_gaps_wrong_suffix_and_wrong_prompt(self):
+        from writing_agent.native_audit import audit_training_batch
+        from writing_agent.task_graph_gate import StoreArtifactReader
+        from writing_agent.task_graph_token_ledger import (
+            decode_u32_token_ids,
+            encode_u32_token_ids,
+        )
+        from writing_agent.task_graph_training_export import (
+            TrainingBatchExportV1,
+            _bytes_artifact,
+            export_training_batch,
+        )
+        from writing_agent.task_graph_training_records import TrainingBatchV1
+
+        def forged_export(store, name):
+            reader = StoreArtifactReader(store)
+            exported = export_training_batch(self.spec, self.decision, reader)
+            artifact_values = {artifact.ref: artifact.value for artifact in exported.artifacts}
+            members = [dict(member) for member in exported.batch.members]
+            member = members[3]
+            extra_artifacts = []
+
+            def replace_bytes(field, data):
+                artifact = _bytes_artifact(data)
+                extra_artifacts.append(artifact)
+                member[field] = artifact.ref
+
+            def artifact_bytes(ref):
+                if ref in artifact_values:
+                    return artifact_values[ref]
+                return reader.bytes_artifact(ref)
+
+            def token_ids(ref):
+                data = artifact_bytes(ref)
+                return decode_u32_token_ids(data, len(data) // 4)
+
+            if name == "gap":
+                completion = list(token_ids(member["completion_ids_ref"]))
+                mask = bytearray(artifact_bytes(member["env_mask_ref"]))
+                spans = [dict(span) for span in member["turn_spans"]]
+                insertion = spans[0]["completion_end"]
+                completion.insert(insertion, 999)
+                mask.insert(insertion, 1)
+                for span in spans[1:]:
+                    for key in ("ext_start", "completion_start", "completion_end"):
+                        span[key] += 1
+                member["turn_spans"] = spans
+                replace_bytes("completion_ids_ref", encode_u32_token_ids(tuple(completion)))
+                replace_bytes("env_mask_ref", bytes(mask))
+            elif name == "suffix":
+                completion = list(token_ids(member["completion_ids_ref"]))
+                mask = artifact_bytes(member["env_mask_ref"])
+                suffix_index = mask.index(0)
+                completion[suffix_index] = (
+                    completion[suffix_index] + 1
+                ) % self.tokenizer.vocab_size
+                replace_bytes("completion_ids_ref", encode_u32_token_ids(tuple(completion)))
+            else:
+                prompt = list(token_ids(member["prompt_ids_ref"]))
+                prompt[0] = (prompt[0] + 1) % self.tokenizer.vocab_size
+                replace_bytes("prompt_ids_ref", encode_u32_token_ids(tuple(prompt)))
+
+            batch = TrainingBatchV1(
+                schema=exported.batch.schema,
+                group_id=exported.batch.group_id,
+                decision_ref=exported.batch.decision_ref,
+                max_context_tokens=exported.batch.max_context_tokens,
+                members=members,
+            )
+            return TrainingBatchExportV1(
+                batch=batch,
+                artifacts=(*exported.artifacts, *extra_artifacts),
+            )
+
+        for name in ("gap", "suffix", "prompt"):
+            with self.subTest(name=name):
+                store = self._clone_store(self.fixture.store, f"layout-{name}")
+                exported = forged_export(store, name)
+                with patch(
+                    "writing_agent.native_audit.export_training_batch", return_value=exported
+                ):
+                    admission = audit_training_batch(
+                        store,
+                        self.spec,
+                        self.decision,
+                        self.tokenizer,
+                        adapter_hash_before=self.policy["behavior_policy_ref"],
+                        adapter_hash_after=self.policy["behavior_policy_ref"],
+                        tokenizer_root=TOKENIZER_PATH,
+                    )
+                self.assertEqual(admission.members[3]["status"], "refused")
+                self.assertEqual(admission.members[3]["failed_check"], "exported_token_layout")
+
 
 if __name__ == "__main__":
     unittest.main()
