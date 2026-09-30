@@ -25,9 +25,29 @@ MODEL_REVISION = "3e22461f65e89153144f8adb70e3b8c2cc9845a7"
 MAX_TOKENS_PER_DECISION = 512
 MAX_GENERATED_TOKENS = 1536
 MAX_CONTEXT_TOKENS = 4096
+TRACE_TASK_BUDGETS = {
+    "max_context_tokens": MAX_CONTEXT_TOKENS,
+    "max_generated_tokens": MAX_GENERATED_TOKENS,
+    "max_tokens_per_decision": MAX_TOKENS_PER_DECISION,
+    "max_tool_calls": 8,
+    "max_writer_turns": 6,
+}
 TOKENIZER_ROOT = (
     Path.home() / ".cache/huggingface/hub/models--google--gemma-4-E2B-it/snapshots" / MODEL_REVISION
 )
+
+
+def load_trace_task_entry(config_path: Path):
+    """Validate the frozen S10b task budgets and admit its entry before model loading."""
+    from writing_agent.task_graph_probe_tasks import build_admitted_entry, load_probe_task
+
+    config = load_probe_task(config_path)
+    settings = config["probe_settings"]
+    if "max_author_calls" in settings or any(
+        settings.get(key) != value for key, value in TRACE_TASK_BUDGETS.items()
+    ):
+        raise ValueError("t1 probe settings no longer match the frozen Phase 8 budgets")
+    return config, build_admitted_entry(config)
 
 
 def peak_rss_bytes() -> int:

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Validate the S10b no-author trace-check budgets before model loading and record the
+  trainer's none-interaction simulator shape in S11 evidence.
+
 - State each Phase 8 probe detail in its task brief and run the probe and CPU fixtures without
   author-tool calls or feedback turns.
 

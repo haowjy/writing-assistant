@@ -36,11 +36,13 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     MODEL_ID,
     MODEL_REVISION,
     TOKENIZER_ROOT,
+    TRACE_TASK_BUDGETS,
     SampleTrace,
     classify_protocol_shape,
     decision_summaries,
     instrument_generation_time,
     load_model_and_tokenizer,
+    load_trace_task_entry,
     member_summaries,
     offline_cpu_environment,
     on_policy_drift,
@@ -160,30 +162,15 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         LocalWorkspaceEnvironment,
     )
     from writing_agent.task_graph_ports import RuntimeDependenciesV1
-    from writing_agent.task_graph_probe_tasks import (
-        build_admitted_entry,
-        load_probe_task,
-        persist_entry,
-    )
+    from writing_agent.task_graph_probe_tasks import persist_entry
     from writing_agent.task_graph_record_contracts import ContextPolicyV1
     from writing_agent.task_graph_store import TaskGraphStore
     from writing_agent.task_graph_training_records import TrainingBatchV1
 
     root = Path(__file__).resolve().parents[1]
     config_path = root / TASK_CONFIG
-    config = load_probe_task(config_path)
-    settings = config["probe_settings"]
-    expected = {
-        "max_context_tokens": MAX_CONTEXT_TOKENS,
-        "max_generated_tokens": MAX_GENERATED_TOKENS,
-        "max_tokens_per_decision": MAX_TOKENS_PER_DECISION,
-        "max_tool_calls": 8,
-        "max_author_calls": 2,
-        "max_writer_turns": 6,
-    }
-    if any(settings.get(key) != value for key, value in expected.items()):
-        raise ValueError("t1 probe settings no longer match the frozen Phase 8 budgets")
-    entry = build_admitted_entry(config)
+    config, entry = load_trace_task_entry(config_path)
+    expected = dict(TRACE_TASK_BUDGETS)
     if args.model_path is not None:
         entry = with_context_cap_for_local_model(entry, MAX_CONTEXT_TOKENS)
     else:
@@ -324,12 +311,15 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         store.get_artifact(spec.policy["context_policy_ref"])
     )
     entry_view = environment.verify(environment.open(entry_checkpoint_id))
-    scripted_author = store.get_artifact(spec.policy["simulator_ref"])
-    if context_policy.mode != "carry" or scripted_author != {
-        "implementation": "scripted-author-v1",
-        "script_ref": entry_view.node.contract.interaction_contract.script_ref,
-    }:
-        raise RuntimeError("trainer rollout group differs from carry/scripted-author policy")
+    simulator = store.get_artifact(spec.policy["simulator_ref"])
+    interaction = entry_view.node.contract.interaction_contract
+    expected_simulator = {"implementation": "scripted-author-v1", "script_ref": None}
+    if (
+        context_policy.operation != "carry"
+        or interaction.mode != "none"
+        or simulator != expected_simulator
+    ):
+        raise RuntimeError("trainer rollout group differs from carry/none-interaction policy")
     members = member_summaries(
         store,
         coordinator,
@@ -363,8 +353,9 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         "group_status": decision.status,
         "group_reason": decision.reason,
         "group_policy": {
-            "context_policy": context_policy.mode,
-            "scripted_author_ref": spec.policy["simulator_ref"],
+            "context_policy": context_policy.operation,
+            "simulator_ref": spec.policy["simulator_ref"],
+            "simulator": simulator,
         },
         "budgets": expected,
         "members": members,
