@@ -16,13 +16,14 @@ from writing_agent.grpo_task_graph import (
     TaskGraphResumeRefused,
     TaskGraphRollouts,
     TaskGraphTrainingError,
-    _assert_active_adapter,
     _reserve_step,
     task_graph_behavior_policy_ref,
     task_graph_resume_preflight,
     train_task_graph,
 )
 from writing_agent.native_audit import TrainingAuditError
+from writing_agent.native_gemma import assert_active_adapter
+from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_records import TrainingAdmissionV1
 from writing_agent.task_graph_store import TaskGraphStore
@@ -34,7 +35,6 @@ def _settings(**overrides) -> GRPOSettings:
         "revision": "a" * 40,
         "runtime_profile": "task-graph-v1",
         "loss_type": "dapo",
-        "scale_rewards": "none",
         "enable_thinking": False,
         "group_size": 4,
         "microbatch_size": 1,
@@ -89,6 +89,21 @@ def _rollouts_scaffold(root: Path, status: str):
         def finalize(self, _spec):
             return decision
 
+        def record_training_admission(self, _spec, admission):
+            admission_ref = store.put_artifact(admission.to_wire())
+            directory = root / "groups" / group_id
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "training-batch.json").write_text(
+                json.dumps({"batch_ref": admission.batch_ref})
+            )
+            (directory / "training-admission.json").write_text(
+                json.dumps({"admission_ref": admission_ref})
+            )
+
+        def record_training_consumed(self, _spec, receipt):
+            directory = root / "groups" / group_id
+            (directory / "trainer-consumed.json").write_text(json.dumps(receipt))
+
     coordinator = Coordinator()
     task = SimpleNamespace(
         environment=SimpleNamespace(store=store, session=None),
@@ -97,6 +112,7 @@ def _rollouts_scaffold(root: Path, status: str):
     rollouts = object.__new__(TaskGraphRollouts)
     rollouts.task_ids = ("task-1",)
     rollouts.task_entries = {"task-1": task}
+    rollouts.environments = {"task-1": task.environment}
     rollouts.settings = SimpleNamespace(group_size=2, max_steps=1, seed=5)
     rollouts.output = root
     rollouts.runtime_manifest = object()
@@ -116,6 +132,9 @@ def _rollouts_scaffold(root: Path, status: str):
     rollouts._ensure_runtime = lambda _trainer: None
     rollouts._behavior_policy_ref = lambda _model, _step: pin
     rollouts._gatherers = lambda _task: None
+    rollouts.last_spec = None
+    rollouts.last_decision = None
+    rollouts.last_admission = None
     return rollouts, coordinator, decision, store
 
 
@@ -123,21 +142,17 @@ class TaskGraphSettingsTests(unittest.TestCase):
     def test_profile_is_dapo_unscaled_nonthinking_and_keeps_every_checkpoint(self):
         settings = _settings()
         settings.validate()
-        values = trainer_config(settings, "unused", use_cpu=True, bf16=False, scale_rewards="none")
+        values = trainer_config(settings, "unused", use_cpu=True, bf16=False)
         self.assertEqual(values["loss_type"], "dapo")
         self.assertEqual(values["scale_rewards"], "none")
         self.assertIsNone(values["save_total_limit"])
         legacy = trainer_config(
-            _settings(runtime_profile="probe", scale_rewards="batch"),
-            "unused",
-            use_cpu=True,
-            bf16=False,
+            _settings(runtime_profile="probe"), "unused", use_cpu=True, bf16=False
         )
         self.assertEqual(legacy["scale_rewards"], "group")
 
         for override in (
             {"loss_type": "grpo"},
-            {"scale_rewards": "group"},
             {"enable_thinking": True},
         ):
             with self.subTest(override=override), self.assertRaises(ValueError):
@@ -235,7 +250,7 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
                         return_value=coordinator,
                     ),
                     patch("writing_agent.grpo_task_graph._native_policy", return_value={}),
-                    patch("writing_agent.grpo_task_graph._assert_active_adapter"),
+                    patch("writing_agent.grpo_task_graph.assert_active_adapter"),
                 ):
                     with self.assertRaises(TaskGraphGroupPending):
                         rollouts(["task-1", "task-1"], trainer)
@@ -312,7 +327,7 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
                     return_value=coordinator,
                 ),
                 patch("writing_agent.grpo_task_graph._native_policy", return_value={}),
-                patch("writing_agent.grpo_task_graph._assert_active_adapter"),
+                patch("writing_agent.grpo_task_graph.assert_active_adapter"),
                 patch(
                     "writing_agent.grpo_task_graph.TrainingBatchV1.from_dict",
                     return_value=SimpleNamespace(members=()),
@@ -367,7 +382,7 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
                     return_value=coordinator,
                 ),
                 patch("writing_agent.grpo_task_graph._native_policy", return_value={}),
-                patch("writing_agent.grpo_task_graph._assert_active_adapter"),
+                patch("writing_agent.grpo_task_graph.assert_active_adapter"),
                 patch(
                     "writing_agent.grpo_task_graph.TrainingBatchV1.from_dict",
                     return_value=SimpleNamespace(members=()),
@@ -386,15 +401,15 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
 
     def test_adapter_must_be_active_and_not_disabled(self):
         active = SimpleNamespace(active_adapters=("default",), modules=lambda: [])
-        _assert_active_adapter(active, "default")
-        with self.assertRaises(TaskGraphTrainingError):
-            _assert_active_adapter(active, "other")
+        assert_active_adapter(active, "default")
+        with self.assertRaises(AdapterContractError):
+            assert_active_adapter(active, "other")
         disabled = SimpleNamespace(
             active_adapters=("default",),
             modules=lambda: [SimpleNamespace(disable_adapters=True)],
         )
-        with self.assertRaises(TaskGraphTrainingError):
-            _assert_active_adapter(disabled, "default")
+        with self.assertRaises(AdapterContractError):
+            assert_active_adapter(disabled, "default")
 
 
 if __name__ == "__main__":

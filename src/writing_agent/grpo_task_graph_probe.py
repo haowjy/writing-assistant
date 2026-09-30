@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -20,11 +19,27 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.catalog import save_json
+from writing_agent.grpo_gpu import DISPLAY_POLICY
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
+from writing_agent.grpo_task_graph_probe_evidence import _select_verdict
+from writing_agent.task_graph_probe_experiment import (
+    CONFIG_DIR,
+    TOKENIZER_PATH,
+    build_admitted_entry,
+    fixture_plans,
+    load_probe_task,
+    load_probe_tasks,
+    make_task_graph_run,
+    tiny_gemma,
+)
+from writing_agent.task_graph_probe_experiment import (
+    settings as probe_settings,
+)
 from writing_agent.training_stages import (
     StageAttemptError,
     StageFailure,
     StageLimits,
+    _disk_bytes,
     run_stage,
     worker_main,
 )
@@ -42,30 +57,22 @@ CEILINGS = {
     "peak_rss_bytes": 24 * GIB,
     "run_directory_growth_bytes": 3 * GIB,
 }
-N3_POLICY = {
-    "mode": "desktop",
-    "names": [
-        "cosmic-comp",
-        "cosmic-panel",
-        "cosmic-bg",
-        "cosmic-app-library",
-        "cosmic-edit",
-        "cosmic-settings",
-        "cosmic-files",
-        "xdg-desktop-portal-cosmic",
-        "xwayland",
-        "ghostty",
-        "chrome",
-        "cursor",
-    ],
-    "per_process_mib": 256,
-    "total_mib": 768,
-    "minimum_free_mib": 22000,
-}
+N3_POLICY = {**DISPLAY_POLICY, "mode": "desktop"}
 
 
 class ProbeError(RuntimeError):
     """The prepared probe cannot safely advance."""
+
+
+_SCRIPTED_NATIVE_BACKEND = None
+
+
+def register_scripted_native_backend(backend_class) -> None:
+    """Bind the CPU smoke script's backend in the executable entry point."""
+    global _SCRIPTED_NATIVE_BACKEND
+    if _SCRIPTED_NATIVE_BACKEND is not None and _SCRIPTED_NATIVE_BACKEND is not backend_class:
+        raise ProbeError("a different scripted native backend is already registered")
+    _SCRIPTED_NATIVE_BACKEND = backend_class
 
 
 def _prepare_digest(record: dict[str, Any]) -> str:
@@ -85,22 +92,6 @@ def _work_dir(run_dir: Path) -> Path:
     raise ProbeError("cannot locate the task-graph-training work item")
 
 
-def _smoke_helpers():
-    """Load the existing tiny-Gemma setup without executing its command-line entrypoint."""
-    module_name = "_task_graph_probe_cpu_smoke"
-    existing = sys.modules.get(module_name)
-    if existing is not None:
-        return existing
-    path = PROJECT_ROOT / "scripts" / "smoke_task_graph_grpo_cpu.py"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise ProbeError("CPU smoke helpers are unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 def _git(*args: str) -> str:
     result = subprocess.run(
         ["git", *args], cwd=PROJECT_ROOT, capture_output=True, text=True, check=True
@@ -118,12 +109,10 @@ def _source_identity() -> dict[str, str]:
 
 
 def _task_graph_hashes() -> list[dict[str, str]]:
-    smoke = _smoke_helpers()
-    root = PROJECT_ROOT / "configs" / "phase8" / "probe-tasks"
     result = []
-    for path in sorted(root.glob("t*.json")):
-        config = smoke._BUILDER.load_probe_task(path)
-        entry = smoke._BUILDER.build_admitted_entry(config)
+    for path in sorted(CONFIG_DIR.glob("t*.json")):
+        config = load_probe_task(path)
+        entry = build_admitted_entry(config)
         result.append(
             {
                 "task_id": config["id"],
@@ -186,8 +175,7 @@ def _offline_requirements(*, cpu: bool | None) -> None:
 def _prepare_record(run_dir: Path, *, mode: str) -> dict[str, Any]:
     work_dir = _work_dir(run_dir)
     source = _source_identity()
-    smoke = _smoke_helpers()
-    tokenizer_root = smoke.TOKENIZER_PATH
+    tokenizer_root = TOKENIZER_PATH
     try:
         tokenizer_hashes = {
             name: hashlib.sha256((tokenizer_root / name).read_bytes()).hexdigest()
@@ -195,7 +183,7 @@ def _prepare_record(run_dir: Path, *, mode: str) -> dict[str, Any]:
         }
     except OSError as exc:
         raise ProbeError("cached Gemma tokenizer files are incomplete") from exc
-    settings = smoke.settings()
+    settings = probe_settings()
     recipe = {
         "settings": {key: getattr(settings, key) for key in settings.__dataclass_fields__},
         "model_id": settings.model_id,
@@ -357,42 +345,43 @@ def _require_latest_checkpoint(training_root: Path, checkpoint: Path) -> int:
 
 
 @contextmanager
-def _stage_observers(stage_dir: Path, *, cpu: bool):
+def _stage_observers(stage_dir: Path, sample_backend_factory):
     """Record finite optimizer gradients and per-decision generation wall time."""
     import torch
-
-    smoke = _smoke_helpers()
-    from writing_agent.native_gemma import NativeGemmaSampleBackend
+    from transformers import TrainerCallback
 
     gradient_steps: list[dict[str, Any]] = []
     timings: list[dict[str, Any]] = []
-    adamw_step = torch.optim.AdamW.step
-    sample_methods = [(NativeGemmaSampleBackend, NativeGemmaSampleBackend.sample)]
-    if cpu:
-        sample_methods.append((smoke.ScriptedNativeBackend, smoke.ScriptedNativeBackend.sample))
 
-    def checked_step(optimizer, *args, **kwargs):
-        finite = True
-        tensors = 0
-        for group in optimizer.param_groups:
-            for parameter in group["params"]:
+    class FiniteGradientCallback(TrainerCallback):
+        def __init__(self, model):
+            self.model = model
+
+        def on_pre_optimizer_step(self, args, state, control, **kwargs):
+            tensors = 0
+            finite = True
+            for parameter in self.model.parameters():
                 gradient = parameter.grad
                 if gradient is not None:
                     tensors += 1
                     finite = finite and bool(torch.isfinite(gradient).all().item())
-        gradient_steps.append(
-            {"step": len(gradient_steps) + 1, "tensor_count": tensors, "finite": finite}
-        )
-        if not finite or tensors == 0:
-            raise FloatingPointError("optimizer received missing or non-finite gradients")
-        return adamw_step(optimizer, *args, **kwargs)
+            gradient_steps.append(
+                {"step": len(gradient_steps) + 1, "tensor_count": tensors, "finite": finite}
+            )
+            if not finite or tensors == 0:
+                raise FloatingPointError("optimizer received missing or non-finite gradients")
+            return control
 
-    torch.optim.AdamW.step = checked_step
-    for cls, original in sample_methods:
+    class TimedSampleBackend:
+        def __init__(self, backend):
+            self._backend = backend
 
-        def timed_sample(instance, prepared, _original=original):
+        def __getattr__(self, name):
+            return getattr(self._backend, name)
+
+        def sample(self, prepared):
             started = time.perf_counter()
-            result = _original(instance, prepared)
+            result = self._backend.sample(prepared)
             usage = result.usage
             timings.append(
                 {
@@ -403,13 +392,15 @@ def _stage_observers(stage_dir: Path, *, cpu: bool):
             )
             return result
 
-        cls.sample = timed_sample
+    def timed_factory(*args, **kwargs):
+        return TimedSampleBackend(sample_backend_factory(*args, **kwargs))
+
+    def gradient_callback_factory(model):
+        return FiniteGradientCallback(model)
+
     try:
-        yield
+        yield timed_factory, gradient_callback_factory
     finally:
-        torch.optim.AdamW.step = adamw_step
-        for cls, original in sample_methods:
-            cls.sample = original
         save_json(
             stage_dir / "gradient-observer.json",
             {
@@ -475,15 +466,37 @@ def _run_cpu_training(
     all_tie: bool,
 ) -> dict[str, Any]:
     import torch
+    from transformers import AutoTokenizer
 
     torch.set_num_threads(2)
-    smoke = _smoke_helpers()
-    with _stage_observers(stage_dir, cpu=True):
-        return smoke._make_run(
+    if _SCRIPTED_NATIVE_BACKEND is None:
+        raise ProbeError("CPU probe entrypoint did not register ScriptedNativeBackend")
+    recipe = probe_settings()
+    configs = load_probe_tasks()
+    plans = fixture_plans(configs, recipe, all_tie=all_tie)
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(TOKENIZER_PATH), local_files_only=True, trust_remote_code=False
+    )
+
+    def model_factory():
+        return tiny_gemma(tokenizer.vocab_size)
+
+    def sample_backend_factory(*args, **kwargs):
+        return _SCRIPTED_NATIVE_BACKEND(*args, plans=plans, **kwargs)
+
+    with _stage_observers(stage_dir, sample_backend_factory) as (
+        timed_factory,
+        gradient_callback_factory,
+    ):
+        return make_task_graph_run(
             training_root,
             resume=resume,
             stop_after_steps=stop_after_steps,
-            all_tie=all_tie,
+            model_factory=model_factory,
+            sample_backend_factory=timed_factory,
+            trainer_callback_factory=gradient_callback_factory,
+            tokenizer=tokenizer,
+            recipe=recipe,
         )
 
 
@@ -500,9 +513,9 @@ def _run_gpu_training(
     import torch
     from transformers import AutoModelForCausalLM
 
-    smoke = _smoke_helpers()
-    settings = smoke.settings()
     from writing_agent.native_gemma import NativeGemmaSampleBackend
+
+    settings = probe_settings()
 
     def load_base():
         return AutoModelForCausalLM.from_pretrained(
@@ -520,29 +533,20 @@ def _run_gpu_training(
         "revision": settings.revision,
         "execution": "phase8-p1-3090-v1",
     }
-    with _stage_observers(stage_dir, cpu=False):
-        return smoke._make_run(
+    with _stage_observers(stage_dir, NativeGemmaSampleBackend) as (
+        timed_factory,
+        gradient_callback_factory,
+    ):
+        return make_task_graph_run(
             training_root,
             resume=resume,
             stop_after_steps=stop_after_steps,
             model_factory=load_base,
-            sample_backend_factory=NativeGemmaSampleBackend,
+            sample_backend_factory=timed_factory,
+            trainer_callback_factory=gradient_callback_factory,
             runtime_identity=runtime_identity,
+            recipe=settings,
         )
-
-
-def _disk_bytes(root: Path) -> int:
-    total = 0
-    if not root.exists():
-        return total
-    for current, directories, files in os.walk(root, followlinks=False):
-        directories[:] = [name for name in directories if not (Path(current) / name).is_symlink()]
-        for name in files:
-            try:
-                total += (Path(current) / name).lstat().st_size
-            except FileNotFoundError:
-                continue
-    return total
 
 
 def _admit_stage(run_dir: Path, stage: str, prepared: dict[str, Any], *, cpu: bool):
@@ -672,32 +676,6 @@ def _recompute_final_verdict(result: dict[str, Any]) -> None:
         }
         c5["passed"] = False
     result["verdict"] = _select_verdict(criteria, result.get("measurements", {}))
-
-
-def _select_verdict(criteria: dict[str, Any], measurements: dict[str, Any]) -> str:
-    if all(
-        criteria.get(f"criterion_{number}", {}).get("computed") is True for number in range(1, 7)
-    ):
-        if all(criteria[f"criterion_{number}"].get("passed") is True for number in range(1, 7)):
-            return "pass"
-    c1 = criteria.get("criterion_1", {})
-    c2 = criteria.get("criterion_2", {})
-    all_tie = measurements.get("tie_count") == 3 and measurements.get("group_count") == 3
-    if (
-        all_tie
-        and c1.get("computed") is True
-        and c1.get("evidence", {}).get("structural_and_admission") is True
-        and c2.get("computed") is True
-        and c2.get("evidence", {}).get("optimizer_steps") == 3
-        and c2.get("evidence", {}).get("gradients_finite") is True
-        and all(
-            criteria.get(f"criterion_{number}", {}).get("computed") is True
-            for number in (3, 4, 5, 6)
-        )
-        and all(criteria[f"criterion_{number}"].get("passed") is True for number in (3, 4, 5, 6))
-    ):
-        return "inconclusive_no_signal"
-    return "fail"
 
 
 def _stage_worker(args) -> None:

@@ -2,12 +2,58 @@
 
 import copy
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from writing_agent.task_graph import tool_call_id
 
 NATIVE_STOP_TOKENS = ("<eos>", "<turn|>", "<|tool_response>")
 
 
 class ProtocolError(RuntimeError):
     """Unsupported native framing is an infrastructure failure."""
+
+
+@dataclass(frozen=True)
+class NativeParseResult:
+    """One native parse outcome, including the adapter's parse-failure claim."""
+
+    message: Mapping[str, Any]
+    failed: bool
+
+
+def parse_native_response(
+    tokenizer,
+    raw_text: str,
+    *,
+    prefix: str,
+    action_id: str,
+    termination: Mapping[str, Any],
+) -> NativeParseResult:
+    """Parse and bind a sampled native response, retaining malformed output as text.
+
+    A tokenizer parse failure is model output, not a sampler fault. Keep the decoded
+    response as ordinary assistant content and let the committed turn claim the failure;
+    the tokenizer-backed audit independently reproduces that claim.
+    """
+    if not isinstance(termination, Mapping) or termination.get("kind") not in {
+        "native_stop",
+        "token_limit",
+    }:
+        raise ProtocolError("Native response parsing requires a sampled termination")
+
+    from writing_agent.inference import NativeResponseParseError, parse_response
+
+    try:
+        message = parse_response(tokenizer, raw_text, prefix=prefix)
+    except NativeResponseParseError:
+        return NativeParseResult(
+            {"role": "assistant", "content": raw_text, "tool_calls": []},
+            True,
+        )
+    except Exception as exc:
+        raise ProtocolError("Native response parser failed unexpectedly") from exc
+    return NativeParseResult(bind_native_tool_call_ids(message, action_id), False)
 
 
 def native_suffix(tokenizer, assistant, external, raw_ids, *, thinking):
@@ -106,19 +152,11 @@ def bind_native_tool_call_ids(message, action_id):
     """
     if not isinstance(message, Mapping):
         raise ProtocolError("Parsed native response must be a message")
-    if not isinstance(action_id, str) or any(
-        character.isspace() or ord(character) < 0x20 for character in action_id
-    ):
-        raise ProtocolError("Native tool calls require a logical writer action ID")
-    lineage_id, separator, ordinal_text = action_id.rpartition(":action:")
-    if (
-        not separator
-        or not lineage_id
-        or not ordinal_text.isascii()
-        or not ordinal_text.isdecimal()
-        or (len(ordinal_text) > 1 and ordinal_text.startswith("0"))
-    ):
-        raise ProtocolError("Native tool calls require a canonical writer action ID")
+    try:
+        first_call_id = tool_call_id(action_id, 0)
+    except (TypeError, ValueError) as exc:
+        raise ProtocolError("Native tool calls require a canonical writer action ID") from exc
+
     result = copy.deepcopy(message)
     calls = result.get("tool_calls", [])
     if not isinstance(calls, list) or any(
@@ -127,7 +165,7 @@ def bind_native_tool_call_ids(message, action_id):
     ):
         raise ProtocolError("Parsed native tool calls are malformed")
     for index, call in enumerate(calls):
-        call["id"] = f"{lineage_id}:call:{ordinal_text}:{index}"
+        call["id"] = first_call_id if index == 0 else tool_call_id(action_id, index)
     return result
 
 

@@ -405,18 +405,32 @@ def _validate_termination(
         raise ProjectionError("input.termination.kind: unsupported termination")
 
 
+_TOKEN_LIMIT_STOP_REASONS = {
+    "decision": "decision_token_limit",
+    "generated_budget": "generated_tokens_budget",
+    "context": "context_tokens_budget",
+}
+TERMINATION_STOP_REASONS = frozenset(
+    {
+        *_TOKEN_LIMIT_STOP_REASONS.values(),
+        "context_tokens_budget",
+        "unterminated_tool_call",
+        "unterminated_final_answer",
+        "unparsed_tool_call",
+    }
+)
+
+
 def termination_stop_reason(turn: WriterTurnV2, renderer: RendererDescriptorV1) -> str | None:
     """Map a validated native termination and sampled message to its writer outcome."""
     termination = turn.termination
     kind = termination["kind"]
     if kind == "token_limit":
-        return {
-            "decision": "decision_token_limit",
-            "generated_budget": "generated_tokens_budget",
-            "context": "context_tokens_budget",
-        }[termination["limit"]]
+        return _TOKEN_LIMIT_STOP_REASONS[termination["limit"]]
     if kind == "context_limit":
         return "context_tokens_budget"
+    if turn.native_parse_failed is True:
+        return "unparsed_tool_call"
     has_tool_calls = turn.message.tool_calls_was_list and bool(turn.message.calls)
     tool_response_stop = renderer.tool_response_stop_token_id
     if has_tool_calls and termination["stop_token_id"] != tool_response_stop:

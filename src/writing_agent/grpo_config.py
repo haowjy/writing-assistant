@@ -10,11 +10,9 @@ def trainer_config(
     implementation_config=None,
     report_to="none",
     run_name=None,
-    scale_rewards="group",
 ):
     """Build public TRL args without importing its optional runtime."""
-    if settings.runtime_profile == "task-graph-v1" and scale_rewards != "none":
-        raise ValueError("Task-graph training requires scale_rewards='none'")
+    scale_rewards = "none" if settings.runtime_profile == "task-graph-v1" else "group"
     return dict(
         **(implementation_config or {}),
         output_dir=str(output),

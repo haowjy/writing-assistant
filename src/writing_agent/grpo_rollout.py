@@ -452,8 +452,3 @@ class RolloutGroups:
             save_json(attempt / "result.json", result)
             save_json(attempt / "tokens.json", tokens)
         return tokens, result
-
-
-def saved_rewards(prompts, completions, rollout_rewards, **kwargs):
-    """Never grade TRL's textual decode of a multi-turn token sequence."""
-    return rollout_rewards

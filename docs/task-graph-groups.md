@@ -42,6 +42,11 @@ re-derives the start checkpoint as the member's first checkpoint below the seale
 retry after a crash resumes through `environment.open_head(member_id)` and produces the same
 receipt, even if the member has since progressed. The receipt is not its own authority.
 
+Production callers that finish a real member use `collect_completed(spec, ordinal, runtime)`;
+the coordinator derives terminal and available-reward references from that verified view.
+Group admission and trainer-consumption receipts are likewise persisted through the
+coordinator's locked API rather than by adapters writing group paths directly.
+
 ## Collect and finalize
 
 `collect` and `finalize` validate real members by opening and checking their published head

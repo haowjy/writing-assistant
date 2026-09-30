@@ -36,8 +36,10 @@ from writing_agent.grpo_runtime import (
     validate_streaming_model,
     verify_runtime,
 )
-from writing_agent.inference import checkpoint_identity
+from writing_agent.inference import PROTOCOL, checkpoint_identity
 from writing_agent.workspace import TOOL_SCHEMAS
+
+OPTIONAL_WANDB_BINDINGS = {"WANDB_CONSOLE": "off", "WANDB_RESUME": "allow"}
 
 
 def canonical_json_value(value):
@@ -73,7 +75,6 @@ class GRPOSettings:
     enable_thinking: bool = True
     gradient_checkpointing: bool = True
     gradient_checkpointing_use_reentrant: bool = False
-    scale_rewards: str = "group"  # TRL reward normalization, frozen in experiment identity.
 
     runtime_profile: str = "probe"  # Explicit admission/seed policy; not a TRL backend.
 
@@ -90,9 +91,7 @@ class GRPOSettings:
             raise ValueError("Unknown runtime admission profile")
         full48 = self.runtime_profile == "intact-full48-v1"
         task_graph = self.runtime_profile == "task-graph-v1"
-        if task_graph and (
-            self.loss_type != "dapo" or self.scale_rewards != "none" or self.enable_thinking
-        ):
+        if task_graph and (self.loss_type != "dapo" or self.enable_thinking):
             raise ValueError(
                 "Task-graph training requires DAPO, unscaled advantages and thinking disabled"
             )
@@ -100,8 +99,6 @@ class GRPOSettings:
             raise ValueError("Loss type must be grpo or dapo")
         if self.tie_policy not in ("halt", "continue"):
             raise ValueError("Tie policy must be halt or continue")
-        if self.scale_rewards not in ("group", "batch", "none"):
-            raise ValueError("Reward scaling must be group, batch or none")
         checkpoint_identity(self.model_id, self.revision)
         if not (2 <= self.group_size <= 8 and 1 <= self.max_steps <= (96 if full48 else 20)):
             raise ValueError("Serial probe requires group size 2..8 and optimizer steps 1..20")
@@ -307,6 +304,14 @@ def train_grpo(
             existing = os.environ.get(key)
             if existing is not None and existing.lower() != expected.lower():
                 raise ValueError(f"Existing {key} conflicts with frozen W&B binding")
+        for key, expected in OPTIONAL_WANDB_BINDINGS.items():
+            if key not in wandb_environment:
+                continue
+            if str(wandb_environment[key]).lower() != expected:
+                raise ValueError(f"W&B environment does not satisfy the frozen {key} binding")
+            existing = os.environ.get(key)
+            if existing is not None and existing.lower() != expected:
+                raise ValueError(f"Existing {key} conflicts with frozen W&B binding")
         import sys
 
         active_wandb = sys.modules.get("wandb")
@@ -321,6 +326,9 @@ def train_grpo(
     if wandb_reporting:
         for key, value in required_env.items():
             os.environ[key] = str(value)
+        for key in OPTIONAL_WANDB_BINDINGS:
+            if key in wandb_environment:
+                os.environ[key] = str(wandb_environment[key])
     from writing_agent.grpo_trainer import load_trainer_api, run_trainer
 
     api = load_trainer_api()
@@ -348,6 +356,26 @@ def train_grpo(
             "model": checkpoint_identity(settings.model_id, settings.revision),
             "backend": "NativeRolloutBackend-v1",
         }
+    if backend_factory is None:
+
+        def backend_factory(live_model, live_tokenizer, seed):
+            return NativeRolloutBackend(
+                live_model,
+                live_tokenizer,
+                {
+                    "protocol": PROTOCOL,
+                    "prompt_format": "chat",
+                    "seed": seed,
+                    "temperature": 1.0,
+                    "top_p": 1.0,
+                    "top_k": 0,
+                    "enable_thinking": settings.enable_thinking,
+                    "context_tokens": settings.context_tokens,
+                    "max_tokens": settings.max_tokens,
+                    "max_generated_tokens": settings.max_generated_tokens,
+                },
+            )
+
     if verified_runtime:
         validate_streaming_model(model.config)
     devices = {str(p.device) for p in model.parameters()}
@@ -424,8 +452,21 @@ def train_grpo(
         implementation_config=verified_runtime["config"] if verified_runtime else None,
         report_to=report_to,
         run_name=wandb_run_name,
-        scale_rewards=settings.scale_rewards,
     )
+
+    rollout_builder = rollout_factory or RolloutGroups
+
+    def make_rollouts(invocation_id):
+        return rollout_builder(
+            tasks,
+            settings,
+            output,
+            reward_callback,
+            backend_factory,
+            system_prompt,
+            invocation_id=invocation_id,
+        )
+
     return run_trainer(
         api=api,
         tasks=tasks,
@@ -438,10 +479,7 @@ def train_grpo(
         tokenizer=tokenizer,
         lora_config=lora_config,
         trainer_config_values=trainer_config_values,
-        reward_callback=reward_callback,
-        backend_factory=backend_factory,
-        rollout_factory=rollout_factory,
-        system_prompt=system_prompt,
+        make_rollouts=make_rollouts,
         resume_from_checkpoint=resume_from_checkpoint,
         resume_checkpoint_identity=resume_checkpoint_identity,
         stop_after_steps=stop_after_steps,

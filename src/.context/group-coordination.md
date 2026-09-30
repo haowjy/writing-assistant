@@ -31,9 +31,9 @@ branches:
 - otherwise, call `environment.open_head(member_id)`. A retry after any crash lands here.
 
 It then verifies the handle, checks `_assert_member_view` (`view.state.position
-["lineage_id"]` is the member and `view.group == spec`), and writes the start receipt.
+["lineage_id"]` is the member and `view.group == spec`), and calls `start_receipt`.
 
-**The receipt is derived from verified ancestry.** `_start_receipt` walks `view.ancestry` to
+**The receipt is derived from verified ancestry.** `start_receipt` walks `view.ancestry` to
 the node whose parent is the sealed entry, and that node is the start checkpoint. The file
 `groups/<group_id>/start-<ordinal>.json` (`member_id`, `parent_checkpoint_id`,
 `start_checkpoint_id`) is an immutable cache of that answer. Every call recomputes it from a
@@ -44,6 +44,14 @@ after `start_member` returned. When a crash fell between the two and a worker th
 the member through `open_head`, the retry recorded the advanced head as the start. The
 receipt is immutable, so every later `start` and `collect` failed. Deriving it from ancestry
 makes that crash window harmless, and it reduced `start` to the two branches above.
+
+`collect_completed(spec, ordinal, runtime)` accepts a completed runtime, rebuilds its
+terminal and available-reward references from the verified view, and owns the result
+receipt through `collect`. Adapters do not assemble terminal references themselves.
+Admission and trainer-consumption receipts also belong to the coordinator and are written
+under its per-group lock; adapter callers do not address `groups/<group_id>` receipt paths.
+`groups_by_sequence` is the shared fail-closed parser for group specs and step reservations
+used by both trainer reseal refusal and resume preflight.
 
 ## Collect and finalize
 

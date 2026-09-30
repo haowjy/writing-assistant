@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from tests.test_native_gemma import (
     TOKENIZER_PATH,
@@ -81,7 +82,6 @@ def _build_group(root, model, tokenizer, descriptors, *, member_count, lies_by_o
     from writing_agent.native_gemma import NativeGemmaSampleBackend
     from writing_agent.task_graph_composition import RuntimeSession
     from writing_agent.task_graph_group import GroupCoordinatorV1
-    from writing_agent.task_graph_group_records import GroupMemberResultV1
     from writing_agent.task_graph_local import (
         DeterministicEvaluator,
         LocalTextToolProvider,
@@ -150,7 +150,7 @@ def _build_group(root, model, tokenizer, descriptors, *, member_count, lies_by_o
         for ordinal, check in (lies_by_ordinal or {}).items()
     }
 
-    for ordinal, member in enumerate(spec.members):
+    for ordinal in range(len(spec.members)):
         runtime = coordinator.start(spec, ordinal, policy=policy)
         result = RolloutDriver(
             fixture.env,
@@ -158,26 +158,7 @@ def _build_group(root, model, tokenizer, descriptors, *, member_count, lies_by_o
         ).run(runtime, max_steps=80)
         if result.directive.kind != "done":
             raise AssertionError(f"native fixture did not finish member {ordinal}")
-        view = fixture.env.verify(result.runtime)
-        outcome_ref = result.runtime.state.outcome_ref
-        if view.outcome.reward_ref is not None:
-            outcome_ref = fixture.store.get_artifact(view.outcome.reward_ref)[
-                "terminal_outcome_ref"
-            ]
-        coordinator.collect(
-            spec,
-            GroupMemberResultV1(
-                group_id=spec.group_id,
-                member_id=member.member_id,
-                start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
-                    "start_checkpoint_id"
-                ],
-                final_checkpoint_id=result.runtime.checkpoint_id,
-                terminal_outcome_ref=outcome_ref,
-                availability_ref=view.outcome.reward_ref,
-                execution_status="valid",
-            ),
-        )
+        coordinator.collect_completed(spec, ordinal, result.runtime)
 
     decision = coordinator.finalize(spec)
     if decision.status not in {"ready", "tie"}:
@@ -269,8 +250,10 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
 
     def _audit(self, store, spec, decision, tokenizer, *, tokenizer_root, after):
         from writing_agent.native_audit import audit_training_batch
+        from writing_agent.task_graph_environment import RolloutEnvironment
+        from writing_agent.task_graph_group import GroupCoordinatorV1
 
-        return audit_training_batch(
+        admission = audit_training_batch(
             store,
             spec,
             decision,
@@ -279,6 +262,15 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
             adapter_hash_after=after,
             tokenizer_root=tokenizer_root,
         )
+        environment = RolloutEnvironment(
+            store,
+            self.fixture.entry.graph,
+            None,
+            store.verifier,
+            self.fixture.entry.graph.policy,
+        )
+        GroupCoordinatorV1(environment).record_training_admission(spec, admission)
+        return admission
 
     def _assert_durable_refusal(self, store, admission, expected):
         from writing_agent.native_audit import TrainingAuditError, require_training_admission
@@ -310,6 +302,133 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
             after=self.policy["behavior_policy_ref"],
         )
         return store, admission
+
+    def _forced_native_group(self, raw_output, *, parse_failure_claim=None):
+        from types import SimpleNamespace
+
+        from writing_agent.native_gemma import (
+            NativeGemmaSampleBackend,
+            make_native_manifest_descriptors,
+        )
+
+        generated_ids = tuple(self.tokenizer.encode(raw_output, add_special_tokens=False))
+        descriptors = make_native_manifest_descriptors(
+            self.tokenizer,
+            model_id="google/gemma-4-E2B-it",
+            revision=TOKENIZER_REVISION,
+            tokenizer_files_sha256=_tokenizer_file_hashes(),
+            template_ref=H,
+            tool_schema_ref=P,
+            max_tokens_per_decision=len(generated_ids),
+        )
+        original_sample = NativeGemmaSampleBackend.sample
+
+        def force_generation(model, inputs, generation, *, seed):
+            prompt_ids = inputs["input_ids"]
+            for index, token_id in enumerate(generated_ids):
+                scores = self.torch.full(
+                    (1, self.tokenizer.vocab_size), float("-inf"), dtype=self.torch.float32
+                )
+                scores[0, token_id] = 0.0
+                prior = self.torch.tensor(
+                    [(*prompt_ids[0].tolist(), *generated_ids[:index])], dtype=self.torch.long
+                )
+                generation["logits_processor"](prior, scores)
+            generated = self.torch.tensor(
+                [(*prompt_ids[0].tolist(), *generated_ids)], dtype=self.torch.long
+            )
+            return SimpleNamespace(sequences=generated)
+
+        def sample(self, prepared):
+            with patch("writing_agent.native_gemma.generate_with_seed", force_generation):
+                result = original_sample(self, prepared)
+            if parse_failure_claim is None:
+                return result
+            trace = dict(result.trace or {})
+            if parse_failure_claim:
+                trace["native_parse_failed"] = True
+            else:
+                trace.pop("native_parse_failed", None)
+            return replace(result, trace=trace or None)
+
+        with patch.object(NativeGemmaSampleBackend, "sample", sample):
+            return _build_group(
+                self.root,
+                self.model,
+                self.tokenizer,
+                descriptors,
+                member_count=2,
+            )
+
+    def _assert_parse_failure_group(self, raw_output, expected_stop_reason):
+        from writing_agent.native_audit import require_training_admission
+        from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader
+        from writing_agent.task_graph_group_records import GroupMemberResultV1
+        from writing_agent.task_graph_records import WriterTurnV2
+
+        fixture, spec, decision, policy = self._forced_native_group(raw_output)
+        result = GroupMemberResultV1.from_dict(
+            fixture.store.get_artifact(decision.member_result_refs[0])
+        )
+        final = LineageGate().view(fixture.store, result.final_checkpoint_id)
+        self.assertEqual(final.outcome.task_status, "incomplete")
+        self.assertEqual(final.outcome.execution_status, "valid")
+        self.assertEqual(final.outcome.stop_reason, expected_stop_reason)
+        self.assertEqual(final.outcome.training_eligibility, "structurally_eligible")
+        turn = WriterTurnV2.from_dict(
+            StoreArtifactReader(fixture.store).artifact(final.samples[0].turn_ref)
+        )
+        self.assertIs(turn.native_parse_failed, True)
+        self.assertEqual(turn.message.content, raw_output)
+        self.assertEqual(turn.message.calls, ())
+
+        admission = self._audit(
+            fixture.store,
+            spec,
+            decision,
+            self.tokenizer,
+            tokenizer_root=TOKENIZER_PATH,
+            after=policy["behavior_policy_ref"],
+        )
+        require_training_admission(admission)
+        self.assertEqual(admission.members[0]["status"], "admitted")
+
+    def test_unparsed_truncated_and_malformed_calls_commit_and_audit_as_incomplete(self):
+        self._assert_parse_failure_group(
+            '<|tool_call>call:write_file{content:<|"|>A keeper waits by the',
+            "decision_token_limit",
+        )
+        self._assert_parse_failure_group(
+            "<|tool_call>call:write_file{content:A keeper,path:scene.txt"
+            "<tool_call|><|tool_response>",
+            "unparsed_tool_call",
+        )
+
+    def test_audit_refuses_both_directions_of_a_false_parse_failure_claim(self):
+        cases = (
+            ("A parseable answer.<turn|>", True),
+            (
+                "<|tool_call>call:write_file{content:A keeper,path:scene.txt"
+                "<tool_call|><|tool_response>",
+                False,
+            ),
+        )
+        for raw_output, claim in cases:
+            with self.subTest(claim=claim):
+                fixture, spec, decision, policy = self._forced_native_group(
+                    raw_output,
+                    parse_failure_claim=claim,
+                )
+                admission = self._audit(
+                    fixture.store,
+                    spec,
+                    decision,
+                    self.tokenizer,
+                    tokenizer_root=TOKENIZER_PATH,
+                    after=policy["behavior_policy_ref"],
+                )
+                self.assertEqual(admission.members[0]["status"], "refused")
+                self.assertEqual(admission.members[0]["failed_check"], "raw_output_and_message")
 
     def test_renderer_initial_context_rejects_only_its_lying_member(self):
         store, admission = self._audit_sample_lies()
@@ -398,6 +517,26 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
         self._assert_durable_refusal(store, admission, expected)
         self._assert_offline_refusal(store, self.bad_tokenizer_spec.group_id, admission)
 
+    def test_unexpected_audit_failure_uses_a_nongeneric_check_label(self):
+        from writing_agent.native_audit import audit_training_batch
+
+        store = self._clone_store(self.fixture.store, "unexpected-audit-error")
+        with patch(
+            "writing_agent.native_audit._member_turns",
+            side_effect=RuntimeError("injected audit host fault"),
+        ):
+            admission = audit_training_batch(
+                store,
+                self.spec,
+                self.decision,
+                self.tokenizer,
+                adapter_hash_before=self.policy["behavior_policy_ref"],
+                adapter_hash_after=self.policy["behavior_policy_ref"],
+                tokenizer_root=TOKENIZER_PATH,
+            )
+        self.assertEqual(admission.members[0]["status"], "refused")
+        self.assertEqual(admission.members[0]["failed_check"], "audit_unexpected_exception")
+
     def test_exported_token_layout_defense_is_a_core_unreachable_guard(self):
         from writing_agent.native_audit import _batch_member_matches, _member_turns
         from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader
@@ -434,6 +573,99 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
         # Core export derives spans, IDs and masks together, so an invalid layout cannot
         # be requested through export_training_batch. Exercise the audit's defensive edge.
         self.assertFalse(_batch_member_matches(CorruptMaskReader(), exported.batch, member, turns))
+
+    def test_audit_rejects_gaps_wrong_suffix_and_wrong_prompt(self):
+        from writing_agent.native_audit import audit_training_batch
+        from writing_agent.task_graph_gate import StoreArtifactReader
+        from writing_agent.task_graph_token_ledger import (
+            decode_u32_token_ids,
+            encode_u32_token_ids,
+        )
+        from writing_agent.task_graph_training_export import (
+            TrainingBatchExportV1,
+            _bytes_artifact,
+            export_training_batch,
+        )
+        from writing_agent.task_graph_training_records import TrainingBatchV1
+
+        def forged_export(store, name):
+            reader = StoreArtifactReader(store)
+            exported = export_training_batch(self.spec, self.decision, reader)
+            artifact_values = {artifact.ref: artifact.value for artifact in exported.artifacts}
+            members = [dict(member) for member in exported.batch.members]
+            member = members[3]
+            extra_artifacts = []
+
+            def replace_bytes(field, data):
+                artifact = _bytes_artifact(data)
+                extra_artifacts.append(artifact)
+                member[field] = artifact.ref
+
+            def artifact_bytes(ref):
+                if ref in artifact_values:
+                    return artifact_values[ref]
+                return reader.bytes_artifact(ref)
+
+            def token_ids(ref):
+                data = artifact_bytes(ref)
+                return decode_u32_token_ids(data, len(data) // 4)
+
+            if name == "gap":
+                completion = list(token_ids(member["completion_ids_ref"]))
+                mask = bytearray(artifact_bytes(member["env_mask_ref"]))
+                spans = [dict(span) for span in member["turn_spans"]]
+                insertion = spans[0]["completion_end"]
+                completion.insert(insertion, 999)
+                mask.insert(insertion, 1)
+                for span in spans[1:]:
+                    for key in ("ext_start", "completion_start", "completion_end"):
+                        span[key] += 1
+                member["turn_spans"] = spans
+                replace_bytes("completion_ids_ref", encode_u32_token_ids(tuple(completion)))
+                replace_bytes("env_mask_ref", bytes(mask))
+            elif name == "suffix":
+                completion = list(token_ids(member["completion_ids_ref"]))
+                mask = artifact_bytes(member["env_mask_ref"])
+                suffix_index = mask.index(0)
+                completion[suffix_index] = (
+                    completion[suffix_index] + 1
+                ) % self.tokenizer.vocab_size
+                replace_bytes("completion_ids_ref", encode_u32_token_ids(tuple(completion)))
+            else:
+                prompt = list(token_ids(member["prompt_ids_ref"]))
+                prompt[0] = (prompt[0] + 1) % self.tokenizer.vocab_size
+                replace_bytes("prompt_ids_ref", encode_u32_token_ids(tuple(prompt)))
+
+            batch = TrainingBatchV1(
+                schema=exported.batch.schema,
+                group_id=exported.batch.group_id,
+                decision_ref=exported.batch.decision_ref,
+                max_context_tokens=exported.batch.max_context_tokens,
+                members=members,
+            )
+            return TrainingBatchExportV1(
+                batch=batch,
+                artifacts=(*exported.artifacts, *extra_artifacts),
+            )
+
+        for name in ("gap", "suffix", "prompt"):
+            with self.subTest(name=name):
+                store = self._clone_store(self.fixture.store, f"layout-{name}")
+                exported = forged_export(store, name)
+                with patch(
+                    "writing_agent.native_audit.export_training_batch", return_value=exported
+                ):
+                    admission = audit_training_batch(
+                        store,
+                        self.spec,
+                        self.decision,
+                        self.tokenizer,
+                        adapter_hash_before=self.policy["behavior_policy_ref"],
+                        adapter_hash_after=self.policy["behavior_policy_ref"],
+                        tokenizer_root=TOKENIZER_PATH,
+                    )
+                self.assertEqual(admission.members[3]["status"], "refused")
+                self.assertEqual(admission.members[3]["failed_check"], "exported_token_layout")
 
 
 if __name__ == "__main__":

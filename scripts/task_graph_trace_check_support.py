@@ -7,8 +7,6 @@ CI environment without torch or Transformers.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
-import json
 import os
 import platform
 import resource
@@ -19,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
+from writing_agent.task_graph_token_ledger import decode_u32_token_ids
 from writing_agent.task_graph_tool_outcomes import ToolOutcomeError, read_member_tool_outcomes
 
 MODEL_ID = "google/gemma-4-E2B-it"
@@ -29,25 +28,6 @@ MAX_CONTEXT_TOKENS = 4096
 TOKENIZER_ROOT = (
     Path.home() / ".cache/huggingface/hub/models--google--gemma-4-E2B-it/snapshots" / MODEL_REVISION
 )
-
-
-def write_json(path: Path, payload: Any) -> None:
-    encoded = json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        handle.write(encoded)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
-    fsync_directory(path.parent)
-
-
-def fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def peak_rss_bytes() -> int:
@@ -62,17 +42,6 @@ def offline_cpu_environment() -> None:
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 
-def load_builder():
-    root = Path(__file__).resolve().parents[1]
-    path = root / "configs" / "phase8" / "probe-tasks" / "build.py"
-    spec = importlib.util.spec_from_file_location("phase8_probe_task_builder", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load probe task builder at {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def with_context_cap_for_local_model(entry, cap: int):
     """Give only the local-model test harness the declared cap while S9b is being ported.
 
@@ -81,9 +50,9 @@ def with_context_cap_for_local_model(entry, cap: int):
     """
     from dataclasses import replace
 
-    from tests.task_graph_fixtures import EntryFixture
     from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
     from writing_agent.task_graph_derive_entry import derive_entry
+    from writing_agent.task_graph_probe_experiment import EntryFixture
 
     node = entry.graph.node(entry.node_id)
     budget = node.contract.budget_contract
@@ -108,27 +77,6 @@ def with_context_cap_for_local_model(entry, cap: int):
         graph,
         entry.node_id,
         entry.params,
-        entry.reader,
-        derived.state,
-        derived.artifacts,
-    )
-
-
-def with_native_tokenizer(entry, descriptor):
-    """Bind the native tokenizer descriptor into a freshly admitted task entry."""
-    from dataclasses import replace
-
-    from tests.task_graph_fixtures import EntryFixture
-    from writing_agent.task_graph_derive_entry import derive_entry
-
-    entry.reader.public[descriptor.identity()] = descriptor.to_wire()
-    rendering = {**entry.params.rendering, "tokenizer_ref": descriptor.identity()}
-    params = replace(entry.params, rendering=rendering)
-    derived = derive_entry(entry.graph, entry.node_id, params, entry.reader)
-    return EntryFixture(
-        entry.graph,
-        entry.node_id,
-        params,
         entry.reader,
         derived.state,
         derived.artifacts,
@@ -185,32 +133,11 @@ def load_model_and_tokenizer(args):
     return torch, model, tokenizer, None
 
 
-def adapter_tensor_hash(model, torch) -> str:
-    digest = hashlib.sha256()
-    parameters = [
-        (name, parameter) for name, parameter in model.named_parameters() if "lora_" in name
-    ]
-    if not parameters:
-        raise RuntimeError("native trace check requires the initialized PEFT LoRA adapter")
-    for name, parameter in sorted(parameters, key=lambda item: item[0]):
-        value = parameter.detach().to(device="cpu").contiguous()
-        digest.update(name.encode("utf-8"))
-        digest.update(str(value.dtype).encode("ascii"))
-        digest.update(struct.pack("<I", value.ndim))
-        for dimension in value.shape:
-            digest.update(struct.pack("<Q", int(dimension)))
-        digest.update(value.view(torch.uint8).numpy().tobytes())
-    return digest.hexdigest()
-
-
 class SampleTrace:
     def __init__(self) -> None:
-        self.member_ordinal: int | None = None
+        self.member_ordinals: dict[int, int] | None = None
         self.current: dict[str, Any] | None = None
         self.events: list[dict[str, Any]] = []
-
-    def begin_member(self, ordinal: int) -> None:
-        self.member_ordinal = ordinal
 
     def backend(self, delegate):
         trace = self
@@ -220,8 +147,13 @@ class SampleTrace:
             manifest_descriptors = delegate.manifest_descriptors
 
             def sample(self, prepared):
+                if trace.member_ordinals is None:
+                    raise RuntimeError("trace check lacks the trainer's member seed mapping")
+                member_ordinal = trace.member_ordinals.get(prepared.writer_seed)
+                if member_ordinal is None:
+                    raise RuntimeError("trainer sampled an unregistered task-graph writer seed")
                 event = {
-                    "member_ordinal": trace.member_ordinal,
+                    "member_ordinal": member_ordinal,
                     "decision_ordinal": prepared.decision_ordinal,
                     "action_id": prepared.action_id,
                     "input_tokens": None,
@@ -316,46 +248,6 @@ def decision_summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         for event in events
     ]
-
-
-def native_policy(
-    store, rendering, manifest, model_ref: str, adapter_hash: str, experiment_ref: str
-):
-    from writing_agent.task_graph_record_contracts import POLICY_FIELDS, ContextPolicyV1
-
-    policy = {
-        field: store.put_artifact({"pin": field})
-        for field in POLICY_FIELDS
-        if field != "rng_derivation_version"
-    }
-    policy.update(
-        model_ref=model_ref,
-        behavior_policy_ref=store.put_artifact(
-            {
-                "kind": "trace-check-behavior-policy-v1",
-                "model_id": MODEL_ID,
-                "revision": MODEL_REVISION,
-                "adapter_tensor_sha256": adapter_hash,
-                "global_step": 0,
-                "experiment_ref": experiment_ref,
-            }
-        ),
-        tokenizer_ref=manifest.tokenizer.identity(),
-        template_ref=rendering["template_ref"],
-        adapter_ref=manifest.identity(),
-        decoding_ref=manifest.decoding.identity(),
-        context_policy_ref=store.put_artifact(
-            ContextPolicyV1(
-                "compact", summarizer_version="visible-text-v1", max_summary_chars=20
-            ).to_wire()
-        ),
-        rng_derivation_version="sha256-domain-v1",
-    )
-    return policy
-
-
-def start_receipt_ordinal(coordinator, spec, ordinal: int) -> str:
-    return coordinator._start_receipt(spec, ordinal)["start_checkpoint_id"]
 
 
 def member_summaries(store, coordinator, spec, decision, trace, admission=None):
@@ -552,12 +444,6 @@ def prefill_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def decode_u32(data: bytes) -> tuple[int, ...]:
-    if len(data) % 4:
-        raise ValueError("training token artifact is not u32-le aligned")
-    return struct.unpack(f"<{len(data) // 4}I", data) if data else ()
-
-
 def recompute_member_logprobs(
     model, torch, prompt: tuple[int, ...], completion: tuple[int, ...], mask: bytes
 ):
@@ -638,8 +524,8 @@ def on_policy_drift(store, batch, model, torch) -> dict[str, Any]:
     reader = StoreArtifactReader(store)
     differences: list[float] = []
     for member in batch.members:
-        prompt = decode_u32(reader.bytes_artifact(member["prompt_ids_ref"]))
-        completion = decode_u32(reader.bytes_artifact(member["completion_ids_ref"]))
+        prompt = decode_u32_token_ids(reader.bytes_artifact(member["prompt_ids_ref"]))
+        completion = decode_u32_token_ids(reader.bytes_artifact(member["completion_ids_ref"]))
         mask = reader.bytes_artifact(member["env_mask_ref"])
         sampled_at: dict[int, float] = {}
         for span in member["turn_spans"]:

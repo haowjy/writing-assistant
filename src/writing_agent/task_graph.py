@@ -111,6 +111,24 @@ def action_id_for_ordinal(lineage_id: str, ordinal: int) -> str:
     return f"{lineage_id}:action:{ordinal}"
 
 
+def tool_call_id(action_id: str, index: int) -> str:
+    """Return the canonical logical call ID for an action-local call index."""
+    logical_id(action_id, "action id")
+    if type(index) is not int or index < 0:
+        raise ValueError("tool-call index must be a nonnegative integer")
+    lineage_id, separator, ordinal_text = action_id.rpartition(":action:")
+    if (
+        not separator
+        or not lineage_id
+        or not ordinal_text.isascii()
+        or not ordinal_text.isdecimal()
+        or (len(ordinal_text) > 1 and ordinal_text.startswith("0"))
+    ):
+        raise ValueError("action ID is not canonical")
+    logical_id(lineage_id, "lineage id")
+    return f"{lineage_id}:call:{ordinal_text}:{index}"
+
+
 def latest_action_id(lineage_id: str, action_count: int) -> str | None:
     """Return the latest action identity, or None when no writer turn exists."""
     if type(action_count) is not int or action_count < 0:

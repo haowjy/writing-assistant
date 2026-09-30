@@ -525,7 +525,7 @@ class TrainingBatchExportTests(unittest.TestCase):
                 result = GroupMemberResultV1(
                     group_id=spec.group_id,
                     member_id=member.member_id,
-                    start_checkpoint_id=coordinator._start_receipt(spec, ordinal)[
+                    start_checkpoint_id=coordinator.start_receipt(spec, ordinal)[
                         "start_checkpoint_id"
                     ],
                     final_checkpoint_id=final.checkpoint_id,

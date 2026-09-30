@@ -217,8 +217,18 @@ class RolloutEnvironment:
         return runtime
 
     @operation_scoped
-    def open(self, checkpoint_id: str, *, group_session: bool = False) -> RuntimeHandle:
-        return self._open(checkpoint_id, group_session=group_session)
+    def open(
+        self,
+        checkpoint_id: str,
+        *,
+        require_session: bool = False,
+        caller_is_group_session: bool = False,
+    ) -> RuntimeHandle:
+        return self._open(
+            checkpoint_id,
+            require_session=require_session,
+            caller_is_group_session=caller_is_group_session,
+        )
 
     @operation_scoped
     def open_head(self, lineage_id: str) -> RuntimeHandle:
@@ -233,8 +243,26 @@ class RolloutEnvironment:
         return self._open(commit.checkpoint)
 
     @operation_scoped
-    def verify(self, runtime: RuntimeHandle, *, group_session: bool = False) -> LineageView:
-        return self._verify(runtime, group_session=group_session)
+    def verify(
+        self,
+        runtime: RuntimeHandle,
+        *,
+        require_session: bool = False,
+        caller_is_group_session: bool = False,
+    ) -> LineageView:
+        return self._verify(
+            runtime,
+            require_session=require_session,
+            caller_is_group_session=caller_is_group_session,
+        )
+
+    def with_session(self, session: SessionSeals | None) -> RolloutEnvironment:
+        """Return an environment bound to this session without mutating this one."""
+        bound = RolloutEnvironment(
+            self.store, self.graph, session, self.gate, self.admission_policy
+        )
+        bound.commit_observer = self.commit_observer
+        return bound
 
     @operation_scoped
     def step_input(self, runtime: RuntimeHandle) -> tuple[LineageView, Directive, PortInput | None]:
@@ -359,14 +387,26 @@ class RolloutEnvironment:
     def start_member(self, entry_checkpoint_id: str, start: MemberStartV1) -> RuntimeHandle:
         if not isinstance(start, MemberStartV1):
             raise TypeError("member start must be MemberStartV1")
-        runtime = self._open(entry_checkpoint_id, group_session=True)
+        runtime = self._open(
+            entry_checkpoint_id, require_session=True, caller_is_group_session=True
+        )
         return self._commit(runtime, start).runtime
 
-    def _open(self, checkpoint_id: str, *, group_session: bool = False) -> RuntimeHandle:
+    def _open(
+        self,
+        checkpoint_id: str,
+        *,
+        require_session: bool = False,
+        caller_is_group_session: bool = False,
+    ) -> RuntimeHandle:
         self._published_checkpoint(checkpoint_id)
         view = self.gate.view(self.store, checkpoint_id)
         runtime = self._runtime(view)
-        self._check_session_seals(view, require_group_session=group_session)
+        self._check_session_seals(
+            view,
+            require_session=require_session,
+            caller_is_group_session=caller_is_group_session,
+        )
         return runtime
 
     @staticmethod
@@ -376,18 +416,35 @@ class RolloutEnvironment:
         )
         return RuntimeHandle(view.checkpoint_id, view.state, context)
 
-    def _verify(self, runtime: RuntimeHandle, *, group_session: bool = False) -> LineageView:
+    def _verify(
+        self,
+        runtime: RuntimeHandle,
+        *,
+        require_session: bool = False,
+        caller_is_group_session: bool = False,
+    ) -> LineageView:
         if not isinstance(runtime, RuntimeHandle):
             raise TypeError("runtime must be a RolloutEnvironment RuntimeHandle")
         checkpoint = self._published_checkpoint(runtime.checkpoint_id)
-        return self._verified_view(runtime, checkpoint, require_group_session=group_session)
+        return self._verified_view(
+            runtime,
+            checkpoint,
+            require_session=require_session,
+            caller_is_group_session=caller_is_group_session,
+        )
 
     def _verify_commit_base(self, runtime: RuntimeHandle) -> _CommitBase:
         if not isinstance(runtime, RuntimeHandle):
             raise TypeError("runtime must be a RolloutEnvironment RuntimeHandle")
         head = self._inspect_checkpoint(runtime.checkpoint_id)
         return _CommitBase(
-            self._verified_view(runtime, head.checkpoint, require_group_session=True), head
+            self._verified_view(
+                runtime,
+                head.checkpoint,
+                require_session=True,
+                caller_is_group_session=True,
+            ),
+            head,
         )
 
     def _verified_view(
@@ -395,7 +452,8 @@ class RolloutEnvironment:
         runtime: RuntimeHandle,
         checkpoint: CheckpointV1,
         *,
-        require_group_session: bool = False,
+        require_session: bool = False,
+        caller_is_group_session: bool = False,
     ) -> LineageView:
         if checkpoint.state != runtime.state:
             raise WriterRuntimeError("runtime handle state differs from its checkpoint")
@@ -404,7 +462,11 @@ class RolloutEnvironment:
             view.context.messages, view.context.tools, view.context.rendering
         ):
             raise WriterRuntimeError("runtime handle context differs from its verified checkpoint")
-        self._check_session_seals(view, require_group_session=require_group_session)
+        self._check_session_seals(
+            view,
+            require_session=require_session,
+            caller_is_group_session=caller_is_group_session,
+        )
         return view
 
     def _published_checkpoint(self, checkpoint_id: str) -> CheckpointV1:
@@ -434,7 +496,11 @@ class RolloutEnvironment:
         return _CheckpointHead(checkpoint, head, is_head)
 
     def _check_session_seals(
-        self, view: LineageView, *, require_group_session: bool = False
+        self,
+        view: LineageView,
+        *,
+        require_session: bool = False,
+        caller_is_group_session: bool = False,
     ) -> None:
         budget = view.node.contract.budget_contract
         token_limited = bool(budget.usage_charged_limits())
@@ -442,7 +508,7 @@ class RolloutEnvironment:
             view.group.runner_mode == "real" or view.group.training_mode == "native"
         )
         if self.session is None:
-            if requires_group_session and require_group_session:
+            if requires_group_session and require_session:
                 raise AdapterContractError("runtime view requires a sealed runtime session")
             return
 
@@ -454,7 +520,7 @@ class RolloutEnvironment:
                 self.session.require_seal(
                     sealed_ref,
                     token_limited=token_limited,
-                    group_session=require_group_session,
+                    group_session=caller_is_group_session,
                     rendering=thaw(view.context.rendering),
                 )
         except Exception as exc:
@@ -483,7 +549,11 @@ class RolloutEnvironment:
         view = base.view
         head, base_is_head = base.head.commit_id, base.head.is_published_head
         transition = self._derive(view, input_record)
-        self._check_session_seals(transition.view, require_group_session=True)
+        self._check_session_seals(
+            transition.view,
+            require_session=True,
+            caller_is_group_session=True,
+        )
         lineage = transition.state.position["lineage_id"]
         if lineage == view.state.position["lineage_id"] and not base_is_head:
             if head is not None and self._is_published_retry(

@@ -377,6 +377,18 @@ class RolloutEnvironmentTests(unittest.TestCase):
         )
         self.runtime = self.environment.open(self.entry)
 
+    def test_with_session_returns_a_separate_environment_binding(self):
+        session = object()
+
+        bound = self.environment.with_session(session)
+
+        self.assertIsNot(bound, self.environment)
+        self.assertIs(bound.session, session)
+        self.assertIsNone(self.environment.session)
+        self.assertIs(bound.store, self.environment.store)
+        self.assertIs(bound.graph, self.environment.graph)
+        self.assertIs(bound.gate, self.environment.gate)
+
     def test_real_runtime_session_seals_are_checked_against_state(self):
         tools = LocalTextToolProvider()
         backend = ScriptedSampleBackend(())

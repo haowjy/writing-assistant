@@ -35,6 +35,7 @@ from writing_agent.task_graph_wire import (
     PayloadCodec,
     RecordOf,
     Str,
+    TrueOnly,
     UnionOf,
     WireRecord,
     obj,
@@ -212,7 +213,9 @@ class WriterTurnV2(WireRecord):
     logprobs: Annotated[Mapping[str, Any], _NATIVE_LOGPROBS_SCHEMA]
     termination: Annotated[Mapping[str, Any], _NATIVE_TERMINATION_SCHEMA]
     sampling_pins: Annotated[Mapping[str, Any], _SAMPLING_PINS_SCHEMA]
+    native_parse_failed: Annotated[bool | None, UnionOf((TrueOnly(), type(None)))] = None
     RECORD_TYPE: ClassVar[str] = "WriterTurnV2"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"native_parse_failed"})
 
     def check(self) -> None:
         if len(self.logprobs["shape"]) != 1:

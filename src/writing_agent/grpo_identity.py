@@ -5,6 +5,7 @@ import hashlib
 import json
 
 from writing_agent.catalog import fingerprint, overlap_audit, validate_catalog
+from writing_agent.task_graph import canonical_bytes
 
 
 def admission_identity(tasks, admission):
@@ -117,3 +118,26 @@ def base_tensor_identity(model):
         "sha256": digest.hexdigest(),
         "named_tensors": count,
     }
+
+
+def adapter_tensor_hash(model, adapter_name: str = "default") -> str:
+    """Hash the selected PEFT adapter's named tensor state with stable framing."""
+    import torch
+    from peft import get_peft_model_state_dict
+
+    try:
+        state = get_peft_model_state_dict(model, adapter_name=adapter_name)
+    except TypeError:
+        state = get_peft_model_state_dict(model)
+    if not state:
+        raise ValueError("expected PEFT adapter has no tensor state")
+    digest = hashlib.sha256()
+    for name, tensor in sorted(state.items()):
+        value = tensor.detach().contiguous().cpu()
+        header = canonical_bytes([name, str(value.dtype), list(value.shape)])
+        raw = value.view(-1).view(torch.uint8).numpy().tobytes()
+        digest.update(len(header).to_bytes(8, "big"))
+        digest.update(header)
+        digest.update(len(raw).to_bytes(8, "big"))
+        digest.update(raw)
+    return digest.hexdigest()

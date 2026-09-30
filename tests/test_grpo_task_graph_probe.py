@@ -11,7 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
+from writing_agent.grpo_gpu import DISPLAY_POLICY
 from writing_agent.grpo_task_graph_probe import (
+    N3_POLICY,
     ProbeError,
     _latest_checkpoint,
     _require_latest_checkpoint,
@@ -20,8 +22,10 @@ from writing_agent.grpo_task_graph_probe import (
     prepare,
 )
 from writing_agent.grpo_task_graph_probe_evidence import (
+    CRITERION_DESCRIPTIONS,
     _criterion,
     _criterion_1,
+    _store_integrity_controls_refused,
     inspect_run,
 )
 from writing_agent.grpo_task_graph_probe_evidence import (
@@ -32,6 +36,26 @@ from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
 
 
 class TaskGraphProbeTests(unittest.TestCase):
+    def test_desktop_probe_policy_extends_the_shared_gpu_policy(self):
+        self.assertEqual(N3_POLICY, {**DISPLAY_POLICY, "mode": "desktop"})
+        self.assertIs(N3_POLICY["names"], DISPLAY_POLICY["names"])
+
+    def test_criterion_4_names_store_integrity_controls_and_requires_all_refusals(self):
+        description = CRITERION_DESCRIPTIONS["criterion_4"].lower()
+        self.assertIn("store-integrity controls", description)
+        self.assertNotIn("tamper controls", description)
+
+        controls = {f"control-{index}": True for index in range(6)}
+        self.assertTrue(
+            _store_integrity_controls_refused({"all_refused": True, "controls": controls})
+        )
+        for name in controls:
+            with self.subTest(admitted=name):
+                admitted = {**controls, name: False}
+                self.assertFalse(
+                    _store_integrity_controls_refused({"all_refused": True, "controls": admitted})
+                )
+
     def test_inspect_is_read_only_and_prepare_persists_its_pre_run_record(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "run"
@@ -143,6 +167,7 @@ class TaskGraphProbeTests(unittest.TestCase):
         self.assertEqual(
             _select_evidence_verdict(criteria, {"group_count": 3, "tie_count": 3}), "fail"
         )
+        self.assertEqual(_select_verdict(criteria, {"group_count": 3, "tie_count": 3}), "fail")
 
     def test_criterion_1_missing_member_outcome_is_not_computed(self):
         outcome = {"calls": [], "counts_by_code": {}, "files_changed": False}
@@ -266,6 +291,7 @@ class TaskGraphProbeTests(unittest.TestCase):
                     members.append(
                         {
                             "member_id": f"member-{group_index}-{member_index}",
+                            "sampler_inputs_bound_to_own_lineage": True,
                             "eligibility": "structurally_eligible",
                             "turns": [],
                             "tool_outcomes": member_outcomes,
@@ -364,7 +390,10 @@ class TaskGraphProbeTests(unittest.TestCase):
                 ),
                 patch(
                     "writing_agent.grpo_task_graph_probe_evidence._tamper_controls",
-                    return_value={"all_refused": True},
+                    return_value={
+                        "controls": {f"control-{index}": True for index in range(6)},
+                        "all_refused": True,
+                    },
                 ),
                 patch(
                     "writing_agent.grpo_task_graph_probe_evidence._checkpoint_evidence",
@@ -402,8 +431,14 @@ class TaskGraphProbeTests(unittest.TestCase):
                     return_value=[],
                 ),
                 patch(
-                    "writing_agent.grpo_task_graph_probe_evidence._privacy_scan",
-                    return_value={"hits": [], "checked_files": 0},
+                    "writing_agent.grpo_task_graph_probe_privacy.scan_run_privacy",
+                    return_value={
+                        "hits": [],
+                        "checked_files": 0,
+                        "canaries_scanned": [],
+                        "scan_scope": "all regular run-directory files outside training/private",
+                        "excluded_private_store_area": "training/private",
+                    },
                 ),
                 patch("writing_agent.grpo_task_graph_probe_evidence._disk_bytes", return_value=0),
             ):
@@ -412,6 +447,11 @@ class TaskGraphProbeTests(unittest.TestCase):
             self.assertEqual(result["verdict"], "fail")
             self.assertTrue(result["criteria"]["criterion_1"]["computed"])
             self.assertFalse(result["criteria"]["criterion_1"]["passed"])
+            criterion_4 = result["criteria"]["criterion_4"]
+            self.assertTrue(criterion_4["computed"])
+            self.assertTrue(criterion_4["passed"])
+            self.assertIn("store_integrity_controls", criterion_4["evidence"])
+            self.assertNotIn("tamper_controls", criterion_4["evidence"])
             self.assertEqual(
                 result["criteria"]["criterion_1"]["evidence"][
                     "protocol_shaped_tool_rejection_count"

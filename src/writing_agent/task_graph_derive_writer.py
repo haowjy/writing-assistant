@@ -11,6 +11,7 @@ from writing_agent.task_graph import (
     action_id_for_ordinal,
     canonical_bytes,
     domain_hash,
+    tool_call_id,
 )
 from writing_agent.task_graph_accounting import (
     observation_read_tokens,
@@ -88,13 +89,12 @@ def tool_dispatch_error(budget: Mapping[str, Any], queue_entry: Mapping[str, Any
 
 def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Transition:
     """Derive the one event, state and context caused by a sampled writer turn."""
-    action_ordinal, action_id, content = _validate_writer_turn(view, turn)
+    action_id, content = _validate_writer_turn(view, turn)
     _bind_writer_turn(view, turn, reader)
     return _commit_sampled_writer_turn(
         view,
         turn,
         reader,
-        action_ordinal=action_ordinal,
         action_id=action_id,
         content=content,
     )
@@ -102,7 +102,7 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
 
 def derive_writer_turn_v2(view: LineageView, turn: WriterTurnV2, reader: Any) -> Transition:
     """Derive a native sampled turn after verifying its bytes and termination class."""
-    action_ordinal, action_id, content = _validate_writer_action(view, turn)
+    action_id, content = _validate_writer_action(view, turn)
     if not isinstance(turn, WriterTurnV2):
         raise ProjectionError("writer turn input must use its strict V2 wire codec")
     manifest = _bind_writer_turn(view, turn, reader)
@@ -112,7 +112,6 @@ def derive_writer_turn_v2(view: LineageView, turn: WriterTurnV2, reader: Any) ->
         view,
         turn,
         reader,
-        action_ordinal=action_ordinal,
         action_id=action_id,
         content=content,
         allow_context_overrun=turn.termination["kind"] == "context_limit",
@@ -125,7 +124,6 @@ def _commit_sampled_writer_turn(
     turn: WriterTurnV1 | WriterTurnV2,
     reader: Any,
     *,
-    action_ordinal: int,
     action_id: str,
     content: str,
     allow_context_overrun: bool = False,
@@ -187,7 +185,6 @@ def _commit_sampled_writer_turn(
             f"input.usage.{sorted(missing_usage)[0]}: required by active token budget"
         )
 
-    id_prefix = f"{view.state.position['lineage_id']}:call:{action_ordinal}"
     queue = (
         []
         if isinstance(turn, WriterTurnV2) and turn.termination["kind"] == "context_limit"
@@ -195,7 +192,7 @@ def _commit_sampled_writer_turn(
             view,
             turn,
             reader,
-            id_prefix=id_prefix,
+            action_id=action_id,
             prior_raw_ids=view.raw_call_ids,
         )
     )
@@ -261,7 +258,7 @@ def _commit_sampled_writer_turn(
     )
 
 
-def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, str, str]:
+def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[str, str]:
     if not isinstance(turn, WriterTurnV1):
         raise ProjectionError("writer turn input must use its strict V1 wire codec")
     return _validate_writer_action(view, turn)
@@ -269,21 +266,20 @@ def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, s
 
 def _validate_writer_action(
     view: LineageView, turn: WriterTurnV1 | WriterTurnV2
-) -> tuple[int, str, str]:
+) -> tuple[str, str]:
     directive = _directive(view)
     if directive.kind != "sample_writer":
         raise ProjectionError("writer turn is not the next legal step")
     if not isinstance(turn, (WriterTurnV1, WriterTurnV2)):
         raise ProjectionError("writer turn input must use its strict wire codec")
 
-    ordinal = view.state.history["action_count"]
     action_id = writer_action_id(view)
     if turn.action_id != action_id or turn.context_revision_ref != view.context.revision_ref:
         raise ProjectionError("writer turn is not bound to the active action and context")
     content = turn.message.content
     if content is not None and not isinstance(content, str):
         raise ProjectionError("sampled assistant content must be text or null")
-    return ordinal, action_id, "" if content is None else content
+    return action_id, "" if content is None else content
 
 
 def _bind_writer_turn(
@@ -342,13 +338,13 @@ def _build_tool_queue(
     turn: WriterTurnV1 | WriterTurnV2,
     reader: Any,
     *,
-    id_prefix: str,
+    action_id: str,
     prior_raw_ids: frozenset[str],
 ) -> list[ToolQueueEntry]:
     if not turn.message.tool_calls_was_list:
         return [
             ToolQueueEntry(
-                f"{id_prefix}:0",
+                tool_call_id(action_id, 0),
                 "invalid_call",
                 {},
                 rejection_message("tool_calls_not_array"),
@@ -365,7 +361,7 @@ def _build_tool_queue(
     try:
         return parse_calls(
             turn.message,
-            id_prefix=id_prefix,
+            action_id=action_id,
             allowed=frozenset(view.node.contract.entry_contract.tool_allowlist),
             prior_raw_ids=prior_raw_ids,
             ask_semantics=ask,

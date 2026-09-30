@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import fcntl
 import os
-import tempfile
 from contextlib import contextmanager
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from writing_agent.atomic_io import atomic_write_bytes
 from writing_agent.task_graph import (
     canonical_bytes,
     load_canonical_json,
@@ -29,6 +29,7 @@ from writing_agent.task_graph_group_contract import (
     resolve_group_environment,
     validate_group_policy,
 )
+from writing_agent.task_graph_group_index import groups_by_sequence as read_groups_by_sequence
 from writing_agent.task_graph_group_records import (
     GroupAdvantageV1,
     GroupDecisionV1,
@@ -55,6 +56,7 @@ from writing_agent.task_graph_records import (
     MemberStartV1,
     RuntimeManifestV1,
     RuntimeManifestV2,
+    TrainingAdmissionV1,
     WriterTurnV1,
     WriterTurnV2,
     decode_runtime_manifest,
@@ -80,7 +82,7 @@ class GroupCoordinatorV1:
     ):
         self.environment = environment
         self.store = environment.store
-        self.session = session or environment.session
+        self.session = session if session is not None else environment.session
         self.groups_root = self.store.root / "groups"
         self.groups_root.mkdir(mode=0o700, exist_ok=True)
 
@@ -172,29 +174,19 @@ class GroupCoordinatorV1:
     @staticmethod
     def _receipt(path: Path, body: dict[str, Any]) -> None:
         data = canonical_bytes(body)
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                if path.read_bytes() != data:
-                    raise GroupError(f"conflicting immutable receipt: {path.name}") from None
-            directory_fd = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-        finally:
-            os.unlink(temporary)
+        written = atomic_write_bytes(path, data, replace=False)
+        if not written and path.read_bytes() != data:
+            raise GroupError(f"conflicting immutable receipt: {path.name}") from None
+
+    @staticmethod
+    def groups_by_sequence(groups_root: Path | str) -> dict[int, GroupSpecV1 | None]:
+        """Return sealed group specs and active step reservations by sequence."""
+        return read_groups_by_sequence(groups_root)
 
     def _entry_contract(self, checkpoint_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
         view = self.environment.verify(
-            self.environment.open(checkpoint_id, group_session=True),
-            group_session=True,
+            self.environment.open(checkpoint_id, caller_is_group_session=True),
+            caller_is_group_session=True,
         )
         return (
             resolve_group_environment(
@@ -304,11 +296,11 @@ class GroupCoordinatorV1:
     def _require_bound_group_session(self, spec: GroupSpecV1, rendering: dict[str, Any]) -> None:
         if spec.runner_mode != "real" and spec.training_mode != "native":
             return
-        if self.session is None or self.environment.session is None:
+        if self.session is None:
             raise AdapterContractError("real group members require a bound runtime session")
         self._require_group_seal(spec)
         token_limited = self._entry_has_token_limits(spec.environment)
-        self.environment.session.require_seal(
+        self.session.require_seal(
             spec.policy["adapter_ref"],
             token_limited=token_limited,
             training_mode=spec.training_mode,
@@ -363,14 +355,25 @@ class GroupCoordinatorV1:
             runtime = self.environment.open_head(member.member_id)
         view = self.environment.verify(runtime)
         self._assert_member_view(spec, member, view)
-        self._start_receipt(spec, ordinal, view=view)
+        self.start_receipt(spec, ordinal, view=view)
         return runtime
 
     def _assert_member_view(self, spec, member, view) -> None:
         if view.state.position["lineage_id"] != member.member_id or view.group != spec:
             raise GroupError("verified member view differs from its sealed start")
 
-    def _start_receipt(self, spec: GroupSpecV1, ordinal: int, *, view=None) -> dict:
+    @operation_scoped
+    def start_receipt(self, spec: GroupSpecV1, ordinal: int, *, view=None) -> dict:
+        """Return the member's verified start binding, persisting it under the group lock."""
+        body = self._derive_start_receipt(spec, ordinal, view=view)
+        with self._locked(spec.group_id) as directory:
+            self._receipt(directory / f"start-{ordinal}.json", body)
+        return body
+
+    def _derive_start_receipt(self, spec: GroupSpecV1, ordinal: int, *, view=None) -> dict:
+        """Rebuild the member start binding without touching coordinator receipts."""
+        if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
+            raise GroupError("invalid member ordinal")
         member = spec.members[ordinal]
         if view is None:
             view = self._verified_member_view(spec, ordinal)
@@ -388,13 +391,92 @@ class GroupCoordinatorV1:
             "parent_checkpoint_id": parent_id,
             "start_checkpoint_id": chain.checkpoint_id,
         }
-        self._receipt(self.groups_root / spec.group_id / f"start-{ordinal}.json", body)
         return body
+
+    @operation_scoped
+    def collect_completed(self, spec: GroupSpecV1, ordinal: int, runtime: RuntimeHandle) -> str:
+        """Collect one completed member using its verified terminal view and start receipt."""
+        if type(ordinal) is not int or not 0 <= ordinal < len(spec.members):
+            raise GroupError("invalid member ordinal")
+        view = self.environment.verify(runtime)
+        member = spec.members[ordinal]
+        self._assert_member_view(spec, member, view)
+        if view.state.position["phase"] != "terminal" or view.outcome.execution_status != "valid":
+            raise GroupError("completed member lacks a valid terminal view")
+        start = self.start_receipt(spec, ordinal, view=view)["start_checkpoint_id"]
+        availability_ref = (
+            view.outcome.reward_ref if view.outcome.reward_status == "available" else None
+        )
+        terminal_ref = view.state.outcome_ref
+        if availability_ref is not None:
+            reward = self.store.get_artifact(availability_ref)
+            terminal_ref = reward["terminal_outcome_ref"]
+        return self.collect(
+            spec,
+            GroupMemberResultV1(
+                group_id=spec.group_id,
+                member_id=member.member_id,
+                start_checkpoint_id=start,
+                final_checkpoint_id=view.checkpoint_id,
+                terminal_outcome_ref=terminal_ref,
+                availability_ref=availability_ref,
+                execution_status="valid",
+            ),
+        )
+
+    @operation_scoped
+    def record_training_admission(self, spec: GroupSpecV1, admission: TrainingAdmissionV1) -> str:
+        """Persist admission records and their immutable group receipts under the lock."""
+        from writing_agent.task_graph_training_records import TrainingBatchV1
+
+        if not isinstance(admission, TrainingAdmissionV1) or admission.group_id != spec.group_id:
+            raise GroupError("training admission differs from its group")
+        self._require_group_seal(spec)
+        self._assert_sealed_spec(spec)
+        decision = GroupDecisionV1.from_dict(self.store.get_artifact(admission.decision_ref))
+        batch = TrainingBatchV1.from_dict(self.store.get_artifact(admission.batch_ref))
+        if (
+            decision.group_id != spec.group_id
+            or decision.identity() != admission.decision_ref
+            or self.finalize(spec).identity() != admission.decision_ref
+            or batch.group_id != spec.group_id
+            or batch.decision_ref != admission.decision_ref
+            or batch.identity() != admission.batch_ref
+        ):
+            raise GroupError("training batch or decision belongs to another group")
+        admission_ref = self.store.put_artifact(admission.to_wire())
+        if admission_ref != admission.identity():
+            raise GroupError("training admission ref differs from its identity")
+        with self._locked(spec.group_id) as directory:
+            self._receipt(directory / "training-batch.json", {"batch_ref": admission.batch_ref})
+            self._receipt(directory / "training-admission.json", {"admission_ref": admission_ref})
+        return admission_ref
+
+    @operation_scoped
+    def record_training_consumed(self, spec: GroupSpecV1, receipt: dict[str, Any]) -> None:
+        """Persist the trainer-consumed receipt without exposing the group's file layout."""
+        if not isinstance(receipt, dict) or receipt.get("group_id") != spec.group_id:
+            raise GroupError("trainer-consumed receipt belongs to another group")
+        with self._locked(spec.group_id) as directory:
+            batch = load_canonical_json((directory / "training-batch.json").read_bytes())
+            admission = load_canonical_json((directory / "training-admission.json").read_bytes())
+            if receipt.get("training_batch_ref") != batch.get("batch_ref") or receipt.get(
+                "training_admission_ref"
+            ) != admission.get("admission_ref"):
+                raise GroupError("trainer-consumed receipt differs from recorded admission")
+            self._receipt(directory / "trainer-consumed.json", receipt)
 
     @operation_scoped
     def collect(self, spec: GroupSpecV1, result: GroupMemberResultV1) -> str:
         self._require_group_seal(spec)
         self._assert_sealed_spec(spec)
+        ordinal = next(
+            (member.ordinal for member in spec.members if member.member_id == result.member_id),
+            None,
+        )
+        if ordinal is None:
+            raise GroupError("result belongs to another group or member slot")
+        self.start_receipt(spec, ordinal)
         ordinal, _ = self._admit_result(spec, result)
         ref = self.store.put_artifact(result.to_dict())
         with self._locked(spec.group_id) as directory:
@@ -466,7 +548,7 @@ class GroupCoordinatorV1:
             raise GroupError("available scripted reward must be an exact Fraction")
         if reward is not None and not isinstance(reward, Fraction):
             raise GroupError("scripted reward must be exact, never float")
-        start = self._start_receipt(spec, ordinal)["start_checkpoint_id"]
+        start = self.start_receipt(spec, ordinal)["start_checkpoint_id"]
         member = spec.members[ordinal]
         fixture = GroupScriptedTerminalV1(
             schema=1,
@@ -505,7 +587,7 @@ class GroupCoordinatorV1:
         view = self._verified_member_view(spec, ordinal)
         if evidence_ref is not None:
             self.store.get_artifact(evidence_ref)
-        start = self._start_receipt(spec, ordinal, view=view)["start_checkpoint_id"]
+        start = self.start_receipt(spec, ordinal, view=view)["start_checkpoint_id"]
         member = spec.members[ordinal]
         failure = GroupExecutionFailureV1(
             schema=1,
@@ -582,7 +664,7 @@ class GroupCoordinatorV1:
             raise GroupError("result belongs to another group or member slot")
         if bool(result.fixture_ref) != (spec.runner_mode == "fixture"):
             raise GroupError("fixture and real terminal results cannot share a group")
-        start = self._start_receipt(spec, ordinal)
+        start = self._derive_start_receipt(spec, ordinal)
         if result.start_checkpoint_id != start["start_checkpoint_id"]:
             raise GroupError("result start checkpoint is misbound")
         if result.fixture_ref:

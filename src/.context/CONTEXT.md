@@ -139,10 +139,18 @@ retains its smoke-evaluation and training-format workflows.
   `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
   reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
   [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
-  exported token layouts and pinned tokenizer files, then stores `TrainingAdmissionV1`.
-  Only all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
+  exported token layouts and pinned tokenizer files, then returns `TrainingAdmissionV1`.
+  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts. Only
+  all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
   and admission derivation from stored evidence and the pinned local tokenizer without
   network access; its canonical report contains no prompt, packet, context or token data.
+  [task_graph_probe_experiment.py](../writing_agent/task_graph_probe_experiment.py) owns
+  the Phase 8 probe recipe, admitted task loader and shared run composition; task configs
+  are data inputs, while the CPU scripted sampler remains in the smoke script. Criterion 6
+  uses [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
+  to scan run artifacts for private author/check canaries outside `training/private`; its
+  sibling scope reports per-member input reconstruction from that member's verified lineage,
+  not general absence of unplanted shared or sibling-derived text.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
@@ -153,7 +161,9 @@ retains its smoke-evaluation and training-format workflows.
   generation to that interface.
   Inputs contain messages and permitted tools, never evaluator labels.
 - [catalog.py](../writing_agent/catalog.py) owns source identity, lineage, imports,
-  atomic JSON artifacts, and overlap inspection. [acquisition.py](../writing_agent/acquisition.py)
+  JSON artifact formats, and overlap inspection. [atomic_io.py](../writing_agent/atomic_io.py)
+  owns durable atomic byte/JSON replacement shared by catalog outputs, trainer reservations,
+  trace reports and offline inspections. [acquisition.py](../writing_agent/acquisition.py)
   handles the selected upstream releases. [development.py](../writing_agent/development.py)
   compiles the authored world records into development cases.
 - [artifacts.py](../writing_agent/artifacts.py) extracts designated prose and inspects
@@ -453,7 +463,8 @@ sampled tokens and external suffix masks. Do not rebuild training actions by ren
 parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
 Training identity includes private scoring labels, unlike evaluation's rescorable
 identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
-before resume can mutate the model; engineered fixtures use separate, explicit admission.
+before resume can mutate the model, and owns the selected PEFT adapter tensor hash used by
+trainer policy bindings and trace checks; engineered fixtures use separate, explicit admission.
 Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
 also stops ties by default; explicit `"continue"` passes raw tied rewards through
 ordinary TRL/Adam without resampling. Mathematically zero advantages can have

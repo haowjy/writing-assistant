@@ -40,14 +40,14 @@ def _new_parse(batch, prior, scripted):
     decoded = SampledMessageV1.from_dict(json.loads(encoded))
     parsed = parse_calls(
         record,
-        id_prefix="r:call:0",
+        action_id="r:action:0",
         allowed=ALLOWED,
         prior_raw_ids=prior,
         ask_semantics=_ask_semantics if scripted else None,
     )
     round_trip = parse_calls(
         decoded,
-        id_prefix="r:call:0",
+        action_id="r:action:0",
         allowed=ALLOWED,
         prior_raw_ids=prior,
         ask_semantics=_ask_semantics if scripted else None,
@@ -260,6 +260,30 @@ def _targeted_cases():
 
 
 class IntakeAndParserTests(unittest.TestCase):
+    def test_native_parser_impossible_shapes_are_protocol_rejections(self):
+        expected = {
+            "tool_calls_not_array": "tool_calls must be an array",
+            "arguments_not_object": "Tool arguments must be an object",
+            "invalid_arguments_json": "Invalid tool arguments JSON",
+        }
+        for code, reason in expected.items():
+            with self.subTest(code=code):
+                self.assertIn(code, PROTOCOL_SHAPED_REJECTION_CODES)
+                self.assertEqual(REJECTION_MESSAGES[code], reason)
+                self.assertEqual(rejection_code_for_message(reason), code)
+
+    def test_core_owns_canonical_action_to_tool_call_ids(self):
+        from writing_agent.task_graph import tool_call_id
+
+        self.assertEqual(tool_call_id("member-1:action:7", 0), "member-1:call:7:0")
+        self.assertEqual(tool_call_id("member-1:action:7", 2), "member-1:call:7:2")
+        for action_id in ("not-an-action", "member:action:07", "member:action:7:extra"):
+            with self.subTest(action_id=action_id), self.assertRaises(ValueError):
+                tool_call_id(action_id, 0)
+        for index in (-1, True):
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                tool_call_id("member:action:0", index)
+
     def test_rejection_code_lookup_uses_exact_committed_text(self):
         for code, message in REJECTION_MESSAGES.items():
             with self.subTest(code=code):
@@ -277,6 +301,9 @@ class IntakeAndParserTests(unittest.TestCase):
                     "invalid_function_envelope",
                     "missing_id",
                     "duplicate_id",
+                    "tool_calls_not_array",
+                    "arguments_not_object",
+                    "invalid_arguments_json",
                 }
             ),
         )
@@ -298,8 +325,8 @@ class IntakeAndParserTests(unittest.TestCase):
         )
         encoded = canonical_json(record.to_wire())
         restored = SampledMessageV1.from_dict(json.loads(encoded))
-        parsed = parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
-        self.assertEqual(parsed, parse_calls(restored, id_prefix="r:call:0", allowed=ALLOWED))
+        parsed = parse_calls(record, action_id="r:action:0", allowed=ALLOWED)
+        self.assertEqual(parsed, parse_calls(restored, action_id="r:action:0", allowed=ALLOWED))
         self.assertIsNone(parsed[0].rejection)
         self.assertEqual(parsed[0].arguments, {"$noncanonical": "bytes", "hex": "00"})
 
@@ -341,7 +368,7 @@ class IntakeAndParserTests(unittest.TestCase):
             object.__setattr__(forged, "tool_calls_was_list", True)
             object.__setattr__(forged, "calls", wire["calls"])
             with self.subTest(row=name), self.assertRaises(type(codec_error.exception)):
-                parse_calls(forged, id_prefix="r:call:0", allowed=ALLOWED)
+                parse_calls(forged, action_id="r:action:0", allowed=ALLOWED)
 
     def test_sampled_message_codec_rejects_legacy_sentinel(self):
         with self.assertRaises(ValueError):
@@ -360,7 +387,7 @@ class IntakeAndParserTests(unittest.TestCase):
         self.assertFalse(record.tool_calls_was_list)
         self.assertEqual(record.calls, "not calls")
         with self.assertRaises(WriterRuntimeError):
-            parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
+            parse_calls(record, action_id="r:action:0", allowed=ALLOWED)
 
     def test_mixed_ask_batch_is_all_invalid_and_intake_depth_is_bounded(self):
         ask = _good_call(
@@ -371,7 +398,7 @@ class IntakeAndParserTests(unittest.TestCase):
         file_call = _good_call("{}", name="read_file", raw_id="read")
         mixed = parse_calls(
             intake_message({"tool_calls": [ask, file_call]}),
-            id_prefix="r:call:0",
+            action_id="r:action:0",
             allowed=ALLOWED,
         )
         self.assertTrue(all(entry.name == "invalid_call" for entry in mixed))
@@ -385,7 +412,7 @@ class IntakeAndParserTests(unittest.TestCase):
         deep_json = "[" * 16_000 + "0" + "]" * 16_000
         entries = parse_calls(
             intake_message({"tool_calls": [_good_call(deep_json)]}),
-            id_prefix="r:call:0",
+            action_id="r:action:0",
             allowed=ALLOWED,
         )
 

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import os
 import shutil
-import sys
 import tempfile
 import time
 from fractions import Fraction
@@ -15,9 +13,24 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.catalog import save_json
+from writing_agent.grpo_task_graph_probe_privacy import (
+    criterion_6 as build_criterion_6,
+)
+from writing_agent.grpo_task_graph_probe_privacy import (
+    scan_run_privacy,
+    verify_member_input_scope,
+)
 from writing_agent.task_graph import canonical_bytes, load_canonical_json
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
+from writing_agent.task_graph_probe_experiment import (
+    TOKENIZER_PATH,
+    tiny_gemma,
+)
+from writing_agent.task_graph_probe_experiment import (
+    settings as probe_settings,
+)
 from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
+from writing_agent.training_stages import _disk_bytes
 
 CRITERION_DESCRIPTIONS = {
     "criterion_1": (
@@ -34,34 +47,19 @@ CRITERION_DESCRIPTIONS = {
         "and PEFT reload matches."
     ),
     "criterion_4": (
-        "Offline inspection re-derives all ledgers/admissions with zero mismatches and all "
-        "tamper controls refuse."
+        "Offline inspection re-derives all ledgers/admissions with zero mismatches and all six "
+        "store-integrity controls are refused by content addressing."
     ),
     "criterion_5": (
         "Every applicable run-time, GPU-memory, RSS, aggregate GPU-time, and run-directory "
         "ceiling held."
     ),
     "criterion_6": (
-        "The two offline inspection outputs are byte-identical and private-data canaries "
-        "are absent."
+        "The two inspections are byte-identical; planted private-record canaries are absent "
+        "outside the store's private area; and each member's sampler inputs are re-derived from "
+        "that member's verified lineage."
     ),
 }
-
-
-def _smoke_helpers():
-    """Load the established tiny-Gemma fixture without importing runner orchestration."""
-    module_name = "_task_graph_probe_evidence_cpu_smoke"
-    existing = sys.modules.get(module_name)
-    if existing is not None:
-        return existing
-    path = Path(__file__).resolve().parents[2] / "scripts" / "smoke_task_graph_grpo_cpu.py"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise ValueError("CPU smoke helpers are unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -148,9 +146,20 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
                         key += ":" + turn.termination["limit"]
                     terminations[key] = terminations.get(key, 0) + 1
                     member_terminations.append(turn)
+                member_lineage = member.member_id
+                lineage_bound = (
+                    start_view.state.position["lineage_id"] == member_lineage
+                    and view.state.position["lineage_id"] == member_lineage
+                    and bool(member_terminations)
+                    and all(
+                        turn.action_id.startswith(f"{member_lineage}:action:")
+                        for turn in member_terminations
+                    )
+                )
                 result_members.append(
                     {
                         "member_id": member.member_id,
+                        "sampler_inputs_bound_to_own_lineage": lineage_bound,
                         "eligibility": eligibility,
                         "turns": member_terminations,
                         "tool_outcomes": tool_outcomes,
@@ -322,16 +331,15 @@ def _adapter_reload(training_root: Path, mode: str, complete: dict[str, Any]) ->
     exported = load_file(str(exported_path), device="cpu")
     checkpoint_state = load_file(str(checkpoint_path), device="cpu")
     direct_match = _same_tensors(exported, checkpoint_state)
-    smoke = _smoke_helpers()
     if mode.startswith("cpu"):
         tokenizer = AutoTokenizer.from_pretrained(
-            str(smoke.TOKENIZER_PATH), local_files_only=True, trust_remote_code=False
+            str(TOKENIZER_PATH), local_files_only=True, trust_remote_code=False
         )
-        base = smoke.tiny_gemma(tokenizer.vocab_size)
+        base = tiny_gemma(tokenizer.vocab_size)
     else:
         from transformers import AutoModelForCausalLM
 
-        settings = smoke.settings()
+        settings = probe_settings()
         base = AutoModelForCausalLM.from_pretrained(
             settings.model_id,
             revision=settings.revision,
@@ -400,6 +408,16 @@ def _criterion(computed: bool, passed: bool, evidence: dict[str, Any], missing=(
         "evidence": evidence,
         "missing_inputs": list(missing),
     }
+
+
+def _store_integrity_controls_refused(evidence: dict[str, Any]) -> bool:
+    controls = evidence.get("controls")
+    return bool(
+        evidence.get("all_refused") is True
+        and isinstance(controls, dict)
+        and len(controls) == 6
+        and all(refused is True for refused in controls.values())
+    )
 
 
 def _criterion_1(groups: list[dict[str, Any]], *, group_count: int, group_errors: list[str]):
@@ -605,34 +623,6 @@ def _checkpoint_disk_metrics(training_root: Path) -> list[dict[str, int]]:
     return measurements
 
 
-def _privacy_scan(run_dir: Path) -> dict[str, Any]:
-    import sys
-
-    project_root = Path(__file__).resolve().parents[2]
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-    from tests.task_graph_rollout_fixtures import (
-        AUTHOR_PACKET_CANARY,
-        EVALUATOR_PACKET_CANARY,
-        LEDGER_CANARY,
-    )
-
-    canaries = (AUTHOR_PACKET_CANARY, EVALUATOR_PACKET_CANARY, LEDGER_CANARY)
-    hits = []
-    for path in run_dir.rglob("*"):
-        if not path.is_file() or path.is_symlink():
-            continue
-        try:
-            data = path.read_bytes()
-        except OSError:
-            hits.append({"path": str(path.relative_to(run_dir)), "reason": "unreadable"})
-            continue
-        for canary in canaries:
-            if canary.encode() in data:
-                hits.append({"path": str(path.relative_to(run_dir)), "canary": canary})
-    return {"checked_files": sum(1 for path in run_dir.rglob("*") if path.is_file()), "hits": hits}
-
-
 def _failed_result(run_dir: Path, mode: str, error: str) -> dict[str, Any]:
     criteria = {
         f"criterion_{number}": {
@@ -735,14 +725,14 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             and criterion_3_evidence.get("resident_trainable_hash_matches_export") is True
         )
 
-        tamper_evidence: dict[str, Any] = {}
-        tamper_error = None
+        store_integrity_evidence: dict[str, Any] = {}
+        store_integrity_error = None
         try:
             if not groups:
-                raise ValueError("no group is available for tamper controls")
-            tamper_evidence = _tamper_controls(training_root, run_dir, groups[0])
+                raise ValueError("no group is available for store-integrity controls")
+            store_integrity_evidence = _tamper_controls(training_root, run_dir, groups[0])
         except Exception as exc:
-            tamper_error = f"{type(exc).__name__}: {exc}"
+            store_integrity_error = f"{type(exc).__name__}: {exc}"
         mismatch_counts = [report.get("mismatch_count") for report in reports]
         inspector_ok = (
             all(
@@ -758,12 +748,12 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             "inspection_reports": reports,
             "mismatch_counts": mismatch_counts,
             "inspections_byte_identical": inspections_identical,
-            "tamper_controls": tamper_evidence,
+            "store_integrity_controls": store_integrity_evidence,
             "inspection_errors": inspection_errors + group_errors,
         }
         criterion_4_computed = (
             bool(reports)
-            and not tamper_error
+            and not store_integrity_error
             and not inspection_errors
             and not group_errors
             and len(reports) == 6
@@ -772,10 +762,10 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             criterion_4_computed
             and inspector_ok
             and inspections_identical
-            and tamper_evidence.get("all_refused") is True
+            and _store_integrity_controls_refused(store_integrity_evidence)
         )
-        if tamper_error:
-            criterion_4_evidence["tamper_error"] = tamper_error
+        if store_integrity_error:
+            criterion_4_evidence["store_integrity_error"] = store_integrity_error
 
         resources = _resource_stages(run_dir)
         ceilings = prepared["ceilings"]
@@ -830,24 +820,21 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
         criterion_5_computed = len(resources) == 2
         criterion_5_pass = criterion_5_computed and stage_resource_ok and disk_ok
 
-        privacy = _privacy_scan(run_dir)
+        privacy = scan_run_privacy(run_dir)
         source_scope_ok = len(prepared.get("task_graph_hashes", ())) == 3 and [
             item["task_id"] for item in prepared["task_graph_hashes"]
         ] == ["t1-lighthouse", "t2-winter-garden", "t3-coastal-post"]
-        criterion_6_evidence = {
-            "inspections_byte_identical": inspections_identical,
-            "privacy_canary_hits": privacy["hits"],
-            "privacy_files_scanned": privacy["checked_files"],
-            "frozen_public_task_scope": source_scope_ok,
-            "network_disabled": all(
+        sibling_input_scope = verify_member_input_scope(
+            groups, reports, inspections_byte_identical=inspections_identical
+        )
+        criterion_6 = build_criterion_6(
+            inspections_byte_identical=inspections_identical,
+            privacy=privacy,
+            frozen_public_task_scope=source_scope_ok,
+            network_disabled=all(
                 os.environ.get(name) == "1" for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
             ),
-        }
-        criterion_6_pass = (
-            inspections_identical
-            and not privacy["hits"]
-            and source_scope_ok
-            and criterion_6_evidence["network_disabled"]
+            sibling_input_scope=sibling_input_scope,
         )
 
         measurements = _ledger_metrics(groups)
@@ -888,10 +875,12 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
                 criterion_4_computed,
                 criterion_4_pass,
                 criterion_4_evidence,
-                [] if criterion_4_computed else [tamper_error or "offline inspection evidence"],
+                []
+                if criterion_4_computed
+                else [store_integrity_error or "offline inspection evidence"],
             ),
             "criterion_5": _criterion(criterion_5_computed, criterion_5_pass, criterion_5_evidence),
-            "criterion_6": _criterion(True, criterion_6_pass, criterion_6_evidence),
+            "criterion_6": criterion_6,
         }
         for key, description in CRITERION_DESCRIPTIONS.items():
             criteria[key]["description"] = description
@@ -900,8 +889,8 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
             failures.extend(group_errors)
         if inspection_errors:
             failures.extend(inspection_errors)
-        if tamper_error:
-            failures.append(tamper_error)
+        if store_integrity_error:
+            failures.append(store_integrity_error)
         if criterion_3_error:
             failures.append(criterion_3_error)
         result = {
@@ -926,17 +915,6 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
         result = _failed_result(run_dir, mode, f"{type(exc).__name__}: {exc}")
         save_json(run_dir / "result.json", result)
         return result
-
-
-def _disk_bytes(root: Path) -> int:
-    total = 0
-    for path in root.rglob("*"):
-        if path.is_file() and not path.is_symlink():
-            try:
-                total += path.lstat().st_size
-            except FileNotFoundError:
-                continue
-    return total
 
 
 def _select_verdict(criteria: dict[str, Any], measurements: dict[str, Any]) -> str:

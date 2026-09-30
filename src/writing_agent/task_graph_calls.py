@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
-from writing_agent.task_graph import canonical_json, safe_path, validate_file_tree
+from writing_agent.task_graph import (
+    canonical_json,
+    safe_path,
+    tool_call_id,
+    validate_file_tree,
+)
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
 from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_wire import decode_canonical_value
@@ -70,13 +75,22 @@ _REJECTION_CODES_BY_MESSAGE = {message: code for code, message in REJECTION_MESS
 
 # Native parse_response owns the standard call/function envelope and rejects non-object
 # arguments before intake; bind_native_tool_call_ids then replaces every parser-local ID with
-# a unique action-derived ID. These four committed intake codes therefore indicate a broken
-# native parser/binder contract. Size limits and generated names/arguments remain model
-# behavior, as do ask-author shape/path validation and failures from an accepted tool call.
+# a unique action-derived ID. A non-array calls value, non-object arguments, malformed
+# arguments JSON, invalid envelopes, missing IDs, or duplicate IDs therefore indicate a
+# broken native parser/binder contract. Size limits and generated names/arguments remain
+# model behavior, as do ask-author shape/path validation and failures from an accepted call.
 # Argument syntax/content codes (including ask-author shape) and unsafe paths describe sampled
 # behavior; tool-execution failures describe the effect the sampled call requested.
 PROTOCOL_SHAPED_REJECTION_CODES = frozenset(
-    {"invalid_envelope", "invalid_function_envelope", "missing_id", "duplicate_id"}
+    {
+        "invalid_envelope",
+        "invalid_function_envelope",
+        "missing_id",
+        "duplicate_id",
+        "tool_calls_not_array",
+        "arguments_not_object",
+        "invalid_arguments_json",
+    }
 )
 # Accepted tool calls can fail with dynamic, call-specific workspace text. The reader assigns
 # this stable model-behavior code when the committed observation is not one of the fixed errors.
@@ -462,7 +476,7 @@ def _names_ask_author(raw: Any) -> bool:
 def parse_calls(
     message: SampledMessageV1,
     *,
-    id_prefix: str,
+    action_id: str,
     allowed: frozenset[str],
     prior_raw_ids: Iterable[str] = (),
     ask_semantics: Callable[[dict[str, Any]], None] | None = None,
@@ -504,7 +518,7 @@ def parse_calls(
                 reason = str(exc)
         entries.append(
             ToolQueueEntry(
-                f"{id_prefix}:{index}",
+                tool_call_id(action_id, index),
                 call.name if reason is None else "invalid_call",
                 call.arguments if reason is None else {},
                 reason,

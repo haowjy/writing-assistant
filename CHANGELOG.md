@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+- Share one adapter tensor hash, bounded/unbounded u32 decoder and durable atomic file writer
+  across native training and trace evidence.
+
+- Route verified member completion, admission and trainer-consumption receipts through the
+  locked group coordinator; share one strict group/step sequence index for refusal and resume.
+
+- Plant Phase 8 privacy canaries in private task records and fail criterion 6 if either reaches
+  run artifacts outside the store's private area.
+
+- Treat only recognized Gemma malformed-response errors as model parse failures; surface
+  unexpected parser errors as protocol failures.
+- Refuse false `native_parse_failed` claims at decode.
+
+- Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
+  rollout classes.
+
+- Derive reward scaling from the runtime profile, preserving legacy plan identities.
+
+- Preserve the checkpoint fork's W&B console privacy and resume bindings without forwarding
+  unapproved environment keys.
+
+- Bind task-graph experiment identities to the native sampler, audit, and core task-graph sources.
+
+- Label criterion 4's byte-tampering checks as store-integrity controls, not audit proof.
+
+- Use one fail-closed verdict rule in both the task-graph probe worker and parent.
+
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
   and fail-closed admission evidence before DAPO updates.
 
@@ -19,7 +46,7 @@
 
 - Set only validated W&B environment bindings, and only after runtime admission succeeds.
 
-- Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
+- Derive TRL reward scaling from the runtime profile, preserving legacy plan identities.
 
 - Bind native Gemma tool calls to deterministic task-graph action IDs, pair replayed results
   exactly, and halt the CPU trace check on protocol-shaped tool-result errors while recording

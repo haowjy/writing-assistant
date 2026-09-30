@@ -123,6 +123,10 @@ class SamplingRunner:
 
     def _native_turn(self, port: SamplerInput, result: SampleResultV2) -> WriterTurnV2:
         message = dict(result.message)
+        trace = None if result.trace is None else dict(result.trace)
+        parse_failure_claim = None if trace is None else trace.pop("native_parse_failed", None)
+        if parse_failure_claim is not None and type(parse_failure_claim) is not bool:
+            raise AdapterContractError("native parse-failure claim must be boolean")
         if (
             message.get("role") != "assistant"
             or (message.get("content") is not None and not isinstance(message["content"], str))
@@ -149,7 +153,7 @@ class SamplingRunner:
                 context_revision_ref=port.context_revision_ref,
                 raw_output_ref=raw_output_ref,
                 usage=dict(result.usage),
-                adapter_trace=None if result.trace is None else dict(result.trace),
+                adapter_trace=trace or None,
                 message=intake_message(message),
                 input_token_ids_ref=input_ref,
                 input_token_count=len(result.input_token_ids),
@@ -162,6 +166,7 @@ class SamplingRunner:
                 },
                 termination=dict(result.termination),
                 sampling_pins=dict(result.sampling_pins),
+                native_parse_failed=parse_failure_claim,
             )
         except (OverflowError, TypeError, ValueError, KeyError) as exc:
             raise AdapterContractError(

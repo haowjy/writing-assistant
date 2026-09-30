@@ -15,6 +15,7 @@ from writing_agent.task_graph_calls import (
     TOOL_EXECUTION_FAILURE_CODE,
     rejection_code_for_message,
 )
+from writing_agent.task_graph_sampling import TERMINATION_STOP_REASONS
 
 
 class ToolOutcomeError(ValueError):
@@ -137,14 +138,38 @@ def read_member_tool_outcomes(start: Any, final: Any) -> dict[str, Any]:
     calls = {call_id: all_calls[call_id] for call_id in new_call_ids}
     all_results = _tool_results(final.context.messages)
     results = {call_id: value for call_id, value in all_results.items() if call_id in new_call_ids}
-    if set(results) != set(calls):
+    unpaired_results = set(results) - set(calls)
+    unexecuted_call_ids = set(calls) - set(results)
+    if unpaired_results:
         raise ToolOutcomeError("committed writer calls and tool results do not pair exactly")
+    if unexecuted_call_ids:
+        final_action_id = (
+            final.samples[-1].action_id
+            if final.samples and final.samples[-1].outcome == "action"
+            else None
+        )
+        outcome = final.outcome
+        if (
+            outcome.task_status != "incomplete"
+            or outcome.stop_reason not in TERMINATION_STOP_REASONS
+            or final_action_id is None
+            or any(
+                final.call_sources[call_id].action_id != final_action_id
+                for call_id in unexecuted_call_ids
+            )
+        ):
+            raise ToolOutcomeError("committed writer calls and tool results do not pair exactly")
 
     outcomes = []
     counts: Counter[str] = Counter()
     protocol_rejection_count = 0
-    for call_id, call in calls.items():
-        result = _result_for_call(call, results[call_id])
+    for call_id in sorted(calls):
+        call = calls[call_id]
+        result = (
+            {"code": "not_executed_incomplete"}
+            if call_id in unexecuted_call_ids
+            else _result_for_call(call, results[call_id])
+        )
         outcome = {"call_id": call_id, "name": call["name"], "result": result}
         outcomes.append(outcome)
         code = "ok" if result == "ok" else result["code"]

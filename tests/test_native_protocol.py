@@ -7,8 +7,14 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
-from writing_agent.native_protocol import NATIVE_STOP_TOKENS, ProtocolError, native_suffix
+from writing_agent.native_protocol import (
+    NATIVE_STOP_TOKENS,
+    ProtocolError,
+    native_suffix,
+    parse_native_response,
+)
 
 TOKENIZER_ID = "google/gemma-4-E2B-it"
 TOKENIZER_REVISION = "3e22461f65e89153144f8adb70e3b8c2cc9845a7"
@@ -165,10 +171,51 @@ import writing_agent.native_protocol
         with self.assertRaises(ProtocolError):
             bind_native_tool_call_ids(message, "not-an-action-id")
 
+    def test_wrong_tokenizer_is_an_infrastructure_error(self):
+        with self.assertRaises(ProtocolError):
+            parse_native_response(
+                object(),
+                "plain text",
+                prefix="",
+                action_id="member:action:0",
+                termination={"kind": "native_stop"},
+            )
+
+        class BrokenTokenizer:
+            def parse_response(self, _text, *, prefix):
+                raise ValueError(f"unexpected error with {prefix}")
+
+        with self.assertRaises(ProtocolError):
+            parse_native_response(
+                BrokenTokenizer(),
+                "plain text",
+                prefix="not a Gemma parse failure",
+                action_id="member:action:0",
+                termination={"kind": "native_stop"},
+            )
+
+    def test_unexpected_parser_exceptions_are_infrastructure_errors(self):
+        for error_type in (AttributeError, TypeError, ValueError):
+            with (
+                self.subTest(error=error_type.__name__),
+                patch(
+                    "writing_agent.inference.parse_response",
+                    side_effect=error_type("parser implementation error"),
+                ),
+                self.assertRaises(ProtocolError),
+            ):
+                parse_native_response(
+                    object(),
+                    "plain text",
+                    prefix="",
+                    action_id="member:action:0",
+                    termination={"kind": "native_stop"},
+                )
+
 
 @unittest.skipUnless(
     importlib.util.find_spec("transformers") is not None,
-    "requires the optional transformers dependency for tokenizer-backed tests",
+    "requires the optional transformers dependency and cached Gemma tokenizer (env-phase8)",
 )
 class NativeProtocolTokenizerTests(unittest.TestCase):
     @classmethod
@@ -185,6 +232,45 @@ class NativeProtocolTokenizerTests(unittest.TestCase):
         token_ids = self.tokenizer.encode(token, add_special_tokens=False)
         self.assertEqual(len(token_ids), 1, token)
         return token_ids[0]
+
+    def test_reviewer_malformed_and_truncated_calls_are_parse_failures(self):
+        cases = (
+            (
+                "hi",
+                '<|tool_call>call:write_file{content:<|"|>The keeper waits and the tide',
+                {"kind": "token_limit", "stop_token_id": None, "limit": 512},
+            ),
+            (
+                "hi",
+                "<|tool_call>call:write_file{content:A keeper,path:scene.txt"
+                "<tool_call|><|tool_response>",
+                {"kind": "native_stop", "stop_token_id": 50, "limit": None},
+            ),
+            (
+                "Write a scene.",
+                '<|tool_call>call:write_file{content:<|"|>The keeper waits and the tide',
+                {"kind": "token_limit", "stop_token_id": None, "limit": 512},
+            ),
+        )
+        for prompt_text, raw, termination in cases:
+            with self.subTest(raw=raw):
+                prefix = self.tokenizer.apply_chat_template(
+                    [{"role": "user", "content": prompt_text}],
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    enable_thinking=False,
+                )
+                parsed = parse_native_response(
+                    self.tokenizer,
+                    raw,
+                    prefix=prefix,
+                    action_id="member:action:0",
+                    termination=termination,
+                )
+                self.assertTrue(parsed.failed)
+                self.assertEqual(
+                    parsed.message, {"role": "assistant", "content": raw, "tool_calls": []}
+                )
 
     def _is_prefix_stable(self, assistant, external, suffix, boundary):
         from writing_agent.inference import render_messages

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from tests.task_graph_rollout_fixtures import build_rollout_fixture, run_slice
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
 from writing_agent.task_graph_ports import SampleResult
-from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
+from writing_agent.task_graph_tool_outcomes import ToolOutcomeError, read_member_tool_outcomes
 
 
 def _call(name: str, arguments: dict, call_id: str) -> dict:
@@ -70,6 +71,92 @@ class TaskGraphToolOutcomeTests(unittest.TestCase):
         self.assertEqual(outcomes["counts_by_code"]["ask_author_arguments_shape"], 1)
         self.assertTrue(outcomes["files_changed"])
         self.assertEqual(outcomes["changed_paths"], ["draft.txt"])
+
+    def _incomplete_call_lineage(self, root, *, token_limit=False, calls=()):
+        from tests.test_task_graph_v2_writer import _bound_native_lineage, _turn
+        from writing_agent.task_graph_gate import StoreArtifactReader
+        from writing_agent.task_graph_records import EnvironmentStepV1
+
+        fixture, _session, _spec, runtime = _bound_native_lineage(
+            root, mode="context_token_limited", max_tokens=4
+        )
+        start = fixture.env.verify(runtime)
+        if token_limit:
+            turn = _turn(
+                start,
+                StoreArtifactReader(fixture.store),
+                generated_ids=(10, 11, 12, 13),
+                termination_kind="token_limit",
+                stop_token_id=None,
+                limit="decision",
+                calls=calls,
+                content="",
+            )
+        else:
+            turn = _turn(
+                start,
+                StoreArtifactReader(fixture.store),
+                generated_ids=(1,),
+                stop_token_id=1,
+                calls=calls,
+                content="",
+            )
+        committed = fixture.env.commit(runtime, turn)
+        published = fixture.env.commit(
+            committed.runtime,
+            EnvironmentStepV1(directive={"kind": "publish_reward"}),
+        )
+        return fixture, start, fixture.env.verify(published.runtime)
+
+    def test_final_incomplete_action_reports_unexecuted_calls_as_model_behavior(self):
+        tool_call = _call("write_file", {"path": "draft.txt", "content": "x"}, "write-1")
+        with tempfile.TemporaryDirectory() as temporary:
+            _fixture, start, final = self._incomplete_call_lineage(
+                Path(temporary) / "unterminated",
+                calls=(tool_call,),
+            )
+            outcomes = read_member_tool_outcomes(start, final)
+            self.assertEqual(final.outcome.stop_reason, "unterminated_tool_call")
+            self.assertEqual(
+                outcomes["calls"],
+                [
+                    {
+                        "call_id": next(iter(final.call_sources)),
+                        "name": "write_file",
+                        "result": {"code": "not_executed_incomplete"},
+                    }
+                ],
+            )
+            self.assertEqual(outcomes["protocol_shaped_rejection_count"], 0)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            _fixture, start, final = self._incomplete_call_lineage(
+                Path(temporary) / "token-limit",
+                token_limit=True,
+                calls=(tool_call,),
+            )
+            outcomes = read_member_tool_outcomes(start, final)
+            self.assertEqual(final.outcome.stop_reason, "decision_token_limit")
+            self.assertEqual(outcomes["calls"][0]["result"], {"code": "not_executed_incomplete"})
+
+    def test_unpaired_call_on_nonfinal_action_stays_an_error_and_results_are_sorted(self):
+        calls = tuple(
+            _call("write_file", {"path": f"{index}.txt", "content": "x"}, f"write-{index}")
+            for index in range(12)
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            _fixture, start, final = self._incomplete_call_lineage(
+                Path(temporary) / "multiple-calls",
+                calls=calls,
+            )
+            outcomes = read_member_tool_outcomes(start, final)
+            call_ids = [item["call_id"] for item in outcomes["calls"]]
+            self.assertEqual(call_ids, sorted(call_ids))
+
+            later_sample = replace(final.samples[-1], action_id="later:action:0")
+            nonfinal_action = replace(final, samples=(*final.samples, later_sample))
+            with self.assertRaises(ToolOutcomeError):
+                read_member_tool_outcomes(start, nonfinal_action)
 
 
 if __name__ == "__main__":

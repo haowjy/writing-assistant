@@ -5,19 +5,18 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
-import os
 import struct
-import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
 
+from writing_agent.atomic_io import atomic_write_json
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.grpo import GRPOSettings, trainer_config
 from writing_agent.grpo_checkpoint import verify_checkpoint
-from writing_agent.grpo_identity import base_tensor_identity
+from writing_agent.grpo_identity import adapter_tensor_hash, base_tensor_identity
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_errors import (
     TaskGraphGroupPending,
@@ -30,11 +29,11 @@ from writing_agent.native_audit import (
     audit_training_batch,
     require_training_admission,
 )
-from writing_agent.native_gemma import NativeGemmaSampleBackend
-from writing_agent.task_graph import canonical_bytes, domain_hash, load_canonical_json, thaw
+from writing_agent.native_gemma import NativeGemmaSampleBackend, assert_active_adapter
+from writing_agent.task_graph import domain_hash, thaw
 from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_environment import RolloutEnvironment
-from writing_agent.task_graph_errors import DriverBudgetError
+from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError
 from writing_agent.task_graph_gate import StoreArtifactReader
 from writing_agent.task_graph_gatherers import (
     CheckRunner,
@@ -45,9 +44,8 @@ from writing_agent.task_graph_gatherers import (
 )
 from writing_agent.task_graph_group import GroupCoordinatorV1
 from writing_agent.task_graph_group_contract import derive_group_seed
-from writing_agent.task_graph_group_records import GroupMemberResultV1
 from writing_agent.task_graph_local import DeterministicEvaluator, LocalTextToolProvider
-from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupSpecV1
+from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupError
 from writing_agent.task_graph_records import RuntimeManifestV2, WriterTurnV2
 from writing_agent.task_graph_rollout import RolloutDriver
 from writing_agent.task_graph_token_ledger import decode_u32_token_ids
@@ -89,36 +87,12 @@ def task_graph_resume_preflight(output: Path | str, checkpoint: Path | str) -> i
     except (OSError, TypeError, KeyError, json.JSONDecodeError, ValueError) as exc:
         raise TaskGraphResumeRefused("resume checkpoint is incomplete or invalid") from exc
     groups = Path(output) / "groups"
-    if groups.exists():
-        for child in groups.iterdir():
-            if child.name.startswith("step-"):
-                try:
-                    reserved = int(child.name[5:])
-                except ValueError as exc:
-                    raise TaskGraphResumeRefused("malformed task-graph step reservation") from exc
-                if reserved >= step:
-                    raise TaskGraphResumeRefused(
-                        "task-graph evidence exists at or after the checkpoint step"
-                    )
-                continue
-            if not child.is_dir():
-                if child.name.startswith(".step-") and child.name.endswith(".lock"):
-                    continue
-                raise TaskGraphResumeRefused("unrecognized task-graph group evidence")
-            receipt = child / "spec.json"
-            if not receipt.exists():
-                # GroupCoordinator persists the spec artifact before its receipt. A
-                # reservation under step-N is created first by this trainer, so any
-                # receipt-less hash directory is foreign or interrupted evidence.
-                raise TaskGraphResumeRefused("unindexed task-graph group evidence")
-            try:
-                spec = GroupSpecV1.from_dict(load_canonical_json(receipt.read_bytes()))
-            except (OSError, TypeError, ValueError) as exc:
-                raise TaskGraphResumeRefused("task-graph group receipt is invalid") from exc
-            if spec.group_sequence >= step:
-                raise TaskGraphResumeRefused(
-                    "task-graph group exists at or after the checkpoint step"
-                )
+    try:
+        existing = GroupCoordinatorV1.groups_by_sequence(groups)
+    except (GroupError, OSError) as exc:
+        raise TaskGraphResumeRefused("unrecognized task-graph group evidence") from exc
+    if any(sequence >= step for sequence in existing):
+        raise TaskGraphResumeRefused("task-graph evidence exists at or after the checkpoint step")
     return step
 
 
@@ -131,74 +105,14 @@ def _reserve_step(groups_root: Path, step: int, task_id: str) -> Path:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         if reservation.exists():
             raise TaskGraphTrainingError("a task-graph group was already attempted for this step")
-        _atomic_json(
-            reservation, {"schema": 1, "step": step, "task_id": task_id, "status": "sealing"}
+        atomic_write_json(
+            reservation,
+            {"schema": 1, "step": step, "task_id": task_id, "status": "sealing"},
+            canonical=True,
+            create_parent=True,
         )
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     return reservation
-
-
-def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
-    data = canonical_bytes(dict(value))
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
-    except BaseException:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
-        raise
-
-
-def _adapter_state_hash(model: Any, adapter_name: str) -> str:
-    """Hash only the selected adapter's named tensor state, with stable framing."""
-    import torch
-    from peft import get_peft_model_state_dict
-
-    try:
-        state = get_peft_model_state_dict(model, adapter_name=adapter_name)
-    except TypeError:
-        # Older PEFT exposes only the active adapter; the active-name assertion is
-        # performed independently and still binds this state to the requested name.
-        state = get_peft_model_state_dict(model)
-    if not state:
-        raise TaskGraphTrainingError("expected PEFT adapter has no tensor state")
-    digest = hashlib.sha256()
-    for name, tensor in sorted(state.items()):
-        value = tensor.detach().contiguous().cpu()
-        header = canonical_bytes([name, str(value.dtype), list(value.shape)])
-        raw = value.view(-1).view(torch.uint8).numpy().tobytes()
-        digest.update(len(header).to_bytes(8, "big"))
-        digest.update(header)
-        digest.update(len(raw).to_bytes(8, "big"))
-        digest.update(raw)
-    return digest.hexdigest()
-
-
-def _assert_active_adapter(model: Any, adapter_name: str) -> None:
-    active = getattr(model, "active_adapters", None)
-    active = active() if callable(active) else active
-    if active is None:
-        active = getattr(model, "active_adapter", None)
-        active = active() if callable(active) else active
-    if isinstance(active, str):
-        active = (active,)
-    if not isinstance(active, (tuple, list)) or tuple(active) != (adapter_name,):
-        raise TaskGraphTrainingError("expected PEFT adapter is not active for sampling")
-    modules = model.modules() if callable(getattr(model, "modules", None)) else ()
-    if any(getattr(module, "disable_adapters", False) is True for module in modules):
-        raise TaskGraphTrainingError("native sampling refuses a disabled PEFT adapter")
 
 
 def task_graph_behavior_policy_ref(
@@ -261,7 +175,8 @@ def task_graph_experiment_manifest(
             }
         )
     recipe = {
-        "settings": asdict(settings),
+        # Preserve the recipe shape while reward scaling is profile-derived, not an input.
+        "settings": {**asdict(settings), "scale_rewards": "none"},
         "loss_type": "dapo",
         "beta": 0,
         "num_iterations": 1,
@@ -281,6 +196,27 @@ def task_graph_experiment_manifest(
         "recipe": recipe,
         "implementation": dict(implementation),
     }
+
+
+def _task_graph_identity(experiment: Mapping[str, Any], *, source_root: Path | None = None):
+    """Bind the frozen task-graph experiment to its trainer-side source files."""
+    source_root = Path(source_root) if source_root is not None else Path(__file__).parent
+    manifest = {
+        "identity_version": "task-graph-experiment-v1",
+        "experiment": experiment,
+        "code": {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(
+                {
+                    *source_root.glob("grpo*.py"),
+                    *source_root.glob("native_*.py"),
+                    *source_root.glob("task_graph*.py"),
+                }
+            )
+        },
+    }
+    manifest = json.loads(json.dumps(manifest, sort_keys=True, separators=(",", ":")))
+    return fingerprint(manifest), manifest
 
 
 def _native_policy(
@@ -313,30 +249,16 @@ def _native_policy(
     }
 
 
-class _PinnedSamplingBackend:
-    def __init__(self, model: Any, adapter_name: str, backend: Any) -> None:
-        self.model, self.adapter_name, self.backend = model, adapter_name, backend
-        self.descriptor = backend.descriptor
-        self.manifest_descriptors = backend.manifest_descriptors
-
-    def sample(self, prepared):
-        _assert_active_adapter(self.model, self.adapter_name)
-        return self.backend.sample(prepared)
-
-
 class TaskGraphRollouts:
     """TRL rollout callback: one sealed task-graph group per step, never resampled."""
 
     def __init__(
         self,
+        invocation_id: str,
+        *,
         tasks,
         settings,
         output,
-        reward_callback,
-        backend_factory,
-        system_prompt,
-        *,
-        invocation_id=None,
         task_entries: Sequence[TaskGraphTaskV1],
         runtime_manifest: RuntimeManifestV2,
         manifest_descriptors: tuple,
@@ -349,9 +271,11 @@ class TaskGraphRollouts:
         observer=None,
         audit_function=audit_training_batch,
     ) -> None:
-        del reward_callback, backend_factory, system_prompt
         self.task_ids = tuple(item["id"] for item in tasks)
         self.task_entries = {entry.task_id: entry for entry in task_entries}
+        self.environments = {
+            task_id: entry.environment for task_id, entry in self.task_entries.items()
+        }
         if set(self.task_ids) != set(self.task_entries):
             raise ValueError("TRL task IDs differ from task-graph entry registry")
         self.settings = settings
@@ -380,10 +304,16 @@ class TaskGraphRollouts:
         self._tools = None
         self._evaluator = None
         self._manifest_checked = False
+        self.last_spec = None
+        self.last_decision = None
+        self.last_admission = None
 
     def __call__(self, prompts, trainer):
         if len(prompts) != self.settings.group_size or len(set(prompts)) != 1:
             raise TaskGraphTrainingError("expected exactly one complete same-task group")
+        self.last_spec = None
+        self.last_decision = None
+        self.last_admission = None
         step = trainer.state.global_step
         if not 0 <= step < self.settings.max_steps:
             raise TaskGraphTrainingError("task-graph schedule exceeded its frozen step budget")
@@ -391,15 +321,20 @@ class TaskGraphRollouts:
         expected = self.task_ids[step % len(self.task_ids)]
         if task_id != expected:
             raise TaskGraphTrainingError("rollout task differs from the frozen ordered schedule")
-        task = self.task_entries[task_id]
         self._refuse_existing_step(step)
         self._ensure_runtime(trainer)
+        task = self.task_entries[task_id]
+        environment = self.environments[task_id]
         reservation = _reserve_step(self.output / "groups", step, task_id)
+        spec = None
         try:
-            _assert_active_adapter(trainer.model, self.adapter_name)
+            try:
+                assert_active_adapter(trainer.model, self.adapter_name)
+            except AdapterContractError as exc:
+                raise TaskGraphTrainingError(str(exc)) from exc
             adapter_before = self._behavior_policy_ref(trainer.model, step)
             group_seed = derive_group_seed(self.settings.seed, "task-graph-step", step)
-            coordinator = GroupCoordinatorV1(task.environment, session=self.session)
+            coordinator = GroupCoordinatorV1(environment, session=self.session)
             policy = _native_policy(
                 task,
                 self.runtime_manifest,
@@ -416,8 +351,8 @@ class TaskGraphRollouts:
                 runner_mode="real",
                 training_mode="native",
             )
-            task.environment.session = self.session
-            _atomic_json(
+            self.last_spec = spec
+            atomic_write_json(
                 reservation,
                 {
                     "schema": 1,
@@ -426,56 +361,39 @@ class TaskGraphRollouts:
                     "group_id": spec.group_id,
                     "status": "sealed",
                 },
+                canonical=True,
+                create_parent=True,
             )
             gatherers = self._gatherers(task)
             failure = None
-            for ordinal, member in enumerate(spec.members):
+            for ordinal in range(len(spec.members)):
                 try:
                     runtime = coordinator.start(spec, ordinal, policy=spec.policy)
-                    start_checkpoint = runtime.checkpoint_id
-                    _assert_active_adapter(trainer.model, self.adapter_name)
-                    run = RolloutDriver(task.environment, gatherers).run(runtime, max_steps=256)
+                    run = RolloutDriver(environment, gatherers).run(runtime, max_steps=256)
                     if run.directive.kind != "done":
                         raise TaskGraphTrainingError(
                             f"task-graph member halted with directive {run.directive.kind}"
                         )
-                    view = task.environment.verify(run.runtime)
-                    terminal_ref = run.runtime.state.outcome_ref
-                    availability_ref = view.outcome.reward_ref
-                    if availability_ref is not None:
-                        terminal_ref = self.store.get_artifact(availability_ref)[
-                            "terminal_outcome_ref"
-                        ]
-                    result = GroupMemberResultV1(
-                        group_id=spec.group_id,
-                        member_id=member.member_id,
-                        start_checkpoint_id=start_checkpoint,
-                        final_checkpoint_id=run.runtime.checkpoint_id,
-                        terminal_outcome_ref=terminal_ref,
-                        availability_ref=availability_ref,
-                        execution_status="valid",
-                    )
-                    coordinator.collect(spec, result)
-                except DriverBudgetError as exc:
-                    failure = exc
-                    current = exc.runtime
-                    coordinator.collect_invalid(
-                        spec, ordinal, reason=f"DriverBudgetError: {exc.max_steps}"
-                    )
-                    break
+                    coordinator.collect_completed(spec, ordinal, run.runtime)
                 except Exception as exc:
                     failure = exc
+                    reason = (
+                        f"DriverBudgetError: {exc.max_steps}"
+                        if isinstance(exc, DriverBudgetError)
+                        else f"{type(exc).__name__}: {exc}"
+                    )
                     coordinator.collect_invalid(
                         spec,
                         ordinal,
-                        reason=f"{type(exc).__name__}: {exc}"[:512],
+                        reason=reason[:512],
                     )
                     break
 
             decision = coordinator.finalize(spec)
+            self.last_decision = decision
             decision_ref = self.store.put_artifact(decision.to_wire())
             if failure is not None or decision.status in {"pending", "invalid"}:
-                _atomic_json(
+                atomic_write_json(
                     reservation,
                     {
                         "schema": 1,
@@ -488,6 +406,8 @@ class TaskGraphRollouts:
                         if failure is None
                         else f"{type(failure).__name__}: {failure}",
                     },
+                    canonical=True,
+                    create_parent=True,
                 )
                 raise TaskGraphGroupPending(
                     f"task-graph group {decision.status}; resampling is forbidden"
@@ -496,7 +416,10 @@ class TaskGraphRollouts:
                 raise TaskGraphTrainingError("unknown finalized task-graph group status")
 
             adapter_after = self._behavior_policy_ref(trainer.model, step)
-            _assert_active_adapter(trainer.model, self.adapter_name)
+            try:
+                assert_active_adapter(trainer.model, self.adapter_name)
+            except AdapterContractError as exc:
+                raise TaskGraphTrainingError(str(exc)) from exc
             admission = self.audit_function(
                 self.store,
                 spec,
@@ -506,7 +429,8 @@ class TaskGraphRollouts:
                 adapter_hash_after=adapter_after,
                 tokenizer_root=self.tokenizer_root,
             )
-            admission_ref = admission.identity()
+            coordinator.record_training_admission(spec, admission)
+            self.last_admission = admission
             batch = TrainingBatchV1.from_dict(self.store.get_artifact(admission.batch_ref))
             members = self._training_rows(batch)
             self._save_consumed_batch(
@@ -520,6 +444,7 @@ class TaskGraphRollouts:
                 adapter_before,
                 adapter_after,
                 task_id,
+                coordinator,
             )
             require_training_admission(admission)
             if adapter_before != adapter_after:
@@ -542,12 +467,10 @@ class TaskGraphRollouts:
                 if receipt.get("status") in {"sealing", "sealed"}:
                     receipt["status"] = "halted"
                 receipt["failure"] = f"{type(exc).__name__}: {exc}"[:1024]
-                if isinstance(locals().get("spec"), GroupSpecV1):
-                    receipt["group_id"] = locals()["spec"].group_id
-                _atomic_json(reservation, receipt)
+                if spec is not None:
+                    receipt["group_id"] = spec.group_id
+                atomic_write_json(reservation, receipt, canonical=True, create_parent=True)
             raise
-        finally:
-            task.environment.session = None
 
     def _ensure_runtime(self, trainer) -> None:
         if self._manifest_checked:
@@ -561,7 +484,6 @@ class TaskGraphRollouts:
             adapter_name=self.adapter_name,
             model_ref=self.model_ref,
         )
-        backend = _PinnedSamplingBackend(trainer.model, self.adapter_name, backend)
         tools = LocalTextToolProvider()
         evaluator = DeterministicEvaluator()
         from writing_agent.task_graph_local import LocalWorkspaceEnvironment
@@ -581,8 +503,10 @@ class TaskGraphRollouts:
         session = RuntimeSession.create(self.store, dependencies).bind(
             self.store, self.runtime_manifest.identity()
         )
-        for task in self.task_entries.values():
-            task.environment.session = None
+        self.environments = {
+            task_id: task.environment.with_session(session)
+            for task_id, task in self.task_entries.items()
+        }
         self.backend, self.session = backend, session
         self._tools, self._evaluator = tools, evaluator
         self._manifest_checked = True
@@ -601,7 +525,10 @@ class TaskGraphRollouts:
         )
 
     def _behavior_policy_ref(self, model: Any, step: int) -> str:
-        adapter = _adapter_state_hash(model, self.adapter_name)
+        try:
+            adapter = adapter_tensor_hash(model, self.adapter_name)
+        except ValueError as exc:
+            raise TaskGraphTrainingError(str(exc)) from exc
         value = [
             "TaskGraphBehaviorPolicyV1",
             self.base_revision,
@@ -618,26 +545,12 @@ class TaskGraphRollouts:
 
     def _refuse_existing_step(self, step: int) -> None:
         groups = self.output / "groups"
-        reservation = groups / f"step-{step:06d}"
-        if reservation.exists():
+        try:
+            existing = GroupCoordinatorV1.groups_by_sequence(groups)
+        except (GroupError, OSError) as exc:
+            raise TaskGraphTrainingError("task-graph group evidence is unrecognized") from exc
+        if step in existing:
             raise TaskGraphTrainingError("a task-graph group already exists for this step")
-        if groups.exists():
-            for child in groups.iterdir():
-                if (
-                    not child.is_dir()
-                    or child.name.startswith(".")
-                    or child.name.startswith("step-")
-                ):
-                    continue
-                path = child / "spec.json"
-                if not path.exists():
-                    raise TaskGraphTrainingError("unindexed task-graph group prevents sealing")
-                try:
-                    spec = GroupSpecV1.from_dict(load_canonical_json(path.read_bytes()))
-                except (OSError, ValueError, TypeError) as exc:
-                    raise TaskGraphTrainingError("task-graph group receipt is invalid") from exc
-                if spec.group_sequence == step:
-                    raise TaskGraphTrainingError("a task-graph group already exists for this step")
 
     def _training_rows(self, batch: TrainingBatchV1) -> list[dict[str, Any]]:
         reader = StoreArtifactReader(self.store)
@@ -688,10 +601,10 @@ class TaskGraphRollouts:
         adapter_before,
         adapter_after,
         task_id,
+        coordinator,
     ) -> None:
         batch_ref = admission.batch_ref
         admission_ref = admission.identity()
-        self.store.put_artifact(admission.to_wire())
         receipt = {
             "schema": 1,
             "step": step,
@@ -714,12 +627,12 @@ class TaskGraphRollouts:
             reservation_status = "audit-refused"
         else:
             reservation_status = "consumed"
-        _atomic_json(self.output / "groups" / spec.group_id / "trainer-consumed.json", receipt)
+        coordinator.record_training_consumed(spec, receipt)
         save_json(
             self.output / "batches" / f"step-{step:06d}.json",
             {**receipt, "members": members},
         )
-        _atomic_json(
+        atomic_write_json(
             reservation,
             {
                 "schema": 1,
@@ -731,6 +644,8 @@ class TaskGraphRollouts:
                 "training_admission_ref": admission_ref,
                 "status": reservation_status,
             },
+            canonical=True,
+            create_parent=True,
         )
 
 
@@ -749,6 +664,7 @@ def train_task_graph(
     stop_after_steps: int | None = None,
     resume_checkpoint_identity: str | None = None,
     sample_backend_factory: Callable[..., Any] = NativeGemmaSampleBackend,
+    trainer_callback_factory: Callable[[Any], Any] | None = None,
     tokenizer_root: Path | str | None = None,
     adapter_name: str = "default",
 ) -> dict[str, Any]:
@@ -819,7 +735,6 @@ def train_task_graph(
     if runtime_manifest.decoding.max_tokens_per_decision != settings.max_tokens:
         raise ValueError("native per-decision cap differs from GRPO settings")
     for entry in task_entries:
-        entry.environment.session = None
         runtime_handle = entry.environment.open(entry.entry_checkpoint_id)
         view = entry.environment.verify(runtime_handle)
         budget = view.budget["limits"]
@@ -844,16 +759,7 @@ def train_task_graph(
         implementation=runtime,
         runtime_identity=runtime_identity,
     )
-    manifest = {
-        "identity_version": "task-graph-experiment-v1",
-        "experiment": experiment,
-        "code": {
-            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted(Path(__file__).parent.glob("grpo*.py"))
-        },
-    }
-    manifest = json.loads(json.dumps(manifest, sort_keys=True, separators=(",", ":")))
-    identity = fingerprint(manifest)
+    identity, manifest = _task_graph_identity(experiment)
     plan = {
         "settings": asdict(settings),
         "runtime": runtime,
@@ -871,11 +777,13 @@ def train_task_graph(
         use_cpu=next(model.parameters()).device.type == "cpu",
         bf16=next(model.parameters()).dtype == api.torch.bfloat16,
         implementation_config=runtime["config"],
-        scale_rewards="none",
     )
     observer = TaskGraphLossObserver(output)
     factory = partial(
         TaskGraphRollouts,
+        tasks=[{"id": entry.task_id} for entry in task_entries],
+        settings=settings,
+        output=output,
         task_entries=task_entries,
         runtime_manifest=runtime_manifest,
         manifest_descriptors=manifest_descriptors,
@@ -908,13 +816,11 @@ def train_task_graph(
                 bias="none",
             ),
             trainer_config_values=trainer_config_values,
-            reward_callback=task_graph_unused_reward_callback,
-            backend_factory=None,
-            rollout_factory=factory,
-            system_prompt="",
+            make_rollouts=factory,
             resume_from_checkpoint=resume_from_checkpoint,
             resume_checkpoint_identity=resume_checkpoint_identity,
             stop_after_steps=stop_after_steps,
+            trainer_callback_factory=trainer_callback_factory,
         )
 
     result = observer.run(run)
@@ -926,11 +832,6 @@ def train_task_graph(
         body["task_graph_observer"] = summary
         save_json(complete, body)
     return result
-
-
-def task_graph_unused_reward_callback(*_args, **_kwargs):
-    """Placeholder required by the identity-agnostic trainer; native groups own reward."""
-    raise AssertionError("task-graph native groups do not use the legacy reward callback")
 
 
 __all__ = [
