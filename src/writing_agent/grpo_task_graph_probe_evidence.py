@@ -55,9 +55,9 @@ CRITERION_DESCRIPTIONS = {
         "ceiling held."
     ),
     "criterion_6": (
-        "The two inspections are byte-identical; planted private-record canaries are absent "
-        "outside the store's private area; and each member's sampler inputs are re-derived from "
-        "that member's verified lineage."
+        "The two inspections are byte-identical; each planted private-record canary is present "
+        "inside training/private and absent outside it; and each member's sampler inputs are "
+        "re-derived from that member's verified lineage."
     ),
 }
 

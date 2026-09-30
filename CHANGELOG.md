@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Require every planted privacy canary to be present in `training/private` as criterion 6's
+  positive control, in addition to checking for leaks outside it.
+
 - Report per-member terminal stop reasons and total native parse-failed turns in probe
   measurements.
 

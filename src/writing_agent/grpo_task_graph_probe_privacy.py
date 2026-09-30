@@ -27,11 +27,24 @@ def scan_run_privacy(run_dir: Path) -> dict[str, Any]:
         "private_evaluator_check_spec": EVALUATOR_PACKET_CANARY,
     }
     private_root = run_dir / "training" / "private"
+    private_canary_hits = {canary_id: 0 for canary_id in canaries}
+    private_area_is_directory = private_root.is_dir() and not private_root.is_symlink()
+    if private_area_is_directory:
+        for path in private_root.rglob("*"):
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                data = path.read_bytes()
+            except OSError:
+                continue
+            for canary_id, canary in canaries.items():
+                if canary.encode() in data:
+                    private_canary_hits[canary_id] += 1
     hits = []
     checked_files = 0
     for path in run_dir.rglob("*"):
         if path == private_root:
-            if path.is_symlink() or not path.is_dir():
+            if not private_area_is_directory:
                 hits.append(
                     {
                         "path": str(path.relative_to(run_dir)),
@@ -58,6 +71,10 @@ def scan_run_privacy(run_dir: Path) -> dict[str, Any]:
     return {
         "checked_files": checked_files,
         "hits": hits,
+        "canaries_present_in_private_area": all(
+            count >= 1 for count in private_canary_hits.values()
+        ),
+        "private_canary_hits": private_canary_hits,
         "canaries_scanned": [
             {"canary_id": canary_id, "sha256": hashlib.sha256(value.encode()).hexdigest()}
             for canary_id, value in canaries.items()
@@ -122,6 +139,8 @@ def criterion_6(
         "inspections_byte_identical": inspections_byte_identical,
         "privacy_canary_hits": privacy["hits"],
         "privacy_files_scanned": privacy["checked_files"],
+        "canaries_present_in_private_area": privacy["canaries_present_in_private_area"],
+        "private_canary_hits": privacy["private_canary_hits"],
         "privacy_canaries_scanned": privacy["canaries_scanned"],
         "privacy_scan_scope": privacy["scan_scope"],
         "excluded_private_store_area": privacy["excluded_private_store_area"],
@@ -132,6 +151,7 @@ def criterion_6(
     passed = (
         inspections_byte_identical
         and not privacy["hits"]
+        and privacy["canaries_present_in_private_area"]
         and frozen_public_task_scope
         and network_disabled
         and sibling_input_scope["verified"]

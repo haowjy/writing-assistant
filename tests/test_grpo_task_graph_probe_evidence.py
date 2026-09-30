@@ -104,6 +104,11 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
         self.assertEqual(scan["hits"], [])
         self.assertEqual(scan["checked_files"], 3)
         self.assertEqual(scan["excluded_private_store_area"], "training/private")
+        self.assertTrue(scan["canaries_present_in_private_area"])
+        self.assertEqual(
+            scan["private_canary_hits"],
+            {"unused_author_preference": 1, "private_evaluator_check_spec": 1},
+        )
         self.assertEqual(
             scan["canaries_scanned"],
             [
@@ -139,6 +144,22 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
             ],
         )
         self.assertTrue(criterion["computed"])
+        self.assertFalse(criterion["passed"])
+
+    def test_missing_private_canary_fails_criterion_6(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            private = root / "training" / "private"
+            private.mkdir(parents=True)
+            (private / "payload.json").write_text(AUTHOR_PACKET_CANARY)
+
+            scan, criterion = self._criterion(root)
+
+        self.assertFalse(scan["canaries_present_in_private_area"])
+        self.assertEqual(
+            scan["private_canary_hits"],
+            {"unused_author_preference": 1, "private_evaluator_check_spec": 0},
+        )
         self.assertFalse(criterion["passed"])
 
     def test_sibling_scope_only_claims_audited_own_lineage_inputs(self):
