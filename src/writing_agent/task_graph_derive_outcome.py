@@ -15,6 +15,7 @@ from writing_agent.task_graph_derive_common import (
     packet_reader,
     payload_artifact,
 )
+from writing_agent.task_graph_eligibility import decide_eligibility
 from writing_agent.task_graph_errors import AdapterContractProjectionError, ProjectionError
 from writing_agent.task_graph_evaluation import (
     FAMILIES,
@@ -26,7 +27,6 @@ from writing_agent.task_graph_records import (
     EvaluatorResultV1,
     OutcomeV1,
 )
-from writing_agent.task_graph_sampling import CURRENT_ELIGIBILITY
 from writing_agent.task_graph_transition import (
     ArtifactReader,
     DerivedArtifact,
@@ -321,7 +321,8 @@ def derive_reward(view: LineageView, step: EnvironmentStepV1, reader: ArtifactRe
         if completed
         else contract.incomplete_score
     )
-    eligibility = CURRENT_ELIGIBILITY.training_wire(view.state.outcome_ref)
+    eligibility_decision = decide_eligibility(view, reader)
+    eligibility = eligibility_decision.training_wire(view.state.outcome_ref)
     eligibility_artifact = payload_artifact(eligibility)
     reward = {
         "record_type": "RewardV1",
@@ -340,7 +341,7 @@ def derive_reward(view: LineageView, step: EnvironmentStepV1, reader: ArtifactRe
     outcome, outcome_artifact = _build_outcome(
         view,
         reward_status="available",
-        training_eligibility=CURRENT_ELIGIBILITY.training_status,
+        training_eligibility=eligibility_decision.status,
         reward_ref=reward_artifact.ref,
         eligibility_ref=eligibility_artifact.ref,
     )

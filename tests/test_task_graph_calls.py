@@ -5,13 +5,17 @@ from __future__ import annotations
 import json
 import random
 import unittest
+from unittest.mock import patch
 
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_calls import (
+    PROTOCOL_SHAPED_REJECTION_CODES,
+    REJECTION_MESSAGES,
     ToolQueueEntry,
     apply_effect,
     intake_message,
     parse_calls,
+    rejection_code_for_message,
     tool_effect_contract,
     validate_ask_shape,
 )
@@ -20,6 +24,7 @@ from writing_agent.task_graph_local import LocalTextToolProvider
 from writing_agent.task_graph_ports import EnvironmentAction, EnvironmentSnapshot, EnvironmentSpec
 from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_scripted import validate_ask_shape as scripted_validate_ask_shape
+from writing_agent.workspace import Workspace
 
 ALLOWED = frozenset({"list_dir", "read_file", "search", "write_file", "patch_file", "ask_author"})
 
@@ -35,14 +40,14 @@ def _new_parse(batch, prior, scripted):
     decoded = SampledMessageV1.from_dict(json.loads(encoded))
     parsed = parse_calls(
         record,
-        id_prefix="r:call:0",
+        action_id="r:action:0",
         allowed=ALLOWED,
         prior_raw_ids=prior,
         ask_semantics=_ask_semantics if scripted else None,
     )
     round_trip = parse_calls(
         decoded,
-        id_prefix="r:call:0",
+        action_id="r:action:0",
         allowed=ALLOWED,
         prior_raw_ids=prior,
         ask_semantics=_ask_semantics if scripted else None,
@@ -255,6 +260,54 @@ def _targeted_cases():
 
 
 class IntakeAndParserTests(unittest.TestCase):
+    def test_native_parser_impossible_shapes_are_protocol_rejections(self):
+        expected = {
+            "tool_calls_not_array": "tool_calls must be an array",
+            "arguments_not_object": "Tool arguments must be an object",
+            "invalid_arguments_json": "Invalid tool arguments JSON",
+        }
+        for code, reason in expected.items():
+            with self.subTest(code=code):
+                self.assertIn(code, PROTOCOL_SHAPED_REJECTION_CODES)
+                self.assertEqual(REJECTION_MESSAGES[code], reason)
+                self.assertEqual(rejection_code_for_message(reason), code)
+
+    def test_core_owns_canonical_action_to_tool_call_ids(self):
+        from writing_agent.task_graph import tool_call_id
+
+        self.assertEqual(tool_call_id("member-1:action:7", 0), "member-1:call:7:0")
+        self.assertEqual(tool_call_id("member-1:action:7", 2), "member-1:call:7:2")
+        for action_id in ("not-an-action", "member:action:07", "member:action:7:extra"):
+            with self.subTest(action_id=action_id), self.assertRaises(ValueError):
+                tool_call_id(action_id, 0)
+        for index in (-1, True):
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                tool_call_id("member:action:0", index)
+
+    def test_rejection_code_lookup_uses_exact_committed_text(self):
+        for code, message in REJECTION_MESSAGES.items():
+            with self.subTest(code=code):
+                self.assertEqual(rejection_code_for_message(message), code)
+        self.assertEqual(REJECTION_MESSAGES["duplicate_id"], "Duplicate tool call id")
+        self.assertEqual(rejection_code_for_message("Duplicate tool call id"), "duplicate_id")
+        self.assertIsNone(rejection_code_for_message("duplicate tool call id"))
+        self.assertIsNone(rejection_code_for_message("prefix: Duplicate tool call id"))
+        self.assertIsNone(rejection_code_for_message("unknown rejection"))
+        self.assertEqual(
+            PROTOCOL_SHAPED_REJECTION_CODES,
+            frozenset(
+                {
+                    "invalid_envelope",
+                    "invalid_function_envelope",
+                    "missing_id",
+                    "duplicate_id",
+                    "tool_calls_not_array",
+                    "arguments_not_object",
+                    "invalid_arguments_json",
+                }
+            ),
+        )
+
     def test_ask_author_shape_has_one_reexported_rule(self):
         self.assertIs(scripted_validate_ask_shape, validate_ask_shape)
         with self.assertRaises(ValueError):
@@ -272,8 +325,8 @@ class IntakeAndParserTests(unittest.TestCase):
         )
         encoded = canonical_json(record.to_wire())
         restored = SampledMessageV1.from_dict(json.loads(encoded))
-        parsed = parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
-        self.assertEqual(parsed, parse_calls(restored, id_prefix="r:call:0", allowed=ALLOWED))
+        parsed = parse_calls(record, action_id="r:action:0", allowed=ALLOWED)
+        self.assertEqual(parsed, parse_calls(restored, action_id="r:action:0", allowed=ALLOWED))
         self.assertIsNone(parsed[0].rejection)
         self.assertEqual(parsed[0].arguments, {"$noncanonical": "bytes", "hex": "00"})
 
@@ -315,7 +368,7 @@ class IntakeAndParserTests(unittest.TestCase):
             object.__setattr__(forged, "tool_calls_was_list", True)
             object.__setattr__(forged, "calls", wire["calls"])
             with self.subTest(row=name), self.assertRaises(type(codec_error.exception)):
-                parse_calls(forged, id_prefix="r:call:0", allowed=ALLOWED)
+                parse_calls(forged, action_id="r:action:0", allowed=ALLOWED)
 
     def test_sampled_message_codec_rejects_legacy_sentinel(self):
         with self.assertRaises(ValueError):
@@ -334,7 +387,7 @@ class IntakeAndParserTests(unittest.TestCase):
         self.assertFalse(record.tool_calls_was_list)
         self.assertEqual(record.calls, "not calls")
         with self.assertRaises(WriterRuntimeError):
-            parse_calls(record, id_prefix="r:call:0", allowed=ALLOWED)
+            parse_calls(record, action_id="r:action:0", allowed=ALLOWED)
 
     def test_mixed_ask_batch_is_all_invalid_and_intake_depth_is_bounded(self):
         ask = _good_call(
@@ -345,7 +398,7 @@ class IntakeAndParserTests(unittest.TestCase):
         file_call = _good_call("{}", name="read_file", raw_id="read")
         mixed = parse_calls(
             intake_message({"tool_calls": [ask, file_call]}),
-            id_prefix="r:call:0",
+            action_id="r:action:0",
             allowed=ALLOWED,
         )
         self.assertTrue(all(entry.name == "invalid_call" for entry in mixed))
@@ -359,7 +412,7 @@ class IntakeAndParserTests(unittest.TestCase):
         deep_json = "[" * 16_000 + "0" + "]" * 16_000
         entries = parse_calls(
             intake_message({"tool_calls": [_good_call(deep_json)]}),
-            id_prefix="r:call:0",
+            action_id="r:action:0",
             allowed=ALLOWED,
         )
 
@@ -452,6 +505,35 @@ class ToolEffectTests(unittest.TestCase):
             "patch_file", {"path": "draft.txt", "old": "beta", "new": "gamma"}, before
         )
         self.assertEqual(patch_after["draft.txt"], "alpha gamma\n")
+
+    def test_local_provider_reports_file_ancestor_conflict_as_tool_error(self):
+        before = {"occupied.txt": "not a directory"}
+
+        result, after = self._local_case(
+            "write_file",
+            {"path": "occupied.txt/child.txt", "content": "draft"},
+            before,
+        )
+
+        self.assertEqual((result.observation["ok"], result.observation["valid"]), (False, True))
+        self.assertEqual(after, before)
+
+    def test_local_provider_reports_overlong_path_as_tool_error(self):
+        before = {"draft.txt": "kept"}
+
+        result, after = self._local_case(
+            "write_file",
+            {"path": "x" * 5000, "content": "draft"},
+            before,
+        )
+
+        self.assertEqual((result.observation["ok"], result.observation["valid"]), (False, True))
+        self.assertEqual(after, before)
+
+    def test_local_provider_does_not_hide_host_filesystem_errors(self):
+        with patch.object(Workspace, "write_file", side_effect=OSError(5, "disk failed")):
+            with self.assertRaises(OSError):
+                self._local_case("write_file", {"path": "draft.txt", "content": "draft"}, {})
 
     def test_generated_local_write_patch_and_read_snapshots(self):
         rng = random.Random(5_120)

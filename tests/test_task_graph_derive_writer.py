@@ -19,7 +19,12 @@ from writing_agent.task_graph_record_contracts import (
     _group_hash,
     _group_seed,
 )
-from writing_agent.task_graph_records import ToolObservationV1, WriterTurnV1
+from writing_agent.task_graph_records import (
+    RuntimeManifestV1,
+    RuntimePortDescriptorV1,
+    ToolObservationV1,
+    WriterTurnV1,
+)
 from writing_agent.task_graph_sampling import bind_group_sampling_claims
 from writing_agent.task_graph_transition import (
     CallSource,
@@ -163,6 +168,20 @@ def make_group(view: LineageView, reader) -> tuple[GroupSpecV1, LineageView]:
     policy["tokenizer_ref"] = view.context.rendering["tokenizer_ref"]
     policy["template_ref"] = view.context.rendering["template_ref"]
     policy["rng_derivation_version"] = "sha256-domain-v1"
+    manifest = RuntimeManifestV1(
+        schema=1,
+        ports=tuple(
+            RuntimePortDescriptorV1(
+                schema=1,
+                role=role,
+                implementation=f"tests.{role.title()}",
+                version="1",
+                configuration={"capabilities": ["usage_reporting"]} if role == "sampling" else {},
+            )
+            for role in ("sampling", "environment", "tools", "evaluator")
+        ),
+    )
+    policy["adapter_ref"] = reader.add(manifest.to_wire())
     reader.public[policy["model_ref"]] = {"model_id": "sealed-model"}
     fields = (
         "entry_state_hash entry_tree_hash instance_hash graph_hash node_contract_hash "

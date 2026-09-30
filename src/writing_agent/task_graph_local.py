@@ -20,7 +20,7 @@ from writing_agent.task_graph_ports import (
     SampleResult,
     ToolManifest,
 )
-from writing_agent.workspace import Workspace
+from writing_agent.workspace import Workspace, is_candidate_filesystem_error
 
 
 def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) -> dict:
@@ -35,19 +35,12 @@ def _graph_dispatch(workspace: Workspace, name: str, arguments: dict[str, str]) 
         return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
     except UnicodeError:
         raise
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, ValueError) as exc:
-        return {"ok": False, "valid": True, "error": str(exc)}
-    except FileExistsError as exc:
-        # mkdir on a writer-selected child of an existing file is a path conflict.
-        if name in {"write_file", "patch_file"} and "path" in arguments:
-            parent = (workspace.root / arguments["path"]).parent
-            if any(
-                ancestor.is_file()
-                for ancestor in (parent, *parent.parents)
-                if ancestor != workspace.root
-            ):
-                return {"ok": False, "valid": True, "error": str(exc)}
+    except OSError as exc:
+        if is_candidate_filesystem_error(workspace, arguments, exc):
+            return {"ok": False, "valid": True, "error": str(exc)}
         raise
+    except ValueError as exc:
+        return {"ok": False, "valid": True, "error": str(exc)}
 
 
 class ScriptedSampleBackend:

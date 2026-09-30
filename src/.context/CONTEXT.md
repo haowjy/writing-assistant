@@ -24,15 +24,19 @@ retains its smoke-evaluation and training-format workflows.
 - **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
   is the field-spec vocabulary, strict decoder and `WireRecord` base;
   [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
-  context `WireRecord`s, plus runtime port-descriptor and manifest records; context content
-  and revision records live here. Pure group record classes live in
+  context `WireRecord`s, plus runtime port-descriptor and manifest records. V1 records remain
+  unchanged; V2 sampling, manifest-descriptor, and training-admission records are additive.
+  Context content and revision records live here. Pure group record classes live in
   [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
   [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
   sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
   provides codecs for shared payload shapes without record classes. Reference edges derive
   from the field annotations, and the store follows them in shared closure.
   [task_graph_calls.py](../writing_agent/task_graph_calls.py) owns sampled-message intake,
-  call parsing and the tool effect contract.
+  call parsing, exact rejection-message codes and the tool effect contract.
+  [task_graph_tool_outcomes.py](../writing_agent/task_graph_tool_outcomes.py) reads verified
+  member start/final views to pair every committed tool call with its result and derive the
+  final file delta; trace checks and P1 evidence share this reader.
   [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
   view/transition types. [task_graph_controller.py](../writing_agent/task_graph_controller.py)
   is the pure directive boundary (`next_step`, `select_edge`, `applicable_checks`); it does
@@ -69,9 +73,20 @@ retains its smoke-evaluation and training-format workflows.
   materialization. See [transition-seam.md](transition-seam.md),
   [gate-and-rollout.md](gate-and-rollout.md), and
   [rollout-execution.md](rollout-execution.md) for the contracts.
-- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the typed V1
-  writer-turn decoder and sampling-binding checks, plus the current evaluation-only
-  eligibility decision. [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the single
+  V1/V2 writer-turn decoder and structural sampling evidence checks. The shared
+  [task_graph_native_contracts.py](../writing_agent/task_graph_native_contracts.py) owns
+  `NativeSamplingBudget`, `NativeSamplingHistory`, and the manifest-policy-rendering binding
+  used by seal and derive paths. [task_graph_token_ledger.py](../writing_agent/task_graph_token_ledger.py)
+  owns the little-endian u32 token codec shared by ledger readers/writers and training export;
+  [task_graph_context_roots.py](../writing_agent/task_graph_context_roots.py) owns the fail-closed
+  context ancestry walk used by V2 sampling, native history, eligibility and training export.
+  The V2 ledger and root-binding rules are detailed in
+  [transition-seam.md](transition-seam.md); native sampler behavior is in
+  [rollout-execution.md](rollout-execution.md). [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
+  owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
+  it reads only the verified view and hash-addressed evidence through the artifact reader.
+  [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
   supplies pure sampled, tool, context-append and exhaustion policy to production
   and replay; persisted budget/charge artifacts remain independently compared claims.
   [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable
@@ -92,7 +107,7 @@ retains its smoke-evaluation and training-format workflows.
   override admitted schemas, semantic replay, or the native-ineligible decision. `prepare_request` pins caller-owned evidence;
   `prepare_verified_messages` checks typed messages against the active projection
   at preparation, publication, and recovery. The sampling decoder alone binds
-  duplicated trace/action/request claims. The bound sampling input carries the
+  duplicated trace/action/request claims and dispatches V1/V2 ledger evidence. The bound sampling input carries the
   complete canonical persisted request/options value; composition stores typed
   binary logprob output and constructs its ref without backend CAS access. Only the
   composition runner invokes `SampleBackend`. The [author derive](../writing_agent/task_graph_derive_author.py)
@@ -103,18 +118,65 @@ retains its smoke-evaluation and training-format workflows.
   fixed visible-message summary, complete-exchange selection, immutable context
   operation evidence, and context byte accounting.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
-  resolves the sealed group environment and defines the member-result, decision,
-  advantage and credit records and the typed scripted-terminal and execution-failure
-  records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their binding rules live in
-  `task_graph_record_contracts.py`.
+  resolves the sealed group environment, validates group policy and derives seeds;
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py) defines the
+  member-result, decision, advantage and credit records and the typed scripted-terminal and
+  execution-failure records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their
+  binding rules live in `task_graph_record_contracts.py`.
   [task_graph_group.py](../writing_agent/task_graph_group.py) starts each member as its own
   new-core lineage through `RolloutEnvironment.start_member` (a retry resumes through
   `open_head`). It admits collected results, and results finalized after a reopen, against
   gate-verified member views. It computes group advantages, and writer-only segment credit
   from the view's samples. It never samples models or emits native token masks. A
-  coordinator requires a `RolloutEnvironment` and has no bare-store start path. See
+  coordinator requires a `RolloutEnvironment` and has no bare-store start path. It is
+  not the trainer; Phase 8 connects it to the standalone DAPO trainer through
+  `TaskGraphRollouts`. See
   [group-coordination.md](group-coordination.md), and
   [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
+  [task_graph_training_layout.py](../writing_agent/task_graph_training_layout.py) owns the
+  pure native token layout shared by group segment-credit spans and export. The
+  [training export](../writing_agent/task_graph_training_export.py) derives a
+  `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
+  reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
+  [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
+  exported token layouts and pinned tokenizer files, then returns `TrainingAdmissionV1`.
+  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts; the
+  all-admitted requirement is defined in [transition-seam.md](transition-seam.md).
+  `inspect_group_offline` repeats the batch
+  and admission derivation from stored evidence and the pinned local tokenizer without
+  network access; its canonical report contains no prompt, packet, context or token data.
+  [task_graph_probe_tasks.py](../writing_agent/task_graph_probe_tasks.py) owns pure probe-task
+  loading, admitted-entry construction, persistence, task-entry records, and private canaries;
+  callers can supply a config directory, with the repository task set as the default.
+  [grpo_task_graph_probe_experiment.py](../writing_agent/grpo_task_graph_probe_experiment.py)
+  owns the recipe, tokenizer binding, tiny Gemma fixture, and trainer composition. The config
+  builder and trace check load task data through the core module; the CPU scripted sampler
+  remains in the smoke script. Criterion 6 uses
+  [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
+  to scan run artifacts for its two canaries outside `training/private`. Both sit in one
+  private, non-admitted check record, outside the evaluator packet, so they detect a bulk
+  private-store dump and not leakage of an admitted check spec. `unused_author_preference`
+  is a legacy id: the probe tasks have no author packet. Its sibling scope reports per-member input reconstruction
+  from that member's verified lineage, not general absence of unplanted shared or sibling-derived
+  text.
+- **Task-graph training (Phase 8).** [native_gemma.py](../writing_agent/native_gemma.py)
+  is the native `SampleBackend` and renderer, and
+  [native_protocol.py](../writing_agent/native_protocol.py) owns the native protocol; see
+  [rollout-execution.md](rollout-execution.md) for sampling and parsing contracts.
+  [grpo_task_graph.py](../writing_agent/grpo_task_graph.py) owns `TaskGraphRollouts`, TRL's
+  `rollout_func`. For each step it asserts the active adapter and pins the behavior policy,
+  claims the step and seals one native group. It then runs the members serially on the live
+  model, finalizes, re-hashes the adapter, audits and admits, and returns `prompt_ids`,
+  `completion_ids`, `env_mask` and `rollout_rewards = advantage_f64`, with
+  `scale_rewards="none"`. It also owns the task-graph experiment identity, which binds every
+  `grpo*`, `native_*` and `task_graph*` source file, and the model-free resume preflight.
+  [grpo_task_graph_observer.py](../writing_agent/grpo_task_graph_observer.py) records TRL's
+  loss inputs and recomputed logprobs, read-only.
+  [training_stages.py](../writing_agent/training_stages.py) is the generic stage supervisor:
+  subprocess stages, wall-time kill, resource records and the exclusive attempt marker.
+  [grpo_task_graph_probe.py](../writing_agent/grpo_task_graph_probe.py) runs the P1 phases,
+  and [grpo_task_graph_probe_evidence.py](../writing_agent/grpo_task_graph_probe_evidence.py)
+  computes `result.json`. See [task-graph training](../../docs/task-graph-training.md).
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
@@ -125,7 +187,9 @@ retains its smoke-evaluation and training-format workflows.
   generation to that interface.
   Inputs contain messages and permitted tools, never evaluator labels.
 - [catalog.py](../writing_agent/catalog.py) owns source identity, lineage, imports,
-  atomic JSON artifacts, and overlap inspection. [acquisition.py](../writing_agent/acquisition.py)
+  JSON artifact formats, and overlap inspection. [atomic_io.py](../writing_agent/atomic_io.py)
+  owns durable atomic byte/JSON replacement shared by catalog outputs, trainer reservations,
+  trace reports and offline inspections. [acquisition.py](../writing_agent/acquisition.py)
   handles the selected upstream releases. [development.py](../writing_agent/development.py)
   compiles the authored world records into development cases.
 - [artifacts.py](../writing_agent/artifacts.py) extracts designated prose and inspects
@@ -259,7 +323,9 @@ has a single KV head, so 128K costs about 1.9 GB. `inference.kv_cache_bytes` com
 that from a checkpoint config, and `scripts/probe_context_budget.py` also measures the
 attention step cost. FlashAttention is unavailable for this model because the
 full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
-memory-efficient SDPA is the only O(n) path and the cost of length is time, not memory.
+SDPA is the configured alternative. These inference cache/attention estimates do not
+establish GRPO training fit: dense logits, activations and backward buffers also grow
+with trajectory length.
 `SFTSettings.max_length` is an acceptance bound that rejects overflow and never pads, so
 widening it costs nothing until long trajectories exist to fill it; a long window is a
 data problem before it is a compute problem.
@@ -405,7 +471,62 @@ assistant text/tool calls/endings, and mask embedded observations. Preparation
 rejects overlength data, reasoning fields, special-token input, and known evaluation
 source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
-the trainer. GPU training and checkpoint restore remain unverified.
+the trainer. SFT GPU training and checkpoint restore remain unverified.
+
+`grpo_runtime.py` owns explicit TRL implementation admission. Legacy TRL 1.13
+remains the default; opt-in `trl-6c5f135-streaming` verifies the exact approved
+TRL/Liger Python source trees before model loading or caller mutation and binds
+them into experiment identity. It admits dense Gemma4 only and disables unrelated
+Liger model replacements through public configuration. The maintained FP32
+streaming softcap is an accepted numerical variant, not native BF16 parity.
+See [GRPO usage](../../docs/grpo.md) for qualification scope and source pins.
+
+`grpo.py` owns legacy experiment admission, frozen settings/identity and TRL config;
+`grpo_trainer.py` owns the shared resume/quarantine, checkpoint callback, trainer
+construction and adapter-export lifecycle exposed as `run_trainer(...)`. It does not
+reuse SFT preparation or implement another RL loss. `grpo_rollout.py` owns append-only
+sampled tokens and external suffix masks. Do not rebuild training actions by rendering
+parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
+Training identity includes private scoring labels, unlike evaluation's rescorable
+identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
+before resume can mutate the model, and owns the selected PEFT adapter tensor hash used by
+trainer policy bindings and trace checks; engineered fixtures use separate, explicit admission.
+Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
+also stops ties by default; explicit `"continue"` passes raw tied rewards through
+ordinary TRL/Adam without resampling. Mathematically zero advantages can have
+float32 residuals; these or momentum may move weights. This is not update skipping.
+Saved `trl_advantages_estimate` values are Python-formula estimates, not observed
+trainer tensors. Reward scaling is explicit and identity-bound (`group` by default;
+task-graph training selects `none`). Groups record ties separately from checkpointed
+optimizer progress. `GRPOSettings.microbatch_size=None`
+trains the full group with accumulation 1. An explicit microbatch must be a positive
+integer dividing `group_size`; `gradient_accumulation_steps` is derived as
+`group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one
+accumulation window, and updates once. Checkpoints occur only at that boundary; no
+partially consumed rollout buffer needs restoring. Microbatch settings are identity-bound.
+`loss_type` is also identity-bound: `grpo` remains the default, while explicit `dapo`
+uses public TRL's generation-group active-token denominator, excluding observations
+and padding. Neither selection changes sampling, reward admission, or safety budgets.
+Inference adapters and full trainer checkpoints are different artifacts. CPU optimizer/resume verification does
+not establish Gemma GPU fit. See [GRPO methodology](../../docs/grpo.md) for the bounded
+execution, recovery, and caller-owned reward contracts.
+
+`grpo_probe.py` is a fixed engineering recipe over that trainer, not a general experiment
+scheduler. `grpo_probe_data.py` owns its committed source packet, bounded derivatives,
+and mechanical-only scorer; fixture successes are not sampled model successes or
+literary judgments. Preparation and tokenizer evidence bind the package sources before
+any model phase. Source changes therefore require fresh preparation, not rescoring an
+old run. See the [probe guide](../../docs/grpo-probe.md) for phase admission and recovery.
+The ordinary inference backend applies a trajectory token cap only when explicitly
+configured; older callers retain their per-call budget.
+
+`grpo_full48.py` admits the intact wave1 training release by frozen hashes and owns
+its separately bound mechanical-only reward. Delivery requires completed sequence
+and action evidence, all required artifacts at their lower word bounds, and actual
+file changes. Other mechanical failures can retain partial reward. Semantic rubrics
+and intermediate clarification faithfulness remain unjudged. Its fixture module
+constructs offline counterexamples; it never establishes sampled success or memory
+fit. See [full48 preparation](../../docs/grpo-full48.md); this is not a training runner.
 
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the
@@ -472,3 +593,24 @@ scores pending.
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.
 Prose quality still uses only designated prose selections.
+
+`grpo_full48_runner.py` selects intact release/reward bindings and an explicit
+`intact-full48-v1` admission profile. The default probe profile keeps its original
+limits and 32-seed stride. Full48 reserves 48 seeds per slot, validates ordered
+visits before sampling, pauses at pass one, and refuses recovery with uncommitted
+sampled groups (generic trainer recovery may resample; this recipe may not).
+Coverage counts optimizer progress only from complete hash-verified checkpoints.
+`grpo_full48_supervisor.py` owns the inherited writer lease and advisory process
+progress; quiet output never triggers termination. Preparation/preflight import no
+model stack. See [full48 usage](../../docs/grpo-full48.md) for frozen allocations
+and their limits; CPU schedule proof does not establish native training fit.
+
+`grpo_gpu.py` owns the display allowance policy and desktop-consumer check as well as
+complete graphics/compute NVML inventory admission for production fit and full48
+train/resume. `grpo_probe.py` re-imports the display policy and check. Prepared identity
+and pinned source admission precede ownership; ownership precedes model loading.
+`grpo_gpu_fit.py` owns a separate single-attempt controlled token-ledger
+profile and native prefill check. Generation and training use sequential fresh
+processes so ownership never exempts an existing CUDA context. Controlled ledgers
+are memory evidence only; production rollouts remain native sampling. See
+[fit usage](../../docs/grpo-gpu-fit.md) for coverage and limits.

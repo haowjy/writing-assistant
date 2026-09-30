@@ -11,9 +11,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from writing_agent.task_graph import MaterializedContextV1, canonical_bytes, canonical_json, thaw
+from writing_agent.task_graph_calls import READ_TOOLS, rejection_message
 from writing_agent.task_graph_compaction import context_bytes
 
-READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
 EXHAUSTION_ORDER = (
     "writer_turns",
     "generated_tokens",
@@ -24,9 +24,12 @@ EXHAUSTION_ORDER = (
 
 
 def sampled_usage_charge(
-    budget: Mapping[str, Any], usage: Mapping[str, Any]
+    budget: Mapping[str, Any],
+    usage: Mapping[str, Any],
+    *,
+    allow_context_overrun: bool = False,
 ) -> tuple[dict, str | None]:
-    """Charge one sampled call, including an overrun, with parent totals counted once."""
+    """Charge one sample; context tokens are a high-water mark, not an accumulated total."""
     result = json.loads(canonical_json(budget))
     consumed = result["consumed"]
     consumed["writer_turns"] = consumed.get("writer_turns", 0) + 1
@@ -37,11 +40,16 @@ def sampled_usage_charge(
     consumed["total_tokens"] = consumed.get("total_tokens", 0) + usage.get(
         "total_tokens", usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
     )
+    if "context_tokens" in result["limits"]:
+        context_high_water = usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+        consumed["context_tokens"] = max(consumed.get("context_tokens", 0), context_high_water)
     exceeded = next(
         (
             name
-            for name in ("generated_tokens", "total_tokens")
-            if name in result["limits"] and consumed[name] > result["limits"][name]
+            for name in ("generated_tokens", "total_tokens", "context_tokens")
+            if name in result["limits"]
+            and consumed[name] > result["limits"][name]
+            and not (name == "context_tokens" and allow_context_overrun)
         ),
         None,
     )
@@ -72,12 +80,20 @@ def tool_error(budget: Mapping[str, Any], validation_error: str | None, name: st
     """Apply tool, syntax, then author exhaustion precedence before dispatch."""
     consumed, limits = budget["consumed"], budget["limits"]
     if consumed.get("tool_calls", 0) >= limits["tool_calls"]:
-        return {"ok": False, "valid": True, "error": "Tool-call budget exceeded"}
+        return {
+            "ok": False,
+            "valid": True,
+            "error": rejection_message("tool_call_budget_exceeded"),
+        }
     if validation_error is not None:
         return {"ok": False, "valid": False, "error": validation_error}
     if name == "ask_author":
         if consumed.get("author_calls", 0) >= limits["author_calls"]:
-            return {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
+            return {
+                "ok": False,
+                "valid": True,
+                "error": rejection_message("author_call_budget_exceeded"),
+            }
     return None
 
 

@@ -11,6 +11,7 @@ from writing_agent.task_graph import (
     action_id_for_ordinal,
     canonical_bytes,
     domain_hash,
+    tool_call_id,
 )
 from writing_agent.task_graph_accounting import (
     observation_read_tokens,
@@ -22,6 +23,7 @@ from writing_agent.task_graph_calls import (
     ToolQueueEntry,
     apply_effect,
     parse_calls,
+    rejection_message,
     tool_effect_contract,
 )
 from writing_agent.task_graph_controller import next_step
@@ -40,12 +42,17 @@ from writing_agent.task_graph_errors import (
     WriterRuntimeError,
 )
 from writing_agent.task_graph_records import (
+    RuntimeManifestV1,
+    RuntimeManifestV2,
     ToolObservationV1,
     WriterTurnV1,
+    WriterTurnV2,
 )
 from writing_agent.task_graph_sampling import (
     bind_group_sampling_claims,
-    decode_writer_turn_sampling,
+    decode_and_bind_sampling,
+    sampling_usage_requirements,
+    termination_stop_reason,
 )
 from writing_agent.task_graph_scripted import validate_ask_semantics
 from writing_agent.task_graph_transition import (
@@ -55,8 +62,6 @@ from writing_agent.task_graph_transition import (
     Transition,
 )
 from writing_agent.task_graph_wire import decode_canonical_value
-
-READ_BUDGET_EXCEEDED = "Read-token budget exceeded"
 
 
 def writer_action_id(view: LineageView) -> str:
@@ -77,19 +82,6 @@ def group_member(view: LineageView):
     return member
 
 
-def sampling_usage_requirements(budget: Mapping[str, Any]) -> frozenset[str]:
-    """Return usage fields required by the active token-budget limits."""
-    limits = budget["limits"]
-    return frozenset(
-        field
-        for limit, field in (
-            ("generated_tokens", "completion_tokens"),
-            ("total_tokens", "total_tokens"),
-        )
-        if limit in limits
-    )
-
-
 def tool_dispatch_error(budget: Mapping[str, Any], queue_entry: Mapping[str, Any]) -> str | None:
     """Return the persisted tool call's budget or syntax rejection, if any."""
     return tool_error(dict(budget), queue_entry.get("rejection"), queue_entry["name"])
@@ -97,27 +89,65 @@ def tool_dispatch_error(budget: Mapping[str, Any], queue_entry: Mapping[str, Any
 
 def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Transition:
     """Derive the one event, state and context caused by a sampled writer turn."""
-    action_ordinal, action_id, content = _validate_writer_turn(view, turn)
+    action_id, content = _validate_writer_turn(view, turn)
     _bind_writer_turn(view, turn, reader)
+    return _commit_sampled_writer_turn(
+        view,
+        turn,
+        reader,
+        action_id=action_id,
+        content=content,
+    )
 
-    usage = turn.usage
-    next_budget, exceeded = sampled_usage_charge(view.budget, usage)
+
+def derive_writer_turn_v2(view: LineageView, turn: WriterTurnV2, reader: Any) -> Transition:
+    """Derive a native sampled turn after verifying its bytes and termination class."""
+    action_id, content = _validate_writer_action(view, turn)
+    if not isinstance(turn, WriterTurnV2):
+        raise ProjectionError("writer turn input must use its strict V2 wire codec")
+    manifest = _bind_writer_turn(view, turn, reader)
+    if not isinstance(manifest, RuntimeManifestV2):
+        raise ProjectionError("input.record_type: WriterTurnV2 requires RuntimeManifestV2")
+    return _commit_sampled_writer_turn(
+        view,
+        turn,
+        reader,
+        action_id=action_id,
+        content=content,
+        allow_context_overrun=turn.termination["kind"] == "context_limit",
+        stop_reason=termination_stop_reason(turn, manifest.renderer),
+    )
+
+
+def _commit_sampled_writer_turn(
+    view: LineageView,
+    turn: WriterTurnV1 | WriterTurnV2,
+    reader: Any,
+    *,
+    action_id: str,
+    content: str,
+    allow_context_overrun: bool = False,
+    stop_reason: str | None = None,
+) -> Transition:
+    """Share accounting, queue, context and sample publication for both wire versions."""
+    next_budget, exceeded = sampled_usage_charge(
+        view.budget,
+        turn.usage,
+        allow_context_overrun=allow_context_overrun,
+    )
     input_artifact = payload_artifact(turn)
-    turn_ref = input_artifact.ref
     if exceeded is not None:
-        stop_reason = f"{exceeded}_budget"
         outcome = replace(
             view.outcome,
             task_status="incomplete",
             execution_status="valid",
-            stop_reason=stop_reason,
+            stop_reason=f"{exceeded}_budget",
             candidate_checkpoint=view.checkpoint_id,
             requirement_version=view.state.requirements_ref,
         )
-        outcome_ref = outcome.identity()
         event = new_event(
             view,
-            turn_ref,
+            input_artifact.ref,
             kind="budget_charged",
             actor="writer_runtime",
             audience=("controller", "evaluator", "trainer"),
@@ -126,73 +156,80 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
             view,
             event,
             budgets_ref=domain_hash("payload", next_budget),
-            outcome_ref=outcome_ref,
+            outcome_ref=outcome.identity(),
             position={"phase": "terminal"},
         )
-        artifacts = (
-            input_artifact,
-            payload_artifact(next_budget),
-            payload_artifact(outcome),
-        )
-        result_view = advance(
+        return advance(
             view,
             turn,
             event,
             state,
-            artifacts=artifacts,
+            artifacts=(input_artifact, payload_artifact(next_budget), payload_artifact(outcome)),
             budget=next_budget,
             outcome=outcome,
-            samples=(*view.samples, SampleRef(action_id, event.id, turn_ref, "budget_stop")),
+            samples=(
+                *view.samples,
+                SampleRef(action_id, event.id, input_artifact.ref, "budget_stop"),
+            ),
         )
-        return result_view
-
-    id_prefix = f"{view.state.position['lineage_id']}:call:{action_ordinal}"
-    queue = _build_tool_queue(
-        view,
-        turn,
-        reader,
-        id_prefix=id_prefix,
-        prior_raw_ids=view.raw_call_ids,
-    )
 
     required_usage = sampling_usage_requirements(next_budget)
-    if ("completion_tokens" in required_usage and "completion_tokens" not in usage) or (
-        "total_tokens" in required_usage
-        and "total_tokens" not in usage
-        and not {"prompt_tokens", "completion_tokens"} <= usage.keys()
+    missing_usage = required_usage - turn.usage.keys()
+    if (
+        "total_tokens" in missing_usage
+        and {"prompt_tokens", "completion_tokens"} <= turn.usage.keys()
     ):
-        raise AdapterContractProjectionError("input.usage.completion_tokens: required")
+        missing_usage -= {"total_tokens"}
+    if missing_usage:
+        raise AdapterContractProjectionError(
+            f"input.usage.{sorted(missing_usage)[0]}: required by active token budget"
+        )
 
+    queue = (
+        []
+        if isinstance(turn, WriterTurnV2) and turn.termination["kind"] == "context_limit"
+        else _build_tool_queue(
+            view,
+            turn,
+            reader,
+            action_id=action_id,
+            prior_raw_ids=view.raw_call_ids,
+        )
+    )
     assistant = _build_assistant_message(turn, action_id, content, queue)
     event = new_event(
         view,
-        turn_ref,
+        input_artifact.ref,
         kind="writer_action",
         actor="writer",
         audience=("controller", "trainer", "writer"),
     )
-    context, content_node, revision, budget = append_context(
+    context, content_node, revision, context_budget = append_context(
         replace(view, budget=next_budget), (assistant,), event.id
     )
-    budget_ref = (
-        domain_hash("payload", budget)
-        if budget is not None
-        else domain_hash("payload", next_budget)
-    )
-    if budget is None:
-        budget = next_budget
-
+    budget = context_budget if context_budget is not None else next_budget
+    incomplete = stop_reason is not None
     continuation = view.state.to_dict()["continuation"]
-    continuation["tool_queue"] = [item.to_dict() for item in queue]
+    continuation["tool_queue"] = [] if incomplete else [item.to_dict() for item in queue]
     continuation["next_call"] = 0
-    phase = "ready_writer" if queue else "checking"
+    outcome = view.outcome
+    if incomplete:
+        outcome = replace(
+            view.outcome,
+            task_status="incomplete",
+            execution_status="valid",
+            stop_reason=stop_reason,
+            candidate_checkpoint=view.checkpoint_id,
+            requirement_version=view.state.requirements_ref,
+        )
     state = next_state(
         view,
         event,
-        budgets_ref=budget_ref,
+        budgets_ref=domain_hash("payload", budget),
         context_ref=revision.ref,
+        outcome_ref=outcome.identity() if incomplete else view.state.outcome_ref,
         continuation=continuation,
-        position={"phase": phase},
+        position={"phase": "terminal" if incomplete else "ready_writer" if queue else "checking"},
         history={"action_count": view.state.history["action_count"] + 1},
     )
     sources = dict(view.call_sources)
@@ -203,13 +240,10 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
     raw_call_ids = view.raw_call_ids
     if turn.message.tool_calls_was_list:
         raw_call_ids = frozenset((*raw_call_ids, *_raw_call_ids(turn)))
-    artifacts = (
-        input_artifact,
-        payload_artifact(budget),
-        content_node,
-        revision,
-    )
-    result_view = advance(
+    artifacts = (input_artifact, payload_artifact(budget), content_node, revision)
+    if incomplete:
+        artifacts += (payload_artifact(outcome),)
+    return advance(
         view,
         turn,
         event,
@@ -217,41 +251,67 @@ def derive_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Tr
         artifacts=artifacts,
         context=context,
         budget=budget,
+        outcome=outcome,
         raw_call_ids=raw_call_ids,
         call_sources=sources,
-        samples=(*view.samples, SampleRef(action_id, event.id, turn_ref, "action")),
+        samples=(*view.samples, SampleRef(action_id, event.id, input_artifact.ref, "action")),
     )
-    return result_view
 
 
-def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[int, str, str]:
+def _validate_writer_turn(view: LineageView, turn: WriterTurnV1) -> tuple[str, str]:
+    if not isinstance(turn, WriterTurnV1):
+        raise ProjectionError("writer turn input must use its strict V1 wire codec")
+    return _validate_writer_action(view, turn)
+
+
+def _validate_writer_action(
+    view: LineageView, turn: WriterTurnV1 | WriterTurnV2
+) -> tuple[str, str]:
     directive = _directive(view)
     if directive.kind != "sample_writer":
         raise ProjectionError("writer turn is not the next legal step")
-    if not isinstance(turn, WriterTurnV1):
+    if not isinstance(turn, (WriterTurnV1, WriterTurnV2)):
         raise ProjectionError("writer turn input must use its strict wire codec")
 
-    ordinal = view.state.history["action_count"]
     action_id = writer_action_id(view)
     if turn.action_id != action_id or turn.context_revision_ref != view.context.revision_ref:
         raise ProjectionError("writer turn is not bound to the active action and context")
     content = turn.message.content
     if content is not None and not isinstance(content, str):
         raise ProjectionError("sampled assistant content must be text or null")
-    return ordinal, action_id, "" if content is None else content
+    return action_id, "" if content is None else content
 
 
-def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> None:
+def _bind_writer_turn(
+    view: LineageView, turn: WriterTurnV1 | WriterTurnV2, reader: Any
+) -> RuntimeManifestV1 | RuntimeManifestV2 | None:
     try:
-        decode_writer_turn_sampling(turn, view.context, reader)
+        manifest = decode_and_bind_sampling(
+            turn,
+            view.context,
+            view.group,
+            view.samples,
+            view.head_event_id,
+            view.budget,
+            view.state.position["lineage_id"],
+            reader,
+        )
     except ProjectionError as exc:
         raise AdapterContractProjectionError(str(exc)) from exc
-    except (AdapterContractError, KeyError, TypeError, ValueError) as exc:
+    except AdapterContractError as exc:
+        message = str(exc)
+        if message.startswith("native renderer "):
+            field = message.removeprefix("native renderer ").split(" ", 1)[0]
+            raise AdapterContractProjectionError(
+                f"input.context.rendering.{field}: differs from native renderer"
+            ) from exc
+        raise AdapterContractProjectionError("input.adapter_trace: invalid") from exc
+    except (KeyError, TypeError, ValueError) as exc:
         raise AdapterContractProjectionError("input.adapter_trace: invalid") from exc
 
     member = group_member(view)
-    if member is None:
-        return
+    if member is None or (isinstance(turn, WriterTurnV2) and turn.adapter_trace is None):
+        return manifest
     spec = view.group
     try:
         model = reader.artifact(spec.policy["model_ref"])
@@ -266,21 +326,30 @@ def _bind_writer_turn(view: LineageView, turn: WriterTurnV1, reader: Any) -> Non
             member.writer_seed,
             claims or {},
             model_id=model["model_id"],
+            require_context_claims=not isinstance(turn, WriterTurnV2),
         )
     except (ProjectionError, KeyError, TypeError, ValueError) as exc:
         raise AdapterContractProjectionError("input.adapter_trace: group pin mismatch") from exc
+    return manifest
 
 
 def _build_tool_queue(
     view: LineageView,
-    turn: WriterTurnV1,
+    turn: WriterTurnV1 | WriterTurnV2,
     reader: Any,
     *,
-    id_prefix: str,
+    action_id: str,
     prior_raw_ids: frozenset[str],
 ) -> list[ToolQueueEntry]:
     if not turn.message.tool_calls_was_list:
-        return [ToolQueueEntry(f"{id_prefix}:0", "invalid_call", {}, "tool_calls must be an array")]
+        return [
+            ToolQueueEntry(
+                tool_call_id(action_id, 0),
+                "invalid_call",
+                {},
+                rejection_message("tool_calls_not_array"),
+            )
+        ]
 
     ask = None
     if view.mode.ask_semantics:
@@ -292,7 +361,7 @@ def _build_tool_queue(
     try:
         return parse_calls(
             turn.message,
-            id_prefix=id_prefix,
+            action_id=action_id,
             allowed=frozenset(view.node.contract.entry_contract.tool_allowlist),
             prior_raw_ids=prior_raw_ids,
             ask_semantics=ask,
@@ -304,7 +373,7 @@ def _build_tool_queue(
 
 
 def _build_assistant_message(
-    turn: WriterTurnV1,
+    turn: WriterTurnV1 | WriterTurnV2,
     action_id: str,
     content: str,
     queue: list[ToolQueueEntry],
@@ -414,7 +483,11 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
             "read_tokens", 0
         )
         if read_charge > remaining_reads:
-            observation = {"ok": False, "valid": True, "error": READ_BUDGET_EXCEEDED}
+            observation = {
+                "ok": False,
+                "valid": True,
+                "error": rejection_message("read_token_budget_exceeded"),
+            }
             files_after = dict(view.state.files)
             read_charge = 0
 
@@ -476,7 +549,7 @@ def _directive(view: LineageView):
         raise ProjectionError("lineage view has no valid next directive") from exc
 
 
-def _raw_call_ids(turn: WriterTurnV1) -> set[str]:
+def _raw_call_ids(turn: WriterTurnV1 | WriterTurnV2) -> set[str]:
     found: set[str] = set()
     for item in turn.message.calls:
         if not item["bounded"]:
@@ -497,6 +570,7 @@ def _raw_call_ids(turn: WriterTurnV1) -> set[str]:
 
 DERIVES: dict[DeriveKey, Callable] = {
     "WriterTurnV1": derive_writer_turn,
+    "WriterTurnV2": derive_writer_turn_v2,
     "ToolObservationV1": derive_tool_result,
 }
 

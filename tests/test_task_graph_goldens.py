@@ -8,8 +8,10 @@ from pathlib import Path
 
 from tests.task_graph_golden_fixtures import (
     BYTE_GOLDEN,
+    POST_GOLDEN_RECORD_TYPES,
     build_hash_golden,
     build_records_golden,
+    build_records_v2_golden,
     build_rollout_golden,
 )
 from tests.task_graph_store_fixtures import PatchVerifier
@@ -43,6 +45,9 @@ PINNED_GOLDEN_SHA256 = {
         ),
         "task_graph_rollout_golden.json": (
             "4d7287b26cf2d038d6c623daea731ac7cdc2fb8d949183f38354854c463abe0f"
+        ),
+        "task_graph_records_v2_golden.json": (
+            "66bc1d4a6e83a12788a216fd8863d4fd5a393dd90e977fe7819496b644268093"
         ),
     }
 }
@@ -87,7 +92,7 @@ class TaskGraphGoldenTests(unittest.TestCase):
         self.assertEqual(golden, actual)
         records = golden["records"]
         self.assertEqual(
-            set(RECORD_TYPES),
+            set(RECORD_TYPES) - POST_GOLDEN_RECORD_TYPES,
             set(records)
             - {
                 "BudgetContractV1",
@@ -113,7 +118,7 @@ class TaskGraphGoldenTests(unittest.TestCase):
             },
         )
 
-        for record_type in RECORD_TYPES:
+        for record_type in set(RECORD_TYPES) - POST_GOLDEN_RECORD_TYPES:
             for variant in _variants(record_type, records[record_type]):
                 body = variant["body"]
                 self.assertEqual(
@@ -166,6 +171,48 @@ class TaskGraphGoldenTests(unittest.TestCase):
         with_limit = records["BudgetContractV1"]["with_max_generated_tokens"]["body"]
         self.assertNotIn("max_generated_tokens", without_limit)
         self.assertEqual(with_limit["max_generated_tokens"], 1024)
+
+    def test_additive_v2_records_have_separate_identity_goldens(self):
+        golden = _fixture("task_graph_records_v2_golden.json")
+        self.assertEqual(golden, build_records_v2_golden())
+        self.assertEqual(golden["transition_semantics"], SEMANTICS_V1)
+        self.assertEqual(set(golden["records"]), POST_GOLDEN_RECORD_TYPES)
+        for record_type, variant in golden["records"].items():
+            body = variant["body"]
+            with self.subTest(record_type=record_type):
+                self.assertEqual(variant["identity"], domain_hash("payload", body))
+                self.assertEqual(
+                    canonical_bytes(body),
+                    canonical_bytes(json.loads(canonical_bytes(body))),
+                )
+                record_reference_edges(record_type, body)
+        optional_examples = golden["optional_field_examples"]
+        self.assertEqual(
+            set(optional_examples),
+            {
+                "GroupSegmentCreditV1_with_token_spans",
+                "TrainingBatchV1_with_trailing_context_limit_turn_ref",
+            },
+        )
+        for example_name, variant in optional_examples.items():
+            body = variant["body"]
+            record_type = body["record_type"]
+            with self.subTest(optional_example=example_name):
+                self.assertEqual(variant["identity"], domain_hash("payload", body))
+                record = RECORD_TYPES[record_type].from_dict(body)
+                self.assertEqual(record.to_wire(), body)
+                self.assertEqual(record.identity(), variant["identity"])
+                record_reference_edges(record_type, body)
+        self.assertEqual(
+            optional_examples["GroupSegmentCreditV1_with_token_spans"]["body"]["completion_start"],
+            0,
+        )
+        self.assertIn(
+            "trailing_context_limit_turn_ref",
+            optional_examples["TrainingBatchV1_with_trailing_context_limit_turn_ref"]["body"][
+                "members"
+            ][0],
+        )
 
     def test_scripted_rollout_event_checkpoint_commit_and_state_identities(self):
         golden = _fixture("task_graph_rollout_golden.json")

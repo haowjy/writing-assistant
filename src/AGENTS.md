@@ -27,8 +27,14 @@ apply to total `task_graph*` source, not to single files. Read
 [.context/transition-seam.md](.context/transition-seam.md) before adding a record or a
 derive, [.context/gate-and-rollout.md](.context/gate-and-rollout.md) before changing gate,
 store-verifier or environment behavior, [.context/rollout-execution.md](.context/rollout-execution.md)
-before changing driver, gatherer, resume or rollout-test behavior, and
+before changing driver, gatherer, native-sampler, resume or rollout-test behavior, and
 [.context/group-coordination.md](.context/group-coordination.md) before changing how a
-group starts, collects or credits members.
+group starts, collects, credits or trains members.
 
-See [.context/CONTEXT.md](.context/CONTEXT.md) for implementation contracts and limits.
+Only an all-admitted `TrainingAdmissionV1` makes a native member trainable: structural
+eligibility alone never reaches a trainer. Keep `torch`, `transformers` and trainer code
+out of `task_graph*` modules; the tokenizer-backed audit and sampler live in `native_*`.
+
+See [.context/CONTEXT.md](.context/CONTEXT.md) for implementation contracts and limits, and
+[.context/TODO.md](.context/TODO.md) and [.context/FUTURE.md](.context/FUTURE.md) for
+deferred work.

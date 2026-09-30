@@ -1,14 +1,14 @@
 # Rollout execution
 
-This file covers the synchronous driver, typed gatherers, resume path and runtime
-acceptance tests for the new core. The gate and store-verifier contract, publication
-handoff, view cache, rule owners and environment methods are in
-[gate-and-rollout.md](gate-and-rollout.md). The wire records, derives and layer order are in
-[transition-seam.md](transition-seam.md); group-specific collection and credit are in
-[group-coordination.md](group-coordination.md).
+This file covers the synchronous driver, typed gatherers, native Gemma sampling, tool
+outcomes, the resume path and runtime acceptance tests for the new core. The gate and
+store-verifier contract, publication handoff, view cache, rule owners and environment
+methods are in [gate-and-rollout.md](gate-and-rollout.md). The wire records, derives and
+layer order are in [transition-seam.md](transition-seam.md); group-specific collection and
+credit are in [group-coordination.md](group-coordination.md).
 
-Read this before changing how a rollout obtains port inputs, invokes providers, resumes, or
-proves offline replay.
+Read this before changing how a rollout obtains port inputs, invokes providers or the native
+sampler, classifies tool outcomes, resumes, or proves offline replay.
 
 ## Driver and gatherers
 
@@ -42,6 +42,13 @@ rendering, but no persisted request body or request-reference pair;
 - the context revision ref and one `context_content_hash`;
 - for a group member, the sealed `writer_seed` and the model, behavior-policy, decoding,
   tokenizer and template refs. Outside a group these are `None`.
+- for a native-training group only, `native_sampling_budget` carries the remaining generated
+  allowance and `max_context_tokens`; it exposes no cumulative usage ledger. The gatherer
+  forwards this allocation unchanged to `PreparedSamplingInput`.
+- Native sampling also receives the sealed `adapter_ref`, the action-count `decision_ordinal`,
+  the pending `action_id`, and `native_history` rebuilt from the last committed
+  `WriterTurnV2` and its token artifacts. The concrete adapter is
+  `native_gemma.NativeGemmaSampleBackend` ([Native Gemma sampling](#native-gemma-sampling)).
 
 The rules:
 - **There is one content hash: `view.context.content_ref`.** `step_input` supplies it, and the
@@ -58,7 +65,7 @@ The rules:
   the pinned refs and the context claims into its trace. When the pins did not reach the
   backend, a member was sampled with the backend's default seed, and an honest seed claim
   failed the group binding.
-- **Context claims are bound for every lineage.** `decode_writer_turn_sampling` compares a
+- **Context claims are bound for every lineage.** `decode_and_bind_sampling` compares a
   trace's `context_revision_ref`, `context_content_hash` and rendering with the active
   context whenever each claim is present. This is O2's present-only rule applied to every
   lineage. When only the group binder checked these claims, a non-group commit with false
@@ -68,6 +75,93 @@ The rules:
 - **The member seal reads the verified view.** `RuntimeSession.require_member_seal` checks
   the lineage against `view.group` and the executing manifest against its `adapter_ref`. It
   never infers membership from the lineage name or reads `groups/` files.
+
+## Native Gemma sampling
+
+`native_gemma.py` and `native_protocol.py` are the model side of the seam. Neither is
+imported by the core. `torch` and `transformers` load lazily inside `sample()`.
+
+- **The backend samples the trainer's live model.** `NativeGemmaSampleBackend` receives the
+  model and tokenizer; it never loads weights. Every `sample()` calls
+  `assert_active_adapter`, because an adapter hash covers tensors but not whether they are
+  applied. The trainer checks again before the audit.
+- **The ledger is append-only and re-prefilled.** The first decision renders the initial
+  context (`NativeGemmaRenderer.render_initial`). Every later decision's input is the
+  committed input, plus the committed generated IDs, plus
+  `external_suffix(...)`, rendered from the committed messages. Sampled assistant turns are
+  never re-rendered: Gemma's template reorders tool arguments and drops earlier thinking.
+  `generate` uses a cache only within one call. No KV cache crosses a sample call, so a
+  weight update always meets an empty cache. Each turn records
+  `prefill_tokens = len(input)` and `cached_input_tokens = 0`.
+- **The context limit is a writer outcome.** The backend computes `allowed` exactly as rule 3
+  does and passes `max_new_tokens = allowed`. When `allowed ≤ 0` because of the context term,
+  it returns a zero-generation turn with `termination.kind = "context_limit"`, and the
+  derive seals the lineage `incomplete` (`context_tokens_budget`). An exhausted generated
+  budget at that point is an `AdapterContractError`. The seed for each decision is
+  `derive_group_seed(writer_seed, "decision", decision_ordinal)`. The stop set is `<eos>`,
+  `<turn|>` and `<|tool_response>` (IDs 1, 106, 50). A sampled `<eos>` is kept, and a
+  follow-up user turn is appended as masked external tokens without inventing `<turn|>`.
+- **Logprobs are observational evidence, not loss inputs.** `_ObservationalLogitsProcessor`
+  returns the scores unchanged. It keeps one pending fp32 `log_softmax` row and resolves it
+  with the token the next step appends (`input_ids[:, -1]`); `finish()` resolves the last
+  row. Only the chosen token's logprob is kept, never a full-vocabulary row. It does not
+  replay sampling under a saved RNG. TRL recomputes logprobs (`num_iterations=1`), and the
+  probe reports `|sampled − recomputed|` as drift without gating on it.
+- **Suffix deltas.** `native_suffix` supports a tool delta of N results in exact call-ID
+  correspondence, followed by one user reply only when the calls include `ask_author`. It
+  also supports a final answer followed by at most one user turn. Any other delta, or a
+  suffix that is not prefix-stable, raises `ProtocolError`, which is infrastructure.
+
+### Parse classification
+
+`native_protocol.parse_native_response` is the one parse, shared by the sampler, the audit
+and the scripted CPU backend. It accepts only `native_stop` or `token_limit` turns and calls
+`inference.parse_response`. Then:
+
+- a `ValueError` whose message starts with one of the recognized malformed-output prefixes
+  (`is_native_output_parse_error`) is the model's failure. The turn commits the decoded text
+  with no calls and `native_parse_failed = True`
+  ([transition-seam.md](transition-seam.md));
+- any other exception raises `ProtocolError("Native response parser failed unexpectedly")`.
+  A wrong tokenizer or a bug in our code halts the run and is never scored as model
+  behavior.
+
+The prefixes come from the pinned Transformers response parser (including
+`"json parser could not parse region as JSON"`, which a limit inside a call header
+produces) and from `inference.parse_response`'s own two messages. The match is exact, so
+fail-closed: if a message is reworded, the next malformed output halts instead of scoring.
+A sweep test covers every prefix of three call shapes under both terminations. Parsing
+then binds each call's raw ID to the core's `tool_call_id`, so raw IDs, committed results
+and the audit's re-parse agree by exact ID.
+
+### Tool outcomes
+
+`task_graph_tool_outcomes.read_member_tool_outcomes(start_view, final_view)` is the one
+reader of what a member's tool calls did. The trace check and P1 criterion 1 both use it.
+It pairs every new committed call with its result by exact ID and returns:
+
+- per-call results, ordered by action ordinal and then call index;
+- `counts_by_code` and `protocol_shaped_rejection_count`;
+- `files_changed` and `changed_paths`.
+
+Each result is `"ok"` or `{"code", "text"}`:
+
+- **Intake rejections** map to their code through `task_graph_calls.REJECTION_MESSAGES`,
+  by exact message equality. An unknown text raises `ToolOutcomeError`. Persisted messages
+  are unchanged.
+- **Failures of an admitted call** (a missing path, unmatched patch text, and so on) are
+  `tool_execution_failure`, which is model behavior. A host fault never becomes a committed
+  observation.
+- **Calls parsed in the turn that ends an incomplete lineage** are
+  `not_executed_incomplete`. Only the final action's calls qualify, and only when the stop
+  reason is a termination reason. Any other unpaired call or result raises.
+
+`PROTOCOL_SHAPED_REJECTION_CODES` is `invalid_envelope`, `invalid_function_envelope`,
+`missing_id`, `duplicate_id`, `tool_calls_not_array`, `arguments_not_object` and
+`invalid_arguments_json`. The native parser and binder make each one impossible, so any
+occurrence means our code refused the model's call. A real-model run with one is a halt,
+however many members are admitted. Argument-shape errors (`ask_author_*`), `unsafe_path`
+and budget refusals are the model's own behavior and are only recorded.
 
 ## Resume and crashes
 

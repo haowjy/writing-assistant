@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 import writing_agent.task_graph_group_records  # noqa: F401 - register group payload records
 import writing_agent.task_graph_record_contracts  # noqa: F401 - populate the wire registry
+import writing_agent.task_graph_training_records  # noqa: F401 - register batch records
 from writing_agent import task_graph_errors
 from writing_agent.task_graph import (
     EXECUTION_STATUSES,
@@ -19,6 +20,7 @@ from writing_agent.task_graph import (
     safe_path,
 )
 from writing_agent.task_graph_payloads import payload_record_codecs
+from writing_agent.task_graph_training_records import TrainingBatchV1 as TrainingBatchV1
 from writing_agent.task_graph_wire import (
     Bool,
     CanonicalIntake,
@@ -33,6 +35,7 @@ from writing_agent.task_graph_wire import (
     PayloadCodec,
     RecordOf,
     Str,
+    TrueOnly,
     UnionOf,
     WireRecord,
     obj,
@@ -81,6 +84,55 @@ _USAGE_SCHEMA = obj_opt(
     {key: Int() for key in ("prompt_tokens", "completion_tokens", "total_tokens")},
     extra=_JSON,
 )
+NATIVE_RUNTIME_CAPABILITIES = frozenset(
+    {"usage_reporting", "native_token_ledger", "sampled_logprobs"}
+)
+_NATIVE_USAGE_SCHEMA = obj_opt(
+    {},
+    {
+        key: Int()
+        for key in (
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "prefill_tokens",
+            "cached_input_tokens",
+        )
+    },
+    extra=_JSON,
+)
+_V2_TRACE_SCHEMA = obj_opt(
+    {},
+    {
+        key: item
+        for key, item in _TRACE_SCHEMA.optional.items()
+        if key
+        not in {
+            "generated_token_ids",
+            "per_token_logprobs_ref",
+            "per_token_logprobs_codec",
+            "per_token_logprobs_shape",
+        }
+    },
+    extra=_JSON,
+)
+_NATIVE_LOGPROBS_SCHEMA = obj(
+    ref=Hash("bytes"),
+    codec=Enum(frozenset({"f32-le"})),
+    shape=ListOf(Int()),
+)
+_NATIVE_TERMINATION_SCHEMA = obj(
+    kind=Enum(frozenset({"native_stop", "token_limit", "context_limit"})),
+    stop_token_id=UnionOf((Int(), type(None))),
+    limit=UnionOf((Enum(frozenset({"decision", "generated_budget", "context"})), type(None))),
+)
+_SAMPLING_PINS_SCHEMA = obj(
+    manifest_ref=Hash("artifact"),
+    behavior_policy_ref=Hash("artifact"),
+    decoding_ref=Hash("artifact"),
+    renderer_ref=Hash("artifact"),
+    seed=UnionOf((Int(), type(None))),
+)
 _TOOL_DISPATCH = obj(
     spec=obj(max_file_bytes=Int(minimum=1), max_workspace_bytes=Int(minimum=1)),
     observation=obj_opt({"ok": Bool(), "valid": Bool()}, {"result": _JSON, "error": _TEXT}),
@@ -93,6 +145,9 @@ class SampledMessageV1(WireRecord):
     content: Annotated[Any, CanonicalIntake()]
     tool_calls_was_list: Annotated[bool, Bool()]
     calls: Annotated[Any, _JSON]
+    reasoning: Annotated[Any, CanonicalIntake()] = None
+    thinking: Annotated[Any, CanonicalIntake()] = None
+    reasoning_content: Annotated[Any, CanonicalIntake()] = None
 
     def check(self) -> None:
         if not self.tool_calls_was_list:
@@ -109,6 +164,10 @@ class SampledMessageV1(WireRecord):
                 validate_canonical_value(call["value"])
             elif call["value"] != {"$noncanonical": "bounded-call"}:
                 raise ValueError("unbounded calls require the bounded-call marker")
+
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"reasoning", "thinking", "reasoning_content"}
+    )
 
 
 @dataclass(frozen=True)
@@ -135,6 +194,139 @@ class WriterTurnV1(WireRecord):
         present = _TRACE_LOGPROB_KEYS & set(self.adapter_trace)
         if present and present != _TRACE_LOGPROB_KEYS:
             raise ValueError("logprob reference, codec, and shape must appear together")
+
+
+@dataclass(frozen=True)
+class WriterTurnV2(WireRecord):
+    """Tokenizer-free sampled turn evidence for the native training seam."""
+
+    action_id: Annotated[str, Str(nonempty=True, logical=True)]
+    context_revision_ref: Annotated[str, Hash("context_revision")]
+    raw_output_ref: Annotated[str | None, Hash("artifact|bytes", optional=True)]
+    usage: Annotated[Mapping[str, Any], _NATIVE_USAGE_SCHEMA]
+    adapter_trace: Annotated[Mapping[str, Any] | None, UnionOf((_V2_TRACE_SCHEMA, type(None)))]
+    message: Annotated[SampledMessageV1 | Mapping[str, Any], RecordOf(SampledMessageV1)]
+    input_token_ids_ref: Annotated[str, Hash("bytes")]
+    input_token_count: Annotated[int, Int()]
+    generated_token_ids_ref: Annotated[str, Hash("bytes")]
+    generated_token_count: Annotated[int, Int()]
+    logprobs: Annotated[Mapping[str, Any], _NATIVE_LOGPROBS_SCHEMA]
+    termination: Annotated[Mapping[str, Any], _NATIVE_TERMINATION_SCHEMA]
+    sampling_pins: Annotated[Mapping[str, Any], _SAMPLING_PINS_SCHEMA]
+    native_parse_failed: Annotated[bool | None, UnionOf((TrueOnly(), type(None)))] = None
+    RECORD_TYPE: ClassVar[str] = "WriterTurnV2"
+    OMIT_NONE_FIELDS: ClassVar[frozenset[str]] = frozenset({"native_parse_failed"})
+
+    def check(self) -> None:
+        if len(self.logprobs["shape"]) != 1:
+            raise ValueError("native logprob shape must be one-dimensional")
+        if self.termination["kind"] == "native_stop":
+            if self.termination["stop_token_id"] is None or self.termination["limit"] is not None:
+                raise ValueError("native stop termination requires only a stop token")
+        elif self.termination["stop_token_id"] is not None or self.termination["limit"] is None:
+            raise ValueError("limit termination requires only a limit")
+        if self.termination["kind"] == "context_limit" and self.termination["limit"] != "context":
+            raise ValueError("context limit termination requires the context limit")
+        if self.adapter_trace is not None and (
+            {"generated_token_ids", *_TRACE_LOGPROB_KEYS, "native_on_policy_eligible"}
+            & set(self.adapter_trace)
+        ):
+            raise ValueError("native adapter trace contains a forbidden claim")
+
+
+RENDERER_STOP_TOKEN_ROLES = ("eos", "end_of_turn", "tool_response")
+
+
+@dataclass(frozen=True)
+class RendererDescriptorV1(WireRecord):
+    implementation: Annotated[str, Str(nonempty=True)]
+    template_ref: Annotated[str, Hash("artifact")]
+    tokenizer_ref: Annotated[str, Hash("artifact")]
+    tool_schema_ref: Annotated[str, Hash("artifact")]
+    stop_token_ids: Annotated[tuple[int, ...] | list[int], ListOf(Int(), unique=True)]
+    enable_thinking: Annotated[bool, Bool()]
+    suffix_rules_version: Annotated[str, Str(nonempty=True)]
+    RECORD_TYPE: ClassVar[str] = "RendererDescriptorV1"
+
+    @property
+    def tool_response_stop_token_id(self) -> int:
+        """Return the renderer-pinned token ID assigned the tool-response role."""
+        return self.stop_token_ids[RENDERER_STOP_TOKEN_ROLES.index("tool_response")]
+
+    def check(self) -> None:
+        if (
+            self.implementation != "gemma4-native-append-v1"
+            or self.stop_token_ids != (1, 106, 50)
+            or self.enable_thinking
+        ):
+            raise ValueError("renderer descriptor differs from the pinned native renderer")
+
+
+@dataclass(frozen=True)
+class TokenizerDescriptorV1(WireRecord):
+    model_id: Annotated[str, Str(nonempty=True)]
+    revision: Annotated[str, Str(nonempty=True)]
+    files_sha256: Annotated[Mapping[str, str], DictOf(Hash(None))]
+    RECORD_TYPE: ClassVar[str] = "TokenizerDescriptorV1"
+
+    def check(self) -> None:
+        if not self.files_sha256 or any(not name for name in self.files_sha256):
+            raise ValueError("tokenizer descriptor requires pinned files")
+
+
+@dataclass(frozen=True)
+class DecodingDescriptorV1(WireRecord):
+    temperature: Annotated[int, Int(equals=1)]
+    top_p: Annotated[int, Int(equals=1)]
+    top_k: Annotated[int, Int(equals=0)]
+    processors: Annotated[tuple[str, ...] | list[str], ListOf(Str(nonempty=True), unique=True)]
+    max_tokens_per_decision: Annotated[int, Int(minimum=1)]
+    seed_rule: Annotated[str, Str(nonempty=True)]
+    logprob_convention: Annotated[str, Str(nonempty=True)]
+    trainer_ratio: Annotated[str, Str(nonempty=True)]
+    RECORD_TYPE: ClassVar[str] = "DecodingDescriptorV1"
+
+    def check(self) -> None:
+        if self.seed_rule != "writer_seed ⊕ action ordinal (sha256-domain-v1)":
+            raise ValueError("unsupported decoding seed rule")
+        if self.logprob_convention != "log_softmax(model logits after model softcap), fp32":
+            raise ValueError("unsupported sampled-logprob convention")
+        if self.trainer_ratio != "recomputed, num_iterations=1":
+            raise ValueError("unsupported trainer ratio policy")
+
+
+@dataclass(frozen=True)
+class TrainingAdmissionV1(WireRecord):
+    group_id: Annotated[str, Hash(None)]
+    decision_ref: Annotated[str, Hash("artifact")]
+    batch_ref: Annotated[str, Hash("artifact")]
+    audit_version: Annotated[str, Str(nonempty=True)]
+    renderer_ref: Annotated[str, Hash(None)]
+    tokenizer_descriptor_ref: Annotated[str, Hash(None)]
+    adapter_hash_before: Annotated[str, Hash(None)]
+    adapter_hash_after: Annotated[str, Hash(None)]
+    members: Annotated[
+        tuple[Mapping[str, Any], ...] | list[Mapping[str, Any]],
+        ListOf(
+            obj(
+                member_id=Str(nonempty=True, logical=True),
+                status=Enum(frozenset({"admitted", "refused"})),
+                failed_check=UnionOf((Str(nonempty=True), type(None))),
+            ),
+            min_items=1,
+        ),
+    ]
+    RECORD_TYPE: ClassVar[str] = "TrainingAdmissionV1"
+
+    def check(self) -> None:
+        ids = tuple(member["member_id"] for member in self.members)
+        if len(ids) != len(set(ids)):
+            raise ValueError("training admission members must be unique")
+        if any(
+            (member["status"] == "admitted") != (member["failed_check"] is None)
+            for member in self.members
+        ):
+            raise ValueError("training admission failure must match member status")
 
 
 @dataclass(frozen=True)
@@ -289,7 +481,10 @@ class OutcomeV1(WireRecord):
     execution_status: Annotated[str, Enum(frozenset(EXECUTION_STATUSES))]
     stop_reason: Annotated[str | None, Str(optional=True)]
     reward_status: Annotated[str, Enum(frozenset({"pending", "available", "unavailable"}))]
-    training_eligibility: Annotated[str, Enum(frozenset({"pending", "eligible", "ineligible"}))]
+    training_eligibility: Annotated[
+        str,
+        Enum(frozenset({"pending", "eligible", "ineligible", "structurally_eligible"})),
+    ]
     candidate_checkpoint: Annotated[str | None, Hash("checkpoint", optional=True)]
     requirement_version: Annotated[str | None, Hash("private", optional=True)]
     checks: Annotated[
@@ -327,6 +522,63 @@ class RuntimeManifestV1(WireRecord):
         roles = tuple(port.role for port in self.ports)
         if set(roles) != {"sampling", "environment", "tools", "evaluator"} or len(roles) != 4:
             raise ValueError("runtime manifest requires one descriptor for each port")
+        sampler = next(port for port in self.ports if port.role == "sampling")
+        capabilities = sampler.configuration.get("capabilities", ())
+        if (
+            not isinstance(capabilities, (tuple, list))
+            or set(capabilities) - {"usage_reporting"}
+            or tuple(capabilities) != tuple(sorted(set(capabilities)))
+        ):
+            raise ValueError("RuntimeManifestV1 capabilities must remain V1-closed")
+
+
+@dataclass(frozen=True)
+class RuntimeManifestV2(WireRecord):
+    schema: Annotated[int, Int(equals=2)]
+    ports: Annotated[
+        tuple[RuntimePortDescriptorV1 | Mapping[str, Any], ...]
+        | list[RuntimePortDescriptorV1 | Mapping[str, Any]],
+        ListOf(RecordOf(RuntimePortDescriptorV1), min_items=4, max_items=4),
+    ]
+    capabilities: Annotated[
+        tuple[str, ...] | list[str],
+        ListOf(Enum(NATIVE_RUNTIME_CAPABILITIES), unique=True),
+    ]
+    renderer: Annotated[RendererDescriptorV1 | Mapping[str, Any], RecordOf(RendererDescriptorV1)]
+    tokenizer: Annotated[TokenizerDescriptorV1 | Mapping[str, Any], RecordOf(TokenizerDescriptorV1)]
+    decoding: Annotated[DecodingDescriptorV1 | Mapping[str, Any], RecordOf(DecodingDescriptorV1)]
+    RECORD_TYPE: ClassVar[str] = "RuntimeManifestV2"
+
+    def check(self) -> None:
+        roles = tuple(port.role for port in self.ports)
+        if set(roles) != {"sampling", "environment", "tools", "evaluator"} or len(roles) != 4:
+            raise ValueError("runtime manifest requires one descriptor for each port")
+        if tuple(self.capabilities) != tuple(sorted(NATIVE_RUNTIME_CAPABILITIES)):
+            raise ValueError("RuntimeManifestV2 must declare all native sampling capabilities")
+        if self.renderer.tokenizer_ref != self.tokenizer.identity():
+            raise ValueError("renderer tokenizer pin differs from tokenizer descriptor")
+
+        sampler = next(port for port in self.ports if port.role == "sampling")
+        port_capabilities = sampler.configuration.get("capabilities", ())
+        if not isinstance(port_capabilities, (tuple, list)):
+            raise TypeError("sampling port capabilities must be an array")
+        if set(port_capabilities) - NATIVE_RUNTIME_CAPABILITIES:
+            raise ValueError("sampling port declares an unsupported capability")
+        if tuple(port_capabilities) != tuple(sorted(set(port_capabilities))):
+            raise ValueError("sampling port capabilities must be sorted and unique")
+
+
+RuntimeManifest = RuntimeManifestV1 | RuntimeManifestV2
+
+
+def decode_runtime_manifest(value: Mapping[str, Any]) -> RuntimeManifest:
+    """Decode the closed set of runtime manifest record types."""
+    record_type = value.get("record_type")
+    if record_type == RuntimeManifestV1.RECORD_TYPE:
+        return RuntimeManifestV1.from_dict(dict(value))
+    if record_type == RuntimeManifestV2.RECORD_TYPE:
+        return RuntimeManifestV2.from_dict(dict(value))
+    raise ValueError("runtime adapter pin is not a registered manifest")
 
 
 @dataclass(frozen=True)

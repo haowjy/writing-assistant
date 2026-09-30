@@ -1,7 +1,9 @@
 """Shared fixture API for the rollout, forgery, privacy, and group lanes.
 
 ``build_rollout_fixture(root, *, mode="slice", raising_ports=False, sample_results=None,
-session=None)`` creates a verified entry, store, gate, environment, and default gatherers.
+session=None, entry_fixture=None)`` creates a verified entry, store, gate, environment, and
+default gatherers. ``entry_fixture`` lets focused tests run a separately admitted config
+through the same fixture setup.
 Modes are ``slice`` (writer/tool/author/check), ``none`` (writer-only reward),
 ``feedback`` (mandatory feedback plus requirement supersession), ``token_limited`` (a real
 generated-token budget), ``total_token_limited`` (a real total-token budget), and ``halt``
@@ -235,10 +237,16 @@ class RolloutFixture:
         self.checkpoint_ids.append(result.runtime.checkpoint_id)
 
 
-def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
+def _entry_fixture(
+    mode: str, evaluator_family: str, *, rendering_overrides=None, public_records=()
+) -> EntryFixture:
     if mode == "halt":
-        return make_entry_fixture()
-    fixture = make_outcome_fixture()
+        return make_entry_fixture(
+            rendering_overrides=rendering_overrides, public_records=public_records
+        )
+    fixture = make_outcome_fixture(
+        rendering_overrides=rendering_overrides, public_records=public_records
+    )
     node = fixture.graph.node(fixture.node_id)
     base_check = node.checks["nonempty"]
     family = FAMILIES[evaluator_family]
@@ -276,14 +284,14 @@ def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
     )
     entry_contract = contract.entry_contract
     requirement_ref = None
-    if mode in {"slice", "feedback"}:
+    if mode in {"slice", "feedback", "triple_feedback"}:
         requirement_ref = fixture.reader.add(
             {"requirements": {"baseline": LEDGER_CANARY}}, private=True
         )
         entry_contract = replace(entry_contract, requirement_version=requirement_ref)
     interaction = contract.interaction_contract
     budgets = contract.budget_contract
-    if mode in {"slice", "feedback"}:
+    if mode in {"slice", "feedback", "triple_feedback"}:
         author_packet = AuthorPacketV1(
             preferences={"choice_key_91": "amber", "private_key_91": AUTHOR_PACKET_CANARY},
             requirements={},
@@ -293,19 +301,29 @@ def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
             tool_allowlist=(*entry_contract.tool_allowlist, "ask_author"),
         )
         feedback = ()
-        if mode == "feedback":
+        if mode in {"feedback", "triple_feedback"}:
             update = RequirementUpdateV1(
                 id="revised", supersedes="baseline", replacement="Revise for " + LEDGER_CANARY
             )
             fixture.reader.private[update.identity()] = update.to_dict()
-            feedback = (
+            feedback = [
                 {
                     "id": "feedback-1",
                     "utterance": "Revise the draft to satisfy the updated requirement.",
                     "prerequisite_check_ids": [],
                     "requirement_update_ref": update.identity(),
                 },
-            )
+            ]
+            if mode == "triple_feedback":
+                feedback.append(
+                    {
+                        "id": "feedback-2",
+                        "utterance": "Make one more revision.",
+                        "prerequisite_check_ids": [],
+                        "requirement_update_ref": None,
+                    }
+                )
+            feedback = tuple(feedback)
         script = ScriptedAuthorV1(
             answers={
                 "door": {
@@ -338,12 +356,17 @@ def _entry_fixture(mode: str, evaluator_family: str) -> EntryFixture:
             contract,
             entry=entry_contract,
             interaction=interaction,
-            budgets=replace(budgets, max_author_calls=2),
+            budgets=replace(budgets, max_author_calls=max(2, len(feedback) + 1)),
         )
     elif mode == "token_limited":
         entry = replace(
             contract,
             budgets=replace(budgets, max_generated_tokens=100),
+        )
+    elif mode == "context_token_limited":
+        entry = replace(
+            contract,
+            budgets=replace(budgets, max_context_tokens=100),
         )
     elif mode == "total_token_limited":
         entry = replace(
@@ -451,14 +474,19 @@ def build_rollout_fixture(
     sample_results: tuple[SampleResult, ...] | None = None,
     evaluator_family: str = "deterministic-file-v1",
     session=None,
+    entry_fixture: EntryFixture | None = None,
+    rendering_overrides=None,
+    public_records=(),
 ) -> RolloutFixture:
     """Build the store, fresh gate/environment, runtime and scripted/raising ports."""
     if mode not in {
         "slice",
         "none",
         "feedback",
+        "triple_feedback",
         "token_limited",
         "total_token_limited",
+        "context_token_limited",
         "halt",
     }:
         raise ValueError("unsupported rollout fixture mode")
@@ -466,11 +494,18 @@ def build_rollout_fixture(
     root.chmod(0o700)
     if evaluator_family not in FAMILIES:
         raise ValueError("unsupported evaluator family")
-    entry = _entry_fixture(mode, evaluator_family)
+    if entry_fixture is not None and (rendering_overrides is not None or public_records):
+        raise ValueError("entry_fixture already fixes rendering and public records")
+    entry = entry_fixture or _entry_fixture(
+        mode,
+        evaluator_family,
+        rendering_overrides=rendering_overrides,
+        public_records=public_records,
+    )
     if sample_results is None:
         sample_results = (
             _scripted_samples()
-            if mode in {"slice", "feedback"}
+            if mode in {"slice", "feedback", "triple_feedback"}
             else (
                 SampleResult(
                     {"role": "assistant", "content": "A complete draft.", "tool_calls": []}
@@ -484,7 +519,7 @@ def build_rollout_fixture(
     runtime = env.open(checkpoint)
     counter = PortCallCounter(raising=raising_ports)
     sampler_inputs = []
-    if mode == "feedback" and len(sample_results) == 4:
+    if mode in {"feedback", "triple_feedback"} and len(sample_results) == 4:
         sample_results += (
             SampleResult(
                 {

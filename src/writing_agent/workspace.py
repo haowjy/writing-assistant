@@ -4,9 +4,39 @@ This is a path-constrained filesystem interface, not an OS security sandbox.
 Only the harness should have write access while a task runs.
 """
 
+import errno
 from pathlib import Path
 
 from writing_agent.task_graph_contracts import TOOL_SCHEMAS
+
+
+class WorkspaceInfrastructureError(RuntimeError):
+    """Host filesystem failure, not a candidate tool mistake."""
+
+
+def is_candidate_filesystem_error(workspace: "Workspace", arguments: dict, error: OSError) -> bool:
+    """Return whether a filesystem failure is explained by a requested workspace path."""
+    if error.errno in {errno.ENOENT, errno.ENOTDIR, errno.EISDIR, errno.ENAMETOOLONG}:
+        return True
+    if error.errno != errno.EEXIST:
+        return False
+
+    path = arguments.get("path")
+    if not isinstance(path, str):
+        return False
+    try:
+        target = workspace.resolve(path)
+    except (OSError, ValueError):
+        return False
+
+    ancestor = target.parent
+    while ancestor != workspace.root:
+        if ancestor.is_file():
+            return True
+        if not ancestor.is_relative_to(workspace.root):
+            return False
+        ancestor = ancestor.parent
+    return False
 
 
 class Workspace:
@@ -120,5 +150,11 @@ def dispatch(workspace: Workspace, name: str, arguments: dict) -> dict:
         return {"ok": False, "valid": False, "error": str(exc)}
     try:
         return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
-    except (OSError, ValueError, TypeError) as exc:
+    except OSError as exc:
+        if is_candidate_filesystem_error(workspace, arguments, exc):
+            return {"ok": False, "valid": True, "error": str(exc)}
+        raise WorkspaceInfrastructureError(
+            f"Workspace filesystem failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    except (ValueError, TypeError) as exc:
         return {"ok": False, "valid": True, "error": str(exc)}

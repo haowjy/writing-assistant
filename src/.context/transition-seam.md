@@ -35,34 +35,39 @@ Imports go downward only. `tests/test_task_graph_imports.py` enforces this:
 
 | Rank | Modules |
 |---|---|
-| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_operation` |
-| 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts` |
-| 2 | `task_graph_store` |
-| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `_author`, `_outcome`, `_context` |
+| 0 | `task_graph`, `task_graph_errors`, `task_graph_wire`, `task_graph_payloads`, `task_graph_record_contracts`, `task_graph_records`, `task_graph_group_records`, `task_graph_training_records`, `task_graph_native_contracts`, `task_graph_operation`, `task_graph_token_ledger` |
+| 1 | `task_graph_accounting`, `task_graph_sampling`, `task_graph_scripted`, `task_graph_calls`, `task_graph_tool_outcomes`, `task_graph_compaction`, `task_graph_contracts`, `task_graph_admission`, `task_graph_evaluation`, `task_graph_controller`, `task_graph_artifacts`, `task_graph_context_roots`, `task_graph_group_index` |
+| 2 | `task_graph_store`, `task_graph_closure` |
+| 3 | `task_graph_transition`, `task_graph_derive_common`, `task_graph_derive_entry`, `task_graph_derive_writer`, `task_graph_derive_author`, `task_graph_derive_outcome`, `task_graph_derive_context`, `task_graph_eligibility` |
 | 4 | `task_graph_gate`, `task_graph_group_contract` |
-| 5 | `task_graph_environment` |
-| 6 | `task_graph_group`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout` |
+| 5 | `task_graph_environment`, `task_graph_training_layout` |
+| 6 | `task_graph_group`, `task_graph_training_export`, `task_graph_ports`, `task_graph_local`, `task_graph_composition`, `task_graph_gatherers`, `task_graph_rollout`, `task_graph_probe_tasks` |
 
+- **Every `task_graph*.py` file needs a rank.** The test globs the package, so a new core
+  module without an entry in `LAYER_RANKS` fails. It also walks every import in the AST,
+  including imports inside functions, and refuses any `task_graph*` import of the model stack
+  (`torch`, `transformers`, `peft`, `trl`, …) or of `grpo*`, `native_*`, `inference` or
+  `training_stages`. Tokenizer and trainer code stays on the adapter side.
 - **`TYPE_CHECKING` imports count for layer order, not for cycles.** The layer test walks
   type-only imports; the SCC test ignores them. A type-only import is not a way around the
   layer order. Import the type from its lower home at runtime (for example, `GroupSpecV1`
   from `task_graph_record_contracts`, not from `group_contract`).
 - No lazy imports to dodge a cycle. No `from` import of an underscore name across task-graph
   modules.
-- A new seam module goes into both `NEW_SEAM_MODULES` and `LAYER_RANKS`. A module-name-pattern
-  rule forbids `task_graph_gatherers` and
-  `task_graph_rollout` (and any submodule of either) from importing
-  `task_graph_transition`, where `LineageView` lives (I6).
+- A new seam module also goes into `NEW_SEAM_MODULES`. A module-name-pattern rule forbids
+  `task_graph_gatherers` and `task_graph_rollout` (and any submodule of either) from
+  importing `task_graph_transition`, where `LineageView` lives (I6).
 - `derive_entry` may not import the store, ports, local, environment or any filesystem
   module. Derives in general read only the view, the input and the
   `ArtifactReader` (I7).
 
 The core keeps pure helpers in the same concern modules:
-- `derive_writer` uses `decode_writer_turn_sampling` and `bind_group_sampling_claims` from
+- `derive_writer` uses `decode_and_bind_sampling` and `bind_group_sampling_claims` from
   `task_graph_sampling`, and `validate_ask_semantics` from `task_graph_scripted`;
 - `derive_author` uses `resolve_script_reply`, `scripted_author_reply`,
   `ScriptCoverageError` and `validate_ask_semantics` from `task_graph_scripted`;
-- `derive_outcome` uses `CURRENT_ELIGIBILITY` from `task_graph_sampling`;
+- `derive_outcome` uses `decide_eligibility` from `task_graph_eligibility`, which reads
+  committed writer-turn and manifest evidence to persist the ordered structural reason;
 - the gatherers use `ArtifactSink` and `persist_logprob_trace` from `task_graph_sampling`,
   and `scripted_author_reply` from `task_graph_scripted`.
 
@@ -75,16 +80,20 @@ Choose the module by concern:
 
 | Module | Holds |
 |---|---|
-| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, `RuntimePortDescriptorV1`, and `RuntimeManifestV1`; registries and reference closure |
+| `task_graph_records` | New-core input, outcome and context `WireRecord`s, including `ContextContentV1`, `ContextRevisionV1`, runtime manifest V1/V2 and descriptor records, `WriterTurnV1`/`WriterTurnV2`, and `TrainingAdmissionV1` (see [Native training records](#native-training-records)); registries and reference closure |
 | `task_graph_group_records` | Pure group result and credit `WireRecord` classes (`GroupDecisionV1`, `GroupAdvantageV1`, `GroupSegmentCreditV1`, and related records) |
+| `task_graph_training_records` | Codec-registered `TrainingBatchV1` record for a finalized group export |
 | `task_graph` | Core environment records and context materialization |
 | `task_graph_record_contracts` | Sealed contracts with binding rules: `GroupSpecV1`, `GroupMemberSpecV1`, `ContextPolicyV1`, `ExecutionVersionsV1`, `SEMANTICS_V1`, `GroupError`, `CompactionError` |
 | `task_graph_payloads` | `PayloadCodec`s for shared payload shapes without a Python record class: ledgers, author/check requests, check evidence, reward/eligibility, and group seeds |
 
-`WriterTurnV1` currently contains `action_id`, `context_revision_ref`, `raw_output_ref`,
+`WriterTurnV1` contains `action_id`, `context_revision_ref`, `raw_output_ref`,
 `usage`, `adapter_trace`, and `message`; optional trace context claims are bound when present.
 There is no separate writer-request record. `EnvironmentStateV1.history` stores nonnegative
 `action_count` and `tool_result_count`; tool-queue entries require a `rejection` field.
+`SampledMessageV1` keeps optional reasoning/thinking side channels for eligibility while
+omitting them when absent, preserving prior wire identities. The native training records
+are described in the next section.
 
 The steps:
 
@@ -128,6 +137,94 @@ artifact. `put_artifact` refuses record domains, and it decodes every registered
 `ValueError` at write time and never reaches disk. Chained context uses `context_node` and
 `context_revision` reference kinds in the shared closure; no version-dependent context
 storage path remains.
+
+## Native training records
+
+Phase 8 adds record types rather than changing old ones. V1 records and their identities
+are unchanged, and `transition_semantics` stays `task-graph-derive-v1`.
+
+- **`RuntimeManifestV2`** declares the capabilities `usage_reporting`,
+  `native_token_ledger` and `sampled_logprobs`, all required. It also carries
+  `RendererDescriptorV1` (template, tokenizer and tool-schema refs, stop token IDs,
+  `enable_thinking`, suffix-rules version), `TokenizerDescriptorV1` (model, revision, file
+  hashes) and `DecodingDescriptorV1` (sampling settings, `max_tokens_per_decision`, seed rule,
+  logprob convention). `task_graph_native_contracts` owns the one binding of manifest,
+  sealed policy pins and context-root rendering pins. Seal and derive both call it.
+- **`WriterTurnV2`** has the `WriterTurnV1` fields plus byte refs to the full input token IDs
+  and the generated IDs (u32-le, codec in `task_graph_token_ledger`), their counts, f32
+  logprobs, a `termination` claim, `sampling_pins`, and an optional `native_parse_failed`.
+  That field's codec accepts only `True` or absent, never `False`. Masks are never stored:
+  the export derives them.
+- **One decoder.** `decode_and_bind_sampling` dispatches on the record type and refuses a
+  V2 turn under a V1 manifest, and the reverse. For V2 it checks counts against usage, the
+  logprob shape, the sealed pins, and exact chaining. On the same context root,
+  `input_k` must begin with `input_{k-1} ++ generated_{k-1}`. Any intervening
+  `context_changed` event, `carry` included, starts a new root (`task_graph_context_roots`).
+- **Termination is derived, not trusted.** `_allowed_tokens` recomputes the cap from
+  committed budgets and the pinned decoding descriptor. The cap is the minimum of
+  per-decision, remaining generated and remaining context tokens, with ties going to
+  decision, then generated budget, then context. `_validate_termination` then requires the
+  adapter's claim to be the class the counts imply. An adapter that stops early and claims
+  `token_limit` is rejected at the first differing path, so it cannot manufacture an
+  `incomplete` outcome. A zero-generation `context_limit` turn may carry no content, calls
+  or raw-output ref.
+- **Writer failures end the lineage `incomplete`; they do not halt the group.**
+  `termination_stop_reason` maps each validated turn to a stop reason, in this order:
+  1. `token_limit` → `decision_token_limit`, `generated_tokens_budget` or
+     `context_tokens_budget`, from its `limit`;
+  2. `context_limit` → `context_tokens_budget`;
+  3. `native_parse_failed` → `unparsed_tool_call`;
+  4. calls without a `<|tool_response>` stop → `unterminated_tool_call`;
+  5. a `<|tool_response>` stop without calls → `unterminated_final_answer`.
+
+  Rule 5 fired on real weights in P1: an empty turn after a successful `write_file` ended
+  the member `incomplete` with reward 0. The member stayed structurally eligible and
+  trained as a negative example, as designed.
+
+  A mapped turn commits straight to terminal state, using the overrun path's
+  candidate-checkpoint shape. A parse failure under a token limit therefore reports the
+  limit.
+- **Parse failures are committed, not raised.** When the shared native parser reports
+  malformed call text, the turn commits the decoded text as content, with no calls and
+  `native_parse_failed = True`. The adapter makes this claim, and the tokenizer-backed audit
+  re-derives it with the same `parse_native_response`. *Rejected:* sending the raw call to
+  intake as `invalid_arguments_json` to keep the lineage alive. That needs an exact replay
+  of a call that never parsed, and ending the lineage matches the legacy
+  `candidate_invalid` rule.
+- **Call IDs belong to the core.** `task_graph.tool_call_id(action_id, i)` returns
+  `<lineage>:call:<ordinal>:<i>`. The core keeps a lineage-wide duplicate-raw-ID rule
+  (`view.raw_call_ids`) that was written for API models, which emit unique IDs. Gemma's
+  parser emits `call_0`, `call_1`, … afresh in each response, so every tool-calling turn
+  after the first collided. `native_protocol.parse_native_response` therefore sets each
+  parsed call's raw ID to its core ID (`bind_native_tool_call_ids`), and the sampler, the
+  audit and the scripted CPU backend all parse through it. Do not relax the core duplicate
+  check to fit a parser. Bind IDs at the adapter instead.
+- **Structural eligibility.** `task_graph_eligibility.decide_eligibility(view, reader)` is
+  pure, and `derive_reward` persists its first failing reason, checked in this order:
+  `native_action_trace_unavailable`, `manifest_capability_missing`,
+  `group_training_mode_absent`, `multi_segment_context`, `budget_overrun`,
+  `reasoning_content_present`, `no_sampled_actions`, `execution_not_valid`. If none
+  applies, the status is `structurally_eligible` with reason `native_evidence_structural`.
+  No derive writes the reserved `eligible` status. Every scripted or V1 lineage records
+  `native_action_trace_unavailable`. `budget_overrun` mirrors the export, so an
+  eligible member never fails export in `finalize`.
+- **Only an all-admitted `TrainingAdmissionV1` makes a member trainable.** Structural
+  eligibility is what the pure core can prove. Admission is what the tokenizer-backed audit
+  (`native_audit.audit_training_batch`) proves by re-deriving every token from the committed
+  context. It records the result in the store, per member, as `admitted` or `refused` with
+  its `failed_check`. `native_audit.require_training_admission` raises unless every member
+  is `admitted`. `TaskGraphRollouts` calls it before any rows reach TRL, and the offline
+  inspector requires the stored record. Any future consumer of `TrainingBatchV1`, such as
+  an SFT export or another trainer, must do the same. Loading a batch proves nothing about
+  admission. A refusal is infrastructure: the run halts, the record is kept, and nothing is
+  relabeled.
+- **Export is a projection, not a derive.** `task_graph_training_export` reads a settled
+  native group's V2 chains and returns `TrainingBatchExportV1`: a `TrainingBatchV1` plus its
+  u32 token, u8 mask and f64-le advantage artifacts (`advantage_f64_ref`). Canonical JSON
+  refuses floats. The layout is owned by `task_graph_training_layout`, which segment credit
+  and the audit also use. A trailing zero-generation `context_limit` turn is kept only as an
+  audit ref and never enters the sequence or the mask. Refusals carry
+  `TrainingExportError.reason_code`.
 
 ## Writing a derive
 
@@ -259,25 +356,26 @@ An empty required set never counts as a pass.
     `awaiting_checks`; check-result transitions stay within that active batch
     (`tests/test_task_graph_derive_outcome.py`).
 - **O1: a writer turn without sampling evidence is charged 0 tokens.** Entries without
-  generated- or total-token limits seed no corresponding counters. `derive_writer_turn`
-  requires usage evidence under a token limit (missing usage is
-  `AdapterContractProjectionError`) and binds usage to token IDs only when IDs are present,
-  matching the persisted sampling evidence contract.
+  usage-charged limits seed no corresponding counters. `BudgetContractV1.usage_charged_limits`
+  is the sole owner of generated, cumulative total, and context-token limits. The writer
+  derive requires their corresponding usage evidence; V2 additionally binds usage counts to
+  token IDs and charges `context_tokens` as the per-turn high-water mark
+  `prompt_tokens + completion_tokens`, never as a cumulative sum. Reaching the high-water cap
+  does not drain a cumulative controller budget: the next native sample must still be allowed
+  to return the zero-generation `context_limit` record that seals the lineage incomplete.
   - **The contract can declare a token limit.** `BudgetContractV1.max_generated_tokens` is
     optional. It is listed in `_Contract.OMIT_NONE_FIELDS`, so it is left out of the
     canonical form when `None`, and every existing contract keeps its identity. This field
     departs from the design package. It exists so that the `token_limited` rollout fixture
     carries a real limit, which makes missing usage and `budget_charged` reachable.
-  - **Why a hook and not a new contract version.** A `BudgetContractV2` would force
-    version dispatch in admission and `derive_entry` for one optional field. A token-limits
-    sub-contract becomes the right shape once `total_tokens` limits arrive.
-  - **Open before native training:** admission accepts a token-limited node
-    whatever adapter later runs it, and the only guard is the derive's
-    `AdapterContractError`, raised after the port call. In a group, that becomes a member
-    failure mid-rollout. The follow-up adds a usage-reporting capability to
-    `RuntimeManifestV1`. It refuses, at seal and bind time (`require_seal`,
-    `GroupCoordinatorV1.seal`), a manifest without that capability when the entry budget
-    has token limits. It also wires `total_tokens` the same way as `generated_tokens`.
+  - **Why optional fields and not a new contract version.** A `BudgetContractV2` would force
+    version dispatch in admission and `derive_entry` for optional token limits. Each unset
+    limit is omitted from canonical form, preserving existing contract identities.
+  - **Token-limited seals:** admission remains adapter-independent, but a real group refuses
+    a manifest without `usage_reporting` before sampling. V1 keeps that single capability;
+    V2 declares `usage_reporting`, `native_token_ledger` and `sampled_logprobs`, and a native
+    group requires all three plus rendering and policy-pin agreement. `total_tokens` is a
+    cumulative compute budget; `max_context_tokens` is the independent high-water context cap.
 - **One validator for the sampled message, not a sentinel.** The records codec and
   `task_graph_calls` once accepted different values for the same message, so the store
   could persist a `WriterTurnV1` that `parse_calls` rejects. That is a producer/replay split
