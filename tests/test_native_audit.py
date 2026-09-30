@@ -526,6 +526,26 @@ class NativeAuditLyingAdapterTests(unittest.TestCase):
         self._assert_durable_refusal(store, admission, expected)
         self._assert_offline_refusal(store, self.bad_tokenizer_spec.group_id, admission)
 
+    def test_unexpected_audit_failure_uses_a_nongeneric_check_label(self):
+        from writing_agent.native_audit import audit_training_batch
+
+        store = self._clone_store(self.fixture.store, "unexpected-audit-error")
+        with patch(
+            "writing_agent.native_audit._member_turns",
+            side_effect=RuntimeError("injected audit host fault"),
+        ):
+            admission = audit_training_batch(
+                store,
+                self.spec,
+                self.decision,
+                self.tokenizer,
+                adapter_hash_before=self.policy["behavior_policy_ref"],
+                adapter_hash_after=self.policy["behavior_policy_ref"],
+                tokenizer_root=TOKENIZER_PATH,
+            )
+        self.assertEqual(admission.members[0]["status"], "refused")
+        self.assertEqual(admission.members[0]["failed_check"], "audit_unexpected_exception")
+
     def test_exported_token_layout_defense_is_a_core_unreachable_guard(self):
         from writing_agent.native_audit import _batch_member_matches, _member_turns
         from writing_agent.task_graph_gate import LineageGate, StoreArtifactReader

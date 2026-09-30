@@ -319,7 +319,7 @@ def _derive_admission(
             failure = exc.check
         except Exception:
             # Any unverifiable host or adapter evidence fails closed as infrastructure.
-            failure = "renderer_initial_context"
+            failure = "audit_unexpected_exception"
         statuses.append(
             {
                 "member_id": member_spec.member_id,
