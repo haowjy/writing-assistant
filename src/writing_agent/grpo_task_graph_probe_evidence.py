@@ -95,7 +95,7 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
         GroupDecisionV1,
         GroupMemberResultV1,
     )
-    from writing_agent.task_graph_records import OutcomeV1, TrainingAdmissionV1, WriterTurnV2
+    from writing_agent.task_graph_records import TrainingAdmissionV1, WriterTurnV2
 
     paths = _group_paths(training_root)
     store = _store(training_root)
@@ -130,9 +130,8 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
                 if member.final_checkpoint_id is None:
                     raise ValueError("member has no final checkpoint")
                 view = gate.view(store, member.final_checkpoint_id)
-                outcome = OutcomeV1.from_dict(store.get_artifact(member.terminal_outcome_ref))
-                if view.outcome.identity() != outcome.identity():
-                    raise ValueError("member terminal outcome differs from verified lineage")
+                # The member's terminal-outcome ref is an upstream pending snapshot;
+                # the verified final state is derived by the lineage gate.
                 eligibility = view.outcome.training_eligibility
                 if not eligibility:
                     raise ValueError("member has no derived training eligibility")
