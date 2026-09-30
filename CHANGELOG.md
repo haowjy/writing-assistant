@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Document how to run the Phase 8 task-graph probe and read its evidence
+  ([task-graph training](docs/task-graph-training.md)): prerequisites, frozen ceilings, the
+  `result.json` criteria and verdicts, and what a scripted CPU dry run cannot show. The P1
+  result is pending.
+
 - Sort native tool-outcome reports by writer-action ordinal and call index.
 
 - Name the outside-packet canary for its actual scope: detecting a bulk private-store dump,

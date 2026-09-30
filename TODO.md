@@ -8,8 +8,11 @@ Optional ideas live in [work/FUTURE.md](work/FUTURE.md).
 The goal is better long-form project memory and effective use of large writing
 projects, supported by a maintained wiki, with better prose alongside it.
 
-Task-graph Phase 8 prerequisites and follow-ups are tracked in the
+Task-graph Phase 8 prerequisites are tracked in the
 [Phase 8 section of the work checklist](work/TODO.md#task-graph-environment-before-phase-8-training).
+Its follow-ups (the P1 result and S14 legacy retirement) are in
+[src/.context/TODO.md](src/.context/TODO.md); run the probe with
+[task-graph training](docs/task-graph-training.md).
 
 ## Next: DAPO over two complete training passes
 

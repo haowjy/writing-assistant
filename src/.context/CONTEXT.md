@@ -119,10 +119,11 @@ retains its smoke-evaluation and training-format workflows.
   fixed visible-message summary, complete-exchange selection, immutable context
   operation evidence, and context byte accounting.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
-  resolves the sealed group environment and defines the member-result, decision,
-  advantage and credit records and the typed scripted-terminal and execution-failure
-  records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their binding rules live in
-  `task_graph_record_contracts.py`.
+  resolves the sealed group environment, validates group policy and derives seeds;
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py) defines the
+  member-result, decision, advantage and credit records and the typed scripted-terminal and
+  execution-failure records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their
+  binding rules live in `task_graph_record_contracts.py`.
   [task_graph_group.py](../writing_agent/task_graph_group.py) starts each member as its own
   new-core lineage through `RolloutEnvironment.start_member` (a retry resumes through
   `open_head`). It admits collected results, and results finalized after a reopen, against
@@ -157,6 +158,25 @@ retains its smoke-evaluation and training-format workflows.
   leakage of an admitted check spec. Its sibling scope reports per-member input reconstruction
   from that member's verified lineage, not general absence of unplanted shared or sibling-derived
   text.
+- **Task-graph training (Phase 8).** [native_gemma.py](../writing_agent/native_gemma.py)
+  is the native `SampleBackend` and renderer, and
+  [native_protocol.py](../writing_agent/native_protocol.py) owns the Gemma suffix rules,
+  stop set, shared response parse and call-ID binding
+  ([rollout-execution.md](rollout-execution.md)).
+  [grpo_task_graph.py](../writing_agent/grpo_task_graph.py) owns `TaskGraphRollouts`, TRL's
+  `rollout_func`. For each step it asserts the active adapter and pins the behavior policy,
+  claims the step and seals one native group. It then runs the members serially on the live
+  model, finalizes, re-hashes the adapter, audits and admits, and returns `prompt_ids`,
+  `completion_ids`, `env_mask` and `rollout_rewards = advantage_f64`, with
+  `scale_rewards="none"`. It also owns the task-graph experiment identity, which binds every
+  `grpo*`, `native_*` and `task_graph*` source file, and the model-free resume preflight.
+  [grpo_task_graph_observer.py](../writing_agent/grpo_task_graph_observer.py) records TRL's
+  loss inputs and recomputed logprobs, read-only.
+  [training_stages.py](../writing_agent/training_stages.py) is the generic stage supervisor:
+  subprocess stages, wall-time kill, resource records and the exclusive attempt marker.
+  [grpo_task_graph_probe.py](../writing_agent/grpo_task_graph_probe.py) runs the P1 phases,
+  and [grpo_task_graph_probe_evidence.py](../writing_agent/grpo_task_graph_probe_evidence.py)
+  computes `result.json`. See [task-graph training](../../docs/task-graph-training.md).
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
