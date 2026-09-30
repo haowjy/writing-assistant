@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
 import struct
 import subprocess
@@ -154,11 +155,33 @@ def _prepared(descriptors, *, messages=None, ordinal=0, history=None, max_contex
     )
 
 
+class NativeGemmaImportTests(unittest.TestCase):
+    def test_torch_and_transformers_import_only_when_sampling(self):
+        source_root = Path(__file__).resolve().parents[1]
+        env = dict(os.environ, PYTHONPATH=str(source_root / "src"))
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, writing_agent.native_gemma; "
+                "assert 'torch' not in sys.modules; "
+                "assert 'transformers' not in sys.modules",
+            ],
+            check=True,
+            cwd=source_root,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+
+@unittest.skipUnless(
+    all(importlib.util.find_spec(name) is not None for name in ("torch", "transformers", "peft")),
+    "requires optional torch, transformers, and peft model dependencies",
+)
 class NativeGemmaTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if not TOKENIZER_PATH.is_dir():
-            raise unittest.SkipTest("the pinned Gemma tokenizer is not cached")
         import torch
         from transformers import AutoTokenizer
 
@@ -233,24 +256,6 @@ class NativeGemmaTests(unittest.TestCase):
         self.assertEqual(
             result.termination,
             {"kind": "context_limit", "stop_token_id": None, "limit": "context"},
-        )
-
-    def test_torch_and_transformers_import_only_when_sampling(self):
-        source_root = Path(__file__).resolve().parents[1]
-        env = dict(os.environ, PYTHONPATH=str(source_root / "src"))
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import sys, writing_agent.native_gemma; "
-                "assert 'torch' not in sys.modules; "
-                "assert 'transformers' not in sys.modules",
-            ],
-            check=True,
-            cwd=source_root,
-            env=env,
-            capture_output=True,
-            text=True,
         )
 
     def test_tiny_gemma_samples_three_turns_through_the_v2_rollout_driver(self):

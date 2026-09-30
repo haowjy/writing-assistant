@@ -1,6 +1,7 @@
 """Tokenizer-backed contracts for supported task-graph native suffixes."""
 
 import copy
+import importlib.util
 import json
 import os
 import subprocess
@@ -121,6 +122,34 @@ def _result(result, *, ok=True, valid=None):
     return json.dumps(response, separators=(",", ":"))
 
 
+class NativeProtocolImportTests(unittest.TestCase):
+    def test_native_protocol_import_does_not_load_model_libraries(self):
+        script = """
+import builtins
+original = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name.split('.')[0] in {'torch', 'transformers'}:
+        raise AssertionError(f'eager model import: {name}')
+    return original(name, *args, **kwargs)
+builtins.__import__ = guarded
+import writing_agent.native_protocol
+"""
+        env = os.environ.copy()
+        env["PYTHONPATH"] = "src"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            check=False,
+            env=env,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
+@unittest.skipUnless(
+    importlib.util.find_spec("transformers") is not None,
+    "requires the optional transformers dependency for tokenizer-backed tests",
+)
 class NativeProtocolTokenizerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -161,28 +190,6 @@ class NativeProtocolTokenizerTests(unittest.TestCase):
         full = encode(messages + list(external), True)
         self.assertEqual(full[: len(rendered_prefix)], rendered_prefix)
         self.assertEqual(suffix, full[len(rendered_prefix) :])
-
-    def test_native_protocol_import_does_not_load_model_libraries(self):
-        script = """
-import builtins
-original = builtins.__import__
-def guarded(name, *args, **kwargs):
-    if name.split('.')[0] in {'torch', 'transformers'}:
-        raise AssertionError(f'eager model import: {name}')
-    return original(name, *args, **kwargs)
-builtins.__import__ = guarded
-import writing_agent.native_protocol
-"""
-        env = os.environ.copy()
-        env["PYTHONPATH"] = "src"
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            check=False,
-            env=env,
-            text=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_stop_set_is_the_pinned_native_stop_set(self):
         stop_ids = [self._token_id(token) for token in NATIVE_STOP_TOKENS]

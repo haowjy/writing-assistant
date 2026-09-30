@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Skip tokenizer/model-backed native tests when their optional dependencies are absent, while
+  keeping dependency-free import checks active.
+
 - Native token history and the u32 ledger codec now have shared owners. Context ancestry
   checks require the sample or rollout-start boundary to be present; structural eligibility
   treats every intervening context event as a multi-segment member.
