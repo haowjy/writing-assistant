@@ -25,6 +25,9 @@
   exactly, and halt the CPU trace check on protocol-shaped tool-result errors while recording
   per-call outcomes and final-file changes.
 
+- Derive tool-call rejection codes from exact committed error text and make P1 criterion 1
+  fail on protocol-shaped native-intake rejections in any member.
+
 - Treat Transformers 5's unset neutral generation controls as no-ops while continuing to
   refuse non-neutral defaults; persist failed trace timings as canonical nanoseconds.
 

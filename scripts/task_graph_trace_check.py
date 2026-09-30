@@ -340,7 +340,6 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         spec,
         decision,
         trace,
-        initial_files=fixture.runtime.state.files,
     )
     tool_result_errors = tool_result_protocol_errors(trace.events)
     tool_result_failure = (
@@ -426,7 +425,6 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         decision,
         trace,
         admission=admission,
-        initial_files=fixture.runtime.state.files,
     )
     report["both_members_incomplete_same_reason"] = (
         same_incomplete_reason(report["members"]) is not None
@@ -448,7 +446,7 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
                 "message": str(exc),
                 "failed_checks": [item["failed_check"] for item in refused],
             }
-            failure["protocol_shape"] = classify_protocol_shape(failure)
+        failure["protocol_shape"] = getattr(exc, "protocol_shape", classify_protocol_shape(failure))
         report["halt"] = failure
         report["status"] = "halt"
         _write_halt(output_dir, state, failure, members=report["members"])

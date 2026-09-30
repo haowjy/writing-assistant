@@ -22,6 +22,7 @@ from writing_agent.task_graph_calls import (
     ToolQueueEntry,
     apply_effect,
     parse_calls,
+    rejection_message,
     tool_effect_contract,
 )
 from writing_agent.task_graph_controller import next_step
@@ -60,8 +61,6 @@ from writing_agent.task_graph_transition import (
     Transition,
 )
 from writing_agent.task_graph_wire import decode_canonical_value
-
-READ_BUDGET_EXCEEDED = "Read-token budget exceeded"
 
 
 def writer_action_id(view: LineageView) -> str:
@@ -347,7 +346,14 @@ def _build_tool_queue(
     prior_raw_ids: frozenset[str],
 ) -> list[ToolQueueEntry]:
     if not turn.message.tool_calls_was_list:
-        return [ToolQueueEntry(f"{id_prefix}:0", "invalid_call", {}, "tool_calls must be an array")]
+        return [
+            ToolQueueEntry(
+                f"{id_prefix}:0",
+                "invalid_call",
+                {},
+                rejection_message("tool_calls_not_array"),
+            )
+        ]
 
     ask = None
     if view.mode.ask_semantics:
@@ -481,7 +487,11 @@ def derive_tool_result(view: LineageView, obs: ToolObservationV1, reader: Any) -
             "read_tokens", 0
         )
         if read_charge > remaining_reads:
-            observation = {"ok": False, "valid": True, "error": READ_BUDGET_EXCEEDED}
+            observation = {
+                "ok": False,
+                "valid": True,
+                "error": rejection_message("read_token_budget_exceeded"),
+            }
             files_after = dict(view.state.files)
             read_charge = 0
 

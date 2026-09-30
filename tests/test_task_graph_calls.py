@@ -9,10 +9,13 @@ from unittest.mock import patch
 
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_calls import (
+    PROTOCOL_SHAPED_REJECTION_CODES,
+    REJECTION_MESSAGES,
     ToolQueueEntry,
     apply_effect,
     intake_message,
     parse_calls,
+    rejection_code_for_message,
     tool_effect_contract,
     validate_ask_shape,
 )
@@ -257,6 +260,27 @@ def _targeted_cases():
 
 
 class IntakeAndParserTests(unittest.TestCase):
+    def test_rejection_code_lookup_uses_exact_committed_text(self):
+        for code, message in REJECTION_MESSAGES.items():
+            with self.subTest(code=code):
+                self.assertEqual(rejection_code_for_message(message), code)
+        self.assertEqual(REJECTION_MESSAGES["duplicate_id"], "Duplicate tool call id")
+        self.assertEqual(rejection_code_for_message("Duplicate tool call id"), "duplicate_id")
+        self.assertIsNone(rejection_code_for_message("duplicate tool call id"))
+        self.assertIsNone(rejection_code_for_message("prefix: Duplicate tool call id"))
+        self.assertIsNone(rejection_code_for_message("unknown rejection"))
+        self.assertEqual(
+            PROTOCOL_SHAPED_REJECTION_CODES,
+            frozenset(
+                {
+                    "invalid_envelope",
+                    "invalid_function_envelope",
+                    "missing_id",
+                    "duplicate_id",
+                }
+            ),
+        )
+
     def test_ask_author_shape_has_one_reexported_rule(self):
         self.assertIs(scripted_validate_ask_shape, validate_ask_shape)
         with self.assertRaises(ValueError):

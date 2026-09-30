@@ -10,7 +10,6 @@ from pathlib import Path
 
 from scripts.task_graph_trace_check import claim_output_directory, main, parse_args
 from scripts.task_graph_trace_check_support import (
-    _tool_results_by_id,
     classify_protocol_shape,
     decision_summaries,
     same_incomplete_reason,
@@ -94,7 +93,11 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
         )
         self.assertEqual(
             classify_protocol_shape(
-                {"type": "ProtocolError", "message": "Task-graph tool result pairing mismatch"}
+                {
+                    "type": "ToolOutcomeError",
+                    "protocol_shape": "tool_result",
+                    "message": "committed calls and results do not pair",
+                }
             ),
             "tool_result",
         )
@@ -143,46 +146,23 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
             ],
         )
 
-    def test_tool_results_are_reported_and_only_protocol_shaped_errors_halt(self):
-        results = _tool_results_by_id(
-            [
-                {
-                    "role": "tool",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "call_id": "ok-id",
-                            "content": {"ok": True, "result": "written"},
-                        },
-                        {
-                            "type": "tool_result",
-                            "call_id": "argument-error-id",
-                            "content": {"ok": False, "error": "bad ask_author arguments"},
-                        },
-                        {
-                            "type": "tool_result",
-                            "call_id": "duplicate-id",
-                            "content": {"ok": False, "error": "Duplicate tool call id"},
-                        },
-                    ],
-                }
-            ]
-        )
-        self.assertEqual(
-            results,
-            {
-                "ok-id": "ok",
-                "argument-error-id": "bad ask_author arguments",
-                "duplicate-id": "Duplicate tool call id",
-            },
-        )
+    def test_tool_outcome_codes_are_reported_and_only_protocol_codes_halt(self):
         events = [
             {
                 "member_ordinal": 0,
                 "decision_ordinal": 1,
                 "tool_calls": [
-                    {"name": "ask_author", "result": "bad ask_author arguments"},
-                    {"name": "write_file", "result": "Duplicate tool call id"},
+                    {
+                        "name": "ask_author",
+                        "result": {
+                            "code": "ask_author_arguments_shape",
+                            "text": "ask_author needs exact structured arguments",
+                        },
+                    },
+                    {
+                        "name": "write_file",
+                        "result": {"code": "duplicate_id", "text": "Duplicate tool call id"},
+                    },
                 ],
             }
         ]
@@ -193,7 +173,8 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
                     "member_ordinal": 0,
                     "decision_ordinal": 1,
                     "name": "write_file",
-                    "result": "Duplicate tool call id",
+                    "result": {"code": "duplicate_id", "text": "Duplicate tool call id"},
+                    "code": "duplicate_id",
                 }
             ],
         )
@@ -209,6 +190,8 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
             trace_completion_outcome([], inspector_identical=True, incomplete_reason=None),
             ("pass", None),
         )
+        missing = [{"member_ordinal": 0, "tool_calls": [{"name": "read_file"}]}]
+        self.assertEqual(len(tool_result_protocol_errors(missing)), 1)
 
 
 if __name__ == "__main__":

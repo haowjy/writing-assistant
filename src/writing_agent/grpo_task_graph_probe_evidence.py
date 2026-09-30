@@ -16,11 +16,14 @@ from typing import Any
 
 from writing_agent.catalog import save_json
 from writing_agent.task_graph import canonical_bytes, load_canonical_json
+from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
+from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
 
 CRITERION_DESCRIPTIONS = {
     "criterion_1": (
         "Three ready/tie groups, 12 structurally eligible members, three all-admitted records, "
-        "and at least one ready group."
+        "at least one ready group, complete per-member tool outcomes, and zero protocol-shaped "
+        "tool rejections."
     ),
     "criterion_2": (
         "The LoRA adapter changed, three optimizer steps completed, and every optimizer "
@@ -135,6 +138,8 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
                 eligibility = view.outcome.training_eligibility
                 if not eligibility:
                     raise ValueError("member has no derived training eligibility")
+                start_view = gate.view(store, member.start_checkpoint_id)
+                tool_outcomes = read_member_tool_outcomes(start_view, view)
                 member_terminations = []
                 for sample in view.samples:
                     turn = WriterTurnV2.from_dict(store.get_artifact(sample.turn_ref))
@@ -148,6 +153,7 @@ def _collect_groups(training_root: Path) -> tuple[list[dict[str, Any]], list[str
                         "member_id": member.member_id,
                         "eligibility": eligibility,
                         "turns": member_terminations,
+                        "tool_outcomes": tool_outcomes,
                     }
                 )
             advantages = [
@@ -396,6 +402,110 @@ def _criterion(computed: bool, passed: bool, evidence: dict[str, Any], missing=(
     }
 
 
+def _criterion_1(groups: list[dict[str, Any]], *, group_count: int, group_errors: list[str]):
+    """Compute criterion 1 only when every member's committed tool outcomes are available."""
+    group_statuses = [group["decision"].status for group in groups]
+    members = [member for group in groups for member in group["members"]]
+    eligible_count = sum(member["eligibility"] == "structurally_eligible" for member in members)
+    admitted_records = [
+        len(group["admission"].members) == 4
+        and all(member["status"] == "admitted" for member in group["admission"].members)
+        for group in groups
+    ]
+    outcome_records = []
+    protocol_rejections = []
+    outcomes_complete = True
+    for group in groups:
+        for member in group["members"]:
+            outcome = member.get("tool_outcomes")
+            if not isinstance(outcome, dict) or not isinstance(outcome.get("calls"), list):
+                outcomes_complete = False
+                continue
+            counts = outcome.get("counts_by_code")
+            changed = outcome.get("files_changed")
+            if (
+                not isinstance(counts, dict)
+                or type(changed) is not bool
+                or any(type(count) is not int or count < 0 for count in counts.values())
+                or sum(counts.values()) != len(outcome["calls"])
+            ):
+                outcomes_complete = False
+                continue
+            outcome_records.append(
+                {
+                    "group_id": group["group_id"],
+                    "member_id": member["member_id"],
+                    "call_count": len(outcome["calls"]),
+                    "counts_by_code": counts,
+                    "files_changed": changed,
+                }
+            )
+            for call in outcome["calls"]:
+                result = call.get("result")
+                code = result.get("code") if isinstance(result, dict) else None
+                if code in PROTOCOL_SHAPED_REJECTION_CODES:
+                    protocol_rejections.append(
+                        {
+                            "group_id": group["group_id"],
+                            "member_id": member["member_id"],
+                            "call_id": call.get("call_id"),
+                            "code": code,
+                        }
+                    )
+
+    expected_members = 4 * group_count
+    structural_and_admission = (
+        not group_errors
+        and len(groups) == group_count == 3
+        and len(group_statuses) == 3
+        and all(status in {"ready", "tie"} for status in group_statuses)
+        and eligible_count == 12
+        and len(members) == expected_members == 12
+        and len(admitted_records) == 3
+        and all(admitted_records)
+    )
+    outcomes_complete = outcomes_complete and len(outcome_records) == expected_members == 12
+    ready_count = group_statuses.count("ready")
+    evidence = {
+        "group_count": group_count,
+        "group_statuses": group_statuses,
+        "structurally_eligible_members": eligible_count,
+        "member_count": len(members),
+        "all_admitted_records": admitted_records,
+        "ready_group_count": ready_count,
+        "structural_and_admission": structural_and_admission,
+        "tool_outcomes_complete": outcomes_complete,
+        "member_tool_outcomes": outcome_records,
+        "protocol_shaped_tool_rejection_count": len(protocol_rejections),
+        "protocol_shaped_tool_rejections": protocol_rejections,
+    }
+    computed = structural_and_admission and outcomes_complete
+    passed = computed and ready_count >= 1 and not protocol_rejections
+    return computed, passed, evidence
+
+
+def _tool_outcome_measurements(groups: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = []
+    for group in groups:
+        for member in group["members"]:
+            outcome = member.get("tool_outcomes")
+            if not isinstance(outcome, dict):
+                continue
+            rows.append(
+                {
+                    "group_id": group["group_id"],
+                    "member_id": member["member_id"],
+                    "call_count": len(outcome.get("calls", ())),
+                    "counts_by_code": outcome.get("counts_by_code", {}),
+                    "files_changed": outcome.get("files_changed"),
+                }
+            )
+    return {
+        "tool_call_count": sum(member["call_count"] for member in rows),
+        "tool_call_outcomes_by_member": rows,
+    }
+
+
 def _resource_stages(run_dir: Path) -> dict[str, dict[str, Any]]:
     result = {}
     for name in ("train", "resume"):
@@ -564,38 +674,11 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
         reports, inspections_identical, inspection_errors = _inspections(
             training_root, run_dir, groups
         )
-        all_group_inputs = not group_errors and len(groups) == len(group_paths) == 3
         group_statuses = [group["decision"].status for group in groups]
-        structural_count = sum(
-            member["eligibility"] == "structurally_eligible"
-            for group in groups
-            for member in group["members"]
+        criterion_1_computed, criterion_1_pass, criterion_1_evidence = _criterion_1(
+            groups, group_count=len(group_paths), group_errors=group_errors
         )
-        admitted_records = [
-            len(group["admission"].members) == 4
-            and all(member["status"] == "admitted" for member in group["admission"].members)
-            for group in groups
-        ]
-        ready_count = group_statuses.count("ready")
         tie_count = group_statuses.count("tie")
-        criterion_1_evidence = {
-            "group_count": len(group_paths),
-            "group_statuses": group_statuses,
-            "structurally_eligible_members": structural_count,
-            "member_count": sum(len(group["members"]) for group in groups),
-            "all_admitted_records": admitted_records,
-            "ready_group_count": ready_count,
-            "structural_and_admission": (
-                all_group_inputs
-                and len(group_statuses) == 3
-                and all(status in {"ready", "tie"} for status in group_statuses)
-                and structural_count == 12
-                and sum(len(group["members"]) for group in groups) == 12
-                and len(admitted_records) == 3
-                and all(admitted_records)
-            ),
-        }
-        criterion_1_pass = criterion_1_evidence["structural_and_admission"] and ready_count >= 1
 
         invocation_completes = sorted((training_root / "invocations").glob("*/complete.json"))
         complete_records = [_read_json(path) for path in invocation_completes]
@@ -769,6 +852,7 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
 
         measurements = _ledger_metrics(groups)
         measurements.update(_generation_metrics(run_dir))
+        measurements.update(_tool_outcome_measurements(groups))
         measurements["on_policy_drift"] = _observer_metrics(training_root)
         measurements["tie_count"] = tie_count
         measurements["group_count"] = len(group_paths)
@@ -781,7 +865,12 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
         measurements["disk_growth_per_checkpoint"] = _checkpoint_disk_metrics(training_root)
         criteria = {
             "criterion_1": _criterion(
-                all_group_inputs, criterion_1_pass, criterion_1_evidence, group_errors
+                criterion_1_computed,
+                criterion_1_pass,
+                criterion_1_evidence,
+                []
+                if criterion_1_computed
+                else (group_errors or ["complete per-member tool-outcome evidence"]),
             ),
             "criterion_2": _criterion(
                 criterion_2_computed,
@@ -863,6 +952,8 @@ def _select_verdict(criteria: dict[str, Any], measurements: dict[str, Any]) -> s
         all_tie
         and c1.get("computed") is True
         and c1.get("evidence", {}).get("structural_and_admission") is True
+        and c1.get("evidence", {}).get("tool_outcomes_complete") is True
+        and c1.get("evidence", {}).get("protocol_shaped_tool_rejection_count") == 0
         and c2.get("computed") is True
         and c2.get("evidence", {}).get("optimizer_steps") == 3
         and c2.get("evidence", {}).get("gradients_finite") is True

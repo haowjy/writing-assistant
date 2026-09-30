@@ -33,7 +33,10 @@ retains its smoke-evaluation and training-format workflows.
   provides codecs for shared payload shapes without record classes. Reference edges derive
   from the field annotations, and the store follows them in shared closure.
   [task_graph_calls.py](../writing_agent/task_graph_calls.py) owns sampled-message intake,
-  call parsing and the tool effect contract.
+  call parsing, exact rejection-message codes and the tool effect contract.
+  [task_graph_tool_outcomes.py](../writing_agent/task_graph_tool_outcomes.py) reads verified
+  member start/final views to pair every committed tool call with its result and derive the
+  final file delta; trace checks and P1 evidence share this reader.
   [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
   view/transition types. [task_graph_controller.py](../writing_agent/task_graph_controller.py)
   is the pure directive boundary (`next_step`, `select_edge`, `applicable_checks`); it does

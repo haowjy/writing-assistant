@@ -18,6 +18,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
+from writing_agent.task_graph_tool_outcomes import ToolOutcomeError, read_member_tool_outcomes
+
 MODEL_ID = "google/gemma-4-E2B-it"
 MODEL_REVISION = "3e22461f65e89153144f8adb70e3b8c2cc9845a7"
 MAX_TOKENS_PER_DECISION = 512
@@ -355,9 +358,7 @@ def start_receipt_ordinal(coordinator, spec, ordinal: int) -> str:
     return coordinator._start_receipt(spec, ordinal)["start_checkpoint_id"]
 
 
-def member_summaries(
-    store, coordinator, spec, decision, trace, admission=None, *, initial_files=None
-):
+def member_summaries(store, coordinator, spec, decision, trace, admission=None):
     from writing_agent.task_graph_gate import LineageGate
     from writing_agent.task_graph_group_records import GroupMemberResultV1
 
@@ -397,24 +398,37 @@ def member_summaries(
             "admission": admission_by_id.get(member.member_id),
             "final_files_differ_from_initial": None,
             "changed_paths": [],
+            "tool_call_outcomes": [],
+            "tool_call_outcome_counts_by_code": {},
         }
         if result is not None and result.final_checkpoint_id is not None:
-            view = LineageGate().view(store, result.final_checkpoint_id)
-            initial = dict(initial_files or {})
-            final = dict(view.state.files)
-            changed_paths = sorted(
-                path
-                for path in initial.keys() | final.keys()
-                if initial.get(path) != final.get(path)
-            )
-            summary["final_files_differ_from_initial"] = bool(changed_paths)
-            summary["changed_paths"] = changed_paths
-            tool_results = _tool_results_by_id(view.context.messages)
+            gate = LineageGate()
+            start_view = gate.view(store, result.start_checkpoint_id)
+            view = gate.view(store, result.final_checkpoint_id)
+            outcomes = read_member_tool_outcomes(start_view, view)
+            summary["tool_call_outcomes"] = outcomes["calls"]
+            summary["tool_call_outcome_counts_by_code"] = outcomes["counts_by_code"]
+            summary["final_files_differ_from_initial"] = outcomes["files_changed"]
+            summary["changed_paths"] = outcomes["changed_paths"]
+            outcomes_by_id = {item["call_id"]: item["result"] for item in outcomes["calls"]}
+            traced_calls = [
+                call
+                for event in trace.events
+                if event["member_ordinal"] == ordinal
+                for call in event["tool_calls"]
+            ]
+            traced_ids = [call["id"] for call in traced_calls]
+            if len(traced_ids) != len(set(traced_ids)) or set(traced_ids) != set(outcomes_by_id):
+                raise ToolOutcomeError("trace samples and committed tool calls do not pair exactly")
             for event in trace.events:
                 if event["member_ordinal"] != ordinal:
                     continue
                 for call in event["tool_calls"]:
-                    call["result"] = tool_results.get(call["id"], "missing")
+                    result_value = outcomes_by_id.get(call["id"], "missing")
+                    call["result"] = result_value
+                    call["rejection_code"] = (
+                        result_value.get("code") if isinstance(result_value, Mapping) else None
+                    )
             summary["task_status"] = view.outcome.task_status
             summary["stop_reason"] = view.outcome.stop_reason
             summary["eligibility"] = view.outcome.training_eligibility
@@ -429,47 +443,15 @@ def member_summaries(
     return members
 
 
-def _tool_results_by_id(messages) -> dict[str, str]:
-    results = {}
-    for message in messages:
-        value = message.to_dict() if callable(getattr(message, "to_dict", None)) else message
-        if not isinstance(value, Mapping) or value.get("role") != "tool":
-            continue
-        for part in value.get("content", ()):
-            if not isinstance(part, Mapping) or part.get("type") != "tool_result":
-                continue
-            response = part.get("content")
-            if isinstance(response, Mapping) and response.get("ok") is True:
-                results[part["call_id"]] = "ok"
-            elif isinstance(response, Mapping) and response.get("ok") is False:
-                error = response.get("error")
-                results[part["call_id"]] = error if isinstance(error, str) else "tool call failed"
-            else:
-                results[part["call_id"]] = "malformed tool result"
-    return results
-
-
 def tool_result_protocol_errors(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return protocol-shaped tool-result failures without mistaking model errors for them."""
-    markers = (
-        "duplicate tool call id",
-        "unknown tool call",
-        "unknown call",
-        "no matching writer-call source",
-        "tool result does not name the queued call",
-        "tool result id mismatch",
-        "tool result pairing",
-        "call/result pairing",
-        "pairing error",
-        "task-graph tool result ids do not match",
-        "malformed tool result",
-    )
+    """Return protocol-coded or missing tool outcomes, without parsing error text."""
     failures = []
     for event in events:
         for call in event.get("tool_calls", ()):
-            result = call.get("result")
-            if isinstance(result, str) and (
-                result == "missing" or any(marker in result.lower() for marker in markers)
+            result = call.get("result", "missing")
+            code = result.get("code") if isinstance(result, Mapping) else None
+            if result == "missing" or (
+                isinstance(code, str) and code in PROTOCOL_SHAPED_REJECTION_CODES
             ):
                 failures.append(
                     {
@@ -477,6 +459,7 @@ def tool_result_protocol_errors(events: list[dict[str, Any]]) -> list[dict[str, 
                         "decision_ordinal": event.get("decision_ordinal"),
                         "name": call.get("name"),
                         "result": result,
+                        "code": code,
                     }
                 )
     return failures
@@ -520,28 +503,14 @@ def same_incomplete_reason(members: list[dict[str, Any]]) -> str | None:
 
 
 def classify_protocol_shape(error: dict[str, Any]) -> str:
+    if error.get("protocol_shape") == "tool_result":
+        return "tool_result"
     values = [error.get(key, "") for key in ("type", "message", "failed_check", "reason_code")]
     failed_checks = error.get("failed_checks", ())
     if isinstance(failed_checks, (list, tuple, set)):
         values.extend(failed_checks)
     text = " ".join(map(str, values)).lower()
-    if any(
-        marker in text
-        for marker in (
-            "duplicate tool call id",
-            "unknown tool call",
-            "unknown call",
-            "no matching writer-call source",
-            "tool result does not name the queued call",
-            "tool result id mismatch",
-            "tool result pairing",
-            "call/result pairing",
-            "pairing error",
-            "tool result ids do not match",
-        )
-    ):
-        return "tool_result"
-    if any(word in text for word in ("external_suffix", "suffix", "delta", "tool result")):
+    if any(word in text for word in ("external_suffix", "suffix", "delta")):
         return "delta"
     if any(word in text for word in ("termination", "stop token", "token_limit", "context_limit")):
         return "termination"

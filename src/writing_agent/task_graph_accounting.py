@@ -11,9 +11,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from writing_agent.task_graph import MaterializedContextV1, canonical_bytes, canonical_json, thaw
+from writing_agent.task_graph_calls import READ_TOOLS, rejection_message
 from writing_agent.task_graph_compaction import context_bytes
 
-READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
 EXHAUSTION_ORDER = (
     "writer_turns",
     "generated_tokens",
@@ -80,12 +80,20 @@ def tool_error(budget: Mapping[str, Any], validation_error: str | None, name: st
     """Apply tool, syntax, then author exhaustion precedence before dispatch."""
     consumed, limits = budget["consumed"], budget["limits"]
     if consumed.get("tool_calls", 0) >= limits["tool_calls"]:
-        return {"ok": False, "valid": True, "error": "Tool-call budget exceeded"}
+        return {
+            "ok": False,
+            "valid": True,
+            "error": rejection_message("tool_call_budget_exceeded"),
+        }
     if validation_error is not None:
         return {"ok": False, "valid": False, "error": validation_error}
     if name == "ask_author":
         if consumed.get("author_calls", 0) >= limits["author_calls"]:
-            return {"ok": False, "valid": True, "error": "Author-call budget exceeded"}
+            return {
+                "ok": False,
+                "valid": True,
+                "error": rejection_message("author_call_budget_exceeded"),
+            }
     return None
 
 

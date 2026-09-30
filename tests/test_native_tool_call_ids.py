@@ -306,7 +306,6 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
                 good_spec,
                 good_decision,
                 SimpleNamespace(events=report_events),
-                initial_files=initial,
             )
             self.assertTrue(
                 all(member["final_files_differ_from_initial"] for member in reported_members)
