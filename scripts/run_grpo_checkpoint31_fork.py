@@ -115,10 +115,22 @@ def main():
     else:
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        command = [sys.executable, str(Path(__file__).resolve()), *map(str, [
-            args.release.resolve(), args.source_checkpoint.resolve(), args.source_group.resolve(),
-            args.output.resolve(), "--phase", args.phase, "--execute",
-        ])]
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            *map(
+                str,
+                [
+                    args.release.resolve(),
+                    args.source_checkpoint.resolve(),
+                    args.source_group.resolve(),
+                    args.output.resolve(),
+                    "--phase",
+                    args.phase,
+                    "--execute",
+                ],
+            ),
+        ]
         if args.wandb_run_id:
             command.extend(["--wandb-run-id", args.wandb_run_id])
         result = supervise(

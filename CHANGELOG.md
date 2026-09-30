@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Add an offline, CPU-only native Gemma task-graph trace checker that records group admission,
+  on-policy drift, prefill and generation timing, peak RSS, and deterministic offline inspection.
+
 - Audit native training batches against committed context and pinned tokenizer files before
   training; offline inspection re-derives the batch and admission without network access.
 - Offline inspection now persists and re-derives tokenizer-file hash refusals through the
