@@ -51,6 +51,7 @@ POST_GOLDEN_RECORD_TYPES = frozenset(
         "DecodingDescriptorV1",
         "RuntimeManifestV2",
         "TrainingAdmissionV1",
+        "TrainingBatchV1",
     }
 )
 ZERO_HASH = "0" * 64

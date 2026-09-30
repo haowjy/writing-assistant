@@ -34,6 +34,8 @@
 - Real group member starts and commits require the sealed manifest. Collection binds terminal
   results to the verified head, resolves rewards published after collection, and records the
   judged head for infrastructure interruptions.
+- Finalized native groups export `TrainingBatchV1` with V2-derived token masks and segment
+  spans; trailing zero-generation context-limit turns remain audit-only.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

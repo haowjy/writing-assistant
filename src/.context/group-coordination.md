@@ -58,8 +58,9 @@ boundary for live collection and for finalizing a reopened group.
 - `reward_of(result)` is the one reward read. `finalize` and the reward status share it.
 
 The result kinds are typed records, so their codecs do the schema checks that used to be
-hand-written dictionary checks. Their payload identities did not change, and a test pins
-this. The member-result, decision, advantage and segment-credit records are unchanged.
+hand-written dictionary checks. Member-result, decision and advantage wires are unchanged.
+Segment credits add optional completion offsets for eligible native turns; absent offsets
+are omitted, preserving existing non-native credit identities.
 
 **There is no collect-time policy check, and none should be added.** The gate binds the
 group pins in `derive_writer_turn` and the context policy in `derive_context_operation` as
@@ -95,6 +96,12 @@ on the environment's placeholder.
 `_segment_credits` accepts both `WriterTurnV1` and `WriterTurnV2` evidence. V2 byte ledgers,
 sampling pins and termination remain owned by the writer derive; group collection does not
 re-validate sampling evidence or infer eligibility from the token trace.
+
+For structurally eligible native groups, segment credits also carry the turn's completion
+token span, derived from the same V2 chain used by `task_graph_training_export`. The export
+builds one `TrainingBatchV1` per settled native group; generated IDs are loss-masked in and
+external suffix IDs out. A trailing zero-generation context-limit turn stays on the batch as
+audit evidence but never enters its sequence or loss mask.
 
 ## Runtime boundary
 

@@ -28,6 +28,7 @@ from writing_agent.task_graph_errors import (
     WrongRecordDomainError,
 )
 from writing_agent.task_graph_gate import LineageGate
+from writing_agent.task_graph_group_records import GroupAdvantageV1
 from writing_agent.task_graph_record_contracts import (
     CompactionError,
     ContextPolicyV1,
@@ -57,6 +58,7 @@ from writing_agent.task_graph_records import (
     TokenizerDescriptorV1,
     ToolObservationV1,
     TrainingAdmissionV1,
+    TrainingBatchV1,
     WriterTurnV1,
     WriterTurnV2,
     materialize_context_nodes,
@@ -200,6 +202,18 @@ EXPECTED_REFS = {
     "ToolObservationV1": (),
     "TrainingEligibilityV1": (("terminal_outcome_ref", "artifact"),),
     "TrainingAdmissionV1": (("batch_ref", "artifact"), ("decision_ref", "artifact")),
+    "TrainingBatchV1": (
+        ("decision_ref", "artifact"),
+        ("members[].advantage.result_ref", "artifact"),
+        ("members[].advantage_f64_ref", "bytes"),
+        ("members[].advantage_ref", "artifact"),
+        ("members[].completion_ids_ref", "bytes"),
+        ("members[].env_mask_ref", "bytes"),
+        ("members[].prompt_ids_ref", "bytes"),
+        ("members[].result_ref", "artifact"),
+        ("members[].trailing_context_limit_turn_ref", "artifact"),
+        ("members[].turn_spans[].turn_ref", "artifact"),
+    ),
     "WriterTurnV1": (
         ("adapter_trace.adapter_ref", "artifact"),
         ("adapter_trace.behavior_policy_ref", "artifact"),
@@ -262,6 +276,9 @@ EXPECTED_NON_EDGE_HASHES = {
             "adapter_hash_before",
             "adapter_hash_after",
         }
+    ),
+    "TrainingBatchV1": frozenset(
+        {"group_id", "members[].advantage.group_id", "members[].ledger_hash"}
     ),
     "WriterTurnV1": frozenset({"adapter_trace.context_content_hash"}),
     "DeterministicCheckEvidenceV1": frozenset({"check_contract_hash"}),
@@ -446,6 +463,50 @@ def record_examples():
         adapter_hash_after=H,
         members=({"member_id": "grp-example-00", "status": "admitted", "failed_check": None},),
     )
+    batch_advantages = tuple(
+        GroupAdvantageV1(
+            group_id=H,
+            member_id=f"grp-batch-{ordinal:02d}",
+            result_ref=P if ordinal == 0 else Q,
+            reward={"numerator": 0, "denominator": 1},
+            mean={"numerator": 0, "denominator": 1},
+            variance={"numerator": 0, "denominator": 1},
+            centered={"numerator": 0, "denominator": 1},
+            expression="zero",
+            advantage={"numerator": 0, "denominator": 1},
+            zero_variance=True,
+        )
+        for ordinal in range(2)
+    )
+    training_batch = TrainingBatchV1(
+        schema=1,
+        group_id=H,
+        decision_ref=Q,
+        max_context_tokens=4096,
+        members=tuple(
+            {
+                "member_id": advantage.member_id,
+                "result_ref": advantage.result_ref,
+                "advantage_ref": advantage.identity(),
+                "advantage": advantage,
+                "advantage_f64_ref": R,
+                "prompt_ids_ref": H,
+                "completion_ids_ref": P,
+                "env_mask_ref": Q,
+                "turn_spans": (
+                    {
+                        "action_id": f"batch:{advantage.member_id}:action:0",
+                        "turn_ref": R,
+                        "completion_start": 0,
+                        "completion_end": 1,
+                        "ext_start": 0,
+                    },
+                ),
+                "ledger_hash": H,
+            }
+            for advantage in batch_advantages
+        ),
+    )
     return (
         sampled,
         WriterTurnV1(
@@ -555,6 +616,7 @@ def record_examples():
         decoding,
         native_manifest,
         native_admission,
+        training_batch,
     )
 
 

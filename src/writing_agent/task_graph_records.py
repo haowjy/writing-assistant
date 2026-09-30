@@ -9,6 +9,7 @@ from typing import Annotated, Any, ClassVar
 
 import writing_agent.task_graph_group_records  # noqa: F401 - register group payload records
 import writing_agent.task_graph_record_contracts  # noqa: F401 - populate the wire registry
+import writing_agent.task_graph_training_records  # noqa: F401 - register batch records
 from writing_agent import task_graph_errors
 from writing_agent.task_graph import (
     EXECUTION_STATUSES,
@@ -19,6 +20,7 @@ from writing_agent.task_graph import (
     safe_path,
 )
 from writing_agent.task_graph_payloads import payload_record_codecs
+from writing_agent.task_graph_training_records import TrainingBatchV1 as TrainingBatchV1
 from writing_agent.task_graph_wire import (
     Bool,
     CanonicalIntake,

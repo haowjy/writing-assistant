@@ -22,6 +22,7 @@ from writing_agent.task_graph_errors import (
     ConcurrentUpdateError,
     MissingReferenceError,
 )
+from writing_agent.task_graph_gate import StoreArtifactReader
 from writing_agent.task_graph_group_contract import (
     derive_group_seed,
     payload_hash,
@@ -58,6 +59,7 @@ from writing_agent.task_graph_records import (
     WriterTurnV2,
     decode_runtime_manifest,
 )
+from writing_agent.task_graph_training_export import training_turn_spans
 
 
 class GroupCoordinatorV1:
@@ -801,6 +803,19 @@ class GroupCoordinatorV1:
         if view is None:
             raise GroupError("real segment credit requires a verified member view")
         refs = []
+        token_spans = {}
+        if (
+            spec.training_mode == "native"
+            and view.outcome.training_eligibility == "structurally_eligible"
+        ):
+            entry_budget = self.store.get_artifact(spec.environment["budget_ref"])
+            max_context_tokens = entry_budget["limits"].get("context_tokens")
+            token_spans = training_turn_spans(
+                view.checkpoint_id,
+                result.member_id,
+                StoreArtifactReader(self.store),
+                max_context_tokens=max_context_tokens,
+            )
         contexts, messages = self._sample_content_index(view)
         for sample in view.samples:
             if sample.outcome != "action":
@@ -839,6 +854,7 @@ class GroupCoordinatorV1:
                     segments.append((kind, index, payload_hash(part)))
             segments.append(("assistant_ending", None, None))
             for kind, part_index, content_hash in segments:
+                completion_start, completion_end = token_spans.get(sample.turn_ref, (None, None))
                 credit = GroupSegmentCreditV1(
                     group_id=spec.group_id,
                     member_id=result.member_id,
@@ -852,6 +868,8 @@ class GroupCoordinatorV1:
                     segment_kind=kind,
                     part_index=part_index,
                     segment_content_hash=content_hash,
+                    completion_start=completion_start,
+                    completion_end=completion_end,
                 )
                 refs.append(self.store.put_artifact(credit.to_dict()))
         return refs
