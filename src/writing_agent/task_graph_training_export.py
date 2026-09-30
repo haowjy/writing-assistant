@@ -14,6 +14,8 @@ from writing_agent.task_graph import (
     EventV1,
     domain_hash_bytes,
 )
+from writing_agent.task_graph_context_roots import context_root_changed_after
+from writing_agent.task_graph_errors import ProjectionError
 from writing_agent.task_graph_group_records import (
     GroupAdvantageV1,
     GroupDecisionV1,
@@ -22,12 +24,15 @@ from writing_agent.task_graph_group_records import (
     GroupSegmentCreditV1,
     read_fraction,
 )
-from writing_agent.task_graph_record_contracts import ContextPolicyV1, GroupSpecV1
+from writing_agent.task_graph_record_contracts import GroupSpecV1
 from writing_agent.task_graph_records import (
     RECORD_TYPES,
-    ContextOperationInputV1,
     OutcomeV1,
     WriterTurnV2,
+)
+from writing_agent.task_graph_token_ledger import (
+    decode_u32_token_ids,
+    encode_u32_token_ids,
 )
 from writing_agent.task_graph_training_records import TrainingBatchV1
 from writing_agent.task_graph_transition import ArtifactReader, DerivedArtifact
@@ -143,7 +148,7 @@ def export_training_batch(
         elif advantage.zero_variance:
             raise GroupError("ready group cannot export a zero-variance advantage")
         advantage_bytes = struct.pack("<d", advantage_value)
-        completion_bytes = _encode_token_ids(layout.completion_ids)
+        completion_bytes = _encode_training_token_ids(layout.completion_ids)
         mask_bytes = bytes(layout.env_mask)
         for value in (advantage_bytes, completion_bytes, mask_bytes):
             artifacts.append(_bytes_artifact(value))
@@ -359,32 +364,22 @@ def _token_layout_for_checkpoint(
 
     if any(event.kind == "budget_charged" for event in events):
         raise GroupError("overrun writer turns cannot be exported")
-    _refuse_multiple_context_roots(events, reader)
+    try:
+        context_changed = context_root_changed_after(reader, checkpoint.event_head, None)
+    except ProjectionError as exc:
+        raise GroupError("training member context history is invalid") from exc
+    if context_changed:
+        raise GroupError("training member has multiple context roots")
     turns = tuple(_read_turn(reader, ref, turn) for ref, turn in reversed(turn_events))
     return _layout_turns(turns, max_context_tokens=max_context_tokens)
 
 
 def _read_turn(reader: ArtifactReader, ref: str, turn: WriterTurnV2) -> _Turn:
-    input_ids = _decode_token_ids(reader, turn.input_token_ids_ref, turn.input_token_count)
-    generated_ids = _decode_token_ids(
+    input_ids = _read_token_ids(reader, turn.input_token_ids_ref, turn.input_token_count)
+    generated_ids = _read_token_ids(
         reader, turn.generated_token_ids_ref, turn.generated_token_count
     )
     return _Turn(ref, turn, input_ids, generated_ids)
-
-
-def _refuse_multiple_context_roots(events: list[EventV1], reader: ArtifactReader) -> None:
-    for event in events:
-        if event.kind != "context_changed":
-            continue
-        operation = _read_record(
-            reader,
-            event.payload_ref,
-            ContextOperationInputV1,
-            "context operation",
-        )
-        policy = _read_record(reader, operation.policy_ref, ContextPolicyV1, "context policy")
-        if policy.operation in {"compact", "seed", "drop"}:
-            raise GroupError("training member has multiple context roots")
 
 
 def _layout_turns(turns: tuple[_Turn, ...], *, max_context_tokens: int | None) -> _TokenLayout:
@@ -446,7 +441,9 @@ def _layout_turns(turns: tuple[_Turn, ...], *, max_context_tokens: int | None) -
             tuple(env_mask),
             tuple(spans),
             trailing_ref,
-            domain_hash_bytes("payload", _encode_token_ids((*prompt_ids, *completion_ids))),
+            domain_hash_bytes(
+                "payload", _encode_training_token_ids((*prompt_ids, *completion_ids))
+            ),
         )
     if (
         max_context_tokens is not None
@@ -465,7 +462,9 @@ def _layout_turns(turns: tuple[_Turn, ...], *, max_context_tokens: int | None) -
         env_mask=tuple(env_mask),
         turn_spans=tuple(spans),
         trailing_context_limit_turn_ref=trailing_ref,
-        ledger_hash=domain_hash_bytes("payload", _encode_token_ids((*prompt_ids, *completion_ids))),
+        ledger_hash=domain_hash_bytes(
+            "payload", _encode_training_token_ids((*prompt_ids, *completion_ids))
+        ),
     )
 
 
@@ -487,20 +486,22 @@ def _read_record(reader: ArtifactReader, ref: str, record_type: type, label: str
         raise GroupError(f"{label} is invalid") from exc
 
 
-def _decode_token_ids(reader: ArtifactReader, ref: str, count: int) -> tuple[int, ...]:
+def _read_token_ids(reader: ArtifactReader, ref: str, count: int) -> tuple[int, ...]:
     try:
         data = reader.bytes_artifact(ref)
     except (KeyError, TypeError, ValueError) as exc:
         raise GroupError("training token IDs are unavailable") from exc
-    if not isinstance(data, bytes) or len(data) != 4 * count:
-        raise GroupError("training token bytes differ from their committed count")
-    return tuple(int.from_bytes(data[i : i + 4], "little") for i in range(0, len(data), 4))
+    try:
+        return decode_u32_token_ids(data, count)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise GroupError("training token bytes differ from their committed count") from exc
 
 
-def _encode_token_ids(token_ids: tuple[int, ...]) -> bytes:
-    if any(type(token_id) is not int or not 0 <= token_id < 2**32 for token_id in token_ids):
-        raise GroupError("training token ID is outside the u32 range")
-    return b"".join(token_id.to_bytes(4, "little") for token_id in token_ids)
+def _encode_training_token_ids(token_ids: tuple[int, ...]) -> bytes:
+    try:
+        return encode_u32_token_ids(token_ids)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise GroupError("training token ID is outside the u32 range") from exc
 
 
 def _bytes_artifact(value: bytes) -> DerivedArtifact:

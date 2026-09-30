@@ -270,6 +270,8 @@
   download; point older work checklists to it.
 - Finalized native groups export `TrainingBatchV1` with V2-derived token masks and segment
   spans; trailing zero-generation context-limit turns remain audit-only.
+- Route native batch token encoding and context-root checks through their shared owners; a
+  `carry` context change now makes eligibility and export agree that a member is ineligible.
 
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.

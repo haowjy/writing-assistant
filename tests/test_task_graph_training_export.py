@@ -10,6 +10,7 @@ from fractions import Fraction
 from tests.task_graph_fixtures import MemoryArtifactReader
 from tests.test_task_graph_v2_writer import _native_view, _turn
 from writing_agent.task_graph import CheckpointV1, EventV1, domain_hash
+from writing_agent.task_graph_eligibility import decide_eligibility
 from writing_agent.task_graph_group_contract import derive_group_seed
 from writing_agent.task_graph_group_records import (
     GroupAdvantageV1,
@@ -34,6 +35,7 @@ from writing_agent.task_graph_training_export import (
     read_advantage_f64,
     training_turn_spans,
 )
+from writing_agent.task_graph_transition import SampleRef
 
 
 def _token_bytes(ids):
@@ -178,6 +180,40 @@ def _credit_spans(turns, reader):
     return spans
 
 
+def _eligibility_view(reader, spec, turns, base_view, *, ordinal=0):
+    member_id = spec.members[ordinal].member_id
+    events = sorted(
+        (
+            EventV1.from_dict(value)
+            for value in reader.events.values()
+            if value["lineage_id"] == member_id
+        ),
+        key=lambda event: event.seq,
+    )
+    event_by_turn_ref = {
+        event.payload_ref: event for event in events if event.kind == "writer_action"
+    }
+    samples = tuple(
+        SampleRef(
+            action_id=turn.action_id,
+            event_id=event_by_turn_ref[turn.identity()].identity(),
+            turn_ref=turn.identity(),
+            outcome="action" if turn.generated_token_count else "budget_stop",
+        )
+        for turn in turns[ordinal]
+    )
+    state_data = base_view.state.to_dict()
+    state_data["position"]["lineage_id"] = member_id
+    return replace(
+        base_view,
+        state=type(base_view.state).from_dict(state_data),
+        group=spec,
+        samples=samples,
+        head_event_id=events[-1].identity(),
+        outcome=replace(base_view.outcome, execution_status="valid"),
+    )
+
+
 def _build_group(
     *,
     cap=7,
@@ -185,6 +221,7 @@ def _build_group(
     statuses=None,
     tie=False,
     reset_member=None,
+    reset_operation="compact",
     member_count=None,
 ):
     fixture, base_view, _manifest = _native_view()
@@ -202,8 +239,21 @@ def _build_group(
     for ordinal, member in enumerate(spec.members):
         turns = []
         sample_events = []
-        previous_event = None
-        event_sequence = 1
+        start = EventV1(
+            seq=1,
+            lineage_id=member.member_id,
+            rollout_id=member.member_id,
+            node_visit_id="visit-1",
+            kind="rollout_started",
+            actor="environment",
+            audience=("controller",),
+            payload_ref=spec.environment["entry_checkpoint_id"],
+            versions_ref=spec.environment["versions_ref"],
+            provenance_ref=spec.environment["provenance_ref"],
+        )
+        reader.events[start.identity()] = start.to_dict()
+        previous_event = start.identity()
+        event_sequence = 2
         for turn_ordinal, values in enumerate(turns_by_member[ordinal]):
             turn = _turn(
                 base_view,
@@ -231,8 +281,12 @@ def _build_group(
             previous_event = event.identity()
             event_sequence += 1
             if reset_member == ordinal and turn_ordinal == 0:
-                policy = ContextPolicyV1(
-                    "compact", summarizer_version="visible-text-v1", max_summary_chars=20
+                policy = (
+                    ContextPolicyV1(
+                        "compact", summarizer_version="visible-text-v1", max_summary_chars=20
+                    )
+                    if reset_operation == "compact"
+                    else ContextPolicyV1(operation=reset_operation)
                 )
                 policy_ref = reader.add(policy.to_wire())
                 operation = ContextOperationInputV1(policy_ref=policy_ref)
@@ -480,6 +534,21 @@ class TrainingBatchExportTests(unittest.TestCase):
     def test_multiple_context_roots_refuse_export(self):
         reader, spec, decision, _turn_specs_by_member, _turn_records = _build_group(reset_member=0)
         with self.assertRaisesRegex(GroupError, "multiple context roots"):
+            export_training_batch(spec, decision, reader)
+
+    def test_carry_context_change_is_ineligible_and_refused_by_export(self):
+        reader, spec, decision, _, turns = _build_group(
+            reset_member=0,
+            reset_operation="carry",
+        )
+        _, base_view, _ = _native_view()
+        view = _eligibility_view(reader, spec, turns, base_view)
+
+        eligibility = decide_eligibility(view, reader)
+
+        self.assertEqual(eligibility.status, "ineligible")
+        self.assertEqual(eligibility.reason, "multi_segment_context")
+        with self.assertRaises(GroupError):
             export_training_batch(spec, decision, reader)
 
     def test_empty_mask_refuses_export(self):

@@ -94,7 +94,9 @@ three native sampling capabilities and rendering, tokenizer, and decoding descri
 manifest-policy-rendering binding used by seal and derive paths.
 `task_graph_training_export` reads a finalized group's V2 member chains and emits the
 hash-addressed batch plus token and float64 byte artifacts; it is a consumer-side pure
-projection, not a commit derive.
+projection, not a commit derive. It uses the shared u32 ledger codec and context-root walk;
+any intervening context change, including `carry`, blocks export just as it blocks structural
+eligibility.
 `SampledMessageV1` keeps optional reasoning/thinking side channels for eligibility while
 omitting them when absent, preserving prior wire identities. Structural training eligibility
 is decided from committed V2 evidence and the sealed native group; it never records the
