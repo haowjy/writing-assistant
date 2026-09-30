@@ -5,19 +5,18 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
-import os
 import struct
-import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
 
+from writing_agent.atomic_io import atomic_write_json
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.grpo import GRPOSettings, trainer_config
 from writing_agent.grpo_checkpoint import verify_checkpoint
-from writing_agent.grpo_identity import base_tensor_identity
+from writing_agent.grpo_identity import adapter_tensor_hash, base_tensor_identity
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_errors import (
     TaskGraphGroupPending,
@@ -31,7 +30,7 @@ from writing_agent.native_audit import (
     require_training_admission,
 )
 from writing_agent.native_gemma import NativeGemmaSampleBackend, assert_active_adapter
-from writing_agent.task_graph import canonical_bytes, domain_hash, thaw
+from writing_agent.task_graph import domain_hash, thaw
 from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError
@@ -106,59 +105,14 @@ def _reserve_step(groups_root: Path, step: int, task_id: str) -> Path:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         if reservation.exists():
             raise TaskGraphTrainingError("a task-graph group was already attempted for this step")
-        _atomic_json(
-            reservation, {"schema": 1, "step": step, "task_id": task_id, "status": "sealing"}
+        atomic_write_json(
+            reservation,
+            {"schema": 1, "step": step, "task_id": task_id, "status": "sealing"},
+            canonical=True,
+            create_parent=True,
         )
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     return reservation
-
-
-def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
-    data = canonical_bytes(dict(value))
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
-    except BaseException:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
-        raise
-
-
-def _adapter_state_hash(model: Any, adapter_name: str) -> str:
-    """Hash only the selected adapter's named tensor state, with stable framing."""
-    import torch
-    from peft import get_peft_model_state_dict
-
-    try:
-        state = get_peft_model_state_dict(model, adapter_name=adapter_name)
-    except TypeError:
-        # Older PEFT exposes only the active adapter; the active-name assertion is
-        # performed independently and still binds this state to the requested name.
-        state = get_peft_model_state_dict(model)
-    if not state:
-        raise TaskGraphTrainingError("expected PEFT adapter has no tensor state")
-    digest = hashlib.sha256()
-    for name, tensor in sorted(state.items()):
-        value = tensor.detach().contiguous().cpu()
-        header = canonical_bytes([name, str(value.dtype), list(value.shape)])
-        raw = value.view(-1).view(torch.uint8).numpy().tobytes()
-        digest.update(len(header).to_bytes(8, "big"))
-        digest.update(header)
-        digest.update(len(raw).to_bytes(8, "big"))
-        digest.update(raw)
-    return digest.hexdigest()
 
 
 def task_graph_behavior_policy_ref(
@@ -398,7 +352,7 @@ class TaskGraphRollouts:
                 training_mode="native",
             )
             self.last_spec = spec
-            _atomic_json(
+            atomic_write_json(
                 reservation,
                 {
                     "schema": 1,
@@ -407,6 +361,8 @@ class TaskGraphRollouts:
                     "group_id": spec.group_id,
                     "status": "sealed",
                 },
+                canonical=True,
+                create_parent=True,
             )
             gatherers = self._gatherers(task)
             failure = None
@@ -437,7 +393,7 @@ class TaskGraphRollouts:
             self.last_decision = decision
             decision_ref = self.store.put_artifact(decision.to_wire())
             if failure is not None or decision.status in {"pending", "invalid"}:
-                _atomic_json(
+                atomic_write_json(
                     reservation,
                     {
                         "schema": 1,
@@ -450,6 +406,8 @@ class TaskGraphRollouts:
                         if failure is None
                         else f"{type(failure).__name__}: {failure}",
                     },
+                    canonical=True,
+                    create_parent=True,
                 )
                 raise TaskGraphGroupPending(
                     f"task-graph group {decision.status}; resampling is forbidden"
@@ -511,7 +469,7 @@ class TaskGraphRollouts:
                 receipt["failure"] = f"{type(exc).__name__}: {exc}"[:1024]
                 if spec is not None:
                     receipt["group_id"] = spec.group_id
-                _atomic_json(reservation, receipt)
+                atomic_write_json(reservation, receipt, canonical=True, create_parent=True)
             raise
 
     def _ensure_runtime(self, trainer) -> None:
@@ -567,7 +525,10 @@ class TaskGraphRollouts:
         )
 
     def _behavior_policy_ref(self, model: Any, step: int) -> str:
-        adapter = _adapter_state_hash(model, self.adapter_name)
+        try:
+            adapter = adapter_tensor_hash(model, self.adapter_name)
+        except ValueError as exc:
+            raise TaskGraphTrainingError(str(exc)) from exc
         value = [
             "TaskGraphBehaviorPolicyV1",
             self.base_revision,
@@ -671,7 +632,7 @@ class TaskGraphRollouts:
             self.output / "batches" / f"step-{step:06d}.json",
             {**receipt, "members": members},
         )
-        _atomic_json(
+        atomic_write_json(
             reservation,
             {
                 "schema": 1,
@@ -683,6 +644,8 @@ class TaskGraphRollouts:
                 "training_admission_ref": admission_ref,
                 "status": reservation_status,
             },
+            canonical=True,
+            create_parent=True,
         )
 
 

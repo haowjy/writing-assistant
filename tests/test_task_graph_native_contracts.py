@@ -28,6 +28,7 @@ class NativeContractHelpersTests(unittest.TestCase):
             encoded, b"\x00\x00\x00\x00\x01\x00\x00\x00\x78\x56\x34\x12\xff\xff\xff\xff"
         )
         self.assertEqual(decode_u32_token_ids(encoded, len(tokens)), tokens)
+        self.assertEqual(decode_u32_token_ids(encoded), tokens)
 
     def test_u32_ledger_refuses_overflow_and_wrong_byte_count(self):
         for token in (-1, 0x1_0000_0000):
@@ -38,6 +39,8 @@ class NativeContractHelpersTests(unittest.TestCase):
             decode_u32_token_ids(b"\x01\x00\x00\x00", 2)
         with self.assertRaises(ValueError):
             decode_u32_token_ids(b"", -1)
+        with self.assertRaises(ValueError):
+            decode_u32_token_ids(b"\x01")
 
     def test_context_change_is_scoped_to_the_sample_ancestry(self):
         reader = EventReader(

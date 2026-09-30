@@ -160,7 +160,9 @@ retains its smoke-evaluation and training-format workflows.
   generation to that interface.
   Inputs contain messages and permitted tools, never evaluator labels.
 - [catalog.py](../writing_agent/catalog.py) owns source identity, lineage, imports,
-  atomic JSON artifacts, and overlap inspection. [acquisition.py](../writing_agent/acquisition.py)
+  JSON artifact formats, and overlap inspection. [atomic_io.py](../writing_agent/atomic_io.py)
+  owns durable atomic byte/JSON replacement shared by catalog outputs, trainer reservations,
+  trace reports and offline inspections. [acquisition.py](../writing_agent/acquisition.py)
   handles the selected upstream releases. [development.py](../writing_agent/development.py)
   compiles the authored world records into development cases.
 - [artifacts.py](../writing_agent/artifacts.py) extracts designated prose and inspects
@@ -460,7 +462,8 @@ sampled tokens and external suffix masks. Do not rebuild training actions by ren
 parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
 Training identity includes private scoring labels, unlike evaluation's rescorable
 identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
-before resume can mutate the model; engineered fixtures use separate, explicit admission.
+before resume can mutate the model, and owns the selected PEFT adapter tensor hash used by
+trainer policy bindings and trace checks; engineered fixtures use separate, explicit admission.
 Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
 also stops ties by default; explicit `"continue"` passes raw tied rewards through
 ordinary TRL/Adam without resampling. Mathematically zero advantages can have

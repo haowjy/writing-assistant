@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Share one adapter tensor hash, bounded/unbounded u32 decoder and durable atomic file writer
+  across native training and trace evidence.
+
 - Route verified member completion, admission and trainer-consumption receipts through the
   locked group coordinator; share one strict group/step sequence index for refusal and resume.
 

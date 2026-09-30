@@ -37,7 +37,6 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     MODEL_REVISION,
     TOKENIZER_ROOT,
     SampleTrace,
-    adapter_tensor_hash,
     classify_protocol_shape,
     decision_summaries,
     instrument_generation_time,
@@ -53,8 +52,9 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     trace_completion_outcome,
     trace_events_for_artifact,
     with_context_cap_for_local_model,
-    write_json,
 )
+from writing_agent.atomic_io import atomic_write_json  # noqa: E402
+from writing_agent.grpo_identity import adapter_tensor_hash  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -117,7 +117,7 @@ def _write_halt(
 ) -> None:
     last_stage = failure.get("stage", state.get("stage"))
     state.update(stage="halt", protocol_shape=failure["protocol_shape"])
-    write_json(
+    atomic_write_json(
         output_dir / "halt.json",
         {
             "schema": 1,
@@ -257,7 +257,7 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         DeterministicEvaluator(),
     )
     runtime_manifest = dependencies.manifest()
-    adapter_hash_before = adapter_tensor_hash(model, torch)
+    adapter_hash_before = adapter_tensor_hash(model)
     rollout_settings = replace(probe_settings(), group_size=2, max_steps=1, microbatch_size=1)
     group_seed = derive_group_seed(rollout_settings.seed, "task-graph-step", 0)
     trace.member_ordinals = {
@@ -313,7 +313,9 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
     if spec is None:
         raise RuntimeError("trainer rollout loop did not seal a trace-check group")
     state.update(group_id=spec.group_id, entry_checkpoint_id=entry_checkpoint_id)
-    write_json(output_dir / "group.json", {"group_id": spec.group_id, "spec_ref": spec.identity()})
+    atomic_write_json(
+        output_dir / "group.json", {"group_id": spec.group_id, "spec_ref": spec.identity()}
+    )
     coordinator = GroupCoordinatorV1(rollouts.environments[config["id"]], session=rollouts.session)
     decision = rollouts.last_decision or coordinator.finalize(spec)
     context_policy = ContextPolicyV1.from_dict(
@@ -377,14 +379,14 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         "halt": halt,
     }
     state["report"] = report
-    write_json(output_dir / "report.json", report)
+    atomic_write_json(output_dir / "report.json", report)
     if halt:
         if tool_result_failure is not None:
             halt = tool_result_failure
             report["halt"] = halt
         report["status"] = "halt"
         _write_halt(output_dir, state, halt, members=members)
-        write_json(output_dir / "report.json", report)
+        atomic_write_json(output_dir / "report.json", report)
         return report
     if decision.status not in {"ready", "tie"}:
         halt = tool_result_failure or {
@@ -395,11 +397,11 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         report["halt"] = halt
         report["status"] = "halt"
         _write_halt(output_dir, state, halt, members=members)
-        write_json(output_dir / "report.json", report)
+        atomic_write_json(output_dir / "report.json", report)
         return report
 
     state["stage"] = "inspect_trainer_admission"
-    adapter_hash_after = adapter_tensor_hash(model, torch)
+    adapter_hash_after = adapter_tensor_hash(model)
     report["adapter_hash_after"] = adapter_hash_after
     admission = rollouts.last_admission
     if admission is None:
@@ -436,7 +438,7 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         report["halt"] = failure
         report["status"] = "halt"
         _write_halt(output_dir, state, failure, members=report["members"])
-        write_json(output_dir / "report.json", report)
+        atomic_write_json(output_dir / "report.json", report)
         return report
 
     batch = TrainingBatchV1.from_dict(store.get_artifact(admission.batch_ref))
@@ -457,7 +459,7 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         state.update(stage="complete", protocol_shape=None)
     else:
         _write_halt(output_dir, state, report["halt"], members=report["members"])
-    write_json(output_dir / "report.json", report)
+    atomic_write_json(output_dir / "report.json", report)
     if forced_stop_hook is not None:
         forced_stop_hook.remove()
     return report
@@ -506,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
     offline_cpu_environment()
     started = time.perf_counter()
     state: dict[str, Any] = {"stage": "startup", "started_unix": time.time(), **plan}
-    write_json(output_dir / "run.json", state)
+    atomic_write_json(output_dir / "run.json", state)
 
     def on_sigterm(_signum, _frame):
         previous_stage = state.get("stage")
@@ -525,7 +527,7 @@ def main(argv: list[str] | None = None) -> int:
             "peak_rss_bytes": peak_rss_bytes(),
             "peak_rss_mib": peak_rss_bytes() / (1024 * 1024),
         }
-        write_json(output_dir / "halt.json", {**state, **report})
+        atomic_write_json(output_dir / "halt.json", {**state, **report})
         print(json.dumps(report, sort_keys=True), file=sys.stderr, flush=True)
         raise SystemExit(124)
 
@@ -545,7 +547,7 @@ def main(argv: list[str] | None = None) -> int:
             "traceback": traceback.format_exc(),
         }
         state.update(stage="halt", protocol_shape=failure["protocol_shape"])
-        write_json(output_dir / "halt.json", failure)
+        atomic_write_json(output_dir / "halt.json", failure)
         report = {"schema": 1, "status": "halt", "halt": failure}
         print(json.dumps(report, sort_keys=True, indent=2), file=sys.stderr)
     wall_seconds = time.perf_counter() - started
@@ -553,8 +555,8 @@ def main(argv: list[str] | None = None) -> int:
     if report is None:
         report = {"schema": 1, "status": "halt", "halt": {"message": "no report generated"}}
     _print_report(report, wall_seconds=wall_seconds, peak_rss_bytes=peak_rss)
-    write_json(output_dir / "report.json", report)
-    write_json(output_dir / "summary.json", report)
+    atomic_write_json(output_dir / "report.json", report)
+    atomic_write_json(output_dir / "summary.json", report)
     if report["status"] == "pass":
         return 0
     return 1

@@ -8,12 +8,11 @@ the trainer and offline inspector require.
 from __future__ import annotations
 
 import hashlib
-import os
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from writing_agent.atomic_io import atomic_write_bytes
 from writing_agent.native_gemma import NativeGemmaRenderer
 from writing_agent.native_protocol import parse_native_response
 from writing_agent.task_graph import (
@@ -174,7 +173,7 @@ def inspect_group_offline(store_root: Path | str, group_id: str) -> bytes:
         "mismatch_count": 0,
     }
     encoded = canonical_bytes(report)
-    _write_report(group_dir / "inspection.json", encoded)
+    atomic_write_bytes(group_dir / "inspection.json", encoded)
     return encoded
 
 
@@ -583,28 +582,6 @@ def _read_receipt(path: Path, expected: Mapping[str, Any]) -> dict[str, Any]:
         if required is not None and value.get(key) != required:
             raise ProjectionError(f"offline receipt binding differs: {path.name}.{key}")
     return value
-
-
-def _write_report(path: Path, encoded: bytes) -> None:
-    descriptor, temporary = tempfile.mkstemp(prefix=".inspection.", dir=path.parent)
-    try:
-        os.fchmod(descriptor, 0o600)
-        with os.fdopen(descriptor, "wb", closefd=True) as stream:
-            stream.write(encoded)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-        _fsync_directory(path.parent)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
-
-
-def _fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 __all__ = [

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import fcntl
 import os
-import tempfile
 from contextlib import contextmanager
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from writing_agent.atomic_io import atomic_write_bytes
 from writing_agent.task_graph import (
     canonical_bytes,
     load_canonical_json,
@@ -174,24 +174,9 @@ class GroupCoordinatorV1:
     @staticmethod
     def _receipt(path: Path, body: dict[str, Any]) -> None:
         data = canonical_bytes(body)
-        fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                if path.read_bytes() != data:
-                    raise GroupError(f"conflicting immutable receipt: {path.name}") from None
-            directory_fd = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-        finally:
-            os.unlink(temporary)
+        written = atomic_write_bytes(path, data, replace=False)
+        if not written and path.read_bytes() != data:
+            raise GroupError(f"conflicting immutable receipt: {path.name}") from None
 
     @staticmethod
     def groups_by_sequence(groups_root: Path | str) -> dict[int, GroupSpecV1 | None]:

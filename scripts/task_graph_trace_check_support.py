@@ -7,7 +7,6 @@ CI environment without torch or Transformers.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import platform
 import resource
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
+from writing_agent.task_graph_token_ledger import decode_u32_token_ids
 from writing_agent.task_graph_tool_outcomes import ToolOutcomeError, read_member_tool_outcomes
 
 MODEL_ID = "google/gemma-4-E2B-it"
@@ -28,25 +28,6 @@ MAX_CONTEXT_TOKENS = 4096
 TOKENIZER_ROOT = (
     Path.home() / ".cache/huggingface/hub/models--google--gemma-4-E2B-it/snapshots" / MODEL_REVISION
 )
-
-
-def write_json(path: Path, payload: Any) -> None:
-    encoded = json.dumps(payload, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        handle.write(encoded)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
-    fsync_directory(path.parent)
-
-
-def fsync_directory(path: Path) -> None:
-    descriptor = os.open(path, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
 
 
 def peak_rss_bytes() -> int:
@@ -150,24 +131,6 @@ def load_model_and_tokenizer(args):
     if any(parameter.device.type != "cpu" for parameter in model.parameters()):
         raise RuntimeError("trace-check model contains a non-CPU parameter")
     return torch, model, tokenizer, None
-
-
-def adapter_tensor_hash(model, torch) -> str:
-    digest = hashlib.sha256()
-    parameters = [
-        (name, parameter) for name, parameter in model.named_parameters() if "lora_" in name
-    ]
-    if not parameters:
-        raise RuntimeError("native trace check requires the initialized PEFT LoRA adapter")
-    for name, parameter in sorted(parameters, key=lambda item: item[0]):
-        value = parameter.detach().to(device="cpu").contiguous()
-        digest.update(name.encode("utf-8"))
-        digest.update(str(value.dtype).encode("ascii"))
-        digest.update(struct.pack("<I", value.ndim))
-        for dimension in value.shape:
-            digest.update(struct.pack("<Q", int(dimension)))
-        digest.update(value.view(torch.uint8).numpy().tobytes())
-    return digest.hexdigest()
 
 
 class SampleTrace:
@@ -481,12 +444,6 @@ def prefill_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def decode_u32(data: bytes) -> tuple[int, ...]:
-    if len(data) % 4:
-        raise ValueError("training token artifact is not u32-le aligned")
-    return struct.unpack(f"<{len(data) // 4}I", data) if data else ()
-
-
 def recompute_member_logprobs(
     model, torch, prompt: tuple[int, ...], completion: tuple[int, ...], mask: bytes
 ):
@@ -567,8 +524,8 @@ def on_policy_drift(store, batch, model, torch) -> dict[str, Any]:
     reader = StoreArtifactReader(store)
     differences: list[float] = []
     for member in batch.members:
-        prompt = decode_u32(reader.bytes_artifact(member["prompt_ids_ref"]))
-        completion = decode_u32(reader.bytes_artifact(member["completion_ids_ref"]))
+        prompt = decode_u32_token_ids(reader.bytes_artifact(member["prompt_ids_ref"]))
+        completion = decode_u32_token_ids(reader.bytes_artifact(member["completion_ids_ref"]))
         mask = reader.bytes_artifact(member["env_mask_ref"])
         sampled_at: dict[int, float] = {}
         for span in member["turn_spans"]:
