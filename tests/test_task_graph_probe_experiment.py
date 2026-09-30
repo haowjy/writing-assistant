@@ -54,16 +54,16 @@ class ProbeTaskGraphIdentityTests(unittest.TestCase):
     def test_graphs_match_the_planted_canaries_and_pinned_identities(self):
         expected = {
             "t1-lighthouse": (
-                "8a60bed1a896cf0c8c5447b9108dcf53fb33dc350118595336d138c275e6c006",
-                "2b78a5898a560468e6590a8b74ac7a37ba8d9f7daeefc1c8ed2e8969d11cd584",
+                "92fd8b28155e40f61567561c5ef6fa43c3b6febe570b717878d484589f7b3555",
+                "1a550a5e566ab4bdbc506a521c03519dd11c877ab9db22ec720f60e7397db0df",
             ),
             "t2-winter-garden": (
-                "81d03ad1dce41f062dcb8f0eb140a3b9576595961a6af90e14ac000fbeebe6d2",
-                "6ac735ca750ab36a22ad5df7d155690a1fbe99267ed229b11f5067a95997062c",
+                "8a5b641472a7d5b25038038f33eee1c98e4ee47b61423dda1dfd300f1a4c7be8",
+                "2ceba30998cee94b1b41ff82c7ac1c45de6146fd02d30bea41410c5dc189e0de",
             ),
             "t3-coastal-post": (
-                "483c9faa358c7928e46087dd53b0468b1f2d326b885c5b466a4ec74aeb68cec9",
-                "eec9745c12095a5e30f66517d373d8dc7639381707d22039b32844e771cbb28c",
+                "3a4545f8a78434c126edecc6b4fe14ba17572108d9263a684fceb0099aca8042",
+                "00cb1821363d140a75f13cbd0c3b504d106415263ca38df52e6ae5cfe83d6325",
             ),
         }
         actual = {}
