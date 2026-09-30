@@ -9,7 +9,12 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from scripts.task_graph_trace_check import claim_output_directory, main, parse_args
-from scripts.task_graph_trace_check_support import classify_protocol_shape, same_incomplete_reason
+from scripts.task_graph_trace_check_support import (
+    classify_protocol_shape,
+    same_incomplete_reason,
+    trace_events_for_artifact,
+)
+from writing_agent.task_graph import canonical_bytes
 
 
 class TaskGraphTraceCheckCliTests(unittest.TestCase):
@@ -83,6 +88,23 @@ class TaskGraphTraceCheckCliTests(unittest.TestCase):
             ),
             "parse",
         )
+
+    def test_failure_trace_timing_is_canonical_integer_data(self):
+        events = trace_events_for_artifact(
+            [
+                {
+                    "member_ordinal": 0,
+                    "generate_seconds": 0.25,
+                    "sample_seconds": 0.002,
+                    "sample_error": {"type": "ProtocolError", "message": "refused"},
+                }
+            ]
+        )
+
+        self.assertEqual(events[0]["generate_nanoseconds"], 250_000_000)
+        self.assertEqual(events[0]["sample_nanoseconds"], 2_000_000)
+        self.assertNotIn("generate_seconds", events[0])
+        canonical_bytes({"kind": "trace-check-failure-v1", "sample_trace": events})
 
 
 if __name__ == "__main__":

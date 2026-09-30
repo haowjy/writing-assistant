@@ -429,24 +429,26 @@ class NativeGemmaSampleBackend:
         config = getattr(self.model, "generation_config", None)
         if config is None:
             return
-        expected = {
-            "min_length": 0,
-            "min_new_tokens": None,
-            "min_p": None,
-            "typical_p": 1.0,
-            "repetition_penalty": 1.0,
-            "no_repeat_ngram_size": 0,
-            "forced_bos_token_id": None,
-            "forced_eos_token_id": None,
-            "suppress_tokens": None,
-            "begin_suppress_tokens": None,
-            "bad_words_ids": None,
-            "sequence_bias": None,
-            "exponential_decay_length_penalty": None,
+        neutral_values = {
+            # Transformers 5 represents unset generation controls with None; older releases
+            # used the equivalent no-op values below.
+            "min_length": (0, None),
+            "min_new_tokens": (None,),
+            "min_p": (None,),
+            "typical_p": (1.0, None),
+            "repetition_penalty": (1.0, None),
+            "no_repeat_ngram_size": (0, None),
+            "forced_bos_token_id": (None,),
+            "forced_eos_token_id": (None,),
+            "suppress_tokens": (None,),
+            "begin_suppress_tokens": (None,),
+            "bad_words_ids": (None,),
+            "sequence_bias": (None,),
+            "exponential_decay_length_penalty": (None,),
         }
-        for name, value in expected.items():
-            actual = getattr(config, name, value)
-            if actual != value:
+        for name, allowed in neutral_values.items():
+            actual = getattr(config, name, allowed[0])
+            if actual not in allowed:
                 raise ProtocolError(f"Unexpected non-neutral generation setting: {name}")
 
 

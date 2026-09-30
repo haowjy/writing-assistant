@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Treat Transformers 5's unset neutral generation controls as no-ops while continuing to
+  refuse non-neutral defaults; persist failed trace timings as canonical nanoseconds.
+
 - Add an offline, CPU-only native Gemma task-graph trace checker that records group admission,
   on-policy drift, prefill and generation timing, peak RSS, deterministic offline inspection,
   and protocol-shape classification for audit refusals.

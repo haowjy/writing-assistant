@@ -51,6 +51,7 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     same_incomplete_reason,
     start_receipt_ordinal,
     tokenizer_files,
+    trace_events_for_artifact,
     with_context_cap_for_local_model,
     with_native_tokenizer,
     write_json,
@@ -306,9 +307,9 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
                 "type": type(exc).__name__,
                 "message": str(exc),
                 "stage": state.get("stage"),
-                "sample_trace": [
-                    dict(event) for event in trace.events if event["member_ordinal"] == ordinal
-                ],
+                "sample_trace": trace_events_for_artifact(
+                    [event for event in trace.events if event["member_ordinal"] == ordinal]
+                ),
             }
             failure["protocol_shape"] = classify_protocol_shape(failure)
             evidence_ref = fixture.store.put_artifact({"kind": "trace-check-failure-v1", **failure})

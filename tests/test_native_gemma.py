@@ -20,6 +20,7 @@ from writing_agent.native_gemma import (
     NativeGemmaSampleBackend,
     make_native_manifest_descriptors,
 )
+from writing_agent.native_protocol import ProtocolError
 from writing_agent.task_graph import MessageV1, canonical_json
 from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_errors import AdapterContractError
@@ -218,6 +219,31 @@ class NativeGemmaTests(unittest.TestCase):
         self.assertEqual(result.termination["kind"], "native_stop")
         self.assertEqual(result.usage["prefill_tokens"], len(result.input_token_ids))
         self.assertEqual(result.usage["cached_input_tokens"], 0)
+
+    def test_unset_optional_generation_defaults_are_neutral(self):
+        config = self.model.generation_config
+        names = ("min_length", "typical_p", "repetition_penalty", "no_repeat_ngram_size")
+        original = {name: getattr(config, name) for name in names}
+        try:
+            for name in names:
+                setattr(config, name, None)
+            result = self.backend.sample(_prepared(self.descriptors))
+        finally:
+            for name, value in original.items():
+                setattr(config, name, value)
+
+        self.assertEqual(len(result.generated_token_ids), 1)
+        self.assertEqual(result.termination["kind"], "native_stop")
+
+    def test_non_neutral_generation_defaults_remain_refused(self):
+        config = self.model.generation_config
+        original = config.min_length
+        try:
+            config.min_length = 2
+            with self.assertRaisesRegex(ProtocolError, "min_length"):
+                self.backend.sample(_prepared(self.descriptors))
+        finally:
+            config.min_length = original
 
     def test_external_suffix_matches_tool_results_by_order_not_event_call_id(self):
         from writing_agent.inference import parse_response

@@ -272,6 +272,20 @@ def instrument_generation_time(model, trace: SampleTrace) -> None:
     model.generate = timed_generate
 
 
+def trace_events_for_artifact(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert measurement floats to integer nanoseconds for canonical task-graph storage."""
+    artifact_events = []
+    for event in events:
+        artifact_event = dict(event)
+        for field in ("generate_seconds", "sample_seconds"):
+            seconds = artifact_event.pop(field, None)
+            artifact_event[field.removesuffix("_seconds") + "_nanoseconds"] = (
+                None if seconds is None else round(seconds * 1_000_000_000)
+            )
+        artifact_events.append(artifact_event)
+    return artifact_events
+
+
 def native_policy(
     store, rendering, manifest, model_ref: str, adapter_hash: str, experiment_ref: str
 ):
