@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Separate pure Phase 8 probe-task loading and admission from its trainer recipe and
+  tokenizer-bound run composition.
+
 - Commit truncated or malformed native tool output as parse-failed turns, including incomplete
   call headers and reserved sentinels, while keeping parser configuration errors fail-closed.
 

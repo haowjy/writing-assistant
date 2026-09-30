@@ -13,7 +13,7 @@ from writing_agent.grpo_task_graph_probe_privacy import (
     scan_run_privacy,
     verify_member_input_scope,
 )
-from writing_agent.task_graph_probe_experiment import (
+from writing_agent.task_graph_probe_tasks import (
     AUTHOR_PACKET_CANARY,
     EVALUATOR_PACKET_CANARY,
 )

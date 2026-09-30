@@ -52,7 +52,7 @@ def with_context_cap_for_local_model(entry, cap: int):
 
     from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
     from writing_agent.task_graph_derive_entry import derive_entry
-    from writing_agent.task_graph_probe_experiment import EntryFixture
+    from writing_agent.task_graph_probe_tasks import EntryFixture
 
     node = entry.graph.node(entry.node_id)
     budget = node.contract.budget_contract

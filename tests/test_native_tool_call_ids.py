@@ -48,6 +48,7 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
             make_gatherers,
         )
         from tests.test_task_graph_v2_writer import _native_policy
+        from writing_agent.grpo_task_graph_probe_experiment import bind_native_tokenizer
         from writing_agent.native_audit import audit_training_batch, require_training_admission
         from writing_agent.native_gemma import make_native_manifest_descriptors
         from writing_agent.task_graph_composition import RuntimeSession
@@ -60,11 +61,7 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
             LocalWorkspaceEnvironment,
         )
         from writing_agent.task_graph_ports import RuntimeDependenciesV1
-        from writing_agent.task_graph_probe_experiment import (
-            bind_native_tokenizer,
-            build_admitted_entry,
-            load_probe_task,
-        )
+        from writing_agent.task_graph_probe_tasks import build_admitted_entry, load_probe_task
         from writing_agent.task_graph_rollout import RolloutDriver
 
         root = Path(__file__).resolve().parents[1]

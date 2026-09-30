@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from writing_agent.catalog import save_json
+from writing_agent.grpo_task_graph_probe_experiment import (
+    TOKENIZER_PATH,
+    tiny_gemma,
+)
+from writing_agent.grpo_task_graph_probe_experiment import (
+    settings as probe_settings,
+)
 from writing_agent.grpo_task_graph_probe_privacy import (
     criterion_6 as build_criterion_6,
 )
@@ -22,13 +29,6 @@ from writing_agent.grpo_task_graph_probe_privacy import (
 )
 from writing_agent.task_graph import canonical_bytes, load_canonical_json
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
-from writing_agent.task_graph_probe_experiment import (
-    TOKENIZER_PATH,
-    tiny_gemma,
-)
-from writing_agent.task_graph_probe_experiment import (
-    settings as probe_settings,
-)
 from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
 from writing_agent.training_stages import _disk_bytes
 

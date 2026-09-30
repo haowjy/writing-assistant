@@ -6,7 +6,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from writing_agent.task_graph_probe_experiment import (
+from writing_agent.task_graph_probe_tasks import (
     AUTHOR_PACKET_CANARY,
     EVALUATOR_PACKET_CANARY,
 )

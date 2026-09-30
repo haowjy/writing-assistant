@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from writing_agent.task_graph_probe_experiment import TOKENIZER_PATH
+from writing_agent.grpo_task_graph_probe_experiment import TOKENIZER_PATH
 
 _NATIVE_TRAINER_AVAILABLE = all(
     importlib.util.find_spec(module) is not None
@@ -33,15 +33,15 @@ class NativeBackendTrainerTests(unittest.TestCase):
         import torch
         from transformers import AutoTokenizer
 
-        from writing_agent.native_audit import inspect_group_offline
-        from writing_agent.native_gemma import NativeGemmaSampleBackend
-        from writing_agent.task_graph_group import GroupCoordinatorV1
-        from writing_agent.task_graph_probe_experiment import (
+        from writing_agent.grpo_task_graph_probe_experiment import (
             TOKENIZER_PATH,
             make_task_graph_run,
             settings,
             tiny_gemma,
         )
+        from writing_agent.native_audit import inspect_group_offline
+        from writing_agent.native_gemma import NativeGemmaSampleBackend
+        from writing_agent.task_graph_group import GroupCoordinatorV1
 
         torch.set_num_threads(2)
         tokenizer = AutoTokenizer.from_pretrained(

@@ -144,10 +144,14 @@ retains its smoke-evaluation and training-format workflows.
   all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
   and admission derivation from stored evidence and the pinned local tokenizer without
   network access; its canonical report contains no prompt, packet, context or token data.
-  [task_graph_probe_experiment.py](../writing_agent/task_graph_probe_experiment.py) owns
-  the Phase 8 probe recipe, admitted task loader and shared run composition; task configs
-  are data inputs, while the CPU scripted sampler remains in the smoke script. Criterion 6
-  uses [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
+  [task_graph_probe_tasks.py](../writing_agent/task_graph_probe_tasks.py) owns pure probe-task
+  loading, admitted-entry construction, persistence, task-entry records, and private canaries;
+  callers can supply a config directory, with the repository task set as the default.
+  [grpo_task_graph_probe_experiment.py](../writing_agent/grpo_task_graph_probe_experiment.py)
+  owns the recipe, tokenizer binding, tiny Gemma fixture, and trainer composition. The config
+  builder and trace check load task data through the core module; the CPU scripted sampler
+  remains in the smoke script. Criterion 6 uses
+  [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
   to scan run artifacts for private author/check canaries outside `training/private`; its
   sibling scope reports per-member input reconstruction from that member's verified lineage,
   not general absence of unplanted shared or sibling-derived text.

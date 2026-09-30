@@ -135,6 +135,12 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
     from types import SimpleNamespace
 
     from writing_agent.grpo_task_graph import TaskGraphRollouts, TaskGraphTaskV1
+    from writing_agent.grpo_task_graph_probe_experiment import (
+        bind_native_tokenizer,
+    )
+    from writing_agent.grpo_task_graph_probe_experiment import (
+        settings as probe_settings,
+    )
     from writing_agent.native_audit import (
         TrainingAuditError,
         inspect_group_offline,
@@ -154,14 +160,10 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         LocalWorkspaceEnvironment,
     )
     from writing_agent.task_graph_ports import RuntimeDependenciesV1
-    from writing_agent.task_graph_probe_experiment import (
-        bind_native_tokenizer,
+    from writing_agent.task_graph_probe_tasks import (
         build_admitted_entry,
         load_probe_task,
         persist_entry,
-    )
-    from writing_agent.task_graph_probe_experiment import (
-        settings as probe_settings,
     )
     from writing_agent.task_graph_record_contracts import ContextPolicyV1
     from writing_agent.task_graph_store import TaskGraphStore
