@@ -221,6 +221,34 @@ class NativeGemmaTests(unittest.TestCase):
         self.assertEqual(result.usage["prefill_tokens"], len(result.input_token_ids))
         self.assertEqual(result.usage["cached_input_tokens"], 0)
 
+    def test_observational_logprobs_follow_next_input_ids_without_rng_replay(self):
+        from writing_agent.native_gemma import _ObservationalLogitsProcessor
+
+        observer = _ObservationalLogitsProcessor(self.torch)
+        first_scores = self.torch.tensor([[0.0, -1.0, 2.0]])
+        second_scores = self.torch.tensor([[1.0, 3.0, -2.0]])
+        with (
+            patch.object(
+                self.torch.random,
+                "get_rng_state",
+                side_effect=AssertionError("observer must not capture RNG state"),
+            ),
+            patch.object(
+                self.torch,
+                "multinomial",
+                side_effect=AssertionError("observer must not replay sampling"),
+            ),
+        ):
+            observer(self.torch.tensor([[7]]), first_scores)
+            observer(self.torch.tensor([[7, 1]]), second_scores)
+            actual = observer.finish((1, 2))
+
+        expected = (
+            float(self.torch.log_softmax(first_scores[0], dim=-1)[1]),
+            float(self.torch.log_softmax(second_scores[0], dim=-1)[2]),
+        )
+        self.assertEqual(actual, expected)
+
     def test_unset_optional_generation_defaults_are_neutral(self):
         config = self.model.generation_config
         names = ("min_length", "typical_p", "repetition_penalty", "no_repeat_ngram_size")
@@ -247,8 +275,7 @@ class NativeGemmaTests(unittest.TestCase):
             config.min_length = original
 
     def test_external_suffix_pairs_tool_results_by_exact_call_id(self):
-        from writing_agent.inference import parse_response
-        from writing_agent.native_protocol import bind_native_tool_call_ids
+        from writing_agent.native_protocol import parse_native_response
 
         raw = (
             '<|tool_call>call:write_file{content:<|"|>x<|"|>,'
@@ -256,9 +283,13 @@ class NativeGemmaTests(unittest.TestCase):
         )
         generated = tuple(self.tokenizer.encode(raw, add_special_tokens=False))
         action_id = "member:action:0"
-        parsed = bind_native_tool_call_ids(
-            parse_response(self.tokenizer, raw, prefix=""), action_id
-        )
+        parsed = parse_native_response(
+            self.tokenizer,
+            raw,
+            prefix="",
+            action_id=action_id,
+            termination={"kind": "native_stop"},
+        ).message
         turn = WriterTurnV2(
             action_id=action_id,
             context_revision_ref="a" * 64,

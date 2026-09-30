@@ -28,13 +28,12 @@ from writing_agent.grpo_task_graph import (
     TaskGraphTaskV1,
     train_task_graph,
 )
-from writing_agent.inference import parse_response
 from writing_agent.native_gemma import (
     NativeGemmaRenderer,
     NativeGemmaSampleBackend,
     make_native_manifest_descriptors,
 )
-from writing_agent.native_protocol import bind_native_tool_call_ids
+from writing_agent.native_protocol import parse_native_response
 from writing_agent.task_graph_derive_entry import derive_entry
 from writing_agent.task_graph_environment import RolloutEnvironment
 from writing_agent.task_graph_gate import LineageGate
@@ -252,15 +251,16 @@ class ScriptedNativeBackend:
                 module.training = training
         values = tuple(float(value) for value in logprobs.tolist())
         stop_id = generated[-1]
+        termination = {"kind": "native_stop", "stop_token_id": stop_id, "limit": None}
+        parsed = parse_native_response(
+            self.tokenizer,
+            raw,
+            prefix=self.tokenizer.decode(input_ids, skip_special_tokens=False),
+            action_id=prepared.action_id,
+            termination=termination,
+        )
         return SampleResultV2(
-            message=bind_native_tool_call_ids(
-                parse_response(
-                    self.tokenizer,
-                    raw,
-                    prefix=self.tokenizer.decode(input_ids, skip_special_tokens=False),
-                ),
-                prepared.action_id,
-            ),
+            message=parsed.message,
             input_token_ids=tuple(input_ids),
             generated_token_ids=generated,
             usage={
@@ -273,7 +273,7 @@ class ScriptedNativeBackend:
             logprobs=BinaryLogprobEvidence(
                 struct.pack(f"<{len(values)}f", *values), "f32-le", (len(values),)
             ),
-            termination={"kind": "native_stop", "stop_token_id": stop_id, "limit": None},
+            termination=termination,
             sampling_pins={
                 "manifest_ref": prepared.adapter_ref,
                 "behavior_policy_ref": prepared.behavior_policy_ref,
@@ -282,6 +282,7 @@ class ScriptedNativeBackend:
                 "seed": prepared.writer_seed,
             },
             raw_output=raw,
+            trace={"native_parse_failed": True} if parsed.failed else None,
         )
 
 

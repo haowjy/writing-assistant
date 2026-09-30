@@ -14,9 +14,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from writing_agent.inference import parse_response
 from writing_agent.native_gemma import NativeGemmaRenderer
-from writing_agent.native_protocol import bind_native_tool_call_ids
+from writing_agent.native_protocol import parse_native_response
 from writing_agent.task_graph import (
     EventV1,
     canonical_bytes,
@@ -37,7 +36,7 @@ from writing_agent.task_graph_records import (
     decode_runtime_manifest,
 )
 from writing_agent.task_graph_store import TaskGraphStore
-from writing_agent.task_graph_token_ledger import decode_u32_token_ids
+from writing_agent.task_graph_token_ledger import decode_u32_token_ids, encode_u32_token_ids
 from writing_agent.task_graph_training_export import (
     TrainingBatchExportV1,
     TrainingExportError,
@@ -265,7 +264,10 @@ def _derive_admission(
 
             for evidence in turns:
                 if not evidence.generated_ids:
-                    if evidence.turn.raw_output_ref is not None:
+                    if (
+                        evidence.turn.raw_output_ref is not None
+                        or evidence.turn.native_parse_failed is not None
+                    ):
                         raise _AuditCheckFailure("raw_output_and_message")
                     continue
                 raw_output = _raw_output(store, evidence.turn.raw_output_ref)
@@ -273,10 +275,24 @@ def _derive_admission(
                 if not isinstance(decoded, str) or raw_output != decoded.encode("utf-8"):
                     raise _AuditCheckFailure("raw_output_and_message")
                 prefix = tokenizer.decode(evidence.input_ids, skip_special_tokens=False)
-                parsed = bind_native_tool_call_ids(
-                    parse_response(tokenizer, decoded, prefix=prefix), evidence.turn.action_id
+                parsed = parse_native_response(
+                    tokenizer,
+                    decoded,
+                    prefix=prefix,
+                    action_id=evidence.turn.action_id,
+                    termination=evidence.turn.termination,
                 )
-                if intake_message(dict(parsed)).to_wire() != evidence.turn.message.to_wire():
+                expected_claim = True if parsed.failed else None
+                if evidence.turn.native_parse_failed is not expected_claim:
+                    raise _AuditCheckFailure("raw_output_and_message")
+                if parsed.failed and (
+                    evidence.turn.message.content != decoded or evidence.turn.message.calls
+                ):
+                    raise _AuditCheckFailure("raw_output_and_message")
+                if (
+                    intake_message(dict(parsed.message)).to_wire()
+                    != evidence.turn.message.to_wire()
+                ):
                     raise _AuditCheckFailure("raw_output_and_message")
 
             expected_policy = spec.policy["behavior_policy_ref"]
@@ -303,7 +319,7 @@ def _derive_admission(
             failure = exc.check
         except Exception:
             # Any unverifiable host or adapter evidence fails closed as infrastructure.
-            failure = "renderer_initial_context"
+            failure = "audit_unexpected_exception"
         statuses.append(
             {
                 "member_id": member_spec.member_id,
@@ -409,41 +425,55 @@ def _member_turns(store, reader, gate, spec, result, member_id):
 
 
 def _batch_member_matches(reader, batch, member, turns) -> bool:
-    prompt = _decode_unbounded_token_ids(reader.bytes_artifact(member["prompt_ids_ref"]))
-    completion = _decode_unbounded_token_ids(reader.bytes_artifact(member["completion_ids_ref"]))
-    mask = reader.bytes_artifact(member["env_mask_ref"])
-    sequence_length = len(prompt) + len(completion)
-    if len(mask) != len(completion) or (
-        batch.max_context_tokens is not None and sequence_length > batch.max_context_tokens
+    if not turns:
+        return False
+
+    generated_turns = [index for index, turn in enumerate(turns) if turn.generated_ids]
+    if not generated_turns:
+        return False
+
+    last_generated = generated_turns[-1]
+    exported_turns = turns[: last_generated + 1]
+    trailing = turns[last_generated + 1 :]
+    trailing_ref = None
+    if trailing:
+        if (
+            len(trailing) != 1
+            or trailing[0].generated_ids
+            or trailing[0].turn.termination["kind"] != "context_limit"
+        ):
+            return False
+        trailing_ref = trailing[0].ref
+    if member.get("trailing_context_limit_turn_ref") != trailing_ref:
+        return False
+
+    prompt_ids = exported_turns[0].input_ids
+    completion_ids: list[int] = []
+    env_mask = bytearray()
+    previous = None
+    for evidence in exported_turns:
+        if previous is not None:
+            prior_boundary = previous.input_ids + previous.generated_ids
+            if evidence.input_ids[: len(prior_boundary)] != prior_boundary:
+                return False
+            suffix = evidence.input_ids[len(prior_boundary) :]
+            completion_ids.extend(suffix)
+            env_mask.extend(b"\0" * len(suffix))
+
+        completion_ids.extend(evidence.generated_ids)
+        env_mask.extend(b"\1" * len(evidence.generated_ids))
+        previous = evidence
+
+    sequence_length = len(prompt_ids) + len(completion_ids)
+    if batch.max_context_tokens is not None and sequence_length > batch.max_context_tokens:
+        return False
+    if (
+        reader.bytes_artifact(member["prompt_ids_ref"]) != encode_u32_token_ids(prompt_ids)
+        or reader.bytes_artifact(member["completion_ids_ref"])
+        != encode_u32_token_ids(tuple(completion_ids))
+        or reader.bytes_artifact(member["env_mask_ref"]) != bytes(env_mask)
     ):
         return False
-    if not all(value in (0, 1) for value in mask):
-        return False
-    by_ref = {turn.ref: turn for turn in turns}
-    for span in member["turn_spans"]:
-        evidence = by_ref.get(span["turn_ref"])
-        if evidence is None:
-            return False
-        start, end, ext_start = span["completion_start"], span["completion_end"], span["ext_start"]
-        generated_count = len(evidence.generated_ids)
-        if (
-            end - start != generated_count
-            or tuple(completion[start:end]) != evidence.generated_ids
-            or tuple(mask[ext_start:start]) != (0,) * (start - ext_start)
-            or tuple(mask[start:end]) != (1,) * generated_count
-        ):
-            return False
-    if member["turn_spans"] and member["turn_spans"][-1]["completion_end"] != len(completion):
-        return False
-    trailing_ref = member.get("trailing_context_limit_turn_ref")
-    if trailing_ref is not None:
-        trailing = by_ref.get(trailing_ref)
-        if (
-            trailing is None
-            or trailing.turn.termination["kind"] != "context_limit"
-            or trailing.generated_ids
-        ):
-            return False
     return True
 
 
@@ -502,12 +532,6 @@ def _raw_output(store: Any, ref: str | None) -> bytes:
     if isinstance(value, str):
         return value.encode("utf-8")
     raise _AuditCheckFailure("raw_output_and_message")
-
-
-def _decode_unbounded_token_ids(data: bytes) -> tuple[int, ...]:
-    if len(data) % 4:
-        raise ValueError("token ledger byte length is not a u32 multiple")
-    return decode_u32_token_ids(data, len(data) // 4)
 
 
 def _tokenizer_files_match(tokenizer: Any, manifest: RuntimeManifestV2, root=None) -> bool:
