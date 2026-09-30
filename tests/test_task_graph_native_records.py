@@ -4,7 +4,7 @@ import struct
 import unittest
 from dataclasses import replace
 
-from tests.test_task_graph_records import record_examples
+from tests.task_graph_record_fixtures import record_examples
 from writing_agent import task_graph_ports, task_graph_records
 from writing_agent.task_graph import canonical_json
 from writing_agent.task_graph_composition import RuntimeSession
