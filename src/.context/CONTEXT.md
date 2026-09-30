@@ -81,10 +81,9 @@ retains its smoke-evaluation and training-format workflows.
   owns the little-endian u32 token codec shared by ledger readers/writers and training export;
   [task_graph_context_roots.py](../writing_agent/task_graph_context_roots.py) owns the fail-closed
   context ancestry walk used by V2 sampling, native history, eligibility and training export.
-  Any intervening `context_changed` event, including `carry`, is a new root. V2 binds token
-  bytes, prior-turn prefixes, derived prompt/completion/total/prefill/cache usage, sealed
-  sampling pins, and termination
-  derived from decoding and committed budgets. [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
+  The V2 ledger and root-binding rules are detailed in
+  [transition-seam.md](transition-seam.md); native sampler behavior is in
+  [rollout-execution.md](rollout-execution.md). [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
   owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
   it reads only the verified view and hash-addressed evidence through the artifact reader.
   [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
@@ -141,8 +140,9 @@ retains its smoke-evaluation and training-format workflows.
   reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
   [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
   exported token layouts and pinned tokenizer files, then returns `TrainingAdmissionV1`.
-  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts. Only
-  all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
+  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts; the
+  all-admitted requirement is defined in [transition-seam.md](transition-seam.md).
+  `inspect_group_offline` repeats the batch
   and admission derivation from stored evidence and the pinned local tokenizer without
   network access; its canonical report contains no prompt, packet, context or token data.
   [task_graph_probe_tasks.py](../writing_agent/task_graph_probe_tasks.py) owns pure probe-task
@@ -160,9 +160,8 @@ retains its smoke-evaluation and training-format workflows.
   text.
 - **Task-graph training (Phase 8).** [native_gemma.py](../writing_agent/native_gemma.py)
   is the native `SampleBackend` and renderer, and
-  [native_protocol.py](../writing_agent/native_protocol.py) owns the Gemma suffix rules,
-  stop set, shared response parse and call-ID binding
-  ([rollout-execution.md](rollout-execution.md)).
+  [native_protocol.py](../writing_agent/native_protocol.py) owns the native protocol; see
+  [rollout-execution.md](rollout-execution.md) for sampling and parsing contracts.
   [grpo_task_graph.py](../writing_agent/grpo_task_graph.py) owns `TaskGraphRollouts`, TRL's
   `rollout_func`. For each step it asserts the active adapter and pins the behavior policy,
   claims the step and seals one native group. It then runs the members serially on the live

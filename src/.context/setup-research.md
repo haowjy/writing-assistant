@@ -28,3 +28,8 @@ version. Select and verify training dependencies against the chosen GPU environm
 See [evaluation contracts](CONTEXT.md) for module responsibilities and current
 limits, and [training experiments](../../work/research-plan/training-experiments.md)
 for the proposed adaptation methods.
+
+> [!FLAG] **Needs human review**: This page says training orchestration is not implemented
+> and describes a future trainer, while [task-graph training](../../docs/task-graph-training.md)
+> documents a Phase 8 trainer integration. Confirm whether the older statements are superseded
+> or scoped to another workflow. Flagged 2026-09-30.

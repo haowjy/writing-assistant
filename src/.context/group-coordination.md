@@ -108,8 +108,9 @@ token span, taken from the same layout (`task_graph_training_layout`) the export
 
 ## Native training groups
 
-A group with `training_mode = "native"` is the only kind a trainer may consume. The rules
-below are what keep one group per optimizer step, and only audited tokens, reaching TRL.
+Native-group sealing, export, audit, and trainer-consumption receipts are described below.
+The canonical requirement that every member be admitted before trainer consumption is in
+[transition-seam.md](transition-seam.md).
 
 - **Sealing.** `seal` requires a `RuntimeManifestV2` with all three native capabilities,
   descriptor refs equal to the sealed `POLICY_FIELDS`, and a renderer equal to the entry's
