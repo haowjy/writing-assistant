@@ -173,6 +173,7 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
         max_tool_calls=settings["max_tool_calls"],
         max_author_calls=settings["max_author_calls"],
         max_generated_tokens=settings["max_generated_tokens"],
+        max_context_tokens=settings["max_context_tokens"],
     )
     completion = old_contract.completion_contract
     completion = replace(

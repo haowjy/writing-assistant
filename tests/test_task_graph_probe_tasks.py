@@ -162,6 +162,7 @@ class ProbeTaskGraphTests(unittest.TestCase):
                 )
                 budget = node.contract.budget_contract
                 self.assertEqual(budget.max_generated_tokens, 1536)
+                self.assertEqual(budget.max_context_tokens, 4096)
                 self.assertIsNone(budget.max_total_tokens)
                 self.assertEqual(budget.max_steps, 6)
                 self.assertEqual(budget.max_tool_calls, 8)

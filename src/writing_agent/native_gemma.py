@@ -82,15 +82,24 @@ class NativeGemmaRenderer:
             index
             for index, message in enumerate(messages)
             if message.get("origin") == history.turn.action_id
+            and message.get("role") == "assistant"
         ]
         if len(positions) != 1:
             raise ProtocolError("Committed assistant turn is not unique in the active context")
         position = positions[0]
         prior_message = messages[position]
-        if prior_message.get("role") != "assistant" or not prior_message.get("loss_eligible"):
+        if not prior_message.get("loss_eligible"):
             raise ProtocolError("Committed writer action is not the active sampled assistant turn")
         assistant = _sampled_assistant(history.turn)
         external = _gemma_messages(messages[position + 1 :])
+        sampled_call_ids = [call["id"] for call in assistant["tool_calls"]]
+        tool_messages = [message for message in external if message.get("role") == "tool"]
+        if len(tool_messages) != len(sampled_call_ids):
+            raise ProtocolError("Task-graph tool results differ from sampled tool calls")
+        for message, call_id in zip(tool_messages, sampled_call_ids, strict=True):
+            # Task-graph tool results use event call IDs; Gemma's replay uses the
+            # sampled assistant call IDs. Their order is the committed call order.
+            message["tool_call_id"] = call_id
         suffix = native_suffix(
             self.tokenizer,
             assistant,
