@@ -143,6 +143,7 @@ class TaskGraphProbeTests(unittest.TestCase):
         self.assertEqual(
             _select_evidence_verdict(criteria, {"group_count": 3, "tie_count": 3}), "fail"
         )
+        self.assertEqual(_select_verdict(criteria, {"group_count": 3, "tie_count": 3}), "fail")
 
     def test_criterion_1_missing_member_outcome_is_not_computed(self):
         outcome = {"calls": [], "counts_by_code": {}, "files_changed": False}

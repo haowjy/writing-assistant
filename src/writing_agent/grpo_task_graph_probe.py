@@ -21,10 +21,12 @@ from typing import Any
 
 from writing_agent.catalog import save_json
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
+from writing_agent.grpo_task_graph_probe_evidence import _select_verdict
 from writing_agent.training_stages import (
     StageAttemptError,
     StageFailure,
     StageLimits,
+    _disk_bytes,
     run_stage,
     worker_main,
 )
@@ -531,20 +533,6 @@ def _run_gpu_training(
         )
 
 
-def _disk_bytes(root: Path) -> int:
-    total = 0
-    if not root.exists():
-        return total
-    for current, directories, files in os.walk(root, followlinks=False):
-        directories[:] = [name for name in directories if not (Path(current) / name).is_symlink()]
-        for name in files:
-            try:
-                total += (Path(current) / name).lstat().st_size
-            except FileNotFoundError:
-                continue
-    return total
-
-
 def _admit_stage(run_dir: Path, stage: str, prepared: dict[str, Any], *, cpu: bool):
     if cpu:
         path = run_dir / "ownership" / stage
@@ -672,32 +660,6 @@ def _recompute_final_verdict(result: dict[str, Any]) -> None:
         }
         c5["passed"] = False
     result["verdict"] = _select_verdict(criteria, result.get("measurements", {}))
-
-
-def _select_verdict(criteria: dict[str, Any], measurements: dict[str, Any]) -> str:
-    if all(
-        criteria.get(f"criterion_{number}", {}).get("computed") is True for number in range(1, 7)
-    ):
-        if all(criteria[f"criterion_{number}"].get("passed") is True for number in range(1, 7)):
-            return "pass"
-    c1 = criteria.get("criterion_1", {})
-    c2 = criteria.get("criterion_2", {})
-    all_tie = measurements.get("tie_count") == 3 and measurements.get("group_count") == 3
-    if (
-        all_tie
-        and c1.get("computed") is True
-        and c1.get("evidence", {}).get("structural_and_admission") is True
-        and c2.get("computed") is True
-        and c2.get("evidence", {}).get("optimizer_steps") == 3
-        and c2.get("evidence", {}).get("gradients_finite") is True
-        and all(
-            criteria.get(f"criterion_{number}", {}).get("computed") is True
-            for number in (3, 4, 5, 6)
-        )
-        and all(criteria[f"criterion_{number}"].get("passed") is True for number in (3, 4, 5, 6))
-    ):
-        return "inconclusive_no_signal"
-    return "fail"
 
 
 def _stage_worker(args) -> None:

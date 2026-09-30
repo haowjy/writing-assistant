@@ -18,6 +18,7 @@ from writing_agent.catalog import save_json
 from writing_agent.task_graph import canonical_bytes, load_canonical_json
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
 from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
+from writing_agent.training_stages import _disk_bytes
 
 CRITERION_DESCRIPTIONS = {
     "criterion_1": (
@@ -926,17 +927,6 @@ def inspect_run(run_dir: Path, *, mode: str) -> dict[str, Any]:
         result = _failed_result(run_dir, mode, f"{type(exc).__name__}: {exc}")
         save_json(run_dir / "result.json", result)
         return result
-
-
-def _disk_bytes(root: Path) -> int:
-    total = 0
-    for path in root.rglob("*"):
-        if path.is_file() and not path.is_symlink():
-            try:
-                total += path.lstat().st_size
-            except FileNotFoundError:
-                continue
-    return total
 
 
 def _select_verdict(criteria: dict[str, Any], measurements: dict[str, Any]) -> str:

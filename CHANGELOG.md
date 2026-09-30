@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Use one fail-closed verdict rule in both the task-graph probe worker and parent.
+
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
   and fail-closed admission evidence before DAPO updates.
 
