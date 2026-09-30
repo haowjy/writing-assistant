@@ -43,7 +43,7 @@ from writing_agent.task_graph_store import TaskGraphStore
 from writing_agent.task_graph_transition import DerivedArtifact
 
 AUTHOR_PACKET_CANARY = "P8R3C_PRIVATE_AUTHOR_PREF_CANARY_4172"
-EVALUATOR_PACKET_CANARY = "P8R3C_PRIVATE_EVALUATOR_SPEC_CANARY_8365"
+PRIVATE_STORE_DUMP_CANARY = "P8R3C_PRIVATE_EVALUATOR_SPEC_CANARY_8365"
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs" / "phase8" / "probe-tasks"
 
 
@@ -292,8 +292,8 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
         reader.private[check.identity()] = check.to_dict()
         checks.append(check)
 
-    # Keep this private check outside the admitted evaluator packet: it is a leak
-    # detector, not an evaluator operand or a value that may affect task behavior.
+    # Keep this non-admitted record's canary outside the evaluator packet. It detects a
+    # bulk private-store dump, not leakage of an admitted evaluator check spec.
     canary_check = CheckContractV1(
         id="privacy_canary_only",
         evaluator_version="deterministic-v1",
@@ -306,7 +306,7 @@ def build_admitted_entry(config: dict[str, Any]) -> EntryFixture:
             "method": "deterministic",
             "required": False,
             "path": "scene.txt",
-            "private_fixture_canary": EVALUATOR_PACKET_CANARY,
+            "private_fixture_canary": PRIVATE_STORE_DUMP_CANARY,
         },
     )
     reader.private[canary_check.identity()] = canary_check.to_dict()
@@ -437,7 +437,7 @@ def task_entries(
 __all__ = [
     "AUTHOR_PACKET_CANARY",
     "CONFIG_DIR",
-    "EVALUATOR_PACKET_CANARY",
+    "PRIVATE_STORE_DUMP_CANARY",
     "EntryFixture",
     "MemoryArtifactReader",
     "ProbeTaskEntry",

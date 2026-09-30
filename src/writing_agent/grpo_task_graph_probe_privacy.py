@@ -8,7 +8,7 @@ from typing import Any
 
 from writing_agent.task_graph_probe_tasks import (
     AUTHOR_PACKET_CANARY,
-    EVALUATOR_PACKET_CANARY,
+    PRIVATE_STORE_DUMP_CANARY,
 )
 
 
@@ -24,7 +24,7 @@ def _criterion_result(computed: bool, passed: bool, evidence: dict[str, Any]) ->
 def scan_run_privacy(run_dir: Path) -> dict[str, Any]:
     canaries = {
         "unused_author_preference": AUTHOR_PACKET_CANARY,
-        "private_evaluator_check_spec": EVALUATOR_PACKET_CANARY,
+        "private_store_dump": PRIVATE_STORE_DUMP_CANARY,
     }
     private_root = run_dir / "training" / "private"
     private_canary_hits = {canary_id: 0 for canary_id in canaries}

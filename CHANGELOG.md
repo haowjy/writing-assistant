@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Name the outside-packet canary for its actual scope: detecting a bulk private-store dump,
+  not leakage of an admitted evaluator check spec.
+
 - Require every planted privacy canary to be present in `training/private` as criterion 6's
   positive control, in addition to checking for leaks outside it.
 

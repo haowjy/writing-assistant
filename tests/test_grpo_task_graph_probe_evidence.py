@@ -17,7 +17,7 @@ from writing_agent.grpo_task_graph_probe_privacy import (
 )
 from writing_agent.task_graph_probe_tasks import (
     AUTHOR_PACKET_CANARY,
-    EVALUATOR_PACKET_CANARY,
+    PRIVATE_STORE_DUMP_CANARY,
 )
 
 
@@ -96,7 +96,7 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
             (root / "batches" / "step-1.json").write_text('{"ids":[]}')
             (root / "logs" / "stage.log").write_text("sampled")
             (root / "training" / "private" / "payload.json").write_text(
-                AUTHOR_PACKET_CANARY + EVALUATOR_PACKET_CANARY
+                AUTHOR_PACKET_CANARY + PRIVATE_STORE_DUMP_CANARY
             )
 
             scan, criterion = self._criterion(root)
@@ -107,7 +107,7 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
         self.assertTrue(scan["canaries_present_in_private_area"])
         self.assertEqual(
             scan["private_canary_hits"],
-            {"unused_author_preference": 1, "private_evaluator_check_spec": 1},
+            {"unused_author_preference": 1, "private_store_dump": 1},
         )
         self.assertEqual(
             scan["canaries_scanned"],
@@ -117,8 +117,8 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
                     "sha256": hashlib.sha256(AUTHOR_PACKET_CANARY.encode()).hexdigest(),
                 },
                 {
-                    "canary_id": "private_evaluator_check_spec",
-                    "sha256": hashlib.sha256(EVALUATOR_PACKET_CANARY.encode()).hexdigest(),
+                    "canary_id": "private_store_dump",
+                    "sha256": hashlib.sha256(PRIVATE_STORE_DUMP_CANARY.encode()).hexdigest(),
                 },
             ],
         )
@@ -158,7 +158,7 @@ class ProbePrivacyEvidenceTests(unittest.TestCase):
         self.assertFalse(scan["canaries_present_in_private_area"])
         self.assertEqual(
             scan["private_canary_hits"],
-            {"unused_author_preference": 1, "private_evaluator_check_spec": 0},
+            {"unused_author_preference": 1, "private_store_dump": 0},
         )
         self.assertFalse(criterion["passed"])
 

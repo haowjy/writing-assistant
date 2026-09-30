@@ -152,9 +152,11 @@ retains its smoke-evaluation and training-format workflows.
   builder and trace check load task data through the core module; the CPU scripted sampler
   remains in the smoke script. Criterion 6 uses
   [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
-  to scan run artifacts for private author/check canaries outside `training/private`; its
-  sibling scope reports per-member input reconstruction from that member's verified lineage,
-  not general absence of unplanted shared or sibling-derived text.
+  to scan run artifacts for private-author and bulk-private-store-dump canaries outside
+  `training/private`; the latter is outside the evaluator packet and does not claim to detect
+  leakage of an admitted check spec. Its sibling scope reports per-member input reconstruction
+  from that member's verified lineage, not general absence of unplanted shared or sibling-derived
+  text.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
