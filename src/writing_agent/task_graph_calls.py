@@ -11,10 +11,10 @@ import copy
 import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from writing_agent.task_graph import canonical_json, safe_path, validate_file_tree
-from writing_agent.task_graph_accounting import READ_TOOLS
 from writing_agent.task_graph_errors import AdapterContractError, WriterRuntimeError
 from writing_agent.task_graph_records import SampledMessageV1
 from writing_agent.task_graph_wire import decode_canonical_value
@@ -25,6 +25,74 @@ _MAX_INTAKE_NODES = 4_096
 _MAX_INTAKE_DEPTH = 64
 _ENVELOPE_KEYS = {"id", "type", "function"}
 _FUNCTION_KEYS = {"name", "arguments"}
+
+# Stable diagnostic codes are derived from committed error text; the text itself is part of
+# the existing tool-result wire bytes and must not change. Several ask-author failures share
+# the same syntactic boundary but retain distinct codes for useful per-outcome measurements.
+REJECTION_MESSAGES = MappingProxyType(
+    {
+        "call_envelope_limit": "Tool call envelope exceeds size or nesting limit",
+        "invalid_envelope": "Invalid tool call envelope",
+        "envelope_size_limit": "Tool call envelope exceeds size limit",
+        "invalid_function_envelope": "Invalid tool function envelope",
+        "missing_id": "Tool call needs an id",
+        "duplicate_id": "Duplicate tool call id",
+        "invalid_function_name": "Invalid tool function",
+        "invalid_arguments_json": "Invalid tool arguments JSON",
+        "arguments_not_object": "Tool arguments must be an object",
+        "ask_author_arguments_shape": "ask_author needs exact structured arguments",
+        "ask_author_question_shape": "ask_author question must be nonempty text",
+        "ask_author_decision_ids_shape": "ask_author decision_ids must be nonempty text IDs",
+        "ask_author_duplicate_decision_id": "ask_author repeats a decision ID",
+        "ask_author_proposals_shape": "ask_author proposals need exact id/text pairs",
+        "ask_author_duplicate_proposal_id": "ask_author repeats a proposal ID",
+        "ask_author_option_refs_shape": "ask_author option_refs must be text IDs",
+        "ask_author_duplicate_option_ref": "ask_author repeats an option reference",
+        "arguments_not_utf8_strings": "Tool arguments must be an object of UTF-8 strings",
+        "unsafe_path": "Unsafe or noncanonical workspace path",
+        "tool_unavailable": "Tool is not available in this condition",
+        "mixed_control_file_batch": "Mixed control and file-tool batch is forbidden",
+        "tool_calls_not_array": "tool_calls must be an array",
+        "ask_author_unavailable": "ask_author is unavailable",
+        "ask_author_question_limit": "ask_author question exceeds limit",
+        "ask_author_decision_count_limit": "ask_author has too many decision IDs",
+        "ask_author_undeclared_decision": "ask_author names undeclared decision ID",
+        "ask_author_proposal_limit": "ask_author proposals exceed limits",
+        "ask_author_option_ref_limit": "ask_author option references exceed limits",
+        "ask_author_undeclared_proposal": "ask_author references an undeclared proposal",
+        "ask_author_redefined_proposal": "ask_author redefines a prior proposal",
+        "tool_call_budget_exceeded": "Tool-call budget exceeded",
+        "author_call_budget_exceeded": "Author-call budget exceeded",
+        "read_token_budget_exceeded": "Read-token budget exceeded",
+    }
+)
+_REJECTION_CODES_BY_MESSAGE = {message: code for code, message in REJECTION_MESSAGES.items()}
+
+# Native parse_response owns the standard call/function envelope and rejects non-object
+# arguments before intake; bind_native_tool_call_ids then replaces every parser-local ID with
+# a unique action-derived ID. These four committed intake codes therefore indicate a broken
+# native parser/binder contract. Size limits and generated names/arguments remain model
+# behavior, as do ask-author shape/path validation and failures from an accepted tool call.
+# Argument syntax/content codes (including ask-author shape) and unsafe paths describe sampled
+# behavior; tool-execution failures describe the effect the sampled call requested.
+PROTOCOL_SHAPED_REJECTION_CODES = frozenset(
+    {"invalid_envelope", "invalid_function_envelope", "missing_id", "duplicate_id"}
+)
+# Accepted tool calls can fail with dynamic, call-specific workspace text. The reader assigns
+# this stable model-behavior code when the committed observation is not one of the fixed errors.
+TOOL_EXECUTION_FAILURE_CODE = "tool_execution_failure"
+
+READ_TOOLS = frozenset({"read_file", "search", "list_dir"})
+
+
+def rejection_message(code: str) -> str:
+    """Return the existing persisted text for one stable call/tool rejection code."""
+    return REJECTION_MESSAGES[code]
+
+
+def rejection_code_for_message(message: str) -> str | None:
+    """Look up a committed rejection message by exact equality, never by substring."""
+    return _REJECTION_CODES_BY_MESSAGE.get(message) if isinstance(message, str) else None
 
 
 def _valid_utf8(value: str) -> bool:
@@ -280,19 +348,19 @@ def validate_ask_shape(arguments: Mapping[str, Any]) -> None:
         "proposals",
         "option_refs",
     }:
-        raise ValueError("ask_author needs exact structured arguments")
+        raise ValueError(rejection_message("ask_author_arguments_shape"))
     question = arguments["question"]
     if not isinstance(question, str) or not question.strip():
-        raise ValueError("ask_author question must be nonempty text")
+        raise ValueError(rejection_message("ask_author_question_shape"))
     ids = arguments["decision_ids"]
     if (
         not isinstance(ids, (list, tuple))
         or not ids
         or any(not isinstance(item, str) or not item for item in ids)
     ):
-        raise ValueError("ask_author decision_ids must be nonempty text IDs")
+        raise ValueError(rejection_message("ask_author_decision_ids_shape"))
     if len(ids) != len(set(ids)):
-        raise ValueError("ask_author repeats a decision ID")
+        raise ValueError(rejection_message("ask_author_duplicate_decision_id"))
     proposals = arguments["proposals"]
     if not isinstance(proposals, (list, tuple)) or any(
         not isinstance(item, Mapping)
@@ -300,17 +368,17 @@ def validate_ask_shape(arguments: Mapping[str, Any]) -> None:
         or any(not isinstance(value, str) or not value for value in item.values())
         for item in proposals
     ):
-        raise ValueError("ask_author proposals need exact id/text pairs")
+        raise ValueError(rejection_message("ask_author_proposals_shape"))
     proposal_ids = [item["id"] for item in proposals]
     if len(proposal_ids) != len(set(proposal_ids)):
-        raise ValueError("ask_author repeats a proposal ID")
+        raise ValueError(rejection_message("ask_author_duplicate_proposal_id"))
     refs = arguments["option_refs"]
     if not isinstance(refs, (list, tuple)) or any(
         not isinstance(ref, str) or not ref for ref in refs
     ):
-        raise ValueError("ask_author option_refs must be text IDs")
+        raise ValueError(rejection_message("ask_author_option_refs_shape"))
     if len(refs) != len(set(refs)):
-        raise ValueError("ask_author repeats an option reference")
+        raise ValueError(rejection_message("ask_author_duplicate_option_ref"))
     canonical_json(arguments)
 
 
@@ -347,39 +415,39 @@ def _unsafe_path(call: _RawCall) -> bool:
 Rule = Callable[[_RawCall], str | None]
 
 
-def _when(predicate: Callable[[_RawCall], bool], reason: str) -> Rule:
-    return lambda call: reason if predicate(call) else None
+def _when(predicate: Callable[[_RawCall], bool], code: str) -> Rule:
+    return lambda call: rejection_message(code) if predicate(call) else None
 
 
 CALL_RULES: tuple[Rule, ...] = (
-    _when(lambda call: not call.bounded, "Tool call envelope exceeds size or nesting limit"),
+    _when(lambda call: not call.bounded, "call_envelope_limit"),
     _when(
         lambda call: (
             not isinstance(call.raw, dict)
             or set(call.raw) != _ENVELOPE_KEYS
             or call.raw.get("type") != "function"
         ),
-        "Invalid tool call envelope",
+        "invalid_envelope",
     ),
-    _when(_oversized, "Tool call envelope exceeds size limit"),
+    _when(_oversized, "envelope_size_limit"),
     _when(
         lambda call: not isinstance(call.function, dict) or set(call.function) != _FUNCTION_KEYS,
-        "Invalid tool function envelope",
+        "invalid_function_envelope",
     ),
     _when(
         lambda call: not (_clean_text(call.raw_id) and call.raw_id.isprintable()),
-        "Tool call needs an id",
+        "missing_id",
     ),
-    _when(lambda call: call.duplicate_id, "Duplicate tool call id"),
-    _when(lambda call: not _clean_text(call.name, allow_control=False), "Invalid tool function"),
-    _when(lambda call: call.arguments_undecodable, "Invalid tool arguments JSON"),
-    _when(lambda call: not isinstance(call.arguments, dict), "Tool arguments must be an object"),
+    _when(lambda call: call.duplicate_id, "duplicate_id"),
+    _when(lambda call: not _clean_text(call.name, allow_control=False), "invalid_function_name"),
+    _when(lambda call: call.arguments_undecodable, "invalid_arguments_json"),
+    _when(lambda call: not isinstance(call.arguments, dict), "arguments_not_object"),
     lambda call: _ask_shape(call) if call.name == "ask_author" else None,
     _when(
         lambda call: call.name != "ask_author" and not _text_arguments(call),
-        "Tool arguments must be an object of UTF-8 strings",
+        "arguments_not_utf8_strings",
     ),
-    _when(_unsafe_path, "Unsafe or noncanonical workspace path"),
+    _when(_unsafe_path, "unsafe_path"),
 )
 
 
@@ -426,9 +494,9 @@ def parse_calls(
             call = _RawCall(None, False, None, None, None, None, False, False)
         reason = next((rule_reason for rule in CALL_RULES if (rule_reason := rule(call))), None)
         if reason is None and call.name not in allowed:
-            reason = "Tool is not available in this condition"
+            reason = rejection_message("tool_unavailable")
         if mixed:
-            reason = "Mixed control and file-tool batch is forbidden"
+            reason = rejection_message("mixed_control_file_batch")
         if reason is None and call.name == "ask_author" and ask_semantics is not None:
             try:
                 ask_semantics(call.arguments)
@@ -545,9 +613,15 @@ def tool_effect_contract(
 
 __all__ = [
     "CALL_RULES",
+    "PROTOCOL_SHAPED_REJECTION_CODES",
+    "REJECTION_MESSAGES",
+    "READ_TOOLS",
+    "TOOL_EXECUTION_FAILURE_CODE",
     "ToolQueueEntry",
     "apply_effect",
     "intake_message",
     "parse_calls",
+    "rejection_code_for_message",
+    "rejection_message",
     "tool_effect_contract",
 ]

@@ -21,6 +21,7 @@ from pathlib import Path
 from writing_agent.agent import SYSTEM_PROMPT
 from writing_agent.catalog import fingerprint, save_json
 from writing_agent.grpo import GRPOSettings, file_hashes, inspect_grpo, train_grpo
+from writing_agent.grpo_gpu import DISPLAY_POLICY, _display_consumers
 from writing_agent.inference import PROTOCOL, TransformersBackend, load_checkpoint, render_messages
 from writing_agent.suite import run_selected, saved_results
 from writing_agent.workspace import TOOL_SCHEMAS, Workspace, dispatch
@@ -32,25 +33,6 @@ GPU_PHASES = frozenset({"base-eval", "train", "resume", "adapter-eval"})
 PHASES = ("inspect", "prepare", "preflight", "base-eval", "train", "resume", "adapter-eval")
 GPU_BUDGET_SECONDS = 3600.0
 DEFAULT_TIMEOUT_SECONDS = 1200.0
-DISPLAY_POLICY = {
-    "names": [
-        "cosmic-comp",
-        "cosmic-panel",
-        "cosmic-bg",
-        "cosmic-app-library",
-        "cosmic-edit",
-        "cosmic-settings",
-        "cosmic-files",
-        "xdg-desktop-portal-cosmic",
-        "xwayland",
-        "ghostty",
-        "chrome",
-        "cursor",
-    ],
-    "per_process_mib": 256,
-    "total_mib": 768,
-    "minimum_free_mib": 22000,
-}
 
 SETTINGS = GRPOSettings(
     model_id=MODEL_ID,
@@ -1082,27 +1064,6 @@ def _check_ledger(ledger):
         raise RuntimeError("Unreconciled running stage; allowance reserved pending manual review")
     if _gpu_seconds(ledger) >= GPU_BUDGET_SECONDS:
         raise RuntimeError("Aggregate GPU-stage budget is exhausted")
-
-
-def _display_consumers(lines, free_mib):
-    allowed = []
-    for line in lines:
-        pid, details = line.split(",", 1)
-        name, memory = details.rsplit(",", 1)
-        name = name.strip().strip('"')
-        memory = int(memory.strip())
-        # NVML may return the full command line, including commas in flags.
-        executable = Path(name.split(maxsplit=1)[0]).name.lower()
-        if executable not in DISPLAY_POLICY["names"] or not (
-            0 <= memory <= DISPLAY_POLICY["per_process_mib"]
-        ):
-            raise RuntimeError(f"Unknown or oversized GPU consumer: {line}")
-        allowed.append({"pid": int(pid), "name": name, "memory_mib": memory})
-    if sum(p["memory_mib"] for p in allowed) > DISPLAY_POLICY["total_mib"]:
-        raise RuntimeError("Display GPU allocation exceeds total cap")
-    if free_mib < DISPLAY_POLICY["minimum_free_mib"]:
-        raise RuntimeError("Insufficient free GPU memory")
-    return allowed
 
 
 def _gpu_preflight():

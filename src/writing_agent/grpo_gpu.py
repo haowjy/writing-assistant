@@ -8,7 +8,26 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from writing_agent.catalog import save_json
-from writing_agent.grpo_probe import DISPLAY_POLICY
+
+DISPLAY_POLICY = {
+    "names": [
+        "cosmic-comp",
+        "cosmic-panel",
+        "cosmic-bg",
+        "cosmic-app-library",
+        "cosmic-edit",
+        "cosmic-settings",
+        "cosmic-files",
+        "xdg-desktop-portal-cosmic",
+        "xwayland",
+        "ghostty",
+        "chrome",
+        "cursor",
+    ],
+    "per_process_mib": 256,
+    "total_mib": 768,
+    "minimum_free_mib": 22000,
+}
 
 CUDA_ALLOCATOR_CONF = {
     "environment": ["PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF"],
@@ -84,6 +103,28 @@ def inventory(xml):
         "consumers": consumers,
         "process_total_mib": sum(p["memory_mib"] for p in consumers),
     }
+
+
+def _display_consumers(lines, free_mib):
+    """Reject unapproved desktop consumers while preserving graphics headroom."""
+    allowed = []
+    for line in lines:
+        pid, details = line.split(",", 1)
+        name, memory = details.rsplit(",", 1)
+        name = name.strip().strip('"')
+        memory = int(memory.strip())
+        # NVML may return the full command line, including commas in flags.
+        executable = Path(name.split(maxsplit=1)[0]).name.lower()
+        if executable not in DISPLAY_POLICY["names"] or not (
+            0 <= memory <= DISPLAY_POLICY["per_process_mib"]
+        ):
+            raise RuntimeError(f"Unknown or oversized GPU consumer: {line}")
+        allowed.append({"pid": int(pid), "name": name, "memory_mib": memory})
+    if sum(p["memory_mib"] for p in allowed) > DISPLAY_POLICY["total_mib"]:
+        raise RuntimeError("Display GPU allocation exceeds total cap")
+    if free_mib < DISPLAY_POLICY["minimum_free_mib"]:
+        raise RuntimeError("Insufficient free GPU memory")
+    return allowed
 
 
 def ownership_report(xml, *, policy=DISPLAY_POLICY):

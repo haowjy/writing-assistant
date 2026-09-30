@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from writing_agent.task_graph import canonical_json
-from writing_agent.task_graph_calls import validate_ask_shape
+from writing_agent.task_graph_calls import rejection_message, validate_ask_shape
 from writing_agent.task_graph_records import AuthorReplyV1
 
 
@@ -17,29 +17,29 @@ def validate_ask_semantics(arguments, node, decisions) -> None:
     validate_ask_shape(arguments)
     policy = node.interaction_policy
     if policy is None:
-        raise ValueError("ask_author is unavailable")
+        raise ValueError(rejection_message("ask_author_unavailable"))
     if len(arguments["question"]) > policy.max_question_chars:
-        raise ValueError("ask_author question exceeds limit")
+        raise ValueError(rejection_message("ask_author_question_limit"))
     if len(arguments["decision_ids"]) > policy.max_decisions_per_request:
-        raise ValueError("ask_author has too many decision IDs")
+        raise ValueError(rejection_message("ask_author_decision_count_limit"))
     declared = {item["id"] for item in policy.public_decisions}
     if set(arguments["decision_ids"]) - declared:
-        raise ValueError("ask_author names undeclared decision ID")
+        raise ValueError(rejection_message("ask_author_undeclared_decision"))
     if len(arguments["proposals"]) > policy.max_proposals or any(
         len(item["text"]) > policy.max_proposal_chars or len(item["id"]) > 256
         for item in arguments["proposals"]
     ):
-        raise ValueError("ask_author proposals exceed limits")
+        raise ValueError(rejection_message("ask_author_proposal_limit"))
     if len(arguments["option_refs"]) > policy.max_proposals or any(
         len(ref) > 256 for ref in arguments["option_refs"]
     ):
-        raise ValueError("ask_author option references exceed limits")
+        raise ValueError(rejection_message("ask_author_option_ref_limit"))
     prior = decisions.get("proposals", {})
     available = {item["id"] for item in arguments["proposals"]} | set(prior)
     if set(arguments["option_refs"]) - available:
-        raise ValueError("ask_author references an undeclared proposal")
+        raise ValueError(rejection_message("ask_author_undeclared_proposal"))
     if {item["id"] for item in arguments["proposals"]} & set(prior):
-        raise ValueError("ask_author redefines a prior proposal")
+        raise ValueError(rejection_message("ask_author_redefined_proposal"))
 
 
 def resolve_script_reply(script, request, decisions, disclosures):

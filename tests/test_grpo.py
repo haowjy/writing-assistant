@@ -18,6 +18,7 @@ from writing_agent.grpo import (
     inspect_grpo,
     seal_directory,
     train_grpo,
+    trainer_config,
     verify_checkpoint,
 )
 from writing_agent.grpo_identity import admission_identity, base_tensor_identity
@@ -89,6 +90,28 @@ class IntegrityTests(unittest.TestCase):
                         execute=True,
                     )
             self.assertFalse(output.exists())
+
+    def test_reward_scaling_is_explicit_and_identity_bound(self):
+        spec = {"id": "fixture-v1", "config": {}, "mode": "mechanical-only-smoke"}
+        admission = {"mode": "engineered-fixture", "label": "test-only"}
+        default = GRPOSettings(revision=REVISION)
+        unscaled = replace(default, scale_rewards="none")
+        with tempfile.TemporaryDirectory() as tmp:
+            default_plan = inspect_grpo(
+                [task()], tmp, settings=default, reward_spec=spec, admission=admission
+            )
+            unscaled_plan = inspect_grpo(
+                [task()], tmp, settings=unscaled, reward_spec=spec, admission=admission
+            )
+        self.assertEqual(default_plan["settings"]["scale_rewards"], "group")
+        self.assertEqual(unscaled_plan["settings"]["scale_rewards"], "none")
+        self.assertNotEqual(fingerprint(default_plan), fingerprint(unscaled_plan))
+        config = trainer_config(default, "unused", use_cpu=True, bf16=False)
+        self.assertEqual(config["scale_rewards"], "group")
+        unscaled_config = trainer_config(
+            unscaled, "unused", use_cpu=True, bf16=False, scale_rewards="none"
+        )
+        self.assertEqual(unscaled_config["scale_rewards"], "none")
 
     def test_tie_policy_is_explicit_and_identity_bound(self):
         settings = GRPOSettings(revision=REVISION)

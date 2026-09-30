@@ -2,9 +2,33 @@
 
 ## [Unreleased]
 
+- Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
+  and fail-closed admission evidence before DAPO updates.
+
+- Apply the declared 4,096-token context cap when compiling the Phase 8 fixture task graphs.
+
+- Add a one-shot generic stage supervisor with process-group timeouts, resource ceilings,
+  and atomic per-stage status and resource records.
+
+- Add the bounded Phase 8 task-graph probe phases, offline evidence inspection and verdict,
+  plus a tiny-Gemma CPU dry-run profile.
+
+- Require both offline inspection rounds to cover all three groups before criterion 4 can pass.
+
+- Keep `inspect` read-only and persist its pre-run record from `prepare`.
+
+- Set only validated W&B environment bindings, and only after runtime admission succeeds.
+
+- Expose TRL reward scaling as a frozen, identity-bound GRPO setting (default: `group`).
+
 - Bind native Gemma tool calls to deterministic task-graph action IDs, pair replayed results
   exactly, and halt the CPU trace check on protocol-shaped tool-result errors while recording
   per-call outcomes and final-file changes.
+
+- Derive tool-call rejection codes from exact committed error text and make P1 criterion 1
+  fail on protocol-shaped native-intake rejections in any member.
+- Bind scripted CPU-probe tool IDs exactly like native sampling so the dry run exercises the
+  committed call/result identity contract.
 
 - Treat Transformers 5's unset neutral generation controls as no-ops while continuing to
   refuse non-neutral defaults; persist failed trace timings as canonical nanoseconds.

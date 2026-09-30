@@ -44,6 +44,13 @@ def xml(consumers=(), free=22000):
 
 
 class OwnershipTests(unittest.TestCase):
+    def test_gpu_policy_import_does_not_load_probe_orchestrator(self):
+        code = (
+            "import sys; import writing_agent.grpo_gpu; "
+            "assert 'writing_agent.grpo_probe' not in sys.modules"
+        )
+        subprocess.run([sys.executable, "-c", code], check=True)
+
     def test_complete_graphics_and_compute_inventory_and_exact_limits(self):
         consumers = [(n, "chrome", "G", 256) for n in range(1, 4)]
         self.assertTrue(ownership_report(xml(consumers))["admitted"])
