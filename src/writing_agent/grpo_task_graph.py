@@ -329,14 +329,11 @@ class TaskGraphRollouts:
 
     def __init__(
         self,
+        invocation_id: str,
+        *,
         tasks,
         settings,
         output,
-        reward_callback,
-        backend_factory,
-        system_prompt,
-        *,
-        invocation_id=None,
         task_entries: Sequence[TaskGraphTaskV1],
         runtime_manifest: RuntimeManifestV2,
         manifest_descriptors: tuple,
@@ -349,7 +346,6 @@ class TaskGraphRollouts:
         observer=None,
         audit_function=audit_training_batch,
     ) -> None:
-        del reward_callback, backend_factory, system_prompt
         self.task_ids = tuple(item["id"] for item in tasks)
         self.task_entries = {entry.task_id: entry for entry in task_entries}
         if set(self.task_ids) != set(self.task_entries):
@@ -876,6 +872,9 @@ def train_task_graph(
     observer = TaskGraphLossObserver(output)
     factory = partial(
         TaskGraphRollouts,
+        tasks=[{"id": entry.task_id} for entry in task_entries],
+        settings=settings,
+        output=output,
         task_entries=task_entries,
         runtime_manifest=runtime_manifest,
         manifest_descriptors=manifest_descriptors,
@@ -908,10 +907,7 @@ def train_task_graph(
                 bias="none",
             ),
             trainer_config_values=trainer_config_values,
-            reward_callback=task_graph_unused_reward_callback,
-            backend_factory=None,
-            rollout_factory=factory,
-            system_prompt="",
+            make_rollouts=factory,
             resume_from_checkpoint=resume_from_checkpoint,
             resume_checkpoint_identity=resume_checkpoint_identity,
             stop_after_steps=stop_after_steps,
@@ -926,11 +922,6 @@ def train_task_graph(
         body["task_graph_observer"] = summary
         save_json(complete, body)
     return result
-
-
-def task_graph_unused_reward_callback(*_args, **_kwargs):
-    """Placeholder required by the identity-agnostic trainer; native groups own reward."""
-    raise AssertionError("task-graph native groups do not use the legacy reward callback")
 
 
 __all__ = [

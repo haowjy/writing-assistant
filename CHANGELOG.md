@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
+  rollout classes.
+
 - Use one fail-closed verdict rule in both the task-graph probe worker and parent.
 
 - Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,

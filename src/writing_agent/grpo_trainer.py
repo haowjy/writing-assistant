@@ -2,14 +2,22 @@
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from writing_agent.catalog import save_json
 from writing_agent.grpo_checkpoint import file_hashes, seal_directory, verify_checkpoint
-from writing_agent.grpo_rollout import NativeRolloutBackend, RolloutGroups, saved_rewards
-from writing_agent.inference import PROTOCOL
+
+RolloutFunc = Callable[..., Any]
+
+
+def saved_rewards(prompts, completions, rollout_rewards, **kwargs):
+    """Return the advantages saved by a rollout function without re-scaling them."""
+    del prompts, completions, kwargs
+    return rollout_rewards
 
 
 @dataclass(frozen=True)
@@ -84,10 +92,7 @@ def run_trainer(
     tokenizer,
     lora_config,
     trainer_config_values,
-    reward_callback,
-    backend_factory,
-    rollout_factory,
-    system_prompt,
+    make_rollouts: Callable[[str], RolloutFunc],
     resume_from_checkpoint,
     resume_checkpoint_identity,
     stop_after_steps,
@@ -164,47 +169,7 @@ def run_trainer(
             "quarantined": quarantined,
         },
     )
-    if backend_factory is None:
-
-        def backend_factory(live_model, live_tokenizer, seed):
-            return NativeRolloutBackend(
-                live_model,
-                live_tokenizer,
-                {
-                    "protocol": PROTOCOL,
-                    "prompt_format": "chat",
-                    "seed": seed,
-                    "temperature": 1.0,
-                    "top_p": 1.0,
-                    "top_k": 0,
-                    "enable_thinking": settings.enable_thinking,
-                    "context_tokens": settings.context_tokens,
-                    "max_tokens": settings.max_tokens,
-                    "max_generated_tokens": settings.max_generated_tokens,
-                },
-            )
-
-    rollouts = (
-        rollout_factory(
-            tasks,
-            settings,
-            output,
-            reward_callback,
-            backend_factory,
-            system_prompt,
-            invocation_id=invocation.name,
-        )
-        if rollout_factory is not None
-        else RolloutGroups(
-            tasks,
-            settings,
-            output,
-            reward_callback,
-            backend_factory,
-            system_prompt,
-            invocation_id=invocation.name,
-        )
-    )
+    rollouts = make_rollouts(invocation.name)
 
     class CheckpointLifecycle(api.TrainerCallback):
         def on_train_begin(self, args, state, control, **kwargs):

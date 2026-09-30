@@ -36,7 +36,7 @@ from writing_agent.grpo_runtime import (
     validate_streaming_model,
     verify_runtime,
 )
-from writing_agent.inference import checkpoint_identity
+from writing_agent.inference import PROTOCOL, checkpoint_identity
 from writing_agent.workspace import TOOL_SCHEMAS
 
 
@@ -348,6 +348,26 @@ def train_grpo(
             "model": checkpoint_identity(settings.model_id, settings.revision),
             "backend": "NativeRolloutBackend-v1",
         }
+    if backend_factory is None:
+
+        def backend_factory(live_model, live_tokenizer, seed):
+            return NativeRolloutBackend(
+                live_model,
+                live_tokenizer,
+                {
+                    "protocol": PROTOCOL,
+                    "prompt_format": "chat",
+                    "seed": seed,
+                    "temperature": 1.0,
+                    "top_p": 1.0,
+                    "top_k": 0,
+                    "enable_thinking": settings.enable_thinking,
+                    "context_tokens": settings.context_tokens,
+                    "max_tokens": settings.max_tokens,
+                    "max_generated_tokens": settings.max_generated_tokens,
+                },
+            )
+
     if verified_runtime:
         validate_streaming_model(model.config)
     devices = {str(p.device) for p in model.parameters()}
@@ -426,6 +446,20 @@ def train_grpo(
         run_name=wandb_run_name,
         scale_rewards=settings.scale_rewards,
     )
+
+    rollout_builder = rollout_factory or RolloutGroups
+
+    def make_rollouts(invocation_id):
+        return rollout_builder(
+            tasks,
+            settings,
+            output,
+            reward_callback,
+            backend_factory,
+            system_prompt,
+            invocation_id=invocation_id,
+        )
+
     return run_trainer(
         api=api,
         tasks=tasks,
@@ -438,10 +472,7 @@ def train_grpo(
         tokenizer=tokenizer,
         lora_config=lora_config,
         trainer_config_values=trainer_config_values,
-        reward_callback=reward_callback,
-        backend_factory=backend_factory,
-        rollout_factory=rollout_factory,
-        system_prompt=system_prompt,
+        make_rollouts=make_rollouts,
         resume_from_checkpoint=resume_from_checkpoint,
         resume_checkpoint_identity=resume_checkpoint_identity,
         stop_after_steps=stop_after_steps,
