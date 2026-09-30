@@ -30,11 +30,11 @@ from writing_agent.native_audit import (
     audit_training_batch,
     require_training_admission,
 )
-from writing_agent.native_gemma import NativeGemmaSampleBackend
+from writing_agent.native_gemma import NativeGemmaSampleBackend, assert_active_adapter
 from writing_agent.task_graph import canonical_bytes, domain_hash, thaw
 from writing_agent.task_graph_composition import RuntimeSession
 from writing_agent.task_graph_environment import RolloutEnvironment
-from writing_agent.task_graph_errors import DriverBudgetError
+from writing_agent.task_graph_errors import AdapterContractError, DriverBudgetError
 from writing_agent.task_graph_gate import StoreArtifactReader
 from writing_agent.task_graph_gatherers import (
     CheckRunner,
@@ -159,21 +159,6 @@ def _adapter_state_hash(model: Any, adapter_name: str) -> str:
         digest.update(len(raw).to_bytes(8, "big"))
         digest.update(raw)
     return digest.hexdigest()
-
-
-def _assert_active_adapter(model: Any, adapter_name: str) -> None:
-    active = getattr(model, "active_adapters", None)
-    active = active() if callable(active) else active
-    if active is None:
-        active = getattr(model, "active_adapter", None)
-        active = active() if callable(active) else active
-    if isinstance(active, str):
-        active = (active,)
-    if not isinstance(active, (tuple, list)) or tuple(active) != (adapter_name,):
-        raise TaskGraphTrainingError("expected PEFT adapter is not active for sampling")
-    modules = model.modules() if callable(getattr(model, "modules", None)) else ()
-    if any(getattr(module, "disable_adapters", False) is True for module in modules):
-        raise TaskGraphTrainingError("native sampling refuses a disabled PEFT adapter")
 
 
 def task_graph_behavior_policy_ref(
@@ -310,17 +295,6 @@ def _native_policy(
     }
 
 
-class _PinnedSamplingBackend:
-    def __init__(self, model: Any, adapter_name: str, backend: Any) -> None:
-        self.model, self.adapter_name, self.backend = model, adapter_name, backend
-        self.descriptor = backend.descriptor
-        self.manifest_descriptors = backend.manifest_descriptors
-
-    def sample(self, prepared):
-        _assert_active_adapter(self.model, self.adapter_name)
-        return self.backend.sample(prepared)
-
-
 class TaskGraphRollouts:
     """TRL rollout callback: one sealed task-graph group per step, never resampled."""
 
@@ -400,7 +374,10 @@ class TaskGraphRollouts:
         reservation = _reserve_step(self.output / "groups", step, task_id)
         spec = None
         try:
-            _assert_active_adapter(trainer.model, self.adapter_name)
+            try:
+                assert_active_adapter(trainer.model, self.adapter_name)
+            except AdapterContractError as exc:
+                raise TaskGraphTrainingError(str(exc)) from exc
             adapter_before = self._behavior_policy_ref(trainer.model, step)
             group_seed = derive_group_seed(self.settings.seed, "task-graph-step", step)
             coordinator = GroupCoordinatorV1(environment, session=self.session)
@@ -436,7 +413,6 @@ class TaskGraphRollouts:
             for ordinal in range(len(spec.members)):
                 try:
                     runtime = coordinator.start(spec, ordinal, policy=spec.policy)
-                    _assert_active_adapter(trainer.model, self.adapter_name)
                     run = RolloutDriver(environment, gatherers).run(runtime, max_steps=256)
                     if run.directive.kind != "done":
                         raise TaskGraphTrainingError(
@@ -482,7 +458,10 @@ class TaskGraphRollouts:
                 raise TaskGraphTrainingError("unknown finalized task-graph group status")
 
             adapter_after = self._behavior_policy_ref(trainer.model, step)
-            _assert_active_adapter(trainer.model, self.adapter_name)
+            try:
+                assert_active_adapter(trainer.model, self.adapter_name)
+            except AdapterContractError as exc:
+                raise TaskGraphTrainingError(str(exc)) from exc
             admission = self.audit_function(
                 self.store,
                 spec,
@@ -547,7 +526,6 @@ class TaskGraphRollouts:
             adapter_name=self.adapter_name,
             model_ref=self.model_ref,
         )
-        backend = _PinnedSamplingBackend(trainer.model, self.adapter_name, backend)
         tools = LocalTextToolProvider()
         evaluator = DeterministicEvaluator()
         from writing_agent.task_graph_local import LocalWorkspaceEnvironment

@@ -213,6 +213,24 @@ class _ObservationalLogitsProcessor:
         return tuple(self._values)
 
 
+def assert_active_adapter(model: Any, name: str) -> None:
+    """Require exactly one enabled active PEFT adapter before native sampling."""
+    if not isinstance(name, str) or not name:
+        raise AdapterContractError("Native sampling requires a named PEFT adapter")
+    active = getattr(model, "active_adapters", None)
+    active = active() if callable(active) else active
+    if active is None:
+        active = getattr(model, "active_adapter", None)
+        active = active() if callable(active) else active
+    if isinstance(active, str):
+        active = (active,)
+    if not isinstance(active, (tuple, list)) or tuple(active) != (name,):
+        raise AdapterContractError("Expected PEFT adapter is not active for native sampling")
+    modules = model.modules() if callable(getattr(model, "modules", None)) else ()
+    if any(getattr(module, "disable_adapters", False) is True for module in modules):
+        raise AdapterContractError("Native sampling refuses a disabled PEFT adapter")
+
+
 class NativeGemmaSampleBackend:
     """Task-graph sampler over live PEFT weights with no cross-call token/KV state."""
 
@@ -261,7 +279,7 @@ class NativeGemmaSampleBackend:
         import torch
         from transformers import LogitsProcessorList
 
-        self._assert_active_adapter()
+        assert_active_adapter(self.model, self.adapter_name)
         renderer, tokenizer_descriptor, decoding = self.manifest_descriptors
         for reference, expected, name in (
             (prepared.tokenizer_ref, tokenizer_descriptor.identity(), "tokenizer"),
@@ -439,20 +457,6 @@ class NativeGemmaSampleBackend:
             raw_output=raw_output,
             trace=trace,
         )
-
-    def _assert_active_adapter(self) -> None:
-        active = getattr(self.model, "active_adapters", None)
-        active = active() if callable(active) else active
-        if active is None:
-            active = getattr(self.model, "active_adapter", None)
-            active = active() if callable(active) else active
-        if isinstance(active, str):
-            active = (active,)
-        if not isinstance(active, (tuple, list)) or tuple(active) != (self.adapter_name,):
-            raise AdapterContractError("Expected PEFT adapter is not active for native sampling")
-        modules = self.model.modules() if callable(getattr(self.model, "modules", None)) else ()
-        if any(getattr(module, "disable_adapters", False) is True for module in modules):
-            raise AdapterContractError("Native sampling refuses a disabled PEFT adapter")
 
     def _require_neutral_generation_defaults(self) -> None:
         config = getattr(self.model, "generation_config", None)

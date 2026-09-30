@@ -16,13 +16,14 @@ from writing_agent.grpo_task_graph import (
     TaskGraphResumeRefused,
     TaskGraphRollouts,
     TaskGraphTrainingError,
-    _assert_active_adapter,
     _reserve_step,
     task_graph_behavior_policy_ref,
     task_graph_resume_preflight,
     train_task_graph,
 )
 from writing_agent.native_audit import TrainingAuditError
+from writing_agent.native_gemma import assert_active_adapter
+from writing_agent.task_graph_errors import AdapterContractError
 from writing_agent.task_graph_gate import LineageGate
 from writing_agent.task_graph_records import TrainingAdmissionV1
 from writing_agent.task_graph_store import TaskGraphStore
@@ -249,7 +250,7 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
                         return_value=coordinator,
                     ),
                     patch("writing_agent.grpo_task_graph._native_policy", return_value={}),
-                    patch("writing_agent.grpo_task_graph._assert_active_adapter"),
+                    patch("writing_agent.grpo_task_graph.assert_active_adapter"),
                 ):
                     with self.assertRaises(TaskGraphGroupPending):
                         rollouts(["task-1", "task-1"], trainer)
@@ -326,7 +327,7 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
                     return_value=coordinator,
                 ),
                 patch("writing_agent.grpo_task_graph._native_policy", return_value={}),
-                patch("writing_agent.grpo_task_graph._assert_active_adapter"),
+                patch("writing_agent.grpo_task_graph.assert_active_adapter"),
                 patch(
                     "writing_agent.grpo_task_graph.TrainingBatchV1.from_dict",
                     return_value=SimpleNamespace(members=()),
@@ -381,7 +382,7 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
                     return_value=coordinator,
                 ),
                 patch("writing_agent.grpo_task_graph._native_policy", return_value={}),
-                patch("writing_agent.grpo_task_graph._assert_active_adapter"),
+                patch("writing_agent.grpo_task_graph.assert_active_adapter"),
                 patch(
                     "writing_agent.grpo_task_graph.TrainingBatchV1.from_dict",
                     return_value=SimpleNamespace(members=()),
@@ -400,15 +401,15 @@ class TaskGraphRolloutFailureTests(unittest.TestCase):
 
     def test_adapter_must_be_active_and_not_disabled(self):
         active = SimpleNamespace(active_adapters=("default",), modules=lambda: [])
-        _assert_active_adapter(active, "default")
-        with self.assertRaises(TaskGraphTrainingError):
-            _assert_active_adapter(active, "other")
+        assert_active_adapter(active, "default")
+        with self.assertRaises(AdapterContractError):
+            assert_active_adapter(active, "other")
         disabled = SimpleNamespace(
             active_adapters=("default",),
             modules=lambda: [SimpleNamespace(disable_adapters=True)],
         )
-        with self.assertRaises(TaskGraphTrainingError):
-            _assert_active_adapter(disabled, "default")
+        with self.assertRaises(AdapterContractError):
+            assert_active_adapter(disabled, "default")
 
 
 if __name__ == "__main__":
