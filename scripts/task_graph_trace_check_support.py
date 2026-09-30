@@ -7,7 +7,6 @@ CI environment without torch or Transformers.
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import os
 import platform
@@ -62,17 +61,6 @@ def offline_cpu_environment() -> None:
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 
-def load_builder():
-    root = Path(__file__).resolve().parents[1]
-    path = root / "configs" / "phase8" / "probe-tasks" / "build.py"
-    spec = importlib.util.spec_from_file_location("phase8_probe_task_builder", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load probe task builder at {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 def with_context_cap_for_local_model(entry, cap: int):
     """Give only the local-model test harness the declared cap while S9b is being ported.
 
@@ -81,9 +69,9 @@ def with_context_cap_for_local_model(entry, cap: int):
     """
     from dataclasses import replace
 
-    from tests.task_graph_fixtures import EntryFixture
     from writing_agent.task_graph_admission import MappingArtifactResolver, admit_graph
     from writing_agent.task_graph_derive_entry import derive_entry
+    from writing_agent.task_graph_probe_experiment import EntryFixture
 
     node = entry.graph.node(entry.node_id)
     budget = node.contract.budget_contract
@@ -108,27 +96,6 @@ def with_context_cap_for_local_model(entry, cap: int):
         graph,
         entry.node_id,
         entry.params,
-        entry.reader,
-        derived.state,
-        derived.artifacts,
-    )
-
-
-def with_native_tokenizer(entry, descriptor):
-    """Bind the native tokenizer descriptor into a freshly admitted task entry."""
-    from dataclasses import replace
-
-    from tests.task_graph_fixtures import EntryFixture
-    from writing_agent.task_graph_derive_entry import derive_entry
-
-    entry.reader.public[descriptor.identity()] = descriptor.to_wire()
-    rendering = {**entry.params.rendering, "tokenizer_ref": descriptor.identity()}
-    params = replace(entry.params, rendering=rendering)
-    derived = derive_entry(entry.graph, entry.node_id, params, entry.reader)
-    return EntryFixture(
-        entry.graph,
-        entry.node_id,
-        params,
         entry.reader,
         derived.state,
         derived.artifacts,

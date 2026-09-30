@@ -41,7 +41,6 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     classify_protocol_shape,
     decision_summaries,
     instrument_generation_time,
-    load_builder,
     load_model_and_tokenizer,
     member_summaries,
     native_policy,
@@ -56,7 +55,6 @@ from scripts.task_graph_trace_check_support import (  # noqa: E402
     trace_completion_outcome,
     trace_events_for_artifact,
     with_context_cap_for_local_model,
-    with_native_tokenizer,
     write_json,
 )
 
@@ -155,13 +153,17 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         LocalWorkspaceEnvironment,
     )
     from writing_agent.task_graph_ports import RuntimeDependenciesV1
+    from writing_agent.task_graph_probe_experiment import (
+        bind_native_tokenizer,
+        build_admitted_entry,
+        load_probe_task,
+    )
     from writing_agent.task_graph_rollout import RolloutDriver
     from writing_agent.task_graph_training_records import TrainingBatchV1
 
     root = Path(__file__).resolve().parents[1]
-    builder = load_builder()
     config_path = root / TASK_CONFIG
-    config = builder.load_probe_task(config_path)
+    config = load_probe_task(config_path)
     settings = config["probe_settings"]
     expected = {
         "max_context_tokens": MAX_CONTEXT_TOKENS,
@@ -173,7 +175,7 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
     }
     if any(settings.get(key) != value for key, value in expected.items()):
         raise ValueError("t1 probe settings no longer match the frozen Phase 8 budgets")
-    entry = builder.build_admitted_entry(config)
+    entry = build_admitted_entry(config)
     if args.model_path is not None:
         entry = with_context_cap_for_local_model(entry, MAX_CONTEXT_TOKENS)
     else:
@@ -205,7 +207,7 @@ def _run_trace(args, output_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
         tool_schema_ref=entry.params.rendering["tool_schema_ref"],
         max_tokens_per_decision=MAX_TOKENS_PER_DECISION,
     )
-    entry = with_native_tokenizer(entry, tokenizer_descriptor)
+    entry = bind_native_tokenizer(entry, tokenizer_descriptor)
     experiment_identity = {
         "task_id": config["id"],
         "group_size": 2,

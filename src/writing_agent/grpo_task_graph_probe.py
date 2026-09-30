@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -23,6 +22,19 @@ from writing_agent.catalog import save_json
 from writing_agent.grpo_gpu import DISPLAY_POLICY
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_probe_evidence import _select_verdict
+from writing_agent.task_graph_probe_experiment import (
+    CONFIG_DIR,
+    TOKENIZER_PATH,
+    build_admitted_entry,
+    fixture_plans,
+    load_probe_task,
+    load_probe_tasks,
+    make_task_graph_run,
+    tiny_gemma,
+)
+from writing_agent.task_graph_probe_experiment import (
+    settings as probe_settings,
+)
 from writing_agent.training_stages import (
     StageAttemptError,
     StageFailure,
@@ -52,6 +64,17 @@ class ProbeError(RuntimeError):
     """The prepared probe cannot safely advance."""
 
 
+_SCRIPTED_NATIVE_BACKEND = None
+
+
+def register_scripted_native_backend(backend_class) -> None:
+    """Bind the CPU smoke script's backend in the executable entry point."""
+    global _SCRIPTED_NATIVE_BACKEND
+    if _SCRIPTED_NATIVE_BACKEND is not None and _SCRIPTED_NATIVE_BACKEND is not backend_class:
+        raise ProbeError("a different scripted native backend is already registered")
+    _SCRIPTED_NATIVE_BACKEND = backend_class
+
+
 def _prepare_digest(record: dict[str, Any]) -> str:
     encoded = json.dumps(record, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(encoded.encode()).hexdigest()
@@ -67,22 +90,6 @@ def _work_dir(run_dir: Path) -> Path:
         if (parent / "env-phase8" / "environment.json").is_file():
             return parent
     raise ProbeError("cannot locate the task-graph-training work item")
-
-
-def _smoke_helpers():
-    """Load the existing tiny-Gemma setup without executing its command-line entrypoint."""
-    module_name = "_task_graph_probe_cpu_smoke"
-    existing = sys.modules.get(module_name)
-    if existing is not None:
-        return existing
-    path = PROJECT_ROOT / "scripts" / "smoke_task_graph_grpo_cpu.py"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise ProbeError("CPU smoke helpers are unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _git(*args: str) -> str:
@@ -102,12 +109,10 @@ def _source_identity() -> dict[str, str]:
 
 
 def _task_graph_hashes() -> list[dict[str, str]]:
-    smoke = _smoke_helpers()
-    root = PROJECT_ROOT / "configs" / "phase8" / "probe-tasks"
     result = []
-    for path in sorted(root.glob("t*.json")):
-        config = smoke._BUILDER.load_probe_task(path)
-        entry = smoke._BUILDER.build_admitted_entry(config)
+    for path in sorted(CONFIG_DIR.glob("t*.json")):
+        config = load_probe_task(path)
+        entry = build_admitted_entry(config)
         result.append(
             {
                 "task_id": config["id"],
@@ -170,8 +175,7 @@ def _offline_requirements(*, cpu: bool | None) -> None:
 def _prepare_record(run_dir: Path, *, mode: str) -> dict[str, Any]:
     work_dir = _work_dir(run_dir)
     source = _source_identity()
-    smoke = _smoke_helpers()
-    tokenizer_root = smoke.TOKENIZER_PATH
+    tokenizer_root = TOKENIZER_PATH
     try:
         tokenizer_hashes = {
             name: hashlib.sha256((tokenizer_root / name).read_bytes()).hexdigest()
@@ -179,7 +183,7 @@ def _prepare_record(run_dir: Path, *, mode: str) -> dict[str, Any]:
         }
     except OSError as exc:
         raise ProbeError("cached Gemma tokenizer files are incomplete") from exc
-    settings = smoke.settings()
+    settings = probe_settings()
     recipe = {
         "settings": {key: getattr(settings, key) for key in settings.__dataclass_fields__},
         "model_id": settings.model_id,
@@ -462,26 +466,37 @@ def _run_cpu_training(
     all_tie: bool,
 ) -> dict[str, Any]:
     import torch
+    from transformers import AutoTokenizer
 
     torch.set_num_threads(2)
-    smoke = _smoke_helpers()
-    configs = smoke._BUILDER.load_probe_tasks()
-    plans = smoke._plans(configs, smoke.settings(), all_tie=all_tie)
+    if _SCRIPTED_NATIVE_BACKEND is None:
+        raise ProbeError("CPU probe entrypoint did not register ScriptedNativeBackend")
+    recipe = probe_settings()
+    configs = load_probe_tasks()
+    plans = fixture_plans(configs, recipe, all_tie=all_tie)
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(TOKENIZER_PATH), local_files_only=True, trust_remote_code=False
+    )
+
+    def model_factory():
+        return tiny_gemma(tokenizer.vocab_size)
 
     def sample_backend_factory(*args, **kwargs):
-        return smoke.ScriptedNativeBackend(*args, plans=plans, **kwargs)
+        return _SCRIPTED_NATIVE_BACKEND(*args, plans=plans, **kwargs)
 
     with _stage_observers(stage_dir, sample_backend_factory) as (
         timed_factory,
         gradient_callback_factory,
     ):
-        return smoke._make_run(
+        return make_task_graph_run(
             training_root,
             resume=resume,
             stop_after_steps=stop_after_steps,
-            all_tie=all_tie,
+            model_factory=model_factory,
             sample_backend_factory=timed_factory,
             trainer_callback_factory=gradient_callback_factory,
+            tokenizer=tokenizer,
+            recipe=recipe,
         )
 
 
@@ -498,9 +513,9 @@ def _run_gpu_training(
     import torch
     from transformers import AutoModelForCausalLM
 
-    smoke = _smoke_helpers()
-    settings = smoke.settings()
     from writing_agent.native_gemma import NativeGemmaSampleBackend
+
+    settings = probe_settings()
 
     def load_base():
         return AutoModelForCausalLM.from_pretrained(
@@ -522,7 +537,7 @@ def _run_gpu_training(
         timed_factory,
         gradient_callback_factory,
     ):
-        return smoke._make_run(
+        return make_task_graph_run(
             training_root,
             resume=resume,
             stop_after_steps=stop_after_steps,
@@ -530,6 +545,7 @@ def _run_gpu_training(
             sample_backend_factory=timed_factory,
             trainer_callback_factory=gradient_callback_factory,
             runtime_identity=runtime_identity,
+            recipe=settings,
         )
 
 

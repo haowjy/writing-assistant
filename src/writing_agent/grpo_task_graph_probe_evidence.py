@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import os
 import shutil
-import sys
 import tempfile
 import time
 from fractions import Fraction
@@ -17,6 +15,16 @@ from typing import Any
 from writing_agent.catalog import save_json
 from writing_agent.task_graph import canonical_bytes, load_canonical_json
 from writing_agent.task_graph_calls import PROTOCOL_SHAPED_REJECTION_CODES
+from writing_agent.task_graph_probe_experiment import (
+    AUTHOR_PACKET_CANARY,
+    EVALUATOR_PACKET_CANARY,
+    LEDGER_CANARY,
+    TOKENIZER_PATH,
+    tiny_gemma,
+)
+from writing_agent.task_graph_probe_experiment import (
+    settings as probe_settings,
+)
 from writing_agent.task_graph_tool_outcomes import read_member_tool_outcomes
 from writing_agent.training_stages import _disk_bytes
 
@@ -47,22 +55,6 @@ CRITERION_DESCRIPTIONS = {
         "are absent."
     ),
 }
-
-
-def _smoke_helpers():
-    """Load the established tiny-Gemma fixture without importing runner orchestration."""
-    module_name = "_task_graph_probe_evidence_cpu_smoke"
-    existing = sys.modules.get(module_name)
-    if existing is not None:
-        return existing
-    path = Path(__file__).resolve().parents[2] / "scripts" / "smoke_task_graph_grpo_cpu.py"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise ValueError("CPU smoke helpers are unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -323,16 +315,15 @@ def _adapter_reload(training_root: Path, mode: str, complete: dict[str, Any]) ->
     exported = load_file(str(exported_path), device="cpu")
     checkpoint_state = load_file(str(checkpoint_path), device="cpu")
     direct_match = _same_tensors(exported, checkpoint_state)
-    smoke = _smoke_helpers()
     if mode.startswith("cpu"):
         tokenizer = AutoTokenizer.from_pretrained(
-            str(smoke.TOKENIZER_PATH), local_files_only=True, trust_remote_code=False
+            str(TOKENIZER_PATH), local_files_only=True, trust_remote_code=False
         )
-        base = smoke.tiny_gemma(tokenizer.vocab_size)
+        base = tiny_gemma(tokenizer.vocab_size)
     else:
         from transformers import AutoModelForCausalLM
 
-        settings = smoke.settings()
+        settings = probe_settings()
         base = AutoModelForCausalLM.from_pretrained(
             settings.model_id,
             revision=settings.revision,
@@ -617,17 +608,6 @@ def _checkpoint_disk_metrics(training_root: Path) -> list[dict[str, int]]:
 
 
 def _privacy_scan(run_dir: Path) -> dict[str, Any]:
-    import sys
-
-    project_root = Path(__file__).resolve().parents[2]
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-    from tests.task_graph_rollout_fixtures import (
-        AUTHOR_PACKET_CANARY,
-        EVALUATOR_PACKET_CANARY,
-        LEDGER_CANARY,
-    )
-
     canaries = (AUTHOR_PACKET_CANARY, EVALUATOR_PACKET_CANARY, LEDGER_CANARY)
     hits = []
     for path in run_dir.rglob("*"):

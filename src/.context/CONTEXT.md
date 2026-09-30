@@ -143,6 +143,9 @@ retains its smoke-evaluation and training-format workflows.
   Only all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
   and admission derivation from stored evidence and the pinned local tokenizer without
   network access; its canonical report contains no prompt, packet, context or token data.
+  [task_graph_probe_experiment.py](../writing_agent/task_graph_probe_experiment.py) owns
+  the Phase 8 probe recipe, admitted task loader and shared run composition; task configs
+  are data inputs, while the CPU scripted sampler remains in the smoke script.
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;
