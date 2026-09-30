@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
+  and fail-closed admission evidence before DAPO updates.
+
+- Apply the declared 4,096-token context cap when compiling the Phase 8 fixture task graphs.
+
 - Add a one-shot generic stage supervisor with process-group timeouts, resource ceilings,
   and atomic per-stage status and resource records.
 

@@ -16,12 +16,14 @@ from unittest.mock import patch
 
 from writing_agent.native_gemma import (
     NATIVE_STOP_TOKEN_IDS,
+    NativeGemmaRenderer,
     NativeGemmaSampleBackend,
     make_native_manifest_descriptors,
 )
 from writing_agent.task_graph import MessageV1, canonical_json
+from writing_agent.task_graph_calls import intake_message
 from writing_agent.task_graph_errors import AdapterContractError
-from writing_agent.task_graph_native_contracts import NativeSamplingBudget
+from writing_agent.task_graph_native_contracts import NativeSamplingBudget, NativeSamplingHistory
 from writing_agent.task_graph_ports import PreparedSamplingInput, RuntimeDependenciesV1
 from writing_agent.task_graph_records import RuntimeManifestV2, WriterTurnV2
 
@@ -216,6 +218,81 @@ class NativeGemmaTests(unittest.TestCase):
         self.assertEqual(result.termination["kind"], "native_stop")
         self.assertEqual(result.usage["prefill_tokens"], len(result.input_token_ids))
         self.assertEqual(result.usage["cached_input_tokens"], 0)
+
+    def test_external_suffix_matches_tool_results_by_order_not_event_call_id(self):
+        from writing_agent.inference import parse_response
+
+        raw = (
+            '<|tool_call>call:write_file{content:<|"|>x<|"|>,'
+            'path:<|"|>scene.txt<|"|>}<tool_call|><|tool_response>'
+        )
+        generated = tuple(self.tokenizer.encode(raw, add_special_tokens=False))
+        action_id = "member:action:0"
+        parsed = parse_response(self.tokenizer, raw, prefix="")
+        turn = WriterTurnV2(
+            action_id=action_id,
+            context_revision_ref="a" * 64,
+            raw_output_ref=None,
+            usage={
+                "prompt_tokens": 1,
+                "completion_tokens": len(generated),
+                "total_tokens": 1 + len(generated),
+                "prefill_tokens": 1,
+                "cached_input_tokens": 0,
+            },
+            adapter_trace=None,
+            message=intake_message(parsed),
+            input_token_ids_ref="b" * 64,
+            input_token_count=1,
+            generated_token_ids_ref="c" * 64,
+            generated_token_count=len(generated),
+            logprobs={"ref": "d" * 64, "codec": "f32-le", "shape": [len(generated)]},
+            termination={
+                "kind": "native_stop",
+                "stop_token_id": generated[-1],
+                "limit": None,
+            },
+            sampling_pins={
+                "manifest_ref": "e" * 64,
+                "behavior_policy_ref": "f" * 64,
+                "decoding_ref": self.descriptors[2].identity(),
+                "renderer_ref": self.descriptors[0].identity(),
+                "seed": 7,
+            },
+        )
+        history = NativeSamplingHistory(turn, (1,), generated)
+        messages = (
+            MessageV1(
+                role="assistant",
+                content=(
+                    {
+                        "type": "tool_call",
+                        "id": "call_0",
+                        "name": "write_file",
+                        "arguments": {"path": "scene.txt", "content": "x"},
+                    },
+                ),
+                origin=action_id,
+                loss_eligible=True,
+            ),
+            MessageV1(
+                role="tool",
+                content=(
+                    {
+                        "type": "tool_result",
+                        "call_id": "member:call:0:0",
+                        "content": {"ok": True, "result": "written"},
+                    },
+                ),
+                origin=action_id,
+            ),
+        )
+
+        suffix = NativeGemmaRenderer(self.tokenizer, self.descriptors[0]).external_suffix(
+            history, messages
+        )
+
+        self.assertTrue(suffix)
 
     def test_generation_keeps_no_past_key_values_between_sample_calls(self):
         original = self.model.generate
