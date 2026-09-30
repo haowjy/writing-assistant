@@ -81,10 +81,9 @@ retains its smoke-evaluation and training-format workflows.
   owns the little-endian u32 token codec shared by ledger readers/writers and training export;
   [task_graph_context_roots.py](../writing_agent/task_graph_context_roots.py) owns the fail-closed
   context ancestry walk used by V2 sampling, native history, eligibility and training export.
-  Any intervening `context_changed` event, including `carry`, is a new root. V2 binds token
-  bytes, prior-turn prefixes, derived prompt/completion/total/prefill/cache usage, sealed
-  sampling pins, and termination
-  derived from decoding and committed budgets. [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
+  The V2 ledger and root-binding rules are detailed in
+  [transition-seam.md](transition-seam.md); native sampler behavior is in
+  [rollout-execution.md](rollout-execution.md). [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
   owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
   it reads only the verified view and hash-addressed evidence through the artifact reader.
   [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
@@ -119,10 +118,11 @@ retains its smoke-evaluation and training-format workflows.
   fixed visible-message summary, complete-exchange selection, immutable context
   operation evidence, and context byte accounting.
   [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
-  resolves the sealed group environment and defines the member-result, decision,
-  advantage and credit records and the typed scripted-terminal and execution-failure
-  records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their binding rules live in
-  `task_graph_record_contracts.py`.
+  resolves the sealed group environment, validates group policy and derives seeds;
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py) defines the
+  member-result, decision, advantage and credit records and the typed scripted-terminal and
+  execution-failure records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their
+  binding rules live in `task_graph_record_contracts.py`.
   [task_graph_group.py](../writing_agent/task_graph_group.py) starts each member as its own
   new-core lineage through `RolloutEnvironment.start_member` (a retry resumes through
   `open_head`). It admits collected results, and results finalized after a reopen, against
@@ -140,8 +140,9 @@ retains its smoke-evaluation and training-format workflows.
   reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
   [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
   exported token layouts and pinned tokenizer files, then returns `TrainingAdmissionV1`.
-  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts. Only
-  all-admitted batches may reach a trainer. `inspect_group_offline` repeats the batch
+  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts; the
+  all-admitted requirement is defined in [transition-seam.md](transition-seam.md).
+  `inspect_group_offline` repeats the batch
   and admission derivation from stored evidence and the pinned local tokenizer without
   network access; its canonical report contains no prompt, packet, context or token data.
   [task_graph_probe_tasks.py](../writing_agent/task_graph_probe_tasks.py) owns pure probe-task
@@ -157,6 +158,24 @@ retains its smoke-evaluation and training-format workflows.
   leakage of an admitted check spec. Its sibling scope reports per-member input reconstruction
   from that member's verified lineage, not general absence of unplanted shared or sibling-derived
   text.
+- **Task-graph training (Phase 8).** [native_gemma.py](../writing_agent/native_gemma.py)
+  is the native `SampleBackend` and renderer, and
+  [native_protocol.py](../writing_agent/native_protocol.py) owns the native protocol; see
+  [rollout-execution.md](rollout-execution.md) for sampling and parsing contracts.
+  [grpo_task_graph.py](../writing_agent/grpo_task_graph.py) owns `TaskGraphRollouts`, TRL's
+  `rollout_func`. For each step it asserts the active adapter and pins the behavior policy,
+  claims the step and seals one native group. It then runs the members serially on the live
+  model, finalizes, re-hashes the adapter, audits and admits, and returns `prompt_ids`,
+  `completion_ids`, `env_mask` and `rollout_rewards = advantage_f64`, with
+  `scale_rewards="none"`. It also owns the task-graph experiment identity, which binds every
+  `grpo*`, `native_*` and `task_graph*` source file, and the model-free resume preflight.
+  [grpo_task_graph_observer.py](../writing_agent/grpo_task_graph_observer.py) records TRL's
+  loss inputs and recomputed logprobs, read-only.
+  [training_stages.py](../writing_agent/training_stages.py) is the generic stage supervisor:
+  subprocess stages, wall-time kill, resource records and the exclusive attempt marker.
+  [grpo_task_graph_probe.py](../writing_agent/grpo_task_graph_probe.py) runs the P1 phases,
+  and [grpo_task_graph_probe_evidence.py](../writing_agent/grpo_task_graph_probe_evidence.py)
+  computes `result.json`. See [task-graph training](../../docs/task-graph-training.md).
 - [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
   existing visible brief/files/follow-ups/tools/budgets and private checks into one
   scripted writer node. Its projections match the unchanged `run_selected` call;

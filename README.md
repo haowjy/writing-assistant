@@ -6,9 +6,10 @@ to the source texts. This repository does not vendor model weights or book corpo
 `scripts/organize_sources.py` turns those downloads into the catalog.
 `src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
 residue. Supervised training is `scripts/train_sft.py`; the reward function is
-`src/writing_agent/reward.py`. A standalone GRPO/DAPO trainer exists; task-graph
-integration is Phase 8. The [deterministic group coordinator](docs/task-graph-groups.md)
-prepares offline comparison and segment-credit artifacts.
+`src/writing_agent/reward.py`. A GRPO/DAPO trainer exists, and Phase 8
+[trains it on task-graph rollouts](docs/task-graph-training.md). The
+[deterministic group coordinator](docs/task-graph-groups.md) prepares offline comparison
+and segment-credit artifacts.
 
 This research harness evaluates and trains tool-using
 [creative-writing agents](wiki/project-goals.md).
@@ -102,6 +103,8 @@ verifies exact step-1→3 resume after checkpoint pruning. The real Gemma
 [microbatch probe](work/research-plan/gemma-microbatch-result.md) completed three updates,
 checkpoint resume, verified adapter reload, and matched development evaluation on the
 3090. No SFT demonstrations are required for GRPO.
+[Task-graph training](docs/task-graph-training.md) connects task-graph rollouts to that
+trainer and documents the bounded Phase 8 probe, its evidence and its pass criteria.
 
 ## Limits
 

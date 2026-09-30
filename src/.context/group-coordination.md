@@ -1,20 +1,19 @@
 # Group coordination on the new core
 
 This file covers `GroupCoordinatorV1` in
-[`task_graph_group.py`](../writing_agent/task_graph_group.py) and its records in
-[`task_graph_group_contract.py`](../writing_agent/task_graph_group_contract.py). The
-sealed `GroupSpecV1` and its binding rules are in `task_graph_record_contracts`. How the
-environment starts, resumes and verifies a lineage is in
-[gate-and-rollout.md](gate-and-rollout.md). Read this before changing how a group starts,
-collects or credits members.
+[`task_graph_group.py`](../writing_agent/task_graph_group.py). Its result, decision,
+advantage and credit records are in `task_graph_group_records`; the sealed `GroupSpecV1` and
+its binding rules are in `task_graph_record_contracts`; `task_graph_group_contract` holds the
+seed derivation, policy validation and sealed-environment resolution. How the environment
+starts, resumes and verifies a lineage is in [gate-and-rollout.md](gate-and-rollout.md).
+Read this before changing how a group starts, collects, credits or trains members.
 
 **Mental model.** A group is a sealed `GroupSpecV1`: the entry checkpoint, the sampling
 policy, an optional native-training mode and one seed slot per member. `training_mode` is
 omitted when absent, so existing group identities stay fixed. A native-training group
 requires `RuntimeManifestV2`, all three native sampling capabilities, and descriptor pins
-that match both the sealed policy and entry rendering; V1 remains the evaluation contract.
-Native group sealing refuses `max_total_tokens`: rule 3 does not derive that aggregate
-counter, so it cannot safely control native lineage termination.
+that match both the sealed policy and entry rendering; V1 remains the evaluation contract
+([Native training groups](#native-training-groups)).
 Each member is its own new-core lineage that starts
 from the shared entry checkpoint with a `MemberStartV1`. The gate verifies everything about
 a member's history, including `view.group`, and binds every policy pin as it derives each
@@ -47,11 +46,8 @@ makes that crash window harmless, and it reduced `start` to the two branches abo
 
 `collect_completed(spec, ordinal, runtime)` accepts a completed runtime, rebuilds its
 terminal and available-reward references from the verified view, and owns the result
-receipt through `collect`. Adapters do not assemble terminal references themselves.
-Admission and trainer-consumption receipts also belong to the coordinator and are written
-under its per-group lock; adapter callers do not address `groups/<group_id>` receipt paths.
-`groups_by_sequence` is the shared fail-closed parser for group specs and step reservations
-used by both trainer reseal refusal and resume preflight.
+receipt through `collect`. Adapters do not assemble terminal references themselves; the
+trainer and the S11 trace check both collect through it.
 
 ## Collect and finalize
 
@@ -108,10 +104,63 @@ sampling pins and termination remain owned by the writer derive; group collectio
 re-validate sampling evidence or infer eligibility from the token trace.
 
 For structurally eligible native groups, segment credits also carry the turn's completion
-token span, derived from the same V2 chain used by `task_graph_training_export`. The export
-builds one `TrainingBatchV1` per settled native group; generated IDs are loss-masked in and
-external suffix IDs out. A trailing zero-generation context-limit turn stays on the batch as
-audit evidence but never enters its sequence or loss mask.
+token span, taken from the same layout (`task_graph_training_layout`) the export uses.
+
+## Native training groups
+
+Native-group sealing, export, audit, and trainer-consumption receipts are described below.
+The canonical requirement that every member be admitted before trainer consumption is in
+[transition-seam.md](transition-seam.md).
+
+- **Sealing.** `seal` requires a `RuntimeManifestV2` with all three native capabilities,
+  descriptor refs equal to the sealed `POLICY_FIELDS`, and a renderer equal to the entry's
+  rendering pins; every refusal is `AdapterContractError` (`_require_group_seal_contract`).
+  It also refuses an entry whose budget declares `max_total_tokens`. Every limit that can end
+  a native lineage must be one rule 3 derives, and a cumulative total is not: a trailing
+  `context_limit` turn is charged its whole input, so the total could bind first and push an
+  honest member through the overrun path. Compute stays bounded by turn counts,
+  `max_context_tokens` and the stage supervisor. Real members need a bound session in every
+  runner mode (`_require_bound_group_session`). The environment keeps the two meanings in
+  separate flags: `require_session` (a session must be bound) and `caller_is_group_session`
+  (the caller is the coordinator acting for the group).
+- **Export.** `finalize` settles the group. `export_training_batch` then projects a `ready`
+  or `tie` group into a `TrainingBatchV1`: per member, `prompt_ids` (the first turn's input),
+  `completion_ids` (generated and external suffix IDs up to the last generated token), an
+  `env_mask` that is 1 on generated IDs only, and the exact advantage plus its f64 value. It
+  refuses `pending` and `invalid` groups, members that are not `structurally_eligible`,
+  more than one context root, an empty mask and an over-cap length. A trailing
+  zero-generation `context_limit` turn stays on the batch as an audit-only ref. Eligibility
+  already refuses what export would, so an eligible member failing layout in `finalize` is a
+  `GroupInvariantError`, not a training refusal.
+- **Audit and admission.** The tokenizer-backed `native_audit.audit_training_batch` re-derives
+  every member's tokens and writes a `TrainingAdmissionV1` (see
+  [transition-seam.md](transition-seam.md)). `record_training_admission` checks that the
+  admission, batch and decision all belong to this sealed group, then writes the immutable
+  receipts `groups/<group_id>/training-batch.json` and `training-admission.json` under the
+  group lock. `record_training_consumed` writes `trainer-consumed.json` only when it names
+  those same refs. That receipt carries `admission_status`, so a refused batch leaves a
+  durable `refused` record before the run halts.
+- **One group per step.** The trainer claims `groups/step-NNNNNN` under a lock before
+  sealing, and every later state is written back into that reservation: `sealing`,
+  `sealed`, `consumed`, `audit-refused`, `adapter-drift` or `halted`. `groups_by_sequence`
+  (in `task_graph_group_index`) is the one fail-closed parser of sealed specs and
+  reservations. An unrecognized file or state refuses. Both of the trainer's refusals use
+  it:
+  - it refuses to seal when any group or reservation exists for the step;
+  - resume preflight refuses, before the model loads, when anything exists at or after the
+    checkpoint's `global_step`.
+
+  A crash mid-step is therefore terminal. Only a clean `--stop-after-step` boundary resumes.
+  A whole-group rerun needs a separate, explicit experiment under a new ID.
+- **Outcomes in training.** A `tie` group trains with exact zero advantages, and the
+  optimizer still steps. A `pending` or `invalid` group, a collection failure or an admission
+  refusal halts the run without resampling.
+
+Adapter callers never address `groups/<group_id>` receipt paths directly; the coordinator
+owns collection, the step index and the training receipts. The trainer side
+(`grpo_task_graph.TaskGraphRollouts`) is described in
+[CONTEXT.md](CONTEXT.md), and the probe that exercises it in
+[task-graph training](../../docs/task-graph-training.md).
 
 ## Runtime boundary
 
