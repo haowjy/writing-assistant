@@ -42,15 +42,17 @@ def parse_native_response(
     }:
         raise ProtocolError("Native response parsing requires a sampled termination")
 
-    from writing_agent.inference import parse_response
+    from writing_agent.inference import NativeResponseParseError, parse_response
 
     try:
         message = parse_response(tokenizer, raw_text, prefix=prefix)
-    except (AttributeError, TypeError, ValueError):
+    except NativeResponseParseError:
         return NativeParseResult(
             {"role": "assistant", "content": raw_text, "tool_calls": []},
             True,
         )
+    except Exception as exc:
+        raise ProtocolError("Native response parser failed unexpectedly") from exc
     return NativeParseResult(bind_native_tool_call_ids(message, action_id), False)
 
 

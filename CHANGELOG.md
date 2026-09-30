@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Treat only recognized Gemma malformed-response errors as model parse failures; surface
+  unexpected parser errors as protocol failures.
+
 - Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
   rollout classes.
 
