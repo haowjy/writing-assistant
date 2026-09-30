@@ -79,7 +79,8 @@ retains its smoke-evaluation and training-format workflows.
   [task_graph_context_roots.py](../writing_agent/task_graph_context_roots.py) owns the fail-closed
   context ancestry walk used by V2 sampling, native history, eligibility and training export.
   Any intervening `context_changed` event, including `carry`, is a new root. V2 binds token
-  bytes, prior-turn prefixes, sealed sampling pins, and termination
+  bytes, prior-turn prefixes, derived prompt/completion/total/prefill/cache usage, sealed
+  sampling pins, and termination
   derived from decoding and committed budgets. [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
   owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
   it reads only the verified view and hash-addressed evidence through the artifact reader.

@@ -477,6 +477,25 @@ class WriterTurnV2Tests(unittest.TestCase):
         )
         _assert_path(self, self.view, bad_logprobs, self.reader, "input.logprobs.shape:")
 
+    def test_rule_2_derives_every_v2_usage_count(self):
+        bad_total = _turn(self.view, self.reader, usage={"total_tokens": 0})
+        _assert_path(self, self.view, bad_total, self.reader, "input.usage.total_tokens:")
+
+        bad_prefill = _turn(self.view, self.reader, usage={"prefill_tokens": 99})
+        _assert_path(self, self.view, bad_prefill, self.reader, "input.usage.prefill_tokens:")
+
+        bad_cached = _turn(self.view, self.reader, usage={"cached_input_tokens": 1})
+        _assert_path(
+            self, self.view, bad_cached, self.reader, "input.usage.cached_input_tokens:"
+        )
+
+        no_total = _turn(self.view, self.reader)
+        no_total = replace(
+            no_total,
+            usage={key: value for key, value in no_total.usage.items() if key != "total_tokens"},
+        )
+        derive_writer_turn_v2(self.view, no_total, self.reader)
+
     def test_rule_3_rejects_false_token_limit_context_limit_and_nonfinal_stop(self):
         early_stop = _turn(
             self.view,

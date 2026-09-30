@@ -226,6 +226,13 @@ def _decode_v2_sampling(
         raise ProjectionError("input.input_token_count: differs from usage.prompt_tokens")
     if usage.get("completion_tokens") != turn.generated_token_count:
         raise ProjectionError("input.generated_token_count: differs from usage.completion_tokens")
+    total_tokens = turn.input_token_count + turn.generated_token_count
+    if "total_tokens" in usage and usage["total_tokens"] != total_tokens:
+        raise ProjectionError("input.usage.total_tokens: differs from token ledger counts")
+    if usage.get("prefill_tokens") != turn.input_token_count:
+        raise ProjectionError("input.usage.prefill_tokens: differs from input_token_count")
+    if usage.get("cached_input_tokens") != 0:
+        raise ProjectionError("input.usage.cached_input_tokens: native prefill cannot be cached")
     if turn.logprobs["shape"] != (turn.generated_token_count,):
         raise ProjectionError("input.logprobs.shape: differs from generated_token_count")
 

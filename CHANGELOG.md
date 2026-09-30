@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Derive V2 total, prefill and cached-input usage from the committed token ledger before
+  charging a native turn.
+
 - Skip tokenizer/model-backed native tests when their optional dependencies are absent, while
   keeping dependency-free import checks active.
 
