@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Assert response error types rather than message text in inference tests, and remove the
+  resolved torch-only context-overflow TODO.
+
 - Retire the standalone DAPO rollout, probe, full48, GPU-fit and checkpoint-fork runners;
   task-graph training is the only supported DAPO path. Their source remains at commit
   `9cb9944`, in `main`'s history. The task-graph experiment identity intentionally changes because its hashed

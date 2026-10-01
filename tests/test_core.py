@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_agent.agent import run_agent
-from writing_agent.backends import ChatServerBackend, ScriptedBackend
+from writing_agent.backends import CandidateResponseError, ChatServerBackend, ScriptedBackend
 from writing_agent.data import export_sft, read_records, validate_records
 from writing_agent.evaluation import evaluate, score
 from writing_agent.workspace import Workspace, WorkspaceInfrastructureError, dispatch
@@ -332,7 +332,7 @@ class AgentTests(unittest.TestCase):
         with patch(
             "urllib.request.urlopen", return_value=io.BytesIO(json.dumps(response).encode())
         ):
-            with self.assertRaisesRegex(ValueError, "Incomplete generation"):
+            with self.assertRaises(CandidateResponseError):
                 ChatServerBackend({"model": "test", "base_url": "http://localhost/v1"}).complete(
                     [], []
                 )

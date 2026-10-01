@@ -9,8 +9,6 @@ from unittest.mock import patch
 from writing_agent.agent import run_agent
 from writing_agent.backends import CandidateResponseError
 from writing_agent.inference import (
-    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
-    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
     PROTOCOL,
     TransformersBackend,
     checkpoint_identity,
@@ -36,7 +34,7 @@ CONFIG = {
 
 
 class ProtocolTests(unittest.TestCase):
-    def test_inference_owned_parse_failures_are_classified_from_shared_constants(self):
+    def test_inference_owned_parse_failures_are_classified_as_candidate_errors(self):
         malformed_tool_call = {
             "role": "assistant",
             "content": None,
@@ -51,12 +49,9 @@ class ProtocolTests(unittest.TestCase):
                 }
             ],
         }
-        cases = (
-            ("<|tool_call>", malformed_tool_call, NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE),
-            ("<|tool_call>", invalid_arguments, NATIVE_TOOL_ARGUMENTS_NOT_OBJECT),
-        )
-        for text, parsed_message, expected in cases:
-            with self.subTest(expected=expected):
+        cases = (("<|tool_call>", malformed_tool_call), ("<|tool_call>", invalid_arguments))
+        for text, parsed_message in cases:
+            with self.subTest(parsed_message=parsed_message):
 
                 class FixedTokenizer:
                     def __init__(self, message):
@@ -67,7 +62,6 @@ class ProtocolTests(unittest.TestCase):
 
                 with self.assertRaises(CandidateResponseError) as raised:
                     parse_response(FixedTokenizer(parsed_message), text, prefix="")
-                self.assertEqual(str(raised.exception), expected)
                 self.assertTrue(is_native_output_parse_error(raised.exception))
 
     def test_native_history_keeps_tool_results_and_conversation_distinct(self):
@@ -352,7 +346,7 @@ class GenerationTests(unittest.TestCase):
     def test_context_overflow_is_not_silently_truncated(self):
         backend = TransformersBackend(self.model, self.tokenizer, {**CONFIG, "context_tokens": 1})
         self.assertTrue(backend.config["enable_thinking"])
-        with self.assertRaisesRegex(ValueError, "Context budget"):
+        with self.assertRaises(ValueError):
             backend.complete([{"role": "user", "content": "hello"}], [])
 
     def test_generation_failure_restores_mode_and_rng(self):
