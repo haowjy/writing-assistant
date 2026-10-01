@@ -35,6 +35,13 @@ Only an all-admitted `TrainingAdmissionV1` makes a native member trainable: stru
 eligibility alone never reaches a trainer. Keep `torch`, `transformers` and trainer code
 out of `task_graph*` modules; the tokenizer-backed audit and sampler live in `native_*`.
 
+CI and the default environment have no torch, so every model-backed test (inference,
+`native_*`, trainer, trace check) skips there: a green run says nothing about them. After
+changing a task, a protocol, an error message or a fixture those tests read, run the whole
+suite in one process with the Phase 8 environment's Python, and check the skip count. Use
+discovery, not a hand-picked module list. The command is in
+[.context/CONTEXT.md](.context/CONTEXT.md) under "Testing with torch".
+
 See [.context/CONTEXT.md](.context/CONTEXT.md) for implementation contracts and limits, and
 [.context/TODO.md](.context/TODO.md) and [.context/FUTURE.md](.context/FUTURE.md) for
 deferred work.

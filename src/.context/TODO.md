@@ -32,6 +32,13 @@ Nice-to-have items are in [FUTURE.md](FUTURE.md).
   that is model behavior, not a harness fault. P1 attempt 1 halted this way. In attempt 2 no
   member thought, so the rule went untested. Decide whether one ineligible member should
   still end a long run, and record the decision in the design.
+- [ ] **Fix the stale torch-only context-overflow test.**
+  `tests/test_inference.py` `GenerationTests.test_context_overflow_is_not_silently_truncated`
+  still expects the message `"Context budget"`. S14 (`b4c173b`) changed the initial-prompt
+  overflow in `inference.TransformersBackend` to raise `"Initial prompt exceeds context
+  budget; …"`, so the test fails under torch at `f7f7aea`. CI skips it (no torch). Assert
+  the initial-prompt message, or the type, and confirm with the one-process overlay run in
+  [CONTEXT.md](CONTEXT.md) ("Testing with torch").
 - [x] **S14: retire the DAPO legacy training path.** The task-graph path is the only
   supported trainer; the former standalone runners remain in commit `9cb9944`, in
   `main`'s history. Their documentation now points to the task-graph guide.
