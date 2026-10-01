@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from writing_agent.native_parse_errors import is_native_output_parse_error
 from writing_agent.task_graph import tool_call_id
 
 NATIVE_STOP_TOKENS = ("<eos>", "<turn|>", "<|tool_response>")
@@ -42,7 +43,7 @@ def parse_native_response(
     }:
         raise ProtocolError("Native response parsing requires a sampled termination")
 
-    from writing_agent.inference import is_native_output_parse_error, parse_response
+    from writing_agent.inference import parse_response
 
     try:
         message = parse_response(tokenizer, raw_text, prefix=prefix)

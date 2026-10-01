@@ -54,6 +54,9 @@
 - Treat only recognized Gemma malformed-response errors as model parse failures; surface
   unexpected parser errors as protocol failures.
 - Refuse false `native_parse_failed` claims at decode.
+- Bind native parse-error prefixes into task-graph experiment identity, classify cumulative
+  generated-token exhaustion as candidate-invalid, and make external-checkpoint preflight
+  refusals testable by type.
 
 - Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
   rollout classes.

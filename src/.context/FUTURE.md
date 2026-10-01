@@ -29,14 +29,18 @@ Nice-to-have follow-ups scoped to `src/`. None blocks correctness. Must-do items
   `input.context.rendering.<field>`. If that text is reworded, the rejection still happens
   but the reported path falls back to `input.adapter_trace`. Carry the field in a
   structured error instead.
-- [ ] **Bind tokenizer-owned classifier messages.** `inference.is_native_output_parse_error`
-  pins the Transformers response parser's malformed-output prefixes. Those external parser
-  messages are not bound to the task-graph experiment source identity (`grpo*`, `native_*`,
-  `task_graph*`). They fail closed: if Transformers rewords one, malformed output halts
-  instead of scoring. Before changing the pinned Transformers parser, verify these prefixes
-  against its source or bind the parser version to the experiment identity. The two
-  `inference.parse_response` messages are module constants and are matched by that same
-  classifier.
+- [ ] **Bind tokenizer-owned classifier messages.**
+  `native_parse_errors.is_native_output_parse_error` and all of its pinned prefixes are
+  now included in the task-graph experiment identity through `native_*.py`. However, the
+  tokenizer/Transformers parser implementation and version that emit the external malformed-
+  output messages are not independently bound by that source hash. They fail closed: if
+  Transformers rewords one, malformed output halts instead of scoring. Before changing the
+  pinned parser, verify these prefixes against its source or bind the parser version to the
+  experiment identity.
+- [ ] **Attribute context overflow precisely.** `inference.py` currently classifies every
+  context overflow after the first call as candidate-invalid, even when scenario-supplied
+  follow-ups caused it. Implement the precise rule: classify it as candidate-invalid only
+  when the prompt would fit without generated tokens; otherwise keep it infrastructure.
 - [ ] **Calibrate GPU drift.** `on_policy_drift` does not gate on the GPU, because the FP32
   streaming softcap rules out bit equality and no bound is calibrated. Choose a bound from
   P1 and later GPU runs before using drift as a gate (`grpo_task_graph_observer.py`).

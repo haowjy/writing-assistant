@@ -78,15 +78,21 @@ The tokenizer chat-template and response-template hashes are recorded with resul
 Instruction-tuned research and pilot configurations enable thinking through the
 explicit `enable_thinking=True` model setting. Omitted settings also enable thinking for native chat. Thinking is the standard
 research condition; disable it only for an explicitly selected ablation. Thinking shares the `max_tokens` output budget with tool
-calls and final text; budget exhaustion remains an execution failure.
+calls and final text. Per-call token-limit cuts and exhaustion of the cumulative generated-
+token budget are classified as `candidate_invalid`, because they are caused by the model's
+own output. Initial prompts that exceed the context budget and unexpected harness/runtime
+errors remain `infrastructure` failures.
 The parser’s `thinking` field is saved separately from answer content and mapped
 to the template’s `reasoning` field for subsequent tool calls. Prose extraction
 uses answer content or designated files, never the separate thinking field.
 Base text-only conditions retain explicit role-labelled transcripts. Native tool
 execution requires a verified chat template: base transcript conditions reject tool
 use until a separate base-model formatting decision is implemented and verified.
-A generation token limit remains an execution failure; history is never silently
-truncated to make it fit.
+A context overflow on a later call is currently classified as `candidate_invalid` whenever
+there has been an earlier model call. This is an approximation: fixed scenario follow-ups
+can also make that prompt exceed the context budget. The precise rule should classify it as
+candidate-invalid only when the prompt would fit without generated tokens; otherwise it is
+an infrastructure failure. History is never silently truncated to make it fit.
 
 The earlier `writing-json-v1` and `writing-tools-v2` outputs remain historical
 artifacts. The five-case E2B pilot used v2, with schemas embedded as ordinary text.

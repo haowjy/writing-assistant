@@ -256,6 +256,15 @@ class CandidateFailureClassificationTests(unittest.TestCase):
         )
         self.assertEqual(result["failure_class"], "candidate_invalid", result)
 
+    def test_total_generated_token_budget_exhaustion_is_a_candidate_failure(self):
+        result = self._evaluate(
+            self.TinyTokenizer(input_lengths=(2, 2)),
+            [[1]],
+            config={**CONFIG, "max_tokens": 1, "max_generated_tokens": 1},
+            followups=["Revise."],
+        )
+        self.assertEqual(result["failure_class"], "candidate_invalid", result)
+
     def test_initial_prompt_context_overflow_remains_infrastructure(self):
         result = self._evaluate(
             self.TinyTokenizer(),

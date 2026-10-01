@@ -119,21 +119,22 @@ and the scripted CPU backend. It accepts only `native_stop` or `token_limit` tur
 `inference.parse_response`. Then:
 
 - a `ValueError` whose message starts with one of the recognized malformed-output prefixes
-  (`inference.is_native_output_parse_error`) is the model's failure. The turn commits the
+  (`native_parse_errors.is_native_output_parse_error`) is the model's failure. The turn commits the
   decoded text with no calls and `native_parse_failed = True`
   ([transition-seam.md](transition-seam.md));
 - any other exception raises `ProtocolError("Native response parser failed unexpectedly")`.
   A wrong tokenizer or a bug in our code halts the run and is never scored as model
   behavior.
 
-The prefixes live next to `parse_response` in
-[`inference.py`](../writing_agent/inference.py): they come from the pinned Transformers
-response parser (including `"json parser could not parse region as JSON"`, which a limit
-inside a call header produces) and `parse_response`'s two own message constants. The exact
-match fails closed: if a message is reworded, the next malformed output halts instead of
-scoring. `native_protocol` imports the classifier from `inference`; the dependency points
-downward and does not form an import cycle. A sweep test covers every prefix of three call
-shapes under both terminations. Parsing then binds each call's raw ID to the core's
+The prefixes and `parse_response`'s two own message constants live in the leaf
+[`native_parse_errors.py`](../writing_agent/native_parse_errors.py), which imports no
+`writing_agent` module. This module matches the experiment identity's `native_*.py` source
+glob. The prefixes come from the pinned Transformers response parser (including
+`"json parser could not parse region as JSON"`, which a limit inside a call header
+produces). The exact match fails closed: if a message is reworded, the next malformed
+output halts instead of scoring. Both `inference` and `native_protocol` depend on this leaf,
+so their import graph remains acyclic. A sweep test covers every prefix of three call shapes
+under both terminations. Parsing then binds each call's raw ID to the core's
 `tool_call_id`, so raw IDs, committed results and the audit's re-parse agree by exact ID.
 
 ### Tool outcomes

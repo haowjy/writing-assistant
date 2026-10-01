@@ -382,6 +382,9 @@ class TaskGraphImportTests(unittest.TestCase):
         )
         self.assertEqual([], task_graph_sccs)
         self.assertEqual([], inference_native_protocol_cycles)
+        self.assertEqual(set(), graph["writing_agent.native_parse_errors"])
+        self.assertIn("writing_agent.native_parse_errors", graph["writing_agent.inference"])
+        self.assertIn("writing_agent.native_parse_errors", graph["writing_agent.native_protocol"])
 
         error_module = SOURCE_PACKAGE / "task_graph_errors.py"
         error_tree = ast.parse(error_module.read_text(encoding="utf-8"))

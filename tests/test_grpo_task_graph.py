@@ -13,6 +13,7 @@ from writing_agent.grpo_checkpoint import seal_directory
 from writing_agent.grpo_config import TaskGraphGRPOSettings, trainer_config
 from writing_agent.grpo_task_graph import (
     TaskGraphGroupPending,
+    TaskGraphResumeLocationRefused,
     TaskGraphResumeRefused,
     TaskGraphRollouts,
     TaskGraphTrainingError,
@@ -193,7 +194,7 @@ class TaskGraphSettingsTests(unittest.TestCase):
             (output / "sentinel").write_text("unchanged")
             checkpoint = root / "run-a" / "checkpoint-2"
             checkpoint.mkdir(parents=True)
-            (checkpoint / "complete.json").write_text("not read")
+            (checkpoint / "complete.json").write_text(json.dumps({"identity": "fixture"}))
             before = {
                 path.relative_to(root): (
                     "directory" if path.is_dir() else "file",
@@ -204,7 +205,7 @@ class TaskGraphSettingsTests(unittest.TestCase):
 
             with (
                 patch("writing_agent.grpo_task_graph.verify_checkpoint") as verify,
-                self.assertRaises(TaskGraphResumeRefused),
+                self.assertRaises(TaskGraphResumeLocationRefused),
             ):
                 task_graph_resume_preflight(output, checkpoint)
             verify.assert_not_called()
@@ -250,7 +251,7 @@ class TaskGraphSettingsTests(unittest.TestCase):
             (output / "sentinel").write_text("unchanged")
             checkpoint = root / "run-a" / "checkpoint-2"
             checkpoint.mkdir(parents=True)
-            (checkpoint / "complete.json").write_text("not read")
+            (checkpoint / "complete.json").write_text(json.dumps({"identity": "fixture"}))
             model_factory = Mock(side_effect=AssertionError("model loaded before refusal"))
             before = {
                 path.relative_to(root): (
@@ -260,19 +261,24 @@ class TaskGraphSettingsTests(unittest.TestCase):
                 for path in sorted(root.rglob("*"))
             }
 
-            with patch("writing_agent.grpo_task_graph.load_trainer_api") as load_api:
-                with self.assertRaises(TaskGraphResumeRefused):
+            with (
+                patch("writing_agent.grpo_task_graph.verify_checkpoint") as verify,
+                patch("writing_agent.grpo_task_graph.verify_runtime"),
+                patch("writing_agent.grpo_task_graph.load_trainer_api") as load_api,
+            ):
+                with self.assertRaises(TaskGraphResumeLocationRefused):
                     train_task_graph(
                         (),
                         output,
                         settings=_settings(),
                         model=None,
                         model_factory=model_factory,
-                        tokenizer=None,
+                        tokenizer=object(),
                         manifest_descriptors=(),
                         runtime_identity={"fixture": True},
                         resume_from_checkpoint=checkpoint,
                     )
+                verify.assert_not_called()
                 load_api.assert_not_called()
             model_factory.assert_not_called()
             after = {

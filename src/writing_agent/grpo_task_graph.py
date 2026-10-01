@@ -20,6 +20,7 @@ from writing_agent.grpo_identity import adapter_tensor_hash, base_tensor_identit
 from writing_agent.grpo_runtime import STREAMING, verify_runtime
 from writing_agent.grpo_task_graph_errors import (
     TaskGraphGroupPending,
+    TaskGraphResumeLocationRefused,
     TaskGraphResumeRefused,
     TaskGraphTrainingError,
 )
@@ -82,7 +83,7 @@ def task_graph_resume_preflight(output: Path | str, checkpoint: Path | str) -> i
     output = Path(output)
     checkpoint = Path(checkpoint)
     if checkpoint.resolve().parent != output.resolve():
-        raise TaskGraphResumeRefused(
+        raise TaskGraphResumeLocationRefused(
             "resume checkpoint must be inside the experiment output directory"
         )
     try:
@@ -840,6 +841,7 @@ def train_task_graph(
 __all__ = [
     "TaskGraphGroupPending",
     "TaskGraphLossObserver",
+    "TaskGraphResumeLocationRefused",
     "TaskGraphResumeRefused",
     "TaskGraphRollouts",
     "TaskGraphTaskV1",

@@ -12,20 +12,14 @@ from pathlib import Path
 
 from writing_agent.backends import CandidateResponseError, Completion
 from writing_agent.catalog import fingerprint
+from writing_agent.native_parse_errors import (
+    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
+    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
+    is_native_output_parse_error,
+)
 from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
-
-NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE = "Native tool-call output was not completely parsed"
-NATIVE_TOOL_ARGUMENTS_NOT_OBJECT = "Native tool arguments must be an object"
-_NATIVE_OUTPUT_PARSE_ERROR_PREFIXES = (
-    "json: could not parse after dialect transforms",
-    "json parser could not parse region as JSON",
-    "json: input contains reserved sentinel characters",
-    "Required response_template fields missing from parsed output:",
-    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
-    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
-)
 
 # Context limit for the research harnesses. A limit, not an allocation: the KV cache grows
 # only with the conversation actually present, so a short run pays nothing for it.
@@ -132,11 +126,6 @@ def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     return message
 
 
-def is_native_output_parse_error(error: ValueError) -> bool:
-    """Recognize only pinned parser errors attributable to model-output text."""
-    return str(error).startswith(_NATIVE_OUTPUT_PARSE_ERROR_PREFIXES)
-
-
 def generate_with_seed(model, inputs, generation: dict, *, seed: int):
     """Run one live-model generation call without leaking RNG or module modes."""
     import torch
@@ -232,7 +221,7 @@ class TransformersBackend:
         if "max_generated_tokens" in self.config:
             remaining = self.config["max_generated_tokens"] - self.generated_tokens
             if remaining <= 0:
-                raise ValueError("Total generated-token budget exhausted")
+                raise CandidateResponseError("Total generated-token budget exhausted")
             limit = min(limit, remaining)
         if input_tokens + limit > self.config["context_tokens"]:
             if self.calls:
