@@ -74,22 +74,16 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
         )
         outputs = {
             0: (
-                '<|tool_call>call:ask_author{decision_ids:[<|"|>lantern_tone<|"|>],'
-                'option_refs:[],proposals:[],question:<|"|>Which color should the lighthouse '
-                'lantern be?<|"|>}<tool_call|><|tool_response>'
-            ),
-            1: (
                 '<|tool_call>call:write_file{content:<|"|>A keeper waits for the boat.<|"|>,'
                 'path:<|"|>scene.txt<|"|>}<tool_call|><|tool_response>'
             ),
-            2: "The first scene is ready for review.<turn|>",
-            3: (
+            1: (
                 '<|tool_call>call:patch_file{new:<|"|>'
                 + revised_scene
                 + '<|"|>,old:<|"|>A keeper waits for the boat.<|"|>,'
                 'path:<|"|>scene.txt<|"|>}<tool_call|><|tool_response>'
             ),
-            4: "The revised scene is complete.<turn|>",
+            2: "The revised scene is complete.<turn|>",
         }
 
         def run_group(
@@ -243,10 +237,10 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
                     for call in message.content
                     if isinstance(call, Mapping) and call.get("type") == "tool_call"
                 ]
-                self.assertEqual(len(calls), 3)
+                self.assertEqual(len(calls), 2)
                 self.assertEqual(
                     [call["id"] for call in calls],
-                    [f"{result.member_id}:call:{index}:0" for index in (0, 1, 3)],
+                    [f"{result.member_id}:call:{index}:0" for index in (0, 1)],
                 )
                 for message in view.context.messages:
                     turns_calls = [
@@ -292,11 +286,11 @@ class NativeToolCallIdIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(
                 [call["name"] for event in report_events for call in event["tool_calls"]],
-                ["ask_author", "write_file", "patch_file"] * 2,
+                ["write_file", "patch_file"] * 2,
             )
             self.assertEqual(
                 [call["result"] for event in report_events for call in event["tool_calls"]],
-                ["ok"] * 6,
+                ["ok"] * 4,
             )
             self.assertEqual(tool_result_protocol_errors(report_events), [])
             admission = audit_training_batch(

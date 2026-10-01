@@ -111,7 +111,7 @@ def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
         from writing_agent.native_protocol import is_native_output_parse_error
 
         if is_native_output_parse_error(exc):
-            raise CandidateResponseError("Native response could not be parsed") from exc
+            raise CandidateResponseError(str(exc)) from exc
         raise
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
