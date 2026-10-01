@@ -14,20 +14,6 @@ class ProtocolError(RuntimeError):
     """Unsupported native framing is an infrastructure failure."""
 
 
-def is_native_output_parse_error(error: ValueError) -> bool:
-    """Recognize only pinned parser errors attributable to model-output text."""
-    return str(error).startswith(
-        (
-            "json: could not parse after dialect transforms",
-            "json parser could not parse region as JSON",
-            "json: input contains reserved sentinel characters",
-            "Required response_template fields missing from parsed output:",
-            "Native tool-call output was not completely parsed",
-            "Native tool arguments must be an object",
-        )
-    )
-
-
 @dataclass(frozen=True)
 class NativeParseResult:
     """One native parse outcome, including the adapter's parse-failure claim."""
@@ -56,7 +42,7 @@ def parse_native_response(
     }:
         raise ProtocolError("Native response parsing requires a sampled termination")
 
-    from writing_agent.inference import parse_response
+    from writing_agent.inference import is_native_output_parse_error, parse_response
 
     try:
         message = parse_response(tokenizer, raw_text, prefix=prefix)
@@ -189,6 +175,5 @@ __all__ = [
     "NATIVE_STOP_TOKENS",
     "ProtocolError",
     "bind_native_tool_call_ids",
-    "is_native_output_parse_error",
     "native_suffix",
 ]

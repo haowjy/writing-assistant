@@ -7,11 +7,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_agent.agent import run_agent
+from writing_agent.backends import CandidateResponseError
 from writing_agent.inference import (
+    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
+    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
     PROTOCOL,
     TransformersBackend,
     checkpoint_identity,
     evaluate_checkpoint,
+    is_native_output_parse_error,
     parse_response,
     render_messages,
 )
@@ -32,6 +36,40 @@ CONFIG = {
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_inference_owned_parse_failures_are_classified_from_shared_constants(self):
+        malformed_tool_call = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [],
+        }
+        invalid_arguments = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "function": {"arguments": ["not", "an", "object"]},
+                }
+            ],
+        }
+        cases = (
+            ("<|tool_call>", malformed_tool_call, NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE),
+            ("<|tool_call>", invalid_arguments, NATIVE_TOOL_ARGUMENTS_NOT_OBJECT),
+        )
+        for text, parsed_message, expected in cases:
+            with self.subTest(expected=expected):
+
+                class FixedTokenizer:
+                    def __init__(self, message):
+                        self.message = message
+
+                    def parse_response(self, _text, *, prefix):
+                        return self.message
+
+                with self.assertRaises(CandidateResponseError) as raised:
+                    parse_response(FixedTokenizer(parsed_message), text, prefix="")
+                self.assertEqual(str(raised.exception), expected)
+                self.assertTrue(is_native_output_parse_error(raised.exception))
+
     def test_native_history_keeps_tool_results_and_conversation_distinct(self):
         history = [
             {

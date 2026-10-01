@@ -16,6 +16,17 @@ from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
 
+NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE = "Native tool-call output was not completely parsed"
+NATIVE_TOOL_ARGUMENTS_NOT_OBJECT = "Native tool arguments must be an object"
+_NATIVE_OUTPUT_PARSE_ERROR_PREFIXES = (
+    "json: could not parse after dialect transforms",
+    "json parser could not parse region as JSON",
+    "json: input contains reserved sentinel characters",
+    "Required response_template fields missing from parsed output:",
+    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
+    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
+)
+
 # Context limit for the research harnesses. A limit, not an allocation: the KV cache grows
 # only with the conversation actually present, so a short run pays nothing for it.
 #
@@ -108,19 +119,22 @@ def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     try:
         message = tokenizer.parse_response(text, prefix=prefix)
     except ValueError as exc:
-        from writing_agent.native_protocol import is_native_output_parse_error
-
         if is_native_output_parse_error(exc):
             raise CandidateResponseError(str(exc)) from exc
         raise
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
-        raise CandidateResponseError("Native tool-call output was not completely parsed")
+        raise CandidateResponseError(NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE)
     for i, call in enumerate(calls):
         call["id"] = f"call_{i}"
         if not isinstance(call["function"]["arguments"], dict):
-            raise CandidateResponseError("Native tool arguments must be an object")
+            raise CandidateResponseError(NATIVE_TOOL_ARGUMENTS_NOT_OBJECT)
     return message
+
+
+def is_native_output_parse_error(error: ValueError) -> bool:
+    """Recognize only pinned parser errors attributable to model-output text."""
+    return str(error).startswith(_NATIVE_OUTPUT_PARSE_ERROR_PREFIXES)
 
 
 def generate_with_seed(model, inputs, generation: dict, *, seed: int):
