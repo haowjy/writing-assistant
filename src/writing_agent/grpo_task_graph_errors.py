@@ -9,5 +9,9 @@ class TaskGraphResumeRefused(TaskGraphTrainingError):
     """A saved group/reservation makes ordinary checkpoint resume unsafe."""
 
 
+class TaskGraphResumeLocationRefused(TaskGraphResumeRefused):
+    """A resume checkpoint is outside the experiment output directory."""
+
+
 class TaskGraphGroupPending(TaskGraphTrainingError):
     """A native task-graph group is pending or invalid and cannot be resampled."""

@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from writing_agent.grpo import GRPOSettings
+from writing_agent.grpo_config import TaskGraphGRPOSettings
 from writing_agent.grpo_task_graph import TaskGraphTaskV1, train_task_graph
 from writing_agent.task_graph_derive_entry import EntryV1, derive_entry
 from writing_agent.task_graph_gate import LineageGate
@@ -40,9 +40,9 @@ def bind_native_tokenizer(entry: EntryFixture, descriptor) -> EntryFixture:
     return replace(entry, params=params, state=derived.state, artifacts=derived.artifacts)
 
 
-def settings() -> GRPOSettings:
+def settings() -> TaskGraphGRPOSettings:
     """Return the identity-bound probe recipe."""
-    return GRPOSettings(
+    return TaskGraphGRPOSettings(
         model_id="google/gemma-4-E2B-it",
         revision=TOKENIZER_REVISION,
         runtime_profile="task-graph-v1",
@@ -135,7 +135,7 @@ def _fixture_actions(config: dict[str, Any], lineage: str) -> tuple[str, ...]:
     )
 
 
-def fixture_plans(configs, recipe: GRPOSettings | None = None, *, all_tie: bool = False):
+def fixture_plans(configs, recipe: TaskGraphGRPOSettings | None = None, *, all_tie: bool = False):
     """Return deterministic writer-seed-indexed messages used by CPU sampling."""
     recipe = settings() if recipe is None else recipe
     variants = (
@@ -168,7 +168,7 @@ def make_task_graph_run(
     tokenizer=None,
     tokenizer_root: Path = TOKENIZER_PATH,
     config_dir: Path = CONFIG_DIR,
-    recipe: GRPOSettings | None = None,
+    recipe: TaskGraphGRPOSettings | None = None,
 ):
     """Build, admit and train the shared P1 task group with injected model seams."""
     import torch

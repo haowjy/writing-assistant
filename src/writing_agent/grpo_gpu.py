@@ -1,4 +1,4 @@
-"""Complete NVML inventory admission shared by production fit and full48 execution."""
+"""Complete NVML inventory admission for task-graph GPU execution."""
 
 import os
 import re
@@ -32,12 +32,6 @@ DISPLAY_POLICY = {
 CUDA_ALLOCATOR_CONF = {
     "environment": ["PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF"],
     "value": "expandable_segments:True",
-}
-HEADLESS_POLICY = {
-    "names": [],
-    "per_process_mib": 0,
-    "total_mib": 0,
-    "minimum_free_mib": 24000,
 }
 
 
@@ -103,28 +97,6 @@ def inventory(xml):
         "consumers": consumers,
         "process_total_mib": sum(p["memory_mib"] for p in consumers),
     }
-
-
-def _display_consumers(lines, free_mib):
-    """Reject unapproved desktop consumers while preserving graphics headroom."""
-    allowed = []
-    for line in lines:
-        pid, details = line.split(",", 1)
-        name, memory = details.rsplit(",", 1)
-        name = name.strip().strip('"')
-        memory = int(memory.strip())
-        # NVML may return the full command line, including commas in flags.
-        executable = Path(name.split(maxsplit=1)[0]).name.lower()
-        if executable not in DISPLAY_POLICY["names"] or not (
-            0 <= memory <= DISPLAY_POLICY["per_process_mib"]
-        ):
-            raise RuntimeError(f"Unknown or oversized GPU consumer: {line}")
-        allowed.append({"pid": int(pid), "name": name, "memory_mib": memory})
-    if sum(p["memory_mib"] for p in allowed) > DISPLAY_POLICY["total_mib"]:
-        raise RuntimeError("Display GPU allocation exceeds total cap")
-    if free_mib < DISPLAY_POLICY["minimum_free_mib"]:
-        raise RuntimeError("Insufficient free GPU memory")
-    return allowed
 
 
 def ownership_report(xml, *, policy=DISPLAY_POLICY):

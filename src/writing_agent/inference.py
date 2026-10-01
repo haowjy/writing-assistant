@@ -10,8 +10,13 @@ from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
 
-from writing_agent.backends import Completion
+from writing_agent.backends import CandidateResponseError, Completion
 from writing_agent.catalog import fingerprint
+from writing_agent.native_parse_errors import (
+    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
+    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
+    is_native_output_parse_error,
+)
 from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
@@ -105,14 +110,19 @@ def render_messages(messages: list[dict]) -> list[dict]:
 
 def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
-    message = tokenizer.parse_response(text, prefix=prefix)
+    try:
+        message = tokenizer.parse_response(text, prefix=prefix)
+    except ValueError as exc:
+        if is_native_output_parse_error(exc):
+            raise CandidateResponseError(str(exc)) from exc
+        raise
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
-        raise ValueError("Native tool-call output was not completely parsed")
+        raise CandidateResponseError(NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE)
     for i, call in enumerate(calls):
         call["id"] = f"call_{i}"
         if not isinstance(call["function"]["arguments"], dict):
-            raise ValueError("Native tool arguments must be an object")
+            raise CandidateResponseError(NATIVE_TOOL_ARGUMENTS_NOT_OBJECT)
     return message
 
 
@@ -143,8 +153,8 @@ def generate_with_seed(model, inputs, generation: dict, *, seed: int):
             module.training = training
 
 
-class ContextBudgetExceeded(ValueError):
-    """An explicit context limit, with no history truncation."""
+class ContextBudgetExceeded(CandidateResponseError):
+    """Prior candidate output grew the conversation past its context budget."""
 
 
 class TransformersBackend:
@@ -211,10 +221,14 @@ class TransformersBackend:
         if "max_generated_tokens" in self.config:
             remaining = self.config["max_generated_tokens"] - self.generated_tokens
             if remaining <= 0:
-                raise ValueError("Total generated-token budget exhausted")
+                raise CandidateResponseError("Total generated-token budget exhausted")
             limit = min(limit, remaining)
         if input_tokens + limit > self.config["context_tokens"]:
-            raise ContextBudgetExceeded("Context budget exceeded; history was not truncated")
+            if self.calls:
+                raise ContextBudgetExceeded(
+                    "Context budget exceeded after candidate output; history was not truncated"
+                )
+            raise ValueError("Initial prompt exceeds context budget; history was not truncated")
         temperature = self.config["temperature"]
         generation = {
             "max_new_tokens": limit,
@@ -239,7 +253,7 @@ class TransformersBackend:
         self.generated_tokens += len(output)
         emit({"type": "model_output", "text": text, "output_ids": output.tolist()})
         if len(output) >= limit and int(output[-1]) not in eos:
-            raise ValueError(f"Generation token limit reached; incomplete output: {text}")
+            raise CandidateResponseError(f"Incomplete generation at token limit: {text}")
         return Completion(
             (
                 parse_response(self.tokenizer, text, prefix=prompt)

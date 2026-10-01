@@ -129,7 +129,7 @@ retains its smoke-evaluation and training-format workflows.
   gate-verified member views. It computes group advantages, and writer-only segment credit
   from the view's samples. It never samples models or emits native token masks. A
   coordinator requires a `RolloutEnvironment` and has no bare-store start path. It is
-  not the trainer; Phase 8 connects it to the standalone DAPO trainer through
+  not the trainer; Phase 8 connects it to the task-graph DAPO trainer through
   `TaskGraphRollouts`. See
   [group-coordination.md](group-coordination.md), and
   [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
@@ -473,60 +473,31 @@ source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
 the trainer. SFT GPU training and checkpoint restore remain unverified.
 
-`grpo_runtime.py` owns explicit TRL implementation admission. Legacy TRL 1.13
-remains the default; opt-in `trl-6c5f135-streaming` verifies the exact approved
-TRL/Liger Python source trees before model loading or caller mutation and binds
-them into experiment identity. It admits dense Gemma4 only and disables unrelated
-Liger model replacements through public configuration. The maintained FP32
-streaming softcap is an accepted numerical variant, not native BF16 parity.
-See [GRPO usage](../../docs/grpo.md) for qualification scope and source pins.
+`grpo_config.py` owns `TaskGraphGRPOSettings` and the task-graph-only public TRL DAPO
+configuration. Its reward scaling is fixed to `none`; only task-graph group advantages
+reach TRL. `grpo_runtime.py` admits the sole supported `trl-6c5f135-streaming` route by
+verifying the approved TRL/Liger Python source trees before model loading. It admits dense
+Gemma4 only and disables unrelated Liger replacements through public configuration. The
+maintained FP32 streaming softcap is an accepted numerical variant, not native BF16 parity.
 
-`grpo.py` owns legacy experiment admission, frozen settings/identity and TRL config;
-`grpo_trainer.py` owns the shared resume/quarantine, checkpoint callback, trainer
-construction and adapter-export lifecycle exposed as `run_trainer(...)`. It does not
-reuse SFT preparation or implement another RL loss. `grpo_rollout.py` owns append-only
-sampled tokens and external suffix masks. Do not rebuild training actions by rendering
-parsed messages: Gemma can reorder tool arguments and remove earlier thinking.
-Training identity includes private scoring labels, unlike evaluation's rescorable
-identity. `grpo_identity.py` checks catalog lineage and actual caller-owned base tensors
-before resume can mutate the model, and owns the selected PEFT adapter tensor hash used by
-trainer policy bindings and trace checks; engineered fixtures use separate, explicit admission.
-Unavailable groups always stop before updates. Identity-bound `tie_policy="halt"`
-also stops ties by default; explicit `"continue"` passes raw tied rewards through
-ordinary TRL/Adam without resampling. Mathematically zero advantages can have
-float32 residuals; these or momentum may move weights. This is not update skipping.
-Saved `trl_advantages_estimate` values are Python-formula estimates, not observed
-trainer tensors. Reward scaling is explicit and identity-bound (`group` by default;
-task-graph training selects `none`). Groups record ties separately from checkpointed
-optimizer progress. `GRPOSettings.microbatch_size=None`
-trains the full group with accumulation 1. An explicit microbatch must be a positive
-integer dividing `group_size`; `gradient_accumulation_steps` is derived as
-`group_size // microbatch_size`. Reward-group size is distinct from training microbatch size: TRL scores the complete group, consumes its slices within one
-accumulation window, and updates once. Checkpoints occur only at that boundary; no
-partially consumed rollout buffer needs restoring. Microbatch settings are identity-bound.
-`loss_type` is also identity-bound: `grpo` remains the default, while explicit `dapo`
-uses public TRL's generation-group active-token denominator, excluding observations
-and padding. Neither selection changes sampling, reward admission, or safety budgets.
-Inference adapters and full trainer checkpoints are different artifacts. CPU optimizer/resume verification does
-not establish Gemma GPU fit. See [GRPO methodology](../../docs/grpo.md) for the bounded
-execution, recovery, and caller-owned reward contracts.
+`grpo_task_graph.py` composes verified task-graph sampling, export, tokenizer-backed
+admission and TRL rollouts. `grpo_trainer.py` owns the one task-graph trainer lifecycle,
+checkpoint callback, local resume/quarantine and adapter export. `grpo_checkpoint.py`
+seals checkpoint and adapter bytes; `grpo_identity.py` hashes the actual caller-owned base
+tensors and selected PEFT adapter tensors for trainer policy bindings and trace checks.
+`grpo_task_graph` refuses pending, invalid, unadmitted or unbound groups before returning
+rows to TRL. Exact ties carry the task-graph's exact zero advantage, with scaling disabled.
+An explicit training microbatch divides the full group, and the trainer updates once per
+group. The task-graph resume preflight checks durable reservations before loading weights.
 
-`grpo_probe.py` is a fixed engineering recipe over that trainer, not a general experiment
-scheduler. `grpo_probe_data.py` owns its committed source packet, bounded derivatives,
-and mechanical-only scorer; fixture successes are not sampled model successes or
-literary judgments. Preparation and tokenizer evidence bind the package sources before
-any model phase. Source changes therefore require fresh preparation, not rescoring an
-old run. See the [probe guide](../../docs/grpo-probe.md) for phase admission and recovery.
-The ordinary inference backend applies a trajectory token cap only when explicitly
-configured; older callers retain their per-call budget.
-
-`grpo_full48.py` admits the intact wave1 training release by frozen hashes and owns
-its separately bound mechanical-only reward. Delivery requires completed sequence
-and action evidence, all required artifacts at their lower word bounds, and actual
-file changes. Other mechanical failures can retain partial reward. Semantic rubrics
-and intermediate clarification faithfulness remain unjudged. Its fixture module
-constructs offline counterexamples; it never establishes sampled success or memory
-fit. See [full48 preparation](../../docs/grpo-full48.md); this is not a training runner.
+The legacy standalone DAPO rollout, probe, full48, GPU-fit and fork runners, along with the
+`trl-1.13` route, were retired after P1 passed; their source remains in commit `9cb9944`, in
+`main`'s history. They have no import path from the task-graph
+trainer. The short [retirement pointer](../../docs/grpo.md) records the boundary.
+`grpo_gpu.py` retains the D23 display policy and ownership gate used by the task-graph probe;
+`training_stages.py` remains its generic stage supervisor. The separate
+[`scripts/probe_context_budget.py`](../../scripts/probe_context_budget.py) utility measures
+general local-model context and attention costs and is not a training runner.
 
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the
@@ -544,17 +515,9 @@ table; an inconsistent table is rejected at import. Coverage reports the level a
 withheld points.
 Prepared requests are not generated or accepted training tasks.
 
-`reward.py` is the training-side scalar, and it is the only place a combined writing
-score is computed; `scoring.py` must keep computing none. Version 0 weights quality,
-intent and continuity as anchored 1-5 ratings and mechanics as the mean of the task's
-applicable mechanical checks, so an inapplicable check earns no free credit and a
-repeated check counts once. A withheld judgment leaves the reward unavailable rather
-than zero, because a judge timeout and a bad draft are different events. A critical
-criterion counts only when it was declared before sampling, so a rubric weakness cannot
-be promoted after the answer is seen. Group advantages are the within-group
-standardised rewards; they cancel a per-prompt judge offset but not rank flips or
-length bias, and an all-tie group yields no signal and is reported rather than hidden.
-The research script binds their hashes to source inventory and generator instructions.
+The task-graph's `RewardV1` is the sole training reward owner. The former standalone
+holistic reward experiment was retired because Phase 9 design §2.1 rejects 1–5 scalar
+rewards; it remains reproducible from commit `9cb9944` in `main`'s history.
 Variation vocabulary is caller-supplied data.
 Source-preserving continuations receive no genre blend and retain source style.
 Tropes, situations and continuity challenges remain authoring suggestions until the
@@ -593,24 +556,3 @@ scores pending.
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.
 Prose quality still uses only designated prose selections.
-
-`grpo_full48_runner.py` selects intact release/reward bindings and an explicit
-`intact-full48-v1` admission profile. The default probe profile keeps its original
-limits and 32-seed stride. Full48 reserves 48 seeds per slot, validates ordered
-visits before sampling, pauses at pass one, and refuses recovery with uncommitted
-sampled groups (generic trainer recovery may resample; this recipe may not).
-Coverage counts optimizer progress only from complete hash-verified checkpoints.
-`grpo_full48_supervisor.py` owns the inherited writer lease and advisory process
-progress; quiet output never triggers termination. Preparation/preflight import no
-model stack. See [full48 usage](../../docs/grpo-full48.md) for frozen allocations
-and their limits; CPU schedule proof does not establish native training fit.
-
-`grpo_gpu.py` owns the display allowance policy and desktop-consumer check as well as
-complete graphics/compute NVML inventory admission for production fit and full48
-train/resume. `grpo_probe.py` re-imports the display policy and check. Prepared identity
-and pinned source admission precede ownership; ownership precedes model loading.
-`grpo_gpu_fit.py` owns a separate single-attempt controlled token-ledger
-profile and native prefill check. Generation and training use sequential fresh
-processes so ownership never exempts an existing CUDA context. Controlled ledgers
-are memory evidence only; production rollouts remain native sampling. See
-[fit usage](../../docs/grpo-gpu-fit.md) for coverage and limits.

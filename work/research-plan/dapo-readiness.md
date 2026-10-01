@@ -83,7 +83,7 @@ unmeasured.
 | Probe derivatives are not originals | The three shortened probe goldens fail original word requirements. Use the new intact-release contract and fixtures, not the derivative scorer. |
 | Schedule and seeds | The generic ceiling is 20 updates. Its 32-decision seed stride can overlap adjacent attempts under the originals' 48-step envelope. |
 
-The [full48 preparation interface](../../docs/grpo-full48.md) now binds all original
+The [full48 preparation interface](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-full48.md) now binds all original
 task/release hashes, delivery/change evidence, required reads, reciprocal links and
 retrieval/quote checks. It checks the declared turn sequence without pretending to
 judge intermediate clarification. All required final artifacts must meet their
@@ -210,7 +210,7 @@ These results establish this CPU compatibility seam. They do not establish nativ
 BF16 parity, native tool-tokenizer semantics, dense-versus-streaming update equality,
 production GPU fit or writing quality. Existing native-token and legacy dense
 accumulation evidence remains separate. The new script is
-[scripts/smoke_grpo_streaming_cpu.py](../../scripts/smoke_grpo_streaming_cpu.py).
+[scripts/smoke_grpo_streaming_cpu.py](https://github.com/haowjy/writing-assistant/blob/9cb9944/scripts/smoke_grpo_streaming_cpu.py).
 
 Integration review found that unexpected workspace and host filesystem exceptions
 could be returned as candidate rewards. The shared agent/rollout path now preserves
@@ -232,7 +232,7 @@ maximum output; overflow remains explicit failure, never truncation.
 
 ## Production fit command
 
-The [inspect-first GPU fit command](../../docs/grpo-gpu-fit.md) binds one fixed
+The [inspect-first GPU fit command](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-gpu-fit.md) binds one fixed
 24576-token controlled training profile and a separate native 24575+1 generation
 check. V5 and full48 train/resume set PyTorch expandable allocator segments before
 Torch import, require an empty complete GPU process inventory, and require at least
@@ -288,7 +288,7 @@ against all 1050 saved adapter tensors, and sealed a full checkpoint with optimi
 scheduler and RNG. See the [v5 result](gemma-full48-fit-v5-result.md). This is a
 controlled memory pass, not a sampled writing result.
 
-The source-pinned path is integrated with the [full48 runtime](../../docs/grpo-full48.md),
+The source-pinned path is integrated with the [full48 runtime](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-full48.md),
 whose finite schedule and exact pass-one recovery pass a tiny CPU proof. The first
 production attempt reached 14 committed groups and 56 committed attempts; group 15's
 four sampled attempts remain uncommitted and unavailable, so this run cannot resume.
@@ -334,5 +334,5 @@ Original data and previous GPU runs were not modified. The controlled v6 GPU fit
 ran, but neither completed all 96 groups. No paid judge calls occurred; mechanical
 scores do not establish writing quality.
 
-See [current work order](../../TODO.md), [GRPO usage](../../docs/grpo.md), and the
+See [current work order](../../TODO.md), [GRPO usage](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md), and the
 [previous short-run result](gemma-microbatch-result.md).

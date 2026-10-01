@@ -11,6 +11,29 @@ from writing_agent.grpo_trainer import run_trainer
 
 
 class TaskGraphIdentityTests(unittest.TestCase):
+    def test_changed_native_parse_error_prefix_changes_experiment_identity(self):
+        source = Path(__file__).parents[1] / "src" / "writing_agent" / "native_parse_errors.py"
+        original = source.read_text()
+        changed = original.replace(
+            '"json parser could not parse region as JSON"',
+            '"json parser could not parse malformed region"',
+        )
+        self.assertNotEqual(original, changed)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source_root = Path(tmp)
+            classifier = source_root / "native_parse_errors.py"
+            classifier.write_text(original)
+
+            experiment = {"schema": "task-graph-experiment-v1"}
+            before, before_manifest = _task_graph_identity(experiment, source_root=source_root)
+            classifier.write_text(changed)
+            after, after_manifest = _task_graph_identity(experiment, source_root=source_root)
+
+            self.assertNotEqual(before, after)
+            self.assertEqual(set(before_manifest["code"]), {"native_parse_errors.py"})
+            self.assertEqual(set(after_manifest["code"]), {"native_parse_errors.py"})
+
     def test_changed_native_source_refuses_resume(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -65,7 +88,6 @@ class TaskGraphIdentityTests(unittest.TestCase):
                     trainer_config_values={},
                     make_rollouts=lambda _invocation_id: None,
                     resume_from_checkpoint=checkpoint,
-                    resume_checkpoint_identity=None,
                     stop_after_steps=None,
                 )
 

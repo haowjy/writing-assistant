@@ -9,10 +9,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from writing_agent.grpo import GRPOSettings, inspect_grpo, trainer_config
 from writing_agent.grpo_checkpoint import seal_directory
+from writing_agent.grpo_config import TaskGraphGRPOSettings, trainer_config
 from writing_agent.grpo_task_graph import (
     TaskGraphGroupPending,
+    TaskGraphResumeLocationRefused,
     TaskGraphResumeRefused,
     TaskGraphRollouts,
     TaskGraphTrainingError,
@@ -29,7 +30,7 @@ from writing_agent.task_graph_records import TrainingAdmissionV1
 from writing_agent.task_graph_store import TaskGraphStore
 
 
-def _settings(**overrides) -> GRPOSettings:
+def _settings(**overrides) -> TaskGraphGRPOSettings:
     values = {
         "model_id": "caller-owned/tiny-gemma4",
         "revision": "a" * 40,
@@ -44,7 +45,7 @@ def _settings(**overrides) -> GRPOSettings:
         "context_tokens": 4096,
     }
     values.update(overrides)
-    return GRPOSettings(**values)
+    return TaskGraphGRPOSettings(**values)
 
 
 def _checkpoint(root: Path, step: int) -> Path:
@@ -146,27 +147,13 @@ class TaskGraphSettingsTests(unittest.TestCase):
         self.assertEqual(values["loss_type"], "dapo")
         self.assertEqual(values["scale_rewards"], "none")
         self.assertIsNone(values["save_total_limit"])
-        legacy = trainer_config(
-            _settings(runtime_profile="probe"), "unused", use_cpu=True, bf16=False
-        )
-        self.assertEqual(legacy["scale_rewards"], "group")
-
         for override in (
             {"loss_type": "grpo"},
             {"enable_thinking": True},
+            {"runtime_profile": "probe"},
         ):
             with self.subTest(override=override), self.assertRaises(ValueError):
                 _settings(**override).validate()
-
-    def test_legacy_inspector_refuses_task_graph_profile_instead_of_using_old_admission(self):
-        with self.assertRaisesRegex(ValueError, "native group admission"):
-            inspect_grpo(
-                [],
-                "unused",
-                settings=_settings(),
-                reward_spec={"id": "unused", "config": {}, "mode": "mechanical-only-smoke"},
-                admission={"mode": "engineered-fixture", "label": "unused"},
-            )
 
     def test_behavior_policy_binds_base_adapter_step_and_experiment(self):
         baseline = task_graph_behavior_policy_ref("base-r1", "a" * 64, 2, "experiment")
@@ -199,6 +186,39 @@ class TaskGraphSettingsTests(unittest.TestCase):
             with self.assertRaises(TaskGraphResumeRefused):
                 task_graph_resume_preflight(output, checkpoint)
 
+    def test_resume_preflight_refuses_another_runs_checkpoint_without_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "run-b"
+            output.mkdir()
+            (output / "sentinel").write_text("unchanged")
+            checkpoint = root / "run-a" / "checkpoint-2"
+            checkpoint.mkdir(parents=True)
+            (checkpoint / "complete.json").write_text(json.dumps({"identity": "fixture"}))
+            before = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+
+            with (
+                patch("writing_agent.grpo_task_graph.verify_checkpoint") as verify,
+                self.assertRaises(TaskGraphResumeLocationRefused),
+            ):
+                task_graph_resume_preflight(output, checkpoint)
+            verify.assert_not_called()
+
+            after = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+            self.assertEqual(after, before)
+
     def test_resume_preflight_runs_before_trainer_api_or_model_setup(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
@@ -222,6 +242,53 @@ class TaskGraphSettingsTests(unittest.TestCase):
                     )
                 load_api.assert_not_called()
             model_factory.assert_not_called()
+
+    def test_external_resume_is_refused_before_model_api_or_output_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "run-b"
+            output.mkdir()
+            (output / "sentinel").write_text("unchanged")
+            checkpoint = root / "run-a" / "checkpoint-2"
+            checkpoint.mkdir(parents=True)
+            (checkpoint / "complete.json").write_text(json.dumps({"identity": "fixture"}))
+            model_factory = Mock(side_effect=AssertionError("model loaded before refusal"))
+            before = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+
+            with (
+                patch("writing_agent.grpo_task_graph.verify_checkpoint") as verify,
+                patch("writing_agent.grpo_task_graph.verify_runtime"),
+                patch("writing_agent.grpo_task_graph.load_trainer_api") as load_api,
+            ):
+                with self.assertRaises(TaskGraphResumeLocationRefused):
+                    train_task_graph(
+                        (),
+                        output,
+                        settings=_settings(),
+                        model=None,
+                        model_factory=model_factory,
+                        tokenizer=object(),
+                        manifest_descriptors=(),
+                        runtime_identity={"fixture": True},
+                        resume_from_checkpoint=checkpoint,
+                    )
+                verify.assert_not_called()
+                load_api.assert_not_called()
+            model_factory.assert_not_called()
+            after = {
+                path.relative_to(root): (
+                    "directory" if path.is_dir() else "file",
+                    path.read_bytes() if path.is_file() else None,
+                )
+                for path in sorted(root.rglob("*"))
+            }
+            self.assertEqual(after, before)
 
     def test_step_reservation_prevents_a_second_attempt_even_before_group_seal(self):
         with tempfile.TemporaryDirectory() as temporary:

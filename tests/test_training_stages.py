@@ -21,12 +21,8 @@ class TrainingStageTests(unittest.TestCase):
         self.addCleanup(self.storage.cleanup)
         self.root = Path(self.storage.name)
 
-    def test_supervisor_import_is_torch_and_legacy_probe_free(self):
-        code = (
-            "import sys; import writing_agent.training_stages; "
-            "assert 'torch' not in sys.modules; "
-            "assert 'writing_agent.grpo_probe' not in sys.modules"
-        )
+    def test_supervisor_import_is_torch_free(self):
+        code = "import sys; import writing_agent.training_stages; assert 'torch' not in sys.modules"
         subprocess.run([sys.executable, "-c", code], check=True)
 
     def test_wall_time_kill_is_terminal_and_recorded(self):

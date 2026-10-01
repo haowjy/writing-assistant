@@ -14,8 +14,7 @@ import struct
 from pathlib import Path
 
 from writing_agent.catalog import save_json
-from writing_agent.grpo import file_hashes
-from writing_agent.grpo_checkpoint import verify_checkpoint
+from writing_agent.grpo_checkpoint import file_hashes, verify_checkpoint
 from writing_agent.grpo_task_graph import TaskGraphLossObserver
 from writing_agent.grpo_task_graph_probe_experiment import (
     TOKENIZER_PATH,

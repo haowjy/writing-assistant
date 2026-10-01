@@ -83,7 +83,6 @@ class TaskGraphProbeTests(unittest.TestCase):
                     sys.modules,
                     {
                         "torch": object(),
-                        "writing_agent.grpo_probe": object(),
                     },
                 ),
             ):
@@ -94,11 +93,10 @@ class TaskGraphProbeTests(unittest.TestCase):
             self.assertFalse(before["writes"])
             self.assertEqual(json.loads((root / "inspect.json").read_text()), before)
 
-    def test_import_is_legacy_probe_and_torch_free(self):
+    def test_import_is_torch_free(self):
         code = (
             "import sys; import writing_agent.grpo_task_graph_probe; "
-            "assert 'torch' not in sys.modules; "
-            "assert 'writing_agent.grpo_probe' not in sys.modules"
+            "assert 'torch' not in sys.modules"
         )
         subprocess.run([sys.executable, "-c", code], check=True)
 

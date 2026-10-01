@@ -29,13 +29,18 @@ Nice-to-have follow-ups scoped to `src/`. None blocks correctness. Must-do items
   `input.context.rendering.<field>`. If that text is reworded, the rejection still happens
   but the reported path falls back to `input.adapter_trace`. Carry the field in a
   structured error instead.
-- [ ] **Bind the classifier's inference messages.** `native_protocol.is_native_output_parse_error`
-  matches the two messages `inference.parse_response` raises: `"Native tool-call output was
-  not completely parsed"` and `"Native tool arguments must be an object"`. `inference.py`
-  is not among the sources the task-graph experiment identity hashes (`grpo*`, `native_*`,
-  `task_graph*`). A reword would therefore not change the identity. It fails closed, so the
-  next malformed output halts instead of scoring. Move these messages into `native_protocol`
-  as constants, or bind `inference.py`.
+- [ ] **Bind tokenizer-owned classifier messages.**
+  `native_parse_errors.is_native_output_parse_error` and all of its pinned prefixes are
+  now included in the task-graph experiment identity through `native_*.py`. However, the
+  tokenizer/Transformers parser implementation and version that emit the external malformed-
+  output messages are not independently bound by that source hash. They fail closed: if
+  Transformers rewords one, malformed output halts instead of scoring. Before changing the
+  pinned parser, verify these prefixes against its source or bind the parser version to the
+  experiment identity.
+- [ ] **Attribute context overflow precisely.** `inference.py` currently classifies every
+  context overflow after the first call as candidate-invalid, even when scenario-supplied
+  follow-ups caused it. Implement the precise rule: classify it as candidate-invalid only
+  when the prompt would fit without generated tokens; otherwise keep it infrastructure.
 - [ ] **Calibrate GPU drift.** `on_policy_drift` does not gate on the GPU, because the FP32
   streaming softcap rules out bit equality and no bound is calibrated. Choose a bound from
   P1 and later GPU runs before using drift as a gate (`grpo_task_graph_observer.py`).
@@ -49,9 +54,3 @@ Nice-to-have follow-ups scoped to `src/`. None blocks correctness. Must-do items
   such as "amber lantern". A scene that honors "The lantern is amber." in other words misses
   it, and several P1 members did (review L5). That is harmless spread for a plumbing probe.
   Real training tasks should not reward a literal phrase when they mean "follow the brief".
-
-## Tests
-
-- [ ] **Split the oversize test modules.** `tests/test_task_graph_rollout_env.py` (1,238
-  lines) and `tests/test_grpo.py` (1,036) are over the 1,000-line cap. S14 shrinks
-  `test_grpo.py`; split the rest by concern.

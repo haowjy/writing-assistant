@@ -7,13 +7,26 @@ is compact sorted JSON mapping package-relative paths to SHA-256 content digests
 
 import hashlib
 import json
-from importlib.metadata import distribution, version
+from importlib.metadata import distribution
 from importlib.util import find_spec
 from pathlib import Path
 
-LEGACY = "trl-1.13"
 STREAMING = "trl-6c5f135-streaming"
 TRL_COMMIT = "6c5f1350488e9bba9a71242c47db45f2869796fa"
+
+
+class RuntimeVersionMismatch(ValueError):
+    """An installed package version differs from its qualified pin."""
+
+
+class RuntimeImportMismatch(ValueError):
+    """An installed package import resolves outside its qualified distribution."""
+
+
+class RuntimeSourceMismatch(ValueError):
+    """An installed package's Python sources differ from the qualified pin."""
+
+
 SOURCE_PINS = {
     "trl": (
         "trl",
@@ -29,8 +42,6 @@ SOURCE_PINS = {
 
 
 def implementation_plan(implementation):
-    if implementation == LEGACY:
-        return None  # Preserve the legacy plan shape, including frozen probe settings.
     if implementation != STREAMING:
         raise ValueError("Unknown GRPO implementation")
     return {
@@ -75,20 +86,16 @@ def python_tree_hash(root):
 def verify_runtime(implementation):
     """Reject unsupported versions, shadowed imports and changed sources before loading."""
     plan = implementation_plan(implementation)
-    if plan is None:
-        if version("trl") != "1.13.0":
-            raise ValueError("Legacy GRPO requires TRL 1.13.0; streaming requires explicit opt-in")
-        return None
     for package, (module, release, expected) in SOURCE_PINS.items():
         dist = distribution(package)
         if dist.version != release:
-            raise ValueError(f"Pinned GRPO requires {package} {release}")
+            raise RuntimeVersionMismatch(f"Pinned GRPO requires {package} {release}")
         root = Path(dist.locate_file(module)).resolve()
         spec = find_spec(module)
         if spec is None or not spec.origin or Path(spec.origin).resolve() != root / "__init__.py":
-            raise ValueError(f"Pinned GRPO import/source mismatch: {module}")
+            raise RuntimeImportMismatch(f"Pinned GRPO import/source mismatch: {module}")
         if python_tree_hash(root) != expected:
-            raise ValueError(f"Pinned GRPO source mismatch: {package}")
+            raise RuntimeSourceMismatch(f"Pinned GRPO source mismatch: {package}")
     return plan
 
 

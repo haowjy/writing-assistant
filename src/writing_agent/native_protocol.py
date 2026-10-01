@@ -1,10 +1,11 @@
-"""Gemma native-chat framing shared by legacy and task-graph sampling."""
+"""Gemma native-chat framing shared by task-graph sampling and audit."""
 
 import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from writing_agent.native_parse_errors import is_native_output_parse_error
 from writing_agent.task_graph import tool_call_id
 
 NATIVE_STOP_TOKENS = ("<eos>", "<turn|>", "<|tool_response>")
@@ -12,20 +13,6 @@ NATIVE_STOP_TOKENS = ("<eos>", "<turn|>", "<|tool_response>")
 
 class ProtocolError(RuntimeError):
     """Unsupported native framing is an infrastructure failure."""
-
-
-def is_native_output_parse_error(error: ValueError) -> bool:
-    """Recognize only pinned parser errors attributable to model-output text."""
-    return str(error).startswith(
-        (
-            "json: could not parse after dialect transforms",
-            "json parser could not parse region as JSON",
-            "json: input contains reserved sentinel characters",
-            "Required response_template fields missing from parsed output:",
-            "Native tool-call output was not completely parsed",
-            "Native tool arguments must be an object",
-        )
-    )
 
 
 @dataclass(frozen=True)
@@ -189,6 +176,5 @@ __all__ = [
     "NATIVE_STOP_TOKENS",
     "ProtocolError",
     "bind_native_tool_call_ids",
-    "is_native_output_parse_error",
     "native_suffix",
 ]

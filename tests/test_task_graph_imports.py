@@ -362,15 +362,29 @@ class TaskGraphImportTests(unittest.TestCase):
             for component in cyclic_components
             if any(not module.rsplit(".", 1)[-1].startswith("task_graph") for module in component)
         ]
+        inference_native_protocol_cycles = [
+            component
+            for component in cyclic_components
+            if {
+                "writing_agent.inference",
+                "writing_agent.native_protocol",
+            }.issubset(component)
+        ]
         edge_count = sum(len(targets) for targets in graph.values())
         print(
             "writing_agent import graph: "
             f"{len(graph)} modules, {edge_count} edges, {len(components)} SCCs, "
             f"{len(cyclic_components)} cyclic SCCs: {cyclic_components}; "
             f"task_graph SCCs: {task_graph_sccs}; "
-            f"cycles through non-task_graph modules: {cycles_through_other_modules}"
+            f"cycles through non-task_graph modules: {cycles_through_other_modules}; "
+            "inference/native_protocol cycles: "
+            f"{inference_native_protocol_cycles}"
         )
         self.assertEqual([], task_graph_sccs)
+        self.assertEqual([], inference_native_protocol_cycles)
+        self.assertEqual(set(), graph["writing_agent.native_parse_errors"])
+        self.assertIn("writing_agent.native_parse_errors", graph["writing_agent.inference"])
+        self.assertIn("writing_agent.native_parse_errors", graph["writing_agent.native_protocol"])
 
         error_module = SOURCE_PACKAGE / "task_graph_errors.py"
         error_tree = ast.parse(error_module.read_text(encoding="utf-8"))

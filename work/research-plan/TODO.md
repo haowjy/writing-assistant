@@ -76,10 +76,10 @@ test. Demonstrations and SFT are conditional, not on the critical path.
   API budget. A large gap makes human-target data construction the highest-leverage
   change available, ahead of reward work; a small gap retires the idea. Record the
   configuration with the number.
-- [x] Implement the [GRPO training connection](../../docs/grpo.md). Preserve sampled
+- [x] Implement the [GRPO training connection](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md). Preserve sampled
   actions, including generated reasoning, and mask user/tool observations. Native
   tokenizer tests and real tiny-CPU optimizer/save/reload/resume checks pass.
-- [x] Freeze the [short Gemma probe](../../docs/grpo-probe.md): three training tasks,
+- [x] Freeze the [short Gemma probe](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-probe.md): three training tasks,
   six development cases, scorer fixtures, token preflight, and bounded supervised stages.
 - [x] Execute the frozen E2B probe on the RTX 3090: baseline and grouped rollouts ran,
   then loss-forward output conversion exhausted GPU memory before the first update.
@@ -130,10 +130,10 @@ test. Demonstrations and SFT are conditional, not on the critical path.
   Report completion, Astra rubric scores, and numerical prose profiles separately;
   include a small coding/instruction-following regression check. Choose cadence from
   measured training and evaluation time, rather than an arbitrary epoch interval.
-- [ ] Validate the [reward adapter](../../src/writing_agent/reward.py) on controlled
-  failures and matched good/weak examples before its first policy update. It is
-  implemented and unit-tested; version 0 weights are a hypothesis, and nothing has been
-  optimized against them. Check the pointwise-vs-pairwise question alongside it.
+- [x] Retire the standalone holistic reward adapter. Its former implementation is
+  preserved in [commit `9cb9944`](https://github.com/haowjy/writing-assistant/blob/9cb9944/src/writing_agent/reward.py),
+  but Phase 9 design §2.1 rejects 1–5 scalar rewards; task-graph `RewardV1` is the sole
+  training reward owner. The pointwise-vs-pairwise research question remains separate.
 - [ ] Keep the [long-form final suite](../custom-eval-suite/longform-suite.md) out of
   checkpoint selection. It is built and frozen, and running it to see how a change looks
   converts it into a development set. Report it beside the

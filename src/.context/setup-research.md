@@ -5,8 +5,9 @@ a backend interface so the runtime can change without changing task execution.
 The research script uses Transformers/PyTorch and PEFT through the optional
 `inference` extra. The core has no third-party runtime dependencies. Training runs
 through explicit entry points that import the model stack only when executed:
-`training.py` (QLoRA SFT), `grpo.py` and `grpo_trainer.py` (GRPO/DAPO on public TRL), and
-Phase 8's task-graph trainer ([task-graph training](../../docs/task-graph-training.md)).
+`training.py` (QLoRA SFT) and Phase 8's task-graph DAPO trainer
+([task-graph training](../../docs/task-graph-training.md)). The former standalone DAPO
+training path is retired; its code remains at commit `9cb9944`, in `main`'s history.
 
 ## References and choices
 
