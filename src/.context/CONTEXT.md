@@ -170,6 +170,10 @@ retains its smoke-evaluation and training-format workflows.
   `completion_ids`, `env_mask` and `rollout_rewards = advantage_f64`, with
   `scale_rewards="none"`. It also owns the task-graph experiment identity, which binds every
   `grpo*`, `native_*` and `task_graph*` source file, and the model-free resume preflight.
+  The glob binds files by name, so code that decides how a rollout is scored, halted or
+  admitted must live in a module it matches. Moving such code into, say, `inference.py`
+  silently drops it from the identity; that is why the parse-error classifier is the leaf
+  `native_parse_errors.py`.
   [grpo_task_graph_observer.py](../writing_agent/grpo_task_graph_observer.py) records TRL's
   loss inputs and recomputed logprobs, read-only.
   [training_stages.py](../writing_agent/training_stages.py) is the generic stage supervisor:
@@ -489,6 +493,11 @@ tensors and selected PEFT adapter tensors for trainer policy bindings and trace 
 rows to TRL. Exact ties carry the task-graph's exact zero advantage, with scaling disabled.
 An explicit training microbatch divides the full group, and the trainer updates once per
 group. The task-graph resume preflight checks durable reservations before loading weights.
+Resume accepts only a checkpoint directly inside the run's own output directory: the
+preflight refuses any other with `TaskGraphResumeLocationRefused` before a model is built,
+and `run_trainer` refuses it again with `CheckpointLocationError`. These two checks are the
+only guard against resuming one run from another run's checkpoint with the same identity;
+keep both when changing resume.
 
 The legacy standalone DAPO rollout, probe, full48, GPU-fit and fork runners, along with the
 `trl-1.13` route, were retired after P1 passed; their source remains in commit `9cb9944`, in
@@ -556,3 +565,22 @@ scores pending.
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.
 Prose quality still uses only designated prose selections.
+
+### Testing with torch
+
+CI runs `unittest discover` without torch, Transformers or TRL, so the inference
+generation tests, the `native_*` tokenizer tests and the trainer, probe and trace-check
+tests skip. Run them under the Phase 8 overlay (the `env-phase8/` environment in the
+`task-graph-training` work item, described in
+[task-graph training](../../docs/task-graph-training.md)), offline, in one process:
+
+```bash
+# W is the task-graph-training work item directory.
+PYTHONPATH=src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 \
+  CUDA_VISIBLE_DEVICES='' "$W/env-phase8/bin/python" -m unittest discover -s tests
+```
+
+It takes about 18 minutes on CPU. The only expected skip is the creative-writing benchmark
+test when its upstream data is not downloaded. Any model-backed skip means the environment
+is wrong. Use discovery rather than a list of overlay modules, because a list misses
+model-backed tests outside it, such as the inference generation tests.
