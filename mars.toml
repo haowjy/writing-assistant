@@ -9,5 +9,6 @@ targets = [
     ".codex",
     ".opencode",
     ".pi",
+    ".claude",
 ]
 models_cache_ttl_hours = 24
