@@ -18,8 +18,7 @@ environment items are in the
 ## Status: `main` is behind the real work
 
 Training work continued off `main` through 2026-10-03 and is not merged. The newest
-branch is `phase9/resume-openai`, 452 commits ahead of `main`; `feat/dapo-full-rounds`
-is 59 ahead. Evidence and the decision log live outside the repo in
+branch is `phase9/resume-openai`, 119 commits ahead of `main`. Evidence and the decision log live outside the repo in
 `~/.meridian/context/orange-juniper-leaf/work/`, mainly `task-graph-training/decisions.md`
 and `task-graph-training/probes/deepseek-primary-check/report.md`.
 
@@ -38,7 +37,7 @@ and `task-graph-training/probes/deepseek-primary-check/report.md`.
 - [ ] Integrate the reviewed lanes R2c, R2e, and AV4-A, then finish AV4-B/C and R2d.
 - [ ] Run the post-repair torch-enabled test suite and the cross-lane gates.
 - [ ] Run J4/H1 human validation and integrated simulated-author validation.
-- [ ] Decide how to bring `phase9/resume-openai` and `feat/dapo-full-rounds` into `main`.
+- [ ] Decide how to bring `phase9/resume-openai` into `main`.
 
 ## Historical: DAPO over two complete training passes (retired)
 
