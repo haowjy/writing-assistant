@@ -49,14 +49,6 @@ The routing logic:
 This means **the model choice implicitly selects the harness**. You don't
 usually need to specify `--harness` explicitly.
 
-### Model → harness mapping
-
-```
-sonnet, opus, haiku           → claude harness
-codex, gpt55, gptmini, o3    → codex harness
-opencode-go/*, kimi-*         → opencode harness
-```
-
 Run `meridian mars models list` to see the configured model catalog: aliases,
 descriptions, and static routing hints. This command stays fast and does not
 probe every installed harness.
@@ -107,7 +99,15 @@ Route specific model patterns to different behavior:
 ```toml
 [[agents.tech-lead.model-policies]]
 match = { model-glob = "gpt*" }
-override = { effort = "medium", autocompact = 200000 }
+override = { effort = "medium" }
+```
+
+An `override` may set `effort`, `approval`, `sandbox` and `network`. Compaction
+belongs to the model, not the agent: set it on the alias.
+
+```toml
+[models.gpt55]
+autocompact = 200000
 ```
 
 ## Precedence

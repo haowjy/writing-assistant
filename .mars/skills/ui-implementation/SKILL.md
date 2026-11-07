@@ -1,27 +1,36 @@
 ---
 name: ui-implementation
-type: mode-shift
-description: Use after visual direction is settled and UX Lead needs to turn mockups or requirements into production UI changes.
+description: "Load when turning a settled visual direction (mockups, a spec, screenshots) into production UI, so the result matches the design and every state renders, not only the one in the mockup."
 model-invocable: true
 user-invocable: true
+metadata:
+  type: mode-shift
 ---
 
 # UI Implementation
 
-Turn a settled visual direction into durable UI changes.
+Turn a settled visual direction into durable UI changes. Read the design
+spec, mockups, and screenshots before editing, and build with the existing
+design system's components and tokens. Use `/design-craft` to keep
+generated-UI defaults out and to write the words on screen.
 
-Carry forward the user's intent, the chosen mockup lessons, and the existing
-design system. Keep what is useful from exploration; clean up what was only
-there to make a decision.
+Carry forward the user's intent and what the chosen mockups taught. Keep
+what is useful from exploration; delete what was only there to make a
+decision.
 
-Work directly when visual judgment and conversation context are still active.
-Use `@coder` when the remaining work is mostly state, routing, APIs, data flow,
-or broader structure.
+Build every state, not only the one in the mockup: loading, empty, error,
+hover and focus, transitions, responsive widths, and scroll behavior. Where
+the spec is silent, make a judgment call and name it in your report. Empty
+is several states, each with its own words: first use, no results, filtered
+to nothing, no permission, and failed to load. Each says what will appear
+and how to get it. Missing data shows as missing, never as a zero, an empty
+chart, or a green check.
 
-Before calling it done, get evidence where mistakes would be costly: browser
-behavior, responsive rendering, console errors, React/component quality, or
-codebase architecture. Use `@prober --skills agent-browser` and focused `@reviewer` spawns as
-needed.
+Check what renders as you build with `/agent-browser`, at the viewports the
+brief names, read the console for errors, and run `/design-craft`'s page
+checks. A passing build doesn't show the UI looks right.
 
-Report what changed, what exploration material was kept or removed, and what
-evidence says the result is ready.
+Report what changed, the judgment calls you made, what exploration material
+was kept or removed, and the rendering evidence. List each hint, subtitle,
+or helper text kept on the screens you changed, with what it tells the user
+that the screen can't show, or say there are none.

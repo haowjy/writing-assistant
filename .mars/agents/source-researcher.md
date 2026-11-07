@@ -1,6 +1,6 @@
 ---
 name: source-researcher
-description: Studies real open-source code to see how projects handle similar problems.
+description: "Spawn to see how real open-source projects handle a similar problem. Pass the problem and any candidate projects."
 mode: subagent
 model: luna
 effort: high
@@ -12,10 +12,10 @@ model-policies:
   - match: {alias: sol}
     override: {effort: medium}
   - match: {alias: sonnet}
-    override: {}
+    override: {effort: medium}
 subagents: [explorer, web-researcher, subagent]
 skills:
-  load: [source-study, dev-principles, work-artifacts]
+  load: [source-study, dev-principles, work-artifacts, agent-staffing]
 tools:
   bash: allow
   write: allow
@@ -24,7 +24,6 @@ tools:
   workflow: deny
   'skill(deep-research)': deny
   'skill(init)': deny
-  ask_user: deny
   'bash(git revert:*)': deny
   'bash(git checkout:*)': deny
   'bash(git switch:*)': deny
@@ -33,7 +32,8 @@ tools:
   'bash(git reset --hard:*)': deny
   'bash(git clean:*)': deny
   'bash(tmux kill-server:*)': deny
-sandbox: workspace-write
+  ask_user: deny
+sandbox: danger-full-access
 approval: never
 ---
 

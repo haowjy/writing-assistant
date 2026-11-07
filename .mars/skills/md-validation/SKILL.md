@@ -1,35 +1,24 @@
 ---
 name: md-validation
-type: reference
-description: Use when validating markdown links or Mermaid diagrams.
+description: "Load after writing, moving, or linking markdown pages or Mermaid diagrams, before committing them: validates links, the KB link graph, and diagram syntax."
+metadata:
+  type: reference
 ---
 
-# md-validation
+# Markdown Validation
 
-Meridian's markdown validation commands work on any markdown file or directory.
+Validate links before committing documentation changes, and read the link graph
+before and after restructuring a tree. Validate Mermaid syntax and style after
+diagram edits. Fix every reported issue and repeat the validation until it is clean.
 
-## Commands
+Use the validators your project or runtime provides. Their commands, warning
+categories, suppression comments, and ignore files belong to that tool: when
+the runtime offers Markdown-validation guidance, read it before running them.
+Report any check you could not run.
 
-- **`meridian kg check [path]`**: broken-link gate. Exit `0` clean, `1` broken
-  links. Run before committing doc changes.
-- **`meridian kg graph [path]`**: link topology visualization. Use to understand
-  doc structure and find orphan pages.
-- **`meridian kg [path]`**: quick stats (file count, link count, broken count).
+When a warning marks a construct you meant, suppress only that category, as
+narrowly as the validator allows, with the reason beside the diagram. Exclude
+generated or vendored material from validation; never exclude a broken page
+that belongs to the tree.
 
-Context aliases work as path: `kb`, `strategy`, `work` resolve to their
-context directories (e.g. `meridian kg check kb`, `meridian kg graph strategy`).
-- **`meridian mermaid check [path]`**: Mermaid diagram validation (syntax +
-  style warnings). Run after diagram edits.
-
-## Validation Flow
-
-1. `meridian kg [path]`: quick sanity check
-2. `meridian kg check [path]`: catch broken links
-3. `meridian mermaid check [path]`: validate diagrams
-4. Fix issues and re-run until exit codes are clean
-
-Use `meridian kg --help` and `meridian mermaid --help` for full flag coverage.
-
-See `resources/mermaid-authoring.md` for diagram authoring rules (quoting,
-line breaks, reserved words, themes).
-See `resources/command-reference.md` for detailed flags and warning categories.
+See `resources/mermaid-authoring.md` for diagram authoring rules.

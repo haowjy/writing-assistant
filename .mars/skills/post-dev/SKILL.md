@@ -1,8 +1,9 @@
 ---
 name: post-dev
-type: checkpoint
-description: "Ship readiness: PR template, changelog, review, deferred-work routing, knowledge capture, cleanup. Run when implementation is done."
+description: "Run when implementation is done, before opening the PR: catches what would otherwise ship missing (PR body, changelog, review sign-off, deferred work, knowledge capture, cleanup)."
 model-invocable: true
+metadata:
+  type: checkpoint
 ---
 
 # Post-Dev Checkpoint
@@ -15,58 +16,56 @@ merge section applies once the PR lands.
 ### PR readiness
 - `pr-body-<slug>.md` (from `/pre-dev`) has every template section filled,
   including the before-state evidence captured at kickoff — top up whatever
-  implementation added, don't restart from the raw template
-- Set a `release:*` label (default: `release:patch`)
-- PR title under 70 characters, descriptive
+  implementation added
+- Evidence images link to the commit that last touched them, taken after
+  the file is pushed (`git log -1 --format=%H -- <file>` in the repo that
+  holds it), not to a branch: a file on a branch can later move or be deleted,
+  which breaks the link
+- The PR follows the project's release conventions, wherever its AGENTS.md or
+  docs keep them: its labels and title rules
+- `@cold-reader` has read the PR body, commissioned per `/llm-writing`
+  `resources/cold-read.md` with the PR's reviewer as its reader, and its
+  valid findings are fixed
 
 ### Changelog
-- `CHANGELOG.md` has entries under `## [Unreleased]` for this work
+- The changelog is updated the way the project's conventions say
 - Entries written in caveman style: terse, behavioral, filler-free
 - Focus on what downstream users notice, not which lines moved
 
 ### Review
-- Has structural review passed? If not, spawn a reviewer first.
-- Any review findings addressed or explicitly accepted?
+- The review passed on the commit it named, and each finding is fixed or explicitly accepted. Changes after that commit are small fixes you read yourself, doc updates, or scaffolding-test deletions; anything that restructured code or changed behavior got its own review.
 - If the plan shifted during implementation, `DIVERGENCE/` in the work
   directory reflects it — reviewers and knowledge capture read from it
 
 ### Deferred work
 - Mine conversation history, touched files, and review findings for anything
   deferred: TODOs, skipped improvements, known limitations, future ideas
-- Record each deferral in the nearest `.context/TODO` (must-do) or
-  `.context/FUTURE` (nice-to-have) to the code it affects — each entry
-  names the affected path and concrete follow-up
-- Cross-cutting items or items needing external visibility: file a
-  GitHub issue (see `/issues`)
+- Record each deferral per `/issues`
 - Every `TODO` comment added or touched in this work must have a matching
   entry in `.context/TODO` or a GitHub issue — no orphan TODOs
 
 ### Knowledge capture
-- A completed `@kb-lead` reconciliation covers the final changed source
-  paths. If source changed after an earlier capture, run reconciliation again.
-- Colocated guidance needs an update only when it — or the absence of needed
-  guidance — would cause a cold agent to make a wrong decision. A changed path
-  or missing `.context/` file is not itself a gap.
-- Decisions, rejected alternatives, and design rationale go stale fast —
-  capture them while context is live
-- Pass the conversation, changed files, work directory, and any
-  `DIVERGENCE/` logs as context
+- Spawn `@kb-lead` after review fixes have landed, covering the whole
+  change and anything an earlier capture left out.
+- Brief it as its description asks, and pass any `DIVERGENCE/` logs with
+  the decision records.
+- Colocated guidance (`.context/`, `AGENTS.md`) passes `/qi-maintenance`'s
+  gap test.
 - Before this checkpoint passes, verify any colocated doc updates
   (`.context/`, `AGENTS.md`) are present on the feature branch. Separate KB
   repository updates may land independently.
 
 ### Cleanup
 - No stale files, dead code, or debug artifacts left behind
-- Scaffolding tests deleted: tests written to understand behavior that no
-  longer protect a live risk (see `/testing`)
+- Dev stacks, browsers, scratch worktrees, and temp dirs that you or your
+  spawns started are stopped and deleted; restart a stack when a fix cycle
+  needs it. Keep one running only when the human asked to use it.
+- New tests the user didn't ask for are deleted (`/testing`)
 
 ### After merge
 - Verify CI passed on main
-- Clean up what the work left behind: worktree, branch, scoped databases, dev
-  processes and routes, work item. These are linked, so deleting one by hand
-  orphans the rest — find the project's cleanup tooling (package scripts,
-  `tools/`, AGENTS.md) and follow its policy on what gets removed and how.
-  Branch deletion needs merge evidence git can't supply alone: `-d` is blind to
+- Clean up what the work left behind (worktree, branch, scoped databases,
+  dev processes and routes) per `/dev-workflow` `resources/ship.md`; branch
+  deletion needs merge evidence git can't supply alone: `-d` is blind to
   squash merges, `-D` discards unmerged commits.
-- Mark the work item done: `meridian work done <slug>` (see `/work-artifacts`) —
-  archives the work dir; confirm attached spawns are terminal first
+- Close the work item once every agent you started for it has finished

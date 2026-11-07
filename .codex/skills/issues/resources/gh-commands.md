@@ -45,7 +45,7 @@ fi
 
 | Label | Color (hex) | Description |
 |-------|-------------|-------------|
-| `work:<slug>` | `c5def5` | Links issue to its Meridian work item when one exists |
+| `work:<slug>` | `c5def5` | Links issue to its work item when one exists |
 
 When an active work item exists, replace `<slug>` with its actual slug (e.g.,
 `work:auth-refactor`). Otherwise omit the work label and work-item references.
@@ -71,7 +71,7 @@ gh label create "good-first-task" --color "7057FF" --description "Good for a new
 Create work item labels as needed:
 
 ```bash
-gh label create "work:auth-refactor" --color "c5def5" --description "Meridian work item: auth-refactor" 2>/dev/null
+gh label create "work:auth-refactor" --color "c5def5" --description "Work item: auth-refactor" 2>/dev/null
 ```
 
 ## Issue Body Template
@@ -127,7 +127,7 @@ Token refresh catches all exceptions and returns None.
 Add specific exception handling.
 
 ---
-*Created by meridian agent during `work:auth-refactor` implementation*
+*Created during `work:auth-refactor` implementation*
 EOF
 )"
 ```

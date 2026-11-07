@@ -1,8 +1,9 @@
 ---
 name: visualize-codebase
-description: 'Build a structured artifact that maps a codebase: structure, data flow, connections, and where something looks off.'
+description: 'Load when the human wants a browsable visual map of a codebase: structure, data flow, connections, and where something looks off.'
 disable-model-invocation: true
-argument-hint: Which area, flow, or question? (optional)
+metadata:
+  type: reference
 ---
 
 # Visualize Codebase
@@ -35,7 +36,7 @@ Each level navigable on its own.
 
 ## Splitting the Artifact
 
-Give each level its own page and link between them: orientation first, then one page per
+When the artifact shows more than one level, give each its own page and link between them: orientation first, then one page per
 dimension or sub-area the viewer drills into. Each page should make sense on its own (title,
 context sentence, diagram) so someone arriving from a link doesn't need the parent open.
 Split further when a single diagram outgrows a phone screen.

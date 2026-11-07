@@ -1,6 +1,8 @@
 ---
 name: divergence
-description: Track plan divergence during multi-phase work. Load when redesign or plan shifts are likely.
+description: 'Load when the design or plan may shift during multi-phase work: a logged shift lets reviewers tell planned change from drift.'
+metadata:
+  type: reference
 ---
 
 # Divergence Tracking
@@ -11,9 +13,7 @@ decisions that change what the work is building or how.
 
 ## What to capture
 
-One file per entry, prefixed by date or phase so the folder reads
-chronologically. Each entry: what the plan said, what changed, why. One
-paragraph is enough.
+Each entry: what the plan said, what changed, why. One paragraph is enough.
 
 ## When to write
 
@@ -27,9 +27,3 @@ paragraph is enough.
 Implementation-level choices that stay within the plan's intent (seam
 selection, commit granularity, test tier). Those belong in commit messages
 and coder reports, not the divergence log.
-
-## Downstream
-
-Reviewers check `DIVERGENCE/` for alignment between the plan and the code.
-`@kb-lead` uses it as source material after the phase settles — the
-divergences are often the most durable lessons.

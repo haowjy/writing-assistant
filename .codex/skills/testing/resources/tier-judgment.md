@@ -7,9 +7,9 @@ Choosing the right tier is usually the difference between a test that catches re
 ```mermaid
 flowchart TD
     START[New behavior to test] --> Q1{"Pure logic?<br/>No I/O?"}
-    Q1 -->|yes| UNIT["UNIT<br/>@coder + unit-test"]
+    Q1 -->|yes| UNIT["UNIT<br/>resources/unit-patterns.md"]
     Q1 -->|no| Q2{"Components composing<br/>with fakeable boundaries?"}
-    Q2 -->|yes| INT["INTEGRATION<br/>@coder + integration-test"]
+    Q2 -->|yes| INT["INTEGRATION<br/>resources/integration-patterns.md"]
     Q2 -->|no| Q3{"Real runtime behavior<br/>with real systems?"}
     Q3 -->|yes| SMOKE["SMOKE / E2E<br/>@prober"]
     Q3 -->|no| REFACTOR["Code is probably mixing<br/>decisions and I/O :<br/>consider refactoring first"]
@@ -35,11 +35,11 @@ flowchart TD
 - **Default to the lowest tier that answers the question.** Lower tiers are faster feedback and sharper failure signals.
 - **Move up a tier when the question is about collaboration or integration.** Unit tests cannot answer "do these modules agree on the contract."
 - **Move up a tier when mocking starts dominating.** A unit test with five mocks is usually an integration test wearing a disguise.
-- **Don't duplicate coverage across tiers.** If the smoke test proves a code path works, a unit test that reasserts the same thing adds maintenance without protection.
-- **Critical paths deserve redundancy.** Authentication, billing, data loss risks: test at multiple tiers because the cost of a false negative is high.
+- **Give each test a distinct risk to protect.** If the smoke test proves a code path works, a unit test that reasserts the same thing adds maintenance without protection; consolidate equivalent coverage.
+- **Critical paths get one test at the tier that reaches the failure.** Authentication, billing, data loss: pair that test with a probe recipe for the whole journey.
 
 ## Common Sizing Mistakes
 
 - **Unit tests that mock everything**: should probably be integration tests, or the code should be refactored to have a testable core.
 - **Integration tests that spin up real databases**: probably should be smoke tests, or the database client should be wrapped in a fake-able interface.
-- **Smoke tests that verify string formatting**: should be unit tests. Smoke tests are expensive; reserve them for behavior only visible end-to-end.
+- **Smoke tests that verify exact string formatting**: check the behavior boundary (exit code, error class) and leave the wording unpinned. Smoke tests are expensive; reserve them for behavior only visible end-to-end.

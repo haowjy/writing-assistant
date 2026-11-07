@@ -1,10 +1,44 @@
 {
   "hooks": {
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": "bash \"/home/jimyao/gitrepos/research/writing-assistant/.codex/hooks/context-autosync/run.sh\"",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "bash \"/home/jimyao/gitrepos/research/writing-assistant/.codex/hooks/context-autosync/run.sh\"",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "hooks": [
           {
             "command": "bash \"/home/jimyao/gitrepos/research/writing-assistant/.codex/hooks/deny-interactive-prompts/run.sh\"",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "command": "bash \"/home/jimyao/gitrepos/research/writing-assistant/.codex/hooks/protect-tmux-server/run.sh\"",
+            "if": "Bash(*tmux*)",
+            "onFailure": "block",
+            "timeout": 10,
             "type": "command"
           }
         ],

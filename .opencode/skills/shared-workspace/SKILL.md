@@ -1,6 +1,8 @@
 ---
 name: shared-workspace
 description: 'Use when a workspace has changes from other agents: safe orientation, preserving unfamiliar files.'
+metadata:
+  type: guardrail
 ---
 
 # Shared Workspace

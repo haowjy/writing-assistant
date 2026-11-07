@@ -1,6 +1,8 @@
 ---
 name: test-architecture
-description: Strict test structure audit. Load when test code is making the codebase harder to change.
+description: Load when test code is making the codebase harder to change, to find tests that pin implementation, mock rot, and sprawl worth deleting.
+metadata:
+  type: reference
 ---
 
 # Test Architecture Review

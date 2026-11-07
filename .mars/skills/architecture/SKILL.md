@@ -1,8 +1,9 @@
 ---
 name: architecture
-type: reference
-description: Use when designing or reasoning about system boundaries, dependencies, and structural risk.
+description: "Load when a decision places a boundary, a dependency direction, or a data model, or when a design needs settling: entanglement, tradeoff dimensions, structural risk."
 model-invocable: true
+metadata:
+  type: reference
 ---
 
 # Architecture
@@ -12,11 +13,11 @@ model-invocable: true
 The objective design test: which concerns are braided together that could be
 independent — state with value, what with how, policy with mechanism? Simple
 means untangled, and you can point at it in the code. Familiar is relative to
-the reader; never defend or reject a design on familiarity.
+the reader; judge a design on what it entangles.
 
 Simplicity is not counting. More parts hanging straight beat fewer parts
-tied in a knot — don't merge components to lower the count if merging
-entangles their concerns.
+tied in a knot: merge components only when their concerns stay
+untangled.
 
 ## Boundaries
 
@@ -46,3 +47,21 @@ Pick the ones that match what could actually go wrong:
 Wrong calls are expensive in proportion to how much code builds on top. Highest risk: component boundaries, data model shape, trust boundaries, API contracts. Lower risk: internal implementation within a well-bounded module.
 
 Match scrutiny to risk.
+
+## Settling a Design
+
+Treat requirements as hypotheses. Edge cases, failures, and boundaries are
+first-class requirements: enumerate them before committing. "Find out
+during implementation" is a risk flag; run the cheapest probe instead.
+
+Explore the solution space before committing: consider alternatives, think
+through failure modes, challenge fragile assumptions. Before proposing a
+mechanism the project doesn't have yet, find out how others have built it
+(search the web yourself, or spawn `@web-researcher` or
+`@source-researcher`), record in the design what you found and what you
+take from it, and look again when convergence stalls. When evidence
+challenges an assumption, dig further before converging.
+
+When uncertain, present several built variants, concrete enough to choose
+between. Low-confidence convergence on one option defers the decision to
+implementation, where it costs more to change.

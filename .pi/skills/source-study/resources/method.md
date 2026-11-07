@@ -13,11 +13,12 @@ For large repos (monorepos, multi-GB histories), clone shallow and deepen as nee
 
 ```bash
 git clone --depth 50 <url> ~/.meridian/ref/<name>    # recent history
-git -C ~/.meridian/ref/<name> fetch --deepen=200      # extend window
-git -C ~/.meridian/ref/<name> fetch --unshallow        # full history
+git -C ~/.meridian/ref/<name> fetch --deepen=200     # extend window
+git -C ~/.meridian/ref/<name> fetch --unshallow      # full history
 ```
 
-Don't delete after investigation. `~/.meridian/ref/` accumulates over time. A repo studied once may be relevant again.
+Keep clones in `~/.meridian/ref/` after the investigation; a repo studied once
+may be relevant again.
 
 ## Explorer Prompt Examples
 
@@ -30,7 +31,7 @@ Each spawn gets one focus area:
 
 ## Synthesis
 
-The synthesis explorer merges individual reports into:
+The synthesis merges the reports into:
 
 - Patterns that appear across projects (convergent design)
 - Tradeoffs different projects made (divergent design)

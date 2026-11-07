@@ -1,12 +1,15 @@
 ---
 name: diagnose
 description: Load when diagnosing hard bugs or performance regressions. Structured loop from feedback loop through instrumentation to fix.
-disable-model-invocation: true
+metadata:
+  type: reference
 ---
 
 # Diagnose
 
 A discipline for hard bugs. Skip phases only when explicitly justified.
+
+Phases 1–4 find the root cause. Go on to the fix (phases 5–6) only when your brief assigns it; otherwise stop, remove your instrumentation and throwaway code, and report the root cause with its evidence.
 
 When exploring the codebase, check the project's KB vocabulary and context docs for a clear mental model of the relevant modules.
 
@@ -18,9 +21,9 @@ Spend disproportionate effort here. Be aggressive. Be creative. Refuse to give u
 
 ### Ways to construct one (try in roughly this order)
 
-1. **Failing test** at whatever seam reaches the bug: unit, integration, e2e.
+1. **CLI invocation** with a fixture input, diffing stdout against a known-good snapshot.
 2. **Curl / HTTP script** against a running dev server.
-3. **CLI invocation** with a fixture input, diffing stdout against a known-good snapshot.
+3. **Temporary failing test** at whatever seam reaches the bug. Keeping it is Phase 5's decision.
 4. **Headless browser script** (Playwright): drives the UI, asserts on DOM/console/network.
 5. **Replay a captured trace.** Save a real network request / payload / event log to disk; replay it through the code path in isolation.
 6. **Throwaway harness.** Spin up a minimal subset of the system (one service, mocked deps) that exercises the bug code path with a single function call.
@@ -43,7 +46,7 @@ The goal is a higher reproduction rate. Loop the trigger 100x, parallelize, add 
 
 ### When you genuinely cannot build a loop
 
-Stop and say so explicitly. List what you tried. Ask for: (a) access to the reproducing environment, (b) a captured artifact (HAR file, log dump, core dump, screen recording), or (c) permission to add temporary instrumentation. Do not proceed to hypothesize without a loop.
+Stop and say so explicitly. List what you tried. Ask for: (a) access to the reproducing environment, (b) a captured artifact (HAR file, log dump, core dump, screen recording), or (c) permission to add temporary instrumentation. When a captured artifact is all you can get, work from it: each hypothesis must predict something the artifact shows, and report the cause as unconfirmed until a loop reproduces it.
 
 ## Phase 2: Reproduce
 
@@ -54,11 +57,11 @@ Run the loop. Watch the bug appear. Confirm:
 
 ## Phase 3: Hypothesise
 
-Generate 3-5 ranked hypotheses before testing any. Single-hypothesis generation anchors on the first plausible idea.
+Rank the competing explanations before testing any. Testing the first plausible idea alone anchors on it.
 
 Each hypothesis must be falsifiable: "If X is the cause, then Y will make the bug disappear / worse."
 
-**Interactive mode:** Show the ranked list to the user before testing. They often have domain knowledge that re-ranks instantly. Don't block on it; proceed with your ranking if the user is AFK.
+**Interactive mode:** Show the ranked list to the user, then start testing in that order. They often have domain knowledge that re-ranks instantly; fold it in when it arrives.
 
 **Autonomous mode (spawned as subagent):** Skip the user check. Proceed with your ranking directly.
 
@@ -70,21 +73,21 @@ Tool preference: debugger / REPL > targeted logs > "log everything and grep."
 
 Tag every debug log with a unique prefix (e.g. `[DEBUG-a4f2]`). Cleanup is a single grep.
 
-For performance regressions, logs are usually wrong. Establish a baseline measurement first, then bisect.
+For performance regressions, logs are usually wrong. Establish a baseline measurement first, vetted per `/probe`'s `resources/measurement.md`, then bisect.
 
-## Phase 5: Fix + Regression Test
+## Phase 5: Fix
 
-Write the regression test before the fix, but only if there is a correct seam for it. A correct seam exercises the real bug pattern as it occurs at the call site.
+With the loop failing, apply the fix and watch the loop pass, then re-run it against the original scenario. Put the repro in the commit message, self-contained: the command and the inputs it needs, so anyone can rerun it after the harness is gone.
 
-If no correct seam exists, that itself is the finding. Note it. The codebase architecture is preventing the bug from being locked down.
+Commit the loop as a regression test only when the user asked for one, at a seam that exercises the real bug pattern as it occurs at the call site, with its red output from before the fix. Otherwise delete it with the other throwaway code.
 
-If a correct seam exists: turn the repro into a failing test, watch it fail, apply the fix, watch it pass, re-run the Phase 1 loop against the original scenario.
+If no seam reproduces the bug cheaply, that is a finding: the architecture is keeping the bug from being locked down. Note it.
 
 ## Phase 6: Cleanup + Post-Mortem
 
 Required before declaring done:
 - Original repro no longer reproduces.
-- Regression test passes (or absence of seam is documented).
+- The repro command is in the commit message, and any kept regression test passes.
 - All `[DEBUG-...]` instrumentation removed.
 - Throwaway POC code deleted.
 - The correct hypothesis is stated in the commit / PR message.

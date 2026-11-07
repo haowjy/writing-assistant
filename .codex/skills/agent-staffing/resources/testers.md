@@ -1,7 +1,7 @@
 # Testers
 
 Match testing to what the phase touches. Coders self-verify with the narrowest
-useful evidence. Beyond that, spawn `@prober` with `--skills` for the
+useful evidence. Beyond that, delegate to `@prober` and attach the skill for the
 verification kind.
 
 ## Skill Picker
@@ -9,24 +9,22 @@ verification kind.
 | Verification kind | Spawn | When |
 |-------------------|-------|------|
 | Quick manual smoke | `@prober` | CLI, process, non-UI behavior checks |
-| Structured manual QA | `@prober --skills qa-test` | Convergence: regression + acceptance charters |
-| Frontend / UI | `@prober --skills agent-browser` | Rendering, flows, console errors in a real browser |
-| Feasibility spike | `@prober --skills poc` | Can we do X? Throwaway code, verdict, delete |
+| Structured manual QA | `@prober` | Verify affected existing behavior and new requirements; pass scenarios and expected outcomes |
+| Frontend / UI | `@prober`; attach `/agent-browser` | Rendering, flows, console errors in a real browser |
+| Feasibility spike | `@prober`; attach `/poc` | Can we do X? Throwaway code, verdict, delete |
 | Heavy / destructive env | `@prober` | Temp repos, clean-baseline comparisons |
 
-Testers generate independent edge cases; don't only verify the requirements
-handed over by the caller.
+Testers generate their own edge cases beyond the requirements the caller
+hands over.
 
 ## Model and Context Selection
 
-Use the prober's inexpensive default for CLI and process checks. For browser/UI
-verification, attach `agent-browser` and select a route that supports the inputs
-and tools the task needs; screenshot checks require image understanding.
-
-Muse Contributor is an option for inexpensive visual probing when all submitted
-context is approved for training. Make that decision before sending the brief,
-screenshots, or tool output. Otherwise choose an approved alternative route;
-do not let price or a profile default override the data-use constraint.
+Use `/agent-staffing`'s Model Selection policy. For browser/UI verification,
+attach `/agent-browser`. Confirm the configured route supports the required
+inputs and tools; screenshot checks require image understanding. Submitted
+context must also be approved for the route's data-use policy, including
+training. Report a capability or data-use mismatch before sending the work
+rather than silently substituting a model.
 
 Use `@browser` for general website interaction or design research; use `@prober`
 for independent verification against requirements. Both can use the same browser
@@ -48,15 +46,18 @@ could interfere, give each prober a separate temp project or run sequentially.
 
 Automated gates (typecheck, lint, `pnpm test`) stay on `@coder`, not prober.
 
-`@coder` with `/testing` `resources/unit-patterns.md`: tricky logic, edge
-cases, regression guards. Isolated, fast, exhaustive on boundary conditions.
+Spawn a test-writing coder only for tests the user asked for, and name each
+test in the brief.
+
+`@coder` with `/testing` `resources/unit-patterns.md`: pure-core edges and
+named regressions. Isolated and fast.
 
 `@coder` with `/testing` `resources/integration-patterns.md`: module
 boundaries, coordination logic, contracts between collaborators.
 
 ## Test Retention
 
-Disposable probes and one-off verification fixtures: removed after verification
-passes. Durable unit and integration tests that protect key behavior: stay.
-Tech-lead judges which tests earn their place. Uncertain coverage becomes a
-better manual smoke guide before it becomes a permanent automated test.
+Disposable probes, one-off fixtures, and tests written to check the work:
+removed once verification passes. Tests the user asked for: stay. Uncertain
+coverage becomes a better manual smoke guide, or a test you propose to the
+user.

@@ -32,7 +32,7 @@ Writing tests to hit lines rather than to answer a question. Produces tests that
 
 **Sign:** Tests named after functions rather than scenarios; assertions that just check the function "returned something."
 
-**Fix:** Start with "what could go wrong here?" and write tests that would catch those failures.
+**Fix:** Start with "what could go wrong here?", check those failures on the running system, and keep a test only when the user asked for it.
 
 ## Integration Tests Pretending to be Unit Tests
 
@@ -48,7 +48,7 @@ Verifying string formatting or parsing via full CLI invocations. Slow, expensive
 
 **Sign:** A smoke test that checks the exact wording of an error message.
 
-**Fix:** Smoke-test the behavior boundary (command fails with non-zero exit); unit-test the message.
+**Fix:** Smoke-test the behavior boundary (command fails with non-zero exit) and leave the exact wording unpinned.
 
 ## Tests That Never Fail Meaningfully
 
@@ -66,14 +66,6 @@ Tests for code paths that no longer exist, behaviors no longer required, or edge
 
 **Fix:** Prune actively. A deleted test that was not earning its keep is a win.
 
-## Test Names That Don't Explain Failures
-
-`test_foo_1`, `test_it_works`, `test_edge_case`. When these fail, the output doesn't tell you what broke.
-
-**Sign:** You have to read the test body to understand the failure.
-
-**Fix:** Name tests after the behavior being verified. `test_returns_empty_list_when_input_is_empty` beats `test_edge_case`.
-
 ## Conflating Pytest Counts With Smoke/Regression Testing
 
 Reporting pytest unit/integration test counts as "regression tests" or "e2e coverage" when the project's actual smoke tests are manual execution guides (markdown in `tests/e2e/` or `tests/smoke/`).
@@ -89,6 +81,6 @@ Automated pytest tests verify internal logic. Manual smoke tests verify user-fac
 
 **The difference:**
 - Pytest: `assert parse_config(data) == expected`: tests logic in isolation
-- Smoke: `meridian spawn -a coder -p "test"` then verify it actually ran: tests real behavior
+- Smoke: `mycli process sample.json` then verify its output and side effects: tests real behavior
 
 Both are necessary. Neither substitutes for the other.

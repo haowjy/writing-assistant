@@ -1,0 +1,15 @@
+version = 1
+
+[providers.meridian]
+version = "0.19.5"
+digest = "sha256:f852f548dc412b34f077c5065f720774b1bf8656343692c9e23afa35f5ab4562"
+skills = [
+    "escalation__meridian",
+    "handoff__meridian",
+    "md-validation__meridian",
+    "messaging__meridian",
+    "notify__meridian",
+    "prompt-authoring__meridian",
+    "sessions__meridian",
+    "work__meridian",
+]

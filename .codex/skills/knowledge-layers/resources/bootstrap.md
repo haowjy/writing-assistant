@@ -49,7 +49,9 @@ synthesize them first. Active task plans live in work directories.
 Knowledge that depends on one subsystem stays colocated with it.
 
 When content is superseded, delete it or move it to `archive/`. Pages
-read as current truth, never narrate their own evolution.
+read as current truth, never narrate their own evolution. Decision records
+are the history: a changed decision adds a new record, and the old one
+stays. What binds is the current pages.
 
 - `index.md`: catalog. Update when you create or modify a page.
 - `.context/CONTEXT.md`: writing conventions, structure, validation.
@@ -63,7 +65,7 @@ read as current truth, never narrate their own evolution.
 ## Writing
 
 - One concept per page. Split when a page covers two unrelated topics.
-- Cross-reference, don't re-explain. Each concept has one source of truth.
+- Each concept has one source of truth; other pages link to it.
 - Name files by what they describe (`token-validation.md`), not when
   (`auth-redesign-notes.md`).
 - Calibrate depth to importance. Reference material is terse and scannable.

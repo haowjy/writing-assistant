@@ -1,6 +1,8 @@
 ---
 name: issues
-description: 'Route deferred work: colocated .context/ files for directory-scoped items, GitHub issues for cross-cutting or externally visible work.'
+description: 'Load when you defer work, so each item lands where it will be found: a colocated .context/ file or a GitHub issue.'
+metadata:
+  type: reference
 ---
 
 # Issue Tracking
@@ -9,7 +11,7 @@ Route deferred work by scope. Directory-scoped deferrals go to colocated
 `.context/TODO` or `.context/FUTURE`. Cross-cutting items or anything
 requiring external visibility gets a GitHub issue.
 
-GitHub Issues are a visibility layer on top of spawn reports and work-scoped
+GitHub Issues are a visibility layer on top of agent reports and work-scoped
 notes. If `gh` is unavailable, report that issue filing was skipped and log
 the draft locally.
 
@@ -18,15 +20,13 @@ the draft locally.
 All items below assume the item is cross-cutting or needs external
 visibility; directory-scoped items go to `.context/TODO` or `.context/FUTURE`.
 
-- Bug in adjacent code spanning multiple areas or needing triage
-- Unexpected behavior that isn't broken enough to stop for but needs
-  visibility beyond the local directory
+- A bug you can't fix now: it needs a product decision or is a project of its own
 - Backlog items that cross directory boundaries or need team coordination
 - Deferred design decisions that need broader context or discussion
 - Review findings marked non-blocking that affect multiple subsystems
 
-Quick rule: fix it if < 5 minutes and you're in the area. Otherwise, route
-by scope per the policy above.
+Fix what you find first. Route it here, by scope per the policy above, only
+when a fix needs a product decision or is a project of its own.
 
 ## Mechanics
 

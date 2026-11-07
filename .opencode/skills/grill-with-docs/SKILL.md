@@ -2,6 +2,8 @@
 name: grill-with-docs
 description: |
   Use when grilling should be grounded primarily in project artifacts. Loads `/grill`, checks project vocabulary and prior decisions first, and spawns bounded explorers when the answer should come from docs.
+metadata:
+  type: reference
 ---
 
 # Grill With Docs

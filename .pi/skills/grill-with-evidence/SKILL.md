@@ -3,6 +3,8 @@ name: grill-with-evidence
 description: |
   Use when grilling should be grounded in evidence. Loads `/grill`, then checks the plan, terms, and assumptions against project artifacts first and primary sources when needed.
 disable-model-invocation: true
+metadata:
+  type: reference
 ---
 
 # Grill With Evidence

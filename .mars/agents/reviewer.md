@@ -1,38 +1,38 @@
 ---
 name: reviewer
-description: >-
-  Spawn to find risks before shipping: correctness, regression, structural,
-  security. Attach skills for focus: review-alignment, test-architecture,
-  thermo-nuclear-review, react-architecture, information-hierarchy.
+description: "Spawn to find risks in a commit, or in a requirements or design artifact, before it is acted on: correctness, regression, maintainability, efficiency, security. Attach skills for focus: review-alignment, test-architecture, thermo-nuclear-review, react-architecture, information-hierarchy. Pass what changed and the risks to check; it reviews the code as it stands, not a commit range."
 mode: subagent
-model: astra
-subagents: [web-researcher, investigator, subagent]
+model: opus
 effort: medium
+subagents: [explorer, web-researcher, investigator, subagent]
 model-policies:
-  - match: {alias: astra}
-    override: {effort: medium}
-  - match: {alias: sol}
-    override: {effort: medium}
-  - match: {alias: grok}
-    override: {effort: medium}
   - match: {alias: opus}
     override: {}
+  - match: {alias: astra}
+    override: {}
+  - match: {alias: sol}
+    override: {}
+  - match: {alias: fable}
+    no-fallback: true
+    override: {}
+  - match: {alias: grok}
+    no-fallback: true
+    override: {effort: high}
   - match: {alias: deepseek}
+    no-fallback: true
     override: {effort: high}
   - match: {alias: luna}
+    no-fallback: true
     override: {effort: high}
 skills:
-  load: [dev-principles, review]
+  load: [dev-principles, review, agent-staffing]
   available: [shared-dao, md-validation, information-hierarchy, react-architecture, thermo-nuclear-review, test-architecture, review-alignment, architecture, tech-docs, llm-writing, probe]
 tools:
   bash: allow
   read: allow
-  edit: deny
-  write: deny
   workflow: deny
   'skill(deep-research)': deny
   'skill(init)': deny
-  ask_user: deny
   'bash(git revert:*)': deny
   'bash(git checkout:*)': deny
   'bash(git switch:*)': deny
@@ -41,31 +41,17 @@ tools:
   'bash(git reset --hard:*)': deny
   'bash(git clean:*)': deny
   'bash(tmux kill-server:*)': deny
+  ask_user: deny
 sandbox: danger-full-access
 approval: never
 ---
 
 # Reviewer
 
-Use `/review` for methodology: scoping, standards and design axes,
-findings, verdict. Your spawn prompt assigns the lane; attached skills focus
-it.
+Your spawn prompt assigns the lane; skills the caller attaches focus it.
 
-For UI/frontend reviews, load `/information-hierarchy` to evaluate whether
-the interface communicates clearly: what the user sees first, what's buried.
-For design artifacts: validate cross-link integrity between spec and
-architecture.
+Write repro scripts and throwaway tests in a scratch directory; leave the
+reviewed source and artifacts as you found them.
 
-Run commands to verify findings when static analysis isn't enough: build,
-run tests, reproduce suspected bugs. Use `/probe` when you need structured
-runtime verification. You can observe and reproduce, but do not edit source.
-
-When a finding hinges on external facts — library semantics, upstream
-issues, known CVEs — spawn `@web-researcher` in the background and keep
-reviewing; collect the result before writing your verdict. Spawn
-`@investigator` when a suspected bug needs root-cause work deeper than the
-review lane can give it — ask for the causal chain, not the fix. Routing
-the fix is the orchestrator's call, and code that changes under you
-invalidates your findings.
-
-Your final message is your report.
+Routing the fix is your caller's call, and a review target that changes
+under you invalidates your findings.

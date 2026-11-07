@@ -1,6 +1,8 @@
 ---
 name: parallel-execution
-description: Load when decomposing work into phases that can run in parallel. DAG planning, worktree isolation, merge/verify.
+description: Load when work splits into lanes that can run in parallel or phases that build on each other. DAG planning, worktrees, merging, gates.
+metadata:
+  type: reference
 ---
 
 # Parallel Execution
@@ -12,51 +14,41 @@ Decompose work into a dependency graph before spawning:
 1. List every task with its inputs and outputs.
 2. Draw dependencies: B depends on A if B needs A's output.
 3. Mark merge points where parallel branches must converge.
-4. Mark verify points: per-branch (in-worktree, parallel) and post-merge (integration check).
-5. Plan convergence gates at phase boundaries: spawn reviewers and probers, collect findings, fix, re-run affected checks, repeat until no blocking findings remain. Do not advance to the next phase until the gate passes.
+4. Mark verify points: per-branch focused checks on what the branch touched (in-worktree, parallel); at each merge, build the combined result.
+5. Mark gates: a phase gate where later phases build on the phase's output, and the final gate on the last phase (see Gates).
 
-Test each dependency: "could this start from the spec alone, or does it need actual code from the other branch?" If it needs actual code, it's sequential. Use your judgment on how much parallelism the work warrants.
+Test each dependency: "could this start from the spec alone, or does it need actual code from the other branch?" If it needs actual code, it's sequential. Give each change to shared code one owner: land it first as an enabling step, or assign it to one lane and have the others build against its contract. Two lanes independently changing the same shared behavior merge cleanly and still break together; plan that out or run them in order.
+
+Run a wide mechanical change (a rename or signature change across many callers) as expand, migrate, contract: land the new form beside the old as the enabling step, migrate callers in batches as parallel lanes, and delete the old form as the last phase of the same change.
 
 Write the DAG into the work directory and execute from it.
 
-## Adapt the Plan
-
-The DAG is a living document. Add phases, split subphases, insert verification gates, or restructure agent teams as you learn more during execution. Findings from convergence gates, failed merges, or unexpected complexity are all signals to revise the plan. Update the written DAG when the shape changes.
-
-If a convergence gate is not converging (review-fix cycles are looping, findings keep expanding, or fixes introduce new issues), you have authority to stop the loop and escalate: bring the problem back to the human, spawn design research to explore alternative approaches, or restructure the plan around the obstacle. Do not keep cycling a gate that is not making progress.
+Update the written DAG when the shape changes: review findings, failed merges, and unexpected complexity revise the plan.
 
 ## Execute with Worktrees
 
-Each parallel branch gets its own worktree and dev stack (server, database, etc.). No shared mutable state.
-
-Git worktrees are siblings, not nested: `git worktree add` from any worktree creates a peer. The current worktree may itself be a worktree. Sequential phases run on the current worktree; parallel groups branch off into new worktrees. Point each spawn at its worktree with `--task-dir <worktree-path>`. Track which worktree serves which DAG branch. Remove worktrees after their branch is merged and verified.
-
-## Pipeline Review
-
-Within sequential subphases, overlap review with the next coding step instead of blocking:
-
-1. Subphase N completes on the working branch.
-2. Create a review worktree from that commit.
-3. Spawn reviewers and probers on the review worktree (`--task-dir`). They see a frozen snapshot; read-only, no edits.
-4. Start subphase N+1 on the working branch immediately.
-5. When review findings arrive, fold fixes into the current subphase or queue them for a fix pass.
-
-Pipeline when review findings are typically additive: missing tests, edge cases, error handling. Wait when review might invalidate the next step's foundation: API shape, data model, core architecture. When uncertain, wait; rework costs more than idle time.
+Each parallel branch gets its own worktree and dev stack; sequential phases run on the current worktree. Set them up per `resources/worktrees.md`, which also covers lanes that run long.
 
 ## Merge and Verify
 
 At each convergence point:
 
 1. Verify each branch in its own worktree (parallel).
-2. Merge branches back.
-3. Integration check on the combined result: build, test, verify the branches compose correctly.
+2. Merge branches back: hand the whole convergence to one `@coder`, briefed
+   per `/dev-workflow`'s merge hand-off, and have it merge the branches one
+   after another.
+If the coder reports a failed integration check, isolate which branch interaction caused it before re-spawning.
 
-You own the merge. If integration fails, isolate which branch interaction caused it before re-spawning.
+## Gates
 
-After the last phase, run one final whole-change convergence gate. If it finds gaps, append new phases to the DAG.
+A gate runs once a phase's branches merge, and the next phase starts only once it passes. A problem found at a phase gate costs one phase of rework; found at the end, every later phase is built on it. A phase nothing later builds on gains nothing from its own gate: the final gate covers it.
 
-## Long-Running Lanes
+Before staffing a gate, open `/agent-staffing` `resources/reviewers.md` and staff the lanes the gate's work needs.
 
-For mining and multi-file audit lanes, have the spawn write partial
-findings to disk as it works, so truncation or credit exhaustion cannot
-zero the work.
+**Phase gate**: lanes focused on what the phase changed and the code around it.
+
+**Final gate**, on the last phase: lanes focused on everything the change touched since the original base, the `@prober` running the user-facing workflows end to end when the change alters them, and the full suite, once.
+
+Gaps the final gate finds become new phases in the DAG.
+
+Fix blocking findings before the gate passes; `reviewers.md` says which lanes rerun after a fix.

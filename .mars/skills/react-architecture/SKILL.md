@@ -1,8 +1,9 @@
 ---
 name: react-architecture
-type: reference
-description: React structural lens. Load when building or reviewing React code for component composition, state architecture, and visual consistency.
+description: "Load when building or reviewing React code, where component composition, state architecture, and token discipline decide whether the UI stays easy to change."
 model-invocable: true
+metadata:
+  type: reference
 ---
 
 # React Architecture
@@ -23,7 +24,7 @@ React components scale through composition, not through growing prop lists. Extr
 
 ## Import Boundaries
 
-Unidirectional: `shared/` -> `features/` -> `app/`. Features don't import from other features' internals. Direct imports in app code; barrel files only for intentional public API surfaces.
+Imports flow one way: shared code, then features, then the app shell, in whatever layout the project uses. Features don't import from other features' internals. Direct imports in app code; barrel files only for intentional public API surfaces.
 
 ## Component API Consistency
 

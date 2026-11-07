@@ -1,20 +1,20 @@
 ---
 name: code
-description: Shift into implementation mode. Load when you need to switch from coordination into hands-on code changes.
+description: Load when you switch from coordinating or designing to changing code yourself, so the change follows the project's patterns, deletes what it replaces, and is verified on the real system.
+metadata:
+  type: mode-shift
 ---
 
 # Code
 
-Read referenced artifacts and the task context before editing.
-
 Use `/dev-principles` as the controlling engineering lens. Make the structural changes needed for a clean implementation: create, move, merge, split, or delete code when that makes the result simpler, clearer, safer, or easier to change.
 
-Make adjacent changes required for the implementation to work cleanly. Fix local dead code, duplication, and structural problems you touch. Report unrelated larger problems instead of turning them into a second project.
+Make adjacent changes required for the implementation to work cleanly. Fix what you find as you work, including problems that were already there. A small fix goes in the current change, and a larger one gets its own change now. Call out every found fix in the PR body. File an issue only when the fix needs a product decision or is a project of its own.
 
 Match existing project patterns or make new patterns and delete the old ones unless the task explicitly calls for structural change. For refactors, preserve behavior unless the task explicitly changes it.
 
-Verify with the narrowest useful evidence that proves the change works: run the program, perform a manual smoke check (run it end-to-end). Add focused tests when they protect a durable boundary, contract, edge case, or risk that is hard to verify manually.
+Verify on the real system. List the ways the change could fail: bad input, partial failure, ordering and concurrency, stale state, and the callers and seams it touches. Check each one by running the program end to end; for an edge the running program can't reach cheaply, use an existing test, and report any failure mode you left unverified. Run the existing tests that cover the code you touched; the full suite belongs to the merge or ship gate. Keep no new test the user didn't ask for, and delete tests you wrote to check your work (`/testing`).
 
 If requirements conflict or the implementation reveals deeper architectural risk, report the conflict with concrete evidence and the path you recommend.
 
-Final report: summarize what changed and list verification by type. Do not describe pytest, unit tests, integration tests, or type checks as smoke testing or live verification. Live verification means running the program end-to-end.
+Final report: summarize what changed, list the failure modes you exercised and what each showed, and list verification by type. Call it smoke testing or live verification only when you ran the program end to end; pytest, unit and integration tests, and type checks are tests.

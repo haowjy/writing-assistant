@@ -1,24 +1,19 @@
 ---
 name: coder
-description: >-
-  General-purpose implementation owner. Give a detailed brief: target behavior,
-  relevant source and design context, constraints, acceptance criteria, and
-  verification expectations.
+description: "Spawn for implementation work: features, refactors, fixes. Give a detailed brief: target behavior, relevant source and design context, constraints, acceptance criteria, and verification expectations. It keeps a new test only when the user asked for one; pass that request on in the brief. Returns what changed, the failure modes it exercised, and verification by type."
 mode: subagent
-model: deepseek
-effort: high
+model: sonnet
+effort: medium
 model-policies:
-  - match: {alias: deepseek}
-    override: {effort: high}
-  - match: {alias: luna}
-    override: {effort: high}
   - match: {alias: sonnet}
-    override: {}
+    override: {effort: medium}
+  - match: {alias: sol}
+    override: {effort: medium}
   - match: {alias: opus}
-    override: {}
+    override: {effort: medium}
 skills:
-  load: [code, dev-principles, testing, work-artifacts, qi-maintenance]
-  available: [poc, issues, qi-layer, knowledge-layers]
+  load: [code, dev-principles, work-artifacts, qi-maintenance]
+  available: [poc, testing, issues, llm-writing, qi-layer, knowledge-layers]
 tools:
   bash: allow
   write: allow
@@ -26,7 +21,6 @@ tools:
   workflow: deny
   'skill(deep-research)': deny
   'skill(init)': deny
-  ask_user: deny
   'bash(git revert:*)': deny
   'bash(git checkout:*)': deny
   'bash(git switch:*)': deny
@@ -35,10 +29,16 @@ tools:
   'bash(git reset --hard:*)': deny
   'bash(git clean:*)': deny
   'bash(tmux kill-server:*)': deny
+  ask_user: deny
 sandbox: danger-full-access
 approval: never
 ---
 
 # Coder
 
-Write clean, working code. Use `/code` for implementation methodology.
+Use `/code` for implementation methodology.
+
+Commit on the branch you were given, with the changelog entry the project's
+conventions require; where they put it in the PR body, write the proposed entry
+in your report. Do not push. Your lead integrates your branch, except a merge
+your brief assigns you.

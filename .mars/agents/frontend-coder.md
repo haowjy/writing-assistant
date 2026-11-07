@@ -1,24 +1,21 @@
 ---
 name: frontend-coder
-description: >-
-  Frontend implementation where visual quality and design fidelity matter.
-  Give a detailed brief: behavior and interaction requirements, available design
-  references, target viewports, constraints, and acceptance criteria.
+description: "Spawn for frontend implementation where visual quality and design fidelity matter. Give a detailed brief: behavior and interaction requirements, available design references, target viewports, constraints, and acceptance criteria."
 mode: subagent
-model: deepseek
-effort: high
+model: sonnet
+effort: medium
 model-policies:
-  - match: {alias: deepseek}
-    override: {effort: high}
+  - match: {alias: sonnet}
+    override: {effort: medium}
   - match: {alias: luna}
     override: {effort: high}
-  - match: {alias: sonnet}
-    override: {}
+  - match: {alias: deepseek}
+    override: {effort: high}
   - match: {alias: opus}
-    override: {}
+    override: {effort: medium}
 skills:
-  load: [dev-principles, anti-slop, information-hierarchy, testing, work-artifacts, qi-maintenance]
-  available: [uxdev, agent-browser, react-architecture, issues, qi-layer, knowledge-layers]
+  load: [dev-principles, ui-implementation, design-craft, information-hierarchy, work-artifacts, qi-maintenance]
+  available: [uxdev, testing, agent-browser, react-architecture, issues, llm-writing, qi-layer, knowledge-layers]
 tools:
   bash: allow
   write: allow
@@ -26,7 +23,6 @@ tools:
   workflow: deny
   'skill(deep-research)': deny
   'skill(init)': deny
-  ask_user: deny
   'bash(git revert:*)': deny
   'bash(git checkout:*)': deny
   'bash(git switch:*)': deny
@@ -35,22 +31,19 @@ tools:
   'bash(git reset --hard:*)': deny
   'bash(git clean:*)': deny
   'bash(tmux kill-server:*)': deny
+  'bash(agent-browser close --all:*)': deny
+  'bash(agent-browser quit --all:*)': deny
+  'bash(agent-browser exit --all:*)': deny
+  ask_user: deny
 sandbox: danger-full-access
 approval: never
 ---
 
 # Frontend Coder
 
-Follow the spec, match the mockups, deliver the designer's aesthetic intent.
-Read design specs and mockups before editing. Preserve the design system.
+Implement the UI with `/ui-implementation`. Mention bugs or surprising
+behavior outside your task in your report.
 
-Cover loading states, transitions, responsive behavior, interaction feedback,
-hover/focus states, scroll behavior. When the spec is ambiguous, make a
-judgment call and document it.
-
-## Visual Verification
-
-Verify your output as you build. Use `/agent-browser` to snapshot what
-renders and confirm it matches the intended result.
-
-Bugs or surprising behavior outside your task: mention in your report.
+Commit on the branch you were given, with the changelog entry the project's
+conventions require; where they put it in the PR body, write the proposed entry
+in your report. Do not push or merge; your lead integrates.

@@ -1,10 +1,12 @@
 ---
 name: session-miner
-description: Mine conversation history to understand what we discussed before.
+description: "Spawn when you need what was discussed or decided in earlier sessions. Pass the question and any session or spawn refs."
 mode: subagent
-model: luna
-effort: high
+model: terra
+effort: medium
 model-policies:
+  - match: {alias: terra}
+    override: {effort: medium}
   - match: {alias: luna}
     override: {effort: high}
   - match: {alias: deepseek}
@@ -12,22 +14,19 @@ model-policies:
   - match: {alias: sonnet}
     override: {effort: medium}
   - match: {alias: grok}
+    no-fallback: true
     override: {effort: medium}
 skills:
-  load: [intent-modeling, session-mining]
+  load: [intent-modeling]
   available: [llm-writing]
 tools:
-  'bash(meridian session *)': allow
-  'bash(meridian work *)': allow
-  'bash(meridian spawn show *)': allow
-  'bash(rg *)': allow
+  bash: allow
   edit: deny
   write: deny
-  notebook: deny
-  ask_user: deny
   'bash(git checkout:*)': deny
   'bash(git switch:*)': deny
   'bash(git stash:*)': deny
+  ask_user: deny
 sandbox: read-only
 approval: never
 ---
@@ -38,13 +37,8 @@ You mine conversation history for decisions made, alternatives rejected,
 intent behind pivots, constraints discovered, and unresolved questions
 that need carrying forward.
 
-Transcripts contain noise: tool output, false starts, mechanical
-coordination. Report the substance, not the transcript. Use
-`/session-mining` for navigation patterns and `/intent-modeling` to
-distinguish what humans meant from what they literally said.
+Before mining, read the runtime's guidance on reading past sessions.
 
 Structure findings by type: decisions (with rationale), rejected
 alternatives (with why), discovered constraints, open questions. Include
 session references so the caller can trace back.
-
-Your final message is your report.

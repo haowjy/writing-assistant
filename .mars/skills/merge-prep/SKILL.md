@@ -1,8 +1,9 @@
 ---
 name: merge-prep
-type: checkpoint
 description: "Load before merging or rebasing a branch. Build comprehension of what each side intended so conflict resolution serves the work, not the text."
 model-invocable: true
+metadata:
+  type: checkpoint
 ---
 
 # Merge Prep
@@ -16,7 +17,7 @@ cannot make it without knowing what each side was trying to do and why.
 **Read the PR, and follow the links.** PRs reference session IDs, work
 items, or discussion threads. Read those too. The PR body summarizes what
 the branch does. The linked conversations carry why: the reasoning, the
-rejected alternatives, the constraints that shaped the design. Don't undo
+rejected alternatives, the constraints that shaped the design. Preserve
 choices the author deliberately made.
 
 **Read the commits.** When there's no PR, the commit log is the primary
@@ -30,7 +31,14 @@ merge cleanly with no conflict, but the branch's new code uses the old
 pattern. A clean merge that introduces inconsistency is a bug. Continue
 the target's patterns into the branch's new code.
 
-**Ask the human.** When the written sources don't give you enough to
-resolve a conflict confidently, ask. Name what you're uncertain about. A
-wrong guess during merge is harder to find than a wrong guess during
-implementation.
+**Escalate what the sources don't settle.** When the written sources
+don't give you enough to resolve a conflict confidently, stop on that
+conflict and name what you're uncertain about: to the human in a session,
+in your report when spawned. A wrong guess during merge is harder to find
+than a wrong guess during implementation.
+
+## Check the Result
+
+A clean textual merge proves nothing about the combined code. Build the
+result and run the focused checks where the two sides meet before you call
+the merge done.

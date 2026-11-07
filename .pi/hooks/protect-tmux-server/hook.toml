@@ -1,0 +1,11 @@
+visibility = "exported"
+
+[[hooks.PreToolUse]]
+matcher = "Bash"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = 'bash "${MARS_HOOK_DIR}/run.sh"'
+if = "Bash(*tmux*)"
+onFailure = "block"
+timeout = 10

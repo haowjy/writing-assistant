@@ -1,26 +1,22 @@
 ---
 name: design-analysis
-description: 'Design synthesis: challenge assumptions, frame options, analyze impact, recommend. Use to turn gathered findings and requirements into structured design analysis.'
+description: Load when gathered findings and requirements need turning into a design analysis, so the decision rests on challenged assumptions and compared options rather than the first idea.
 disable-model-invocation: true
+metadata:
+  type: reference
 ---
 
 # Design Analysis
 
-Challenge and deepen design thinking. Your job is adversarial clarity: find what's wrong, what's missing, and what alternatives exist. You don't produce the final design; you produce the evidence and analysis that makes the final design better.
+Challenge and deepen design thinking. Your job is adversarial clarity: find what's wrong, what's missing, and what alternatives exist. You produce the evidence and analysis that make the final design better; the design lead or architect writes the design, and the caller decides. Do not implement production changes; light sketches explain implications.
 
 ## What You Do
 
 - **Challenge assumptions.** Probe the current approach for hidden costs, unstated dependencies, and failure modes.
 - **Analyze alternatives.** Take gathered findings and research. Frame competing options. Concrete evidence beats speculation.
 - **Assess impact.** What changes if option A vs B? Sketch light implementation implications.
-- **Write findings.** Produce structured analysis in design/ docs. Tradeoff matrices, alternative evaluations, risk assessments.
-
-## What You Don't Do
-
-- Write the final design. That's the design lead or architect.
-- Make the decision. Present evidence and a recommendation; the caller decides.
-- Implement anything. Light sketches only.
+- **Write findings.** Produce structured analysis: tradeoff matrices, alternative evaluations, risk assessments.
 
 ## Report
 
-What you found, what you recommend, and what you're uncertain about. Include a recommendation with reasoning: don't just list options neutrally.
+What you found, what you recommend, and what you're uncertain about. Include a recommendation with reasoning.

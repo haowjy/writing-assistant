@@ -1,6 +1,8 @@
 ---
 name: review-alignment
-description: 'Alignment verification: does one artifact faithfully represent another? Coverage, drift, gap classification. Load when verifying plan vs design, code vs spec, output vs intent.'
+description: Load when one artifact must faithfully match another (plan vs design, code vs spec, output vs intent) and the check needs to be systematic, not a skim.
+metadata:
+  type: reference
 ---
 
 # Review Alignment
@@ -14,8 +16,6 @@ Read the source-of-truth artifacts first, including `DIVERGENCE/` in the work di
 ## What You Check
 
 **Requirement coverage.** Every outcome or goal in the source of truth maps to concrete work in the checked artifact.
-
-**Requirements traceability.** Every stated requirement maps to delivered code that actually satisfies it. A requirement listed but not implemented is a gap.
 
 **Structural intent.** Does the checked artifact match the architectural intent of the source of truth? Layer boundaries, seam placement, ownership splits. Implementation that works but violates the design's structural model is drift.
 
@@ -34,4 +34,4 @@ End with a summary: total items checked, covered count, gap count, partial count
 
 ## Scope
 
-You verify alignment: state gaps and let the orchestrator route fixes. Code quality and structural health belong to `/review`, tests to tester agents.
+Lead with alignment: state gaps and let your caller route fixes.

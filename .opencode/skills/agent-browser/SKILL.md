@@ -1,14 +1,8 @@
 ---
 name: agent-browser
-description: |
-  Drive a real browser from the CLI with agent-browser: navigate, snapshot the
-  accessibility tree with compact @eN refs, click/fill/extract, screenshot, read
-  console and runtime errors, inspect network and React, and watch a session live
-  in the dashboard. Use when a task needs a live browser: scraping, data or
-  design-token extraction, form filling, verifying frontend rendering and flows,
-  capturing screenshots, or reproducing a UI bug. Body covers the stable core loop
-  and the commands you reach for most; load specialized skills (dogfood, electron,
-  slack, cloud sandboxes) on demand via `agent-browser skills get`.
+description: 'Use when a task needs a live browser: scraping, extracting data or design tokens, filling forms, verifying frontend rendering and flows, capturing screenshots, or reproducing a UI bug. Accessibility-tree snapshots let you act on a page in a few hundred tokens instead of parsing HTML.'
+metadata:
+  type: reference
 ---
 
 # agent-browser
@@ -17,10 +11,25 @@ Fast browser automation CLI. Chrome/Chromium over CDP, accessibility-tree
 snapshots with compact `@eN` refs: interact with a page in a few hundred
 tokens instead of parsing HTML.
 
+For specialized flows (dogfood, electron, slack, cloud sandboxes), load the
+matching skill with `agent-browser skills get`.
+
 Install once if the command is missing:
 
 ```bash
 npm i -g agent-browser && agent-browser install   # add --with-deps on Linux
+```
+
+## Memory cap (Linux)
+
+Run Chrome in its own capped scope so browser memory pressure cannot take down the agent.
+One-time setup (replace `<agent-browser-skill>` with this skill’s installed path):
+
+```bash
+install -Dm755 <agent-browser-skill>/resources/capped-browser "$HOME/.local/bin/agent-browser-capped-browser"
+# ~/.agent-browser/config.json — use your absolute home path, not `~`
+{"executablePath":"/home/YOU/.local/bin/agent-browser-capped-browser"}
+systemctl --user list-units 'agent-browser-*.scope'   # check while Chrome is open
 ```
 
 ## Core loop
@@ -61,10 +70,18 @@ agent-browser network requests      # also: network har
 agent-browser react tree|inspect|renders   # React component detail
 agent-browser vitals                # performance
 
-# wait / sessions
+# wait
 agent-browser wait --load networkidle
-agent-browser close --all
 ```
+
+## Sessions are shared
+
+Other agents on the machine drive their own browser sessions through the same
+daemon. Name yours with your spawn ID (the one your caller holds): use
+`--session <spawn-id>-<task>` on every command, or set
+`AGENT_BROWSER_SESSION`. Close only that one:
+`agent-browser --session <name> close`. Never `close --all`: it ends every
+other agent's browser mid-run.
 
 Add `--json` for structured output to pipe elsewhere.
 
