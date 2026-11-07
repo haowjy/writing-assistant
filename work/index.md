@@ -1,6 +1,7 @@
 # Research work
 
-- [Current TODO](../TODO.md): the active work order, starting with a Gemma short-context GRPO probe.
+- [Current TODO](../TODO.md): the active work order and where the unmerged training work lives.
+- [Gemma GRPO probe result](sft/gemma-grpo-probe.md): what the three-step run proved and its resource use.
 - [Evaluation follow-ups](TODO.md): the older evaluation checklist to reconcile against saved results.
 - [FUTURE](FUTURE.md): deferred work, including the final data-generation coverage review.
 - [Custom evaluation suite](custom-eval-suite/index.md): implementation, data, metrics, review materials, and [current coverage](custom-eval-suite/coverage.md).

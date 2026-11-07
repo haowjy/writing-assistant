@@ -8,24 +8,30 @@ Optional ideas live in [work/FUTURE.md](work/FUTURE.md).
 The goal is better long-form project memory and effective use of large writing
 projects, supported by a maintained wiki, with better prose alongside it.
 
-## Next: prove GRPO works with the Gemma already on disk
+## Status: `main` is behind the real work
 
-- [ ] Prepare a bounded **Gemma E2B short-context GRPO probe**, initially around
-  2–4K total tokens per attempt. Use a few mechanically scored tasks, several attempts
-  per task, and an explicit step/time budget. No SFT stage or Qwen download is needed.
-- [ ] Connect generation, workspace tools, reward calculation, and GRPO updates.
-  Check that learning applies to candidate-generated actions, not user or tool text.
-- [ ] After the probe scope is approved, run it on the **RTX 3090**. Verify actual
-  adapter updates, checkpoint save/reload and resume; record peak GPU/RAM use, runtime,
-  and disk growth. A successful load alone is not a passing training probe.
-- [ ] Extend the passing probe to longer, multi-turn wiki tasks. Add declared Astra
-  author simulation only where needed, measure cache reuse, and test retention and
-  use of earlier decisions. Increase context gradually rather than jumping to 256K.
+Training work continued off `main` through 2026-10-03 and is not merged. The newest
+branch is `phase9/resume-openai`, 452 commits ahead of `main`; `feat/dapo-full-rounds`
+is 59 ahead. Evidence and the decision log live outside the repo in
+`~/.meridian/context/orange-juniper-leaf/work/`, mainly `task-graph-training/decisions.md`
+and `task-graph-training/probes/deepseek-primary-check/report.md`.
 
-Gemma readiness checked: `google/gemma-4-E2B-it` at revision
-`3e22461f65e89153144f8adb70e3b8c2cc9845a7` has its weights (about 10.25GB), tokenizer,
-and configuration cached locally. No trained adapter was found under `runs/` in the
-bounded inventory. The SFT dataset is unprepared; it is not required for this GRPO probe.
+- The [three-step Gemma probe](work/sft/gemma-grpo-probe.md) passed, and a DAPO run on
+  Gemma E2B then reached checkpoint 48. Neither run established a prose improvement.
+- Task-graph training is stopped before its B0 and E1 runs. The DeepSeek judge failed its
+  pre-registered ranking gate, tau-b 0.527 against a required 0.60.
+- Sonnet 5.5 scored 0.697 and Opus 5.5 scored 0.600 in an exploratory comparison on the
+  same stories. That comparison does not qualify either model as the judge.
+- DeepSeek author-v3 conformance also failed, 3 of 33 cases against a 5% threshold.
+
+## Next: decide how task-graph training resumes
+
+- [ ] Decide whether to stop this experiment or authorize a new pre-registered judge
+  qualification. Do not retune the rubric or threshold against the failed test.
+- [ ] Integrate the reviewed lanes R2c, R2e, and AV4-A, then finish AV4-B/C and R2d.
+- [ ] Run the post-repair torch-enabled test suite and the cross-lane gates.
+- [ ] Run J4/H1 human validation and integrated simulated-author validation.
+- [ ] Decide how to bring `phase9/resume-openai` and `feat/dapo-full-rounds` into `main`.
 
 ## Then: establish the Qwen experiment
 
