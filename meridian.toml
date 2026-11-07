@@ -110,6 +110,18 @@
 # [env]
 # OPENCODE_ENABLE_EXA = "1"
 
+# -- Context: work lives in haowjy/docs under writing-assistant/ --------------
+[context.work]
+source = "git"
+remote = "git@github.com:haowjy/docs.git"
+path = "writing-assistant/work"
+archive = "writing-assistant/archive/work"
+
+[[hooks]]
+name = "docs-autosync"
+builtin = "git-autosync"
+remote = "git@github.com:haowjy/docs.git"
+
 # managed by meridian — do not edit
 [project]
 id = "orange-juniper-leaf"

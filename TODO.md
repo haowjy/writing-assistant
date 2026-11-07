@@ -18,9 +18,11 @@ environment items are in the
 ## Status: `main` is behind the real work
 
 Training work continued off `main` through 2026-10-03 and is not merged. The newest
-branch is `phase9/resume-openai`, 119 commits ahead of `main`. Evidence and the decision log live outside the repo in
-`~/.meridian/context/orange-juniper-leaf/work/`, mainly `task-graph-training/decisions.md`
-and `task-graph-training/probes/deepseek-primary-check/report.md`.
+branch is `phase9/resume-openai`, 119 commits ahead of `main`. The decision log and
+evidence notes live in the private `haowjy/docs` repo under `writing-assistant/work/`
+(`meridian context work`), mainly `task-graph-training/decisions.md` and
+`task-graph-training/probes/deepseek-primary-check/report.md`. Checkpoints and raw run
+data are not in git; they are in `/data/jimyao/research/writing-assistant/context-work/`.
 
 - The [three-step Gemma probe](work/sft/gemma-grpo-probe.md) passed, and a DAPO run on
   Gemma E2B then reached checkpoint 48. Neither run established a prose improvement.
