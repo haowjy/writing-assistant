@@ -12,6 +12,7 @@ clean, and catalog its sources. Do not commit model weights or book corpora.
 - [Research work](work/index.md): current TODOs, deferred work, and experiment plans.
 - [Source guidance](src/AGENTS.md): implementation constraints and code navigation.
 - [README](README.md) and [docs/](docs/): user-facing setup, usage, and data formats.
+- `~/.context/MACHINE/gpu.md`: read before GPU work. This machine's RTX 3090 is shared.
 
 Read the local `AGENTS.md` when entering a directory. Its sibling `.context/` holds
 detailed contracts, architecture, and rationale; for example,
