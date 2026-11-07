@@ -8,6 +8,13 @@ Optional ideas live in [work/FUTURE.md](work/FUTURE.md).
 The goal is better long-form project memory and effective use of large writing
 projects, supported by a maintained wiki, with better prose alongside it.
 
+Task-graph Phase 8 training passed its GPU probe
+([result and runbook](docs/task-graph-training.md)). Its follow-ups are in
+[src/.context/TODO.md](src/.context/TODO.md): the core `ask_author`
+deletion, and the eligibility policy decision before any long run. Open task-graph
+environment items are in the
+[work checklist](work/TODO.md#task-graph-environment-open-follow-ups-after-phase-8).
+
 ## Status: `main` is behind the real work
 
 Training work continued off `main` through 2026-10-03 and is not merged. The newest
@@ -32,6 +39,126 @@ and `task-graph-training/probes/deepseek-primary-check/report.md`.
 - [ ] Run the post-repair torch-enabled test suite and the cross-lane gates.
 - [ ] Run J4/H1 human validation and integrated simulated-author validation.
 - [ ] Decide how to bring `phase9/resume-openai` and `feat/dapo-full-rounds` into `main`.
+
+## Historical: DAPO over two complete training passes (retired)
+
+This records the state of the standalone DAPO experiment when its runners were retired.
+The source and protocols are preserved at commit `9cb9944`, in `main`'s history. The
+remaining checkboxes below are historical follow-ups, not active work; the current
+training path is [task-graph training](docs/task-graph-training.md).
+
+- [x] Add identity-bound DAPO through public TRL. Verify unequal-length, masked CPU
+  accumulation against dense updates and Adam moments, plus exact checkpoint resume
+  across two passes. See [readiness and blockers](work/research-plan/dapo-readiness.md).
+- [x] Audit all 48 wave1 training tasks without shortening them. All pass release
+  identity checks, but seven cannot meet output requirements under the old token caps;
+  the generic smoke reward also grants credit to unchanged drafts.
+- [x] Implement approved ordinary TRL continuation through ties without resampling;
+  keep default halt for the old probe. CPU proof verifies exact resume, momentum and
+  float32 residual behavior. Tied groups are not skipped updates; unavailable rewards halt.
+- [x] Prepare a separately bound [full48 mechanical reward](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-full48.md),
+  preserving originals and closing unchanged/missing-delivery shortcuts. Offline
+  fixtures cover all 48; semantic quality and intermediate faithfulness remain unjudged.
+- [x] Install approved pinned TRL `6c5f135` and Liger `0.8.3` in an isolated CPU
+  qualification environment. Imports, declared dependencies and archive hashes pass;
+  the original TRL 1.13 environment remains unchanged.
+- [x] Accept the maintained upstream numerical variant explicitly; native BF16 parity
+  is not claimed. Add source-pinned opt-in compatibility and pass live BF16 CPU
+  Gemma4 train-entry, masked group4 accumulation, chunk boundaries, changed-observation
+  conditioning and exact pause/resume checks. See [archived runtime usage](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md).
+- [x] Build the separate [full48 runtime](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-full48.md) with intact-task budgets,
+  collision-free seeds, finite-work supervision and fail-closed checkpoint recovery.
+  Bind production preparation/execution to the qualified streaming implementation;
+  CPU proof verifies pass-one pause/resume and exact optimizer/token state.
+- [x] Add the inspect-first [production GPU fit gate](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-gpu-fit.md), with
+  complete-process ownership admission shared by fit and full48 train/resume.
+- [x] Execute the one-attempt native Gemma 32,768-token controlled fit after approved
+  desktop admission. Native 32,767+1 generation passed; training OOMed during the
+  first backward pass before an optimizer update or checkpoint. Preserve the terminal
+  [fit result](work/research-plan/gemma-full48-fit-result.md); do not retry or alter it.
+- [x] Select a fresh headless qualification contract without changing training math:
+  require no listed GPU consumers, at least 24,000 MiB free, and PyTorch expandable
+  allocator segments set before import. Bind the same contract to full48 train/resume.
+- [x] Execute v3 once from mosh with no GPU consumers and 24,085 MiB free. Generation
+  passed; training still OOMed in the FP32 MLP LoRA path before an update. Preserve the
+  [v3 result](work/research-plan/gemma-full48-fit-v3-result.md); do not retry it.
+- [x] Select a 24,576-token v4 contract on the RTX 3090. Keep the 8,192 per-decision /
+  16,384 sampled-action limits and exact FP32 all-linear recipe; reduce only complete
+  trajectory headroom. Original tasks and output requirements remain unchanged.
+- [x] Execute v4 once headless. Ownership and native 24,575+1 generation passed, but
+  a faulty evidence assertion stopped after the first training forward: public DAPO's
+  group-active-token denominator was 32,768, not one trajectory's 24,576 tokens.
+  Preserve the terminal [v4 result](work/research-plan/gemma-full48-fit-v4-result.md);
+  it is neither an OOM nor a pass.
+- [x] Execute the corrected fresh v5 fit exactly once after separate authorization.
+  [V5 passed](work/research-plan/gemma-full48-fit-v5-result.md) native generation,
+  four accumulated microbatches, an optimizer update and a complete checkpoint.
+  Its deterministic ledgers do not prove sampled success or arbitrary mask fit;
+  sampled attempts above 24,576 must fail explicitly without truncation or resampling.
+- [x] Start the first pinned-base production run. It stopped at checkpoint 14 after
+  group 15 sampled four attempts, two with unavailable native tool protocol evidence.
+  Preserve the [partial result](work/research-plan/gemma-full48-first-run-result.md):
+  14 committed groups / 56 committed attempts, 60 physical attempt results. No
+  in-place resume or reinterpretation of its failed samples.
+- [x] Correct the two observed sampled tool-response shapes without changing any
+  stopped-run evidence. Prove EOS-ended tool calls score as candidate failures before
+  tool execution and mixed content/tool calls preserve raw action tokens and masked
+  observations. Retain every full48 checkpoint; a six-step CPU lifecycle kept all six
+  saves and matched uninterrupted optimizer, scheduler, RNG, adapter and token state.
+- [x] Qualify the changed source in the single headless [v6 fit](work/research-plan/gemma-full48-fit-v6-result.md):
+  native generation, all four accumulated DAPO microbatches, optimizer step 1 and
+  complete checkpoint passed. The first partial production run remains separate.
+- [x] Preserve the [second terminal production run](work/research-plan/gemma-full48-second-run-result.md):
+  31 complete checkpoints, 124 committed attempts, and four additional group-32
+  attempts including a final-answer EOS before a scheduled follow-up that made one
+  reward unavailable. The planned checkpoint-48 stop was not reached.
+- [x] Revise the initial candidate-failure classification of a final-answer EOS:
+  EOS stops one generation, not necessarily the user's project conversation. Preserve
+  the sampled EOS and append the next user turn as masked external tokens, without
+  inventing `<turn|>`. CPU native/group regressions were red before the revision;
+  a read-only check derives a valid 25-token suffix for the stopped v2 attempt.
+- [ ] Design and verify robust EDA recovery from checkpoint 31. A new-identity fork
+  must preserve the four recorded group-32 action prefixes and generate only the
+  **missing continuation** after slot 002's EOS, then score/update the whole group
+  with correct optimizer/RNG behavior. No saved next response exists; ordinary
+  resume resamples whole attempts. Get explicit consent before such resampling.
+  Do not mutate either stopped run or call a fork an unchanged fresh-base result.
+- [ ] Requalify changed source on controlled GPU before any new production training.
+  For a clean fresh-base result, still require two complete passes / 96 groups / 384
+  attempts, a verified checkpoint-48 stop and explicit resume through 96.
+
+## Completed: short-context GRPO engineering proof
+
+- [x] Prepare the bounded [Gemma E2B GRPO probe](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo-probe.md): three training
+  tasks, six development cases at two seeds, four attempts per training group, three
+  optimizer steps, 4096-token context, and a 60-minute aggregate GPU-stage ceiling.
+  Validate mechanical rewards on 91 fixture cases and native-token fits on all nine tasks.
+  No SFT stage, semantic judge, download, or paid call is required for this engineering run.
+- [x] Connect generation, workspace tools, rewards, and GRPO updates. Verify candidate
+  token masks, real tiny-CPU adapter updates, save/reload, and exact checkpoint resume.
+  See [archived GRPO usage and checkpoint methodology](https://github.com/haowjy/writing-assistant/blob/9cb9944/docs/grpo.md).
+- [x] Run the frozen probe on the **RTX 3090** and preserve the
+  [measured result](work/research-plan/gemma-probe-result.md): 12 baseline attempts,
+  then CUDA OOM before the first optimizer update. The first training group had
+  rewards [1, 0, 1, 1]. Total GPU-stage time was 14.68 minutes; no retry was made.
+- [x] Prepare a memory-reduced follow-up: retain four attempts per reward group,
+  train one at a time, accumulate four gradients per update. CPU checks verify
+  equivalent full-group updates and exact step-1→3 resume. The failed run stays frozen.
+- [x] Execute the fresh [microbatch probe](work/research-plan/gemma-microbatch-result.md):
+  three real Gemma updates, step-1→3 checkpoint resume, exact resident adapter reload,
+  and 12 paired development attempts. Peak Torch allocation 18.249 GiB; total GPU-stage
+  time 45.44 minutes. Mechanical mean 0.229→0.313, with mixed per-case changes and no
+  semantic/literary improvement established.
+
+Gemma readiness checked: `google/gemma-4-E2B-it` at revision
+`3e22461f65e89153144f8adb70e3b8c2cc9845a7` has its weights (about 10.25GB), tokenizer,
+and configuration cached locally. A tiny random CPU model passed exact step-1→3
+resume even after checkpoint 1 was pruned. The original full-group training batch did
+not fit, but microbatching completed real Gemma training, resume and adapter evaluation.
+This proves the bounded engineering path, not writing or long-context effectiveness.
+Semantic/literary judging still needs
+calibration before substantive writing optimization. The SFT dataset is unprepared and
+is not required for the next mechanical-only DAPO experiment.
 
 ## Then: establish the Qwen experiment
 

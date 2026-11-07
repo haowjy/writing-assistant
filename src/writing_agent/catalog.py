@@ -9,8 +9,9 @@ import zipfile
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from uuid import uuid4
 from xml.etree import ElementTree
+
+from writing_agent.atomic_io import atomic_write_json
 
 PROVENANCE = {"human", "synthetic", "half_synthetic", "synthetic_fanfic", "unknown"}
 ROLES = {"train", "development", "final_eval", "regression"}
@@ -27,15 +28,16 @@ def fingerprint(value) -> str:
 
 def save_json(path: Path, value) -> None:
     """Atomic replacement; never leave a partially written cache or result."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + "." + uuid4().hex + ".tmp")
-    try:
-        temporary.write_text(
-            json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
-        )
-        temporary.replace(path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    atomic_write_json(
+        path,
+        value,
+        sort_keys=False,
+        indent=2,
+        ensure_ascii=False,
+        allow_nan=False,
+        create_parent=True,
+        parent_mode=0o777,
+    )
 
 
 def read_jsonl(path: Path) -> list[dict]:

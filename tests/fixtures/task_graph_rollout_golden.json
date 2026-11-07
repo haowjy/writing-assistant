@@ -1,0 +1,101 @@
+{
+  "checkpoint_ids": [
+    "948f25a18f9ec804d32ca7380558a203c22d354edce6c2d958f9066113ac0e6d",
+    "04e1f7c17c53e3f730eb1f26c1f2e660ca5085ce52c0779b8abf39d6b69cf99c",
+    "71657ee6b31998ce6a71e93c74c6fa827fbd8542656d0e6a75652eea0b9b6f73",
+    "d93b25078059a0f9541283e13936694629e39ca496214702532f35caad19ce14",
+    "c36dd18ead6963fda965dce50b4ede0e557e74223c6199d207dbf4847c0d8bf4",
+    "e1b4ddfd862965025b98ce294b1ccd486eebad681864c61fbeb54dee24dc4b86",
+    "c1bb931256d6544bbe1379478c9b95b9dd34deb36791773a3b9d784ee4168f6e",
+    "ca5111af352690eeb1c65914e02154ed02ce1ae54d1db58eba91ca764f02239e",
+    "11b7da47105c644241d271eccf225e743959d5bb400ca9f70c73e01fdedd19ab",
+    "64e30b525c3ad568e22727643891512a03a8f446f680f1f54ca39cf9b75aeb4c",
+    "7cf0cfe21e99af1f50594bc81b168501de7546993135728082e6a1970e911bc4",
+    "3be947999cfb0c8083c96b0ab7938f9d3a9a50d986ae8794afd3132b8504e546",
+    "afdacb7ff0efe670d36052b7b2b8da09caa2ffbebcb4a5de76d2fe84bdeffc9b",
+    "2440ef6374ccceb47bec485c9982bc5e80009c211307de202c8e50678c80e47a"
+  ],
+  "commit_ids": [
+    "0370e8f5e2d767ed6d29ccd83b090c39047e8d5c5e466308bca877c13066439f",
+    "f0dc83e3e620ed54d54a6151658d146a2cee4aeb7afb0bd790e5e3a521d4a2ec",
+    "e12534c5035e2f360449fde95a5f9a07076312d791d4fee49c921b5b9f65a2c5",
+    "acd45f7131533c3d910b3f72e625e294c16b24bee99d94c28c869461bd986c08",
+    "903fe16cb39ddc5dec671efa5a20c6eb99e02a914673f8e5493aab094b2be241",
+    "0b848cc52714287dc08b3eb537656b8b48de1858faa165569a2b9d5b678a490c",
+    "53811b07e70d4262038d494f20f3c235de5fb4c9e14ce5783747d85f3e468d2a",
+    "03e9e83c7898c0a821fc982768b958c1b88a310bdc805e658a13cf37013f7513",
+    "cf64aca1a41cd342aebb2d62f00155178373a8577fe0ddbeefe8cdbe2dd297f6",
+    "4663a405c1595eb760a26260b84fd5c3bbf808884653383f8ecc92703e30d214",
+    "749440ff5f235333c97d109e2047eeb158c05c7d377487d65ab61ba812403168",
+    "11816309f9d25def1ba1d461d00e218a6d6a78df3bdeab8cc91b9744eb87dd51",
+    "b19149c5257d2f1628ed149545744c76335916fc61c3b6ea7e825e3797a38462"
+  ],
+  "events": [
+    {
+      "id": "03113552e9bf7c694704fb732fee8d7ff2b34c223cb268b92bae256f292a165a",
+      "kind": "writer_action"
+    },
+    {
+      "id": "f929279e086f04dc7b83a83d67a912494c68792715de689df85dc3ae11b0fab1",
+      "kind": "tool_result"
+    },
+    {
+      "id": "89540539749cec0e951ac01d4d4477b3e64ed278863f67affceddd68dd0f7834",
+      "kind": "writer_action"
+    },
+    {
+      "id": "dae7ee0b61049dd992d21fd5e3600d07b7aa4755ba5c6132ccb01aa7860071fc",
+      "kind": "tool_result"
+    },
+    {
+      "id": "7fb336aa9c9c2b002a5b325f6db4c52697073114fe676d29d545d3b9cd30e7ab",
+      "kind": "writer_action"
+    },
+    {
+      "id": "5bab7e5a8dc4d3b410b0d0773b1a234c022021b206b5f952723141f148a09a44",
+      "kind": "external_requested"
+    },
+    {
+      "id": "17c84a0072218799423712fa6edbe598c30e9bd8869a35f604f63f35c137fbaf",
+      "kind": "author_turn"
+    },
+    {
+      "id": "0b9fd56dc26037b43eaa5367ee23a7d310fce0aba4e0ffa0a39483d23b83a1c7",
+      "kind": "writer_action"
+    },
+    {
+      "id": "ab54766e8aec9bf7f873b36d5dff4ea674b25e2a06dfbfe216c44898c04cc525",
+      "kind": "external_requested"
+    },
+    {
+      "id": "18454250d32063ba8f0ec961b721416b6f92180e1ae562116ed13adf6c58190b",
+      "kind": "check_recorded"
+    },
+    {
+      "id": "3f059b1ac0d32dfdc6f9b8f864e4a4b7fa79bd12926b42eb39b38064e2ae4d18",
+      "kind": "transition_committed"
+    },
+    {
+      "id": "6e99a6589318c4c7eda7b3b74c02db60a2337b83be6bc0b712b7d0a0905d2728",
+      "kind": "termination_recorded"
+    },
+    {
+      "id": "9407c889d4144badce71e457cdda624da29eb035fd3e9c8f5d4fd3e18d69bbc0",
+      "kind": "reward_recorded"
+    }
+  ],
+  "final_directive": "done",
+  "final_state_identity": "37840d02d66b3fa443268910c3db85aa2ba11a315298192fda7e64286ed326f3",
+  "route": [
+    "entry",
+    "write_file",
+    "read_file",
+    "ask_author",
+    "reply",
+    "final",
+    "checks",
+    "seal",
+    "reward"
+  ],
+  "transition_semantics": "task-graph-derive-v1"
+}

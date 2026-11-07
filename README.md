@@ -5,11 +5,14 @@ to the source texts. This repository does not vendor model weights or book corpo
 `scripts/fetch_sources.py` downloads a cited source when you need it.
 `scripts/organize_sources.py` turns those downloads into the catalog.
 `src/writing_agent/text_clean.py` strips Gutenberg wrappers, title pages, and web
-residue. Supervised training is `scripts/train_sft.py`; the reward function is
-`src/writing_agent/reward.py`. There is no GRPO trainer yet.
+residue. Supervised training is `scripts/train_sft.py`; the task-graph trainer is the
+only supported DAPO path and [trains on verified task-graph rollouts](docs/task-graph-training.md).
+The standalone legacy DAPO runners remain at commit `9cb9944`, in `main`'s history. The
+[deterministic group coordinator](docs/task-graph-groups.md) prepares offline comparison
+and segment-credit artifacts.
 
-This research harness also runs tool-use evaluations and prepares conversational
-training data for [creative-writing agents](wiki/project-goals.md).
+This research harness evaluates and trains tool-using
+[creative-writing agents](wiki/project-goals.md).
 
 **What to do next: [TODO.md](TODO.md)** — the short, active checklist.
 
@@ -32,6 +35,14 @@ The smoke run replays five scripted examples covering retrieval, local revision,
 stale decisions, no-tool responses, and draft/canon separation. It checks the harness;
 it does not evaluate a model.
 The CLI exits nonzero if any task fails.
+
+The checkpointed task-graph runtime is opt-in and does not replace this CLI path. Its
+verified core records one typed input event per commit and derives state for both producers
+and replay; it uses neither a separate runtime log nor a legacy patch reducer. Start with the
+[writer runtime](docs/task-graph-writer.md), then see the
+[scripted-author lifecycle](docs/task-graph-scripted.md),
+[context operations](docs/task-graph-compaction.md), and
+[deterministic groups](docs/task-graph-groups.md).
 
 ## Layout
 
@@ -82,6 +93,14 @@ uv run cwa export-sft path/to/trajectories.jsonl data/processed/train.jsonl
 Export produces TRL-style `messages` and `tools` columns and refuses to overwrite
 an existing file.
 
+## Training
+
+[Task-graph training](docs/task-graph-training.md) documents the only supported DAPO path,
+its evidence and probe criteria. The earlier standalone runners are preserved in history at
+`9cb9944`; [the retired-training pointer](docs/grpo.md) records that boundary. The Phase 8
+RTX 3090 probe verified three updates, checkpoint resume, adapter reload and paired
+development evaluation; it does not establish writing improvement.
+
 ## Limits
 
 The filesystem tools block absolute paths, traversal, symlinks, oversized files,
@@ -92,6 +111,7 @@ Current scorers check literal output constraints, file outcomes, tool errors, an
 edit scope. Literary quality is unscored. There is no automatic canon
 commit policy: the prompt teaches the distinction, and tests check file outcomes.
 
-GPU training and a held-out benchmark are not implemented.
+Task-graph DAPO mechanics are verified; writing improvement is not.
+Held-out long-form tasks exist but have not been run.
 See the [research wiki](wiki/index.md) for project concepts and the
 [research work plan](work/research-plan/index.md) for proposed experiments.

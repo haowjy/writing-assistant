@@ -1,0 +1,25 @@
+{
+  "bytes": {
+    "canonical_envelope": "{\"body\":\"Z29sZGVuAGJ5dGVz\",\"domain\":\"payload:bytes\",\"encoding\":\"base64\",\"schema\":1}",
+    "envelope": {
+      "body": "Z29sZGVuAGJ5dGVz",
+      "domain": "payload:bytes",
+      "encoding": "base64",
+      "schema": 1
+    },
+    "identity": "244315d6967e952a45d2eda96091809b6470335ccf273075f5019d106aad0e7d",
+    "value_hex": "676f6c64656e006279746573"
+  },
+  "canonical": "{\"a\":[1,true,null],\"b\":\"é\"}",
+  "checkpoint": "2d353e1f95380e8f26f26ea2df24c5b0800df5bf6f0e602724e3ae759828325a",
+  "commit": "181b2277b9a4317ce2b85eee8efdaa5e0ac0b0b713c37074d0819aa7ebb2d2c5",
+  "context": "a257113d12f1a9d439c7cd3a54162fa095c6496c0e526cc8e6ba483dd3811235",
+  "context_content": "19d0c39cd7ec9439e62267f7cadaea4296866bf891f956a0ad42185ae3d36815",
+  "event": "358009d684a71260a986d4b079d13291cf3cc09e6ec416b34cad4c3c5a2c9c80",
+  "file": "590e95366468b795c0e997856dda94ea3ba1da0fde653e1b1efa8012718bdbff",
+  "instance": "c4765a2a94f684a465a28517e4d66fa4596b5a07456600da7fb9410f8f110a78",
+  "message": "b3c91c9e6429e3e7d48c37525966fd1501f9e3191537dd4f30c9e4846fda091e",
+  "state": "1fa30c4a03e70c169b86c22b062bf461f2504f8b4734fa74b066cf68050a0eb6",
+  "transition_semantics": "task-graph-derive-v1",
+  "tree": "9e855682d92fa69ccbf3d2cd890dcf3008b715efd0fad33769157eeced5f04fc"
+}

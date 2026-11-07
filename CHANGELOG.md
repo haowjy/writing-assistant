@@ -2,219 +2,409 @@
 
 ## [Unreleased]
 
+- Assert response error types rather than message text in inference tests, and remove the
+  resolved torch-only context-overflow TODO.
+
+- Retire the standalone DAPO rollout, probe, full48, GPU-fit and checkpoint-fork runners;
+  task-graph training is the only supported DAPO path. Their source remains at commit
+  `9cb9944`, in `main`'s history. The task-graph experiment identity intentionally changes because its hashed
+  legacy sources are removed and the surviving task-graph configuration is simplified;
+  task-graph record hashes and goldens remain unchanged.
+- Classify only typed invalid model responses as candidate failures; unexpected harness
+  exceptions remain infrastructure failures.
+- Refuse resumes from another run's checkpoint before verifying it or building a model;
+  keep malformed output, incomplete generations and candidate-caused context exhaustion
+  in the candidate-failure class. Retire the unused holistic reward helper in favor of
+  task-graph `RewardV1`.
+
+- Validate the S10b no-author trace-check budgets before model loading and record the
+  trainer's none-interaction simulator shape in S11 evidence.
+
+- State each Phase 8 probe detail in its task brief and run the probe and CPU fixtures without
+  author-tool calls or feedback turns.
+
+- Document how to run the Phase 8 task-graph probe and read its evidence
+  ([task-graph training](docs/task-graph-training.md)): prerequisites, frozen ceilings, the
+  `result.json` criteria and verdicts, and what a scripted CPU dry run cannot show. It also
+  records the P1 result: attempt 1 failed at train, and attempt 2 passed.
+
+- Sort native tool-outcome reports by writer-action ordinal and call index.
+
+- Name the outside-packet canary for its actual scope: detecting a bulk private-store dump,
+  not leakage of an admitted evaluator check spec.
+
+- Require every planted privacy canary to be present in `training/private` as criterion 6's
+  positive control, in addition to checking for leaks outside it.
+
+- Report per-member terminal stop reasons and total native parse-failed turns in probe
+  measurements.
+
+- Separate pure Phase 8 probe-task loading and admission from its trainer recipe and
+  tokenizer-bound run composition.
+
+- Commit truncated or malformed native tool output as parse-failed turns, including incomplete
+  call headers and reserved sentinels, while keeping parser configuration errors fail-closed.
+
+- Share one adapter tensor hash, bounded/unbounded u32 decoder and durable atomic file writer
+  across native training and trace evidence.
+
+- Route verified member completion, admission and trainer-consumption receipts through the
+  locked group coordinator; share one strict group/step sequence index for refusal and resume.
+
+- Plant Phase 8 privacy canaries in private task records and fail criterion 6 if either reaches
+  run artifacts outside the store's private area.
+
+- Treat only recognized Gemma malformed-response errors as model parse failures; surface
+  unexpected parser errors as protocol failures.
+- Refuse false `native_parse_failed` claims at decode.
+- Bind native parse-error prefixes into task-graph experiment identity, classify cumulative
+  generated-token exhaustion as candidate-invalid, and make external-checkpoint preflight
+  refusals testable by type.
+
+- Build rollout callbacks per trainer invocation so the lifecycle no longer depends on legacy
+  rollout classes.
+
+- Derive reward scaling from the runtime profile, preserving legacy plan identities.
+
+- Preserve the checkpoint fork's W&B console privacy and resume bindings without forwarding
+  unapproved environment keys.
+
+- Bind task-graph experiment identities to the native sampler, audit, and core task-graph sources.
+
+- Label criterion 4's byte-tampering checks as store-integrity controls, not audit proof.
+
+- Use one fail-closed verdict rule in both the task-graph probe worker and parent.
+
+- Add the native task-graph GRPO route: one admitted group per step, all checkpoints kept,
+  and fail-closed admission evidence before DAPO updates.
+
+- Apply the declared 4,096-token context cap when compiling the Phase 8 fixture task graphs.
+
+- Add a one-shot generic stage supervisor with process-group timeouts, resource ceilings,
+  and atomic per-stage status and resource records.
+
+- Add the bounded Phase 8 task-graph probe phases, offline evidence inspection and verdict,
+  plus a tiny-Gemma CPU dry-run profile.
+
+- Require both offline inspection rounds to cover all three groups before criterion 4 can pass.
+
+- Keep `inspect` read-only and persist its pre-run record from `prepare`.
+
+- Set only validated W&B environment bindings, and only after runtime admission succeeds.
+
+- Derive TRL reward scaling from the runtime profile, preserving legacy plan identities.
+
+- Bind native Gemma tool calls to deterministic task-graph action IDs, pair replayed results
+  exactly, and halt the CPU trace check on protocol-shaped tool-result errors while recording
+  per-call outcomes and final-file changes.
+
+- Derive tool-call rejection codes from exact committed error text and make P1 criterion 1
+  fail on protocol-shaped native-intake rejections in any member.
+- Bind scripted CPU-probe tool IDs exactly like native sampling so the dry run exercises the
+  committed call/result identity contract.
+
+- Treat Transformers 5's unset neutral generation controls as no-ops while continuing to
+  refuse non-neutral defaults; persist failed trace timings as canonical nanoseconds.
+
+- Add an offline, CPU-only native Gemma task-graph trace checker that records group admission,
+  on-policy drift, prefill and generation timing, peak RSS, deterministic offline inspection,
+  and protocol-shape classification for audit refusals.
+
+- Audit native training batches against committed context and pinned tokenizer files before
+  training; offline inspection re-derives the batch and admission without network access.
+- Offline inspection now persists and re-derives tokenizer-file hash refusals through the
+  admission audit instead of stopping at tokenizer load.
+
+- Derive V2 total, prefill and cached-input usage from the committed token ledger before
+  charging a native turn.
+
+- Keep overrun lineages out of native training eligibility; coordinator finalization only
+  derives token spans for eligible members, and eligible-layout contradictions are invariant
+  breaches.
+
+- Export V2 advantages with a high-precision exact-expression conversion, and expose stable
+  reason codes for training-export refusals.
+
+- Share native token layout between group coordination and training export, and refuse V2
+  runtime sessions outside group sampling.
+
+- Attribute native rendering-pin failures to their rendering field rather than the adapter
+  trace projection.
+
+- Refuse native group sealing when the entry declares an aggregate total-token limit that
+  native rule 3 does not derive; remove that limit from the Phase 8 probe tasks.
+
+- Skip tokenizer/model-backed native tests when their optional dependencies are absent, while
+  keeping dependency-free import checks active.
+
+- Native token history and the u32 ledger codec now have shared owners. Context ancestry
+  checks require the sample or rollout-start boundary to be present; structural eligibility
+  treats every intervening context event as a multi-segment member.
+
+- Share Gemma native suffix and stop-set rules through `native_protocol`; accept task-graph
+  author replies and check-driven continuations only when their context delta is
+  template-prefix stable.
+
+- Add a native Gemma renderer and V2 sampler that rebuilds each decision from committed token
+  evidence, records sampled logprobs and usage, and keeps model KV caches local to each call.
+
+- Classify filesystem path mistakes consistently in both dispatchers: missing, invalid,
+  overlong, or file-ancestor paths are recoverable tool errors; host faults remain
+  infrastructure failures.
+
+- Replace the task-graph runtime with one verified rollout core: one pure derive per input,
+  one event and one checkpoint per commit, the same derive for publication and replay.
+  The old writer, scripted-author, checks, terminal, replay and runtime-log paths are gone.
+  The evaluation CLI is unchanged.
+- Stores require a verifier and refuse lineages not pinned to `task-graph-derive-v1`.
+  Forged content raises `ProjectionError` at its field path; disk damage raises
+  `CorruptRecordError`. The store no longer restores, materializes or diffs workspaces.
+- Storage grows linearly with history: context is a chain of appended messages, writer
+  turns bind their messages through the context revision, and checkpoints store counts.
+- One `OutcomeV1` carries checks, transitions, status, reward and training eligibility.
+  Groups start from verified views and credit only sampled content.
+- Goldens pin the v1 wire shapes and a deterministic rollout; changing them requires a
+  semantics bump.
+- Native group seals require a V2 manifest, all three native sampling capabilities, and
+  descriptor pins that match both group policy and entry rendering; existing V1 group
+  identities and wire records remain unchanged.
+- Admission rejects nodes mixing evaluator families, with `legacy-check-v1` treated as its own family.
+- Token-limited entries require a sealed usage-reporting sampler before sampling and support
+  cumulative generated/total-token caps and a high-water context-token cap. Native sampler
+  inputs expose only remaining generated allocation and the context cap.
+- The V2 writer derive validates byte-backed token counts, logprobs, sample pins and prior-turn
+  prefixes; it derives termination from committed limits and maps valid token/context limits
+  and unterminated stop classes to scored incomplete outcomes. V1 identities and goldens stay
+  unchanged.
+- V2 group traces bind present policy claims, zero-generation context-limit turns carry no
+  output, and termination-mapped outcomes retain their stop reason and candidate checkpoint
+  in the committed terminal `OutcomeV1`.
+- Reward publication derives ordered structural eligibility from native manifest, group,
+  context and sampled-message evidence; the reserved `eligible` status is never emitted.
+- Real group member starts and commits require the sealed manifest. Collection binds terminal
+  results to the verified head, resolves rewards published after collection, and records the
+  judged head for infrastructure interruptions.
+- Add three public Phase 8 probe graphs with scripted author/feedback paths and optional
+  deterministic rewards that produce distinct scripted score levels.
+
+- Disable W&B console capture for fork training: native TRL scalar/system metrics
+  and package metadata remain available, while stdout/stderr cannot become a
+  synced `output.log` carrying task content or failure traces.
+
+- Pin the complete local Python training runtime for checkpoint-31 fork admission
+  and reject an interrupted slot-002 suffix at its actual on-disk location before
+  GPU admission, rather than relying only on the later no-resample guard.
+
+- Tighten checkpoint-31 fork admission: preserve infrastructure continuation
+  failures as unavailable/GroupPending, reject mismatched active W&B runs,
+  validate ordered fork schedules and complete checkpoint seals, canonicalize
+  model-config keys, pin implementation hashes, require frozen W&B before
+  Trainer options, and allocate unique ownership records for every launch.
+  Phase preflight remains CPU-only and no GPU or W&B run was started.
+
+- Add the separately identified checkpoint-31 CPU fork boundary.  The fork pins
+  the sealed v2 checkpoint and stopped group-32 attempt hashes, imports slots
+  000/001/003 byte-for-byte, and preserves slot 002 under an immutable source
+  prefix before its native follow-up continuation.  External public-Trainer
+  resume accepts the pinned optimizer/scheduler/adapter/RNG checkpoint without
+  copying or resealing it.  Native W&B configuration binds an explicit run while
+  disabling model/checkpoint uploads; no GPU or online training run was started.
+  Fork coverage reports the verified v2 prefix separately from fork-local
+  checkpoint-32 evidence and refuses to claim readiness before that seal exists.
+  W&B logging identity is now bound in the trainer manifest and fail-closed
+  unless an explicit run name accompanies native reporting.
+  The guarded trainer options stop the first fork pass at checkpoint 48;
+  extending to 96 remains an explicit second invocation.
+  Source trace events are checked against the five saved slot-002 boundaries,
+  and committed-prefix seals plus fork checkpoint group seals are rehashed before
+  coverage can report readiness.  Trainer identity includes the fork manifest.
+  Continuation now resumes from the verified generation-event count (five),
+  never the one completed-turn count.
+- Separate immutable imported attempt trees from fork-derived rewards/results;
+  continuations now emit a complete source-plus-suffix scorer trace while
+  retaining the suffix audit stream.  Add source/fork contract compatibility,
+  preflight and explicit 48-to-96 resume options, pending-group coverage, frozen
+  W&B environment enforcement, and a leased checkpoint-31 fork CLI.  No launch
+  or online W&B run was performed.
+- Bind the stopped group invocation to the same original experiment as checkpoint
+  31, reject source-tree output paths, and validate task/seed provenance before
+  any continuation.
+- Freeze W&B online mode alongside the approved run/entity/project binding;
+  inherited offline or mismatched settings now fail closed before Trainer setup.
+- Ruff import checks pass for the fork module, CLI, and CPU regression tests.
+
+- Add a guarded agent continuation boundary and native sampled-token restoration
+  for a final answer followed by a scheduled user turn. A read-only CPU replay of
+  stopped v2 slot 002 verifies five original actions and the 25 masked follow-up
+  tokens before entering only the missing sixth model call. This is not yet a
+  checkpoint-31 fork, a new model response, or an optimizer update.
+
+- Revise the final-answer EOS policy: keep `<eos>` in the sampled action ledger
+  and append the scheduled user's native turn as a masked external suffix without
+  inserting a replacement `<turn|>`. Verify the exact next input, action/mask
+  ledger and complete-group continuation with the pinned tokenizer. A read-only
+  audit of the stopped v2 attempt confirms the 25-token suffix; it does not
+  synthesize or claim a missing subsequent model response.
+
+- Preserve the second full48 production stop after checkpoint 31: group 32 sampled
+  four attempts, one unavailable because a final answer ended in `<eos>` before a
+  scheduled user follow-up. An initial correction classified it as a candidate
+  failure; the revision above instead continues a scheduled follow-up while
+  preserving sampled tokens. Neither change edits v2, resumes it, or replaces
+  genuine host/protocol failures with a reward.
+
+- Pass the single v6 headless 24576-token controlled fit with the corrected source:
+  native generation, four DAPO microbatches, optimizer update and full checkpoint
+  verification. Launch the separately preflighted fresh-base 96-group run, keeping
+  the earlier checkpoint-14 failure separate; production outcomes remain pending.
+
+- Retain every full48 optimizer-boundary checkpoint in the next fresh run (96 total
+  when complete), leaving the two-checkpoint historical probe unchanged. A six-update
+  tiny CPU schedule/resume run verified all checkpoints survive and exact state agrees
+  with uninterrupted execution. Bind the changed source to a fresh v6 fit profile;
+  the terminal first production run is not modified.
+
+- Preserve the stopped first intact full48 run at checkpoint 14: group 15 sampled four
+  attempts, two with unavailable native tool protocol evidence. Refuse in-place resume
+  or resampling. A sampled tool call ending at `<eos>` now fails as a scored candidate
+  before tool execution; a mixed content/tool call with a correct native boundary keeps
+  its raw action tokens and appends only the masked external tool response. Infrastructure
+  and corrupt-token failures still halt the group. A fresh identity and pinned-base
+  restart are required.
+
+- Record the passing single-attempt v5 24576-token RTX 3090 fit: headless admission,
+  native generation, four public-DAPO microbatches, one optimizer update, and a
+  hash-verified full checkpoint. Controlled memory qualification passed; original
+  full48 sampling, writing quality, and production training remain unmeasured.
+
+- Preserve the terminal v4 24576-token fit after its evidence observer rejected the
+  correct 32768 group-active-token DAPO denominator. Native generation and the first
+  training forward passed, but backward/update/checkpoint did not run. Correct the
+  observer under a fresh v5 identity without changing the training recipe.
+
+- Select a 24576-token v4 fit and production context after both 32768-token all-linear
+  fits OOMed. Preserve 8192 tokens per decision, 16384 sampled actions, FP32 rank-8
+  all-linear LoRA, original tasks and output requirements; reduce only observation/tool
+  headroom, with overflow remaining an explicit failure.
+
+- Record the terminal headless/expandable-segments 32768-token fit: ownership and
+  native generation passed, but FP32 all-linear LoRA training OOMed in the MLP
+  `down_proj` path before an optimizer update. Confirm the exact recipe does not fit
+  the 24 GiB RTX 3090; keep full48 production at zero groups and attempts.
+
+- Add a fresh headless 32768-token fit contract after the desktop-admitted profile
+  OOMed: require an empty GPU process inventory, at least 24000 MiB free, and bind
+  PyTorch expandable allocator segments before Torch import. Apply the same resource
+  contract to full48 train/resume without changing model, tokens, precision, LoRA,
+  objective, or task requirements.
+
+- Add user-approved Xwayland and Ghostty GPU desktop allowlist entries while preserving
+  the existing 256 MiB per-process, 768 MiB total and 22,000 MiB free-memory limits.
+
+- Record the terminal one-attempt 32768-token Gemma fit result: native 32767+1
+  generation passed, but controlled training OOMed during the first backward pass
+  before an optimizer update or checkpoint. Preserve the failed profile without retry;
+  full48 production remains at zero groups and attempts.
+
+- Add a separate inspect-first 32768-token production Gemma controlled GPU fit gate,
+  native long-prefix generation check, finite update/full-checkpoint evidence, and
+  complete NVML ownership admission before fit and full48 train/resume model loads.
+
+- Propagate host workspace failures as unavailable infrastructure instead of candidate
+  rewards. Bind the intact runner to a practical 32,768-token context and 16,384-token
+  sampled-action envelope; remove the known-impossible 131K dense-mask contract before
+  GPU fit qualification.
+
+- Admit opt-in source-pinned TRL `6c5f135` / Liger `0.8.3` streaming through public
+  configuration, disabling unrelated Gemma4 kernel replacements. Bind verified
+  package source trees before mutation and reject changed implementation on resume.
+  Preserve legacy TRL 1.13 defaults. Qualify BF16 CPU train entry, masked DAPO
+  group4 accumulation, tied continuation, token/vocabulary chunk boundaries,
+  observation conditioning and exact adapter/optimizer/scheduler/RNG/ledger resume.
+  Accept the maintained numerical variant without claiming native BF16 parity.
+- Add a dedicated intact full48 runner: 96 ordered groups, 384 disjoint-seed attempts,
+  pass-one checkpoint pause, exact boundary recovery, coverage accounting and an
+  inherited single-writer lease. Bind it to the source-pinned streaming runtime while
+  preserving historical probe limits and original data. Verify six real tiny CPU
+  updates against uninterrupted state; native full48 memory fit remains a launch gate.
+
+- Record approved isolated TRL/Liger installation and eight CPU softcap comparisons.
+  Verify imports, dependencies and archive hashes; preserve the original environment.
+  Report BF16 numerical differences without declaring parity. Remaining qualification
+  and full48 GPU execution stay pending.
+
+- Prepare the intact full48 mechanical reward with frozen release bindings, real
+  sequence/write evidence and offline counterexamples. Reject unchanged or missing
+  delivery; normalize valid tool-path aliases without mutating evidence. Preserve
+  original tasks and explicitly unjudged semantics. Full-round GPU execution remains
+  blocked on runtime and memory qualification.
+
+- Distinguish saved Python advantage estimates from observed TRL tensors. Reproduce
+  float32 residuals and fresh-Adam movement for fractional tied rewards without
+  clipping, recentering or changing ordinary TRL behavior.
+
+- Add explicit, identity-bound tied-group continuation without resampling. Keep
+  default halt and unavailable-reward refusal; ordinary steps may move weights
+  through Adam momentum or rounding residuals. Verify tied-group accounting, dense
+  accumulation, all-tied completion and exact checkpoint recovery on CPU. Clarify
+  that inference cache estimates do not establish long-trajectory training fit.
+
+- Record full48 DAPO readiness: CPU integration passes, but intact-task output
+  budgets, reward shortcuts, long-trajectory memory and tied-group coverage block
+  GPU launch. Track two complete passes with advisory timing, not a wall-clock cap.
+
+- Add identity-bound DAPO loss selection through public TRL configuration; keep
+  GRPO as the default and preserve the fixed probe limits. Verify variable-length,
+  observation-masked CPU accumulation against dense adapter updates and Adam
+  moments, plus exact checkpoint resume across two passes over three tasks.
+
+- Verify the microbatched Gemma probe on the RTX 3090: three optimizer updates,
+  checkpoint resume, exact resident adapter reload and all 12 paired development
+  attempts. Peak Torch allocation 18.249 GiB; total GPU-stage time 45.44 minutes.
+  Preserve mixed mechanical outcomes (mean 0.229→0.313), generation-limit failures,
+  and the original OOM run without claiming writing improvement.
+
+- Separate GRPO reward groups from training microbatches. The Gemma probe now scores
+  four attempts together and accumulates four single-attempt gradients per update;
+  generic callers retain full-group training by default. Bind microbatch size to
+  resume identity and verify CPU update/moment equivalence, task order, masks, and
+  exact checkpoint resume without changing rewards, precision, or token budgets.
+
+- Record the first real Gemma GPU probe: 12 baseline attempts, training rewards
+  [1, 0, 1, 1], and CUDA OOM during loss-forward output conversion before any update.
+  Preserve the failed run, 14.68 minutes of resource accounting, and the remaining
+  checkpoint/adapter verification gap; no retry or profile change was made.
+
+- Add the frozen Gemma probe runner: hash-bound preparation and token preflight,
+  matched mechanical development scoring, step-1→3 resume, and resident adapter checks.
+  Supervise GPU stages with a 60-minute aggregate cap, interruption accounting,
+  competing-process refusal, and explicit missing resource measurements.
+- Pass real rollout traces to training rewards. Keep trajectory generation limits
+  opt-in so existing per-call-only inference configurations retain their behavior.
+
+- Enable explicit non-reentrant activation checkpointing for GRPO. Record adapter
+  state after checkpoint restoration and before updates. Extend the real CPU check
+  through step 3, verifying exact resume after the step-1 checkpoint is pruned.
+
+- Freeze a reproducible Gemma engineering probe: three training tasks and six
+  development cases with separate source groups. Add completion-gated mechanical
+  scoring and 91 valid/invalid fixture cases. Preserve original inputs and disclose
+  shorter probe budgets; semantic and literary judgments remain unprepared.
+
+- Connect file-tool task attempts and rewards to gated TRL GRPO updates. Preserve
+  exact sampled tokens, mask environment text, and stop unavailable or tied groups.
+  Separate inference adapters from hash-checked resumable trainer checkpoints.
+  Add usage/recovery methodology and an offline CPU check proving adapter changes,
+  reload, and exact resume. Gemma GPU execution remains unverified.
+
 - Add a root `TODO.md` linked from the README as the active work order. Put the
   cached Gemma E2B short-context GRPO probe before longer sessions and any Qwen
   download; point older work checklists to it.
+- Finalized native groups export `TrainingBatchV1` with V2-derived token masks and segment
+  spans; trailing zero-generation context-limit turns remain audit-only.
+- Route native batch token encoding and context-root checks through their shared owners; a
+  `carry` context change now makes eligibility and export agree that a member is ineligible.
 
-- Plan task-declared simulated-author use with cache-aware Astra calls rather than
-  mandatory per-turn routing. Record Jev and self-play as optional ideas, distinguish
-  incomplete sessions from environment errors, and correct the blanket exclusion of
-  local 27B training in light of Unsloth's documented short-context 24GB QLoRA support.
-
-- Clarify the training goal: long-form project memory and effective use of large
-  writing projects come first, supported by wiki maintenance, with prose quality as
-  a companion outcome. Record the full task mix, broad instruction variation, local
-  3090 limits, and a cost-dependent 256K Qwen context target whose training/inference
-  scope remains open. Keep code-to-documentation and code-to-story as optional ideas,
-  not required coverage or authorization for additional datasets or execution.
-
-- Set the active training plan to direct GRPO on instruction-tuned Qwen3.8-27B.
-  Use E2B only for engineering verification; make SFT conditional on a demonstrated
-  Qwen behavior gap. Align the work order and initial evaluation comparison, and
-  list unresolved reward, task, system-prompt, compute, and success criteria.
-
-- Make the across-output prose measures computable. `prose.sample_distribution` pools
-  every attempt of one scenario, which is what MMD, self-BLEU and dispersion require; a
-  per-attempt profile could only ever report them as insufficient samples. `MINIMUM_SAMPLES`
-  withholds a measure below its floor with the required count in the reason,
-  `RELIABLE_SAMPLES` marks where two models can be compared, and `sampling_plan` resolves a
-  proposed attempt count against both. The held-out long-form suite now declares its
-  attempts per case and the builder resolves it, so a metric cannot fail quietly at
-  scoring time after the GPU time is spent.
-
-- Add the `excludes_all` mechanical check, which passes only when none of a declared set
-  of strings appears. Deleting a fact from a document fails in a second way beyond
-  leaving the fact in: the text can keep referring to it by negation, and phrases like
-  "no longer" or "rather than" are edit artifacts that should be caught mechanically
-  rather than left to a judge.
-
-- Raise the harness context limit to 65,536 tokens and the SFT acceptance bound to
-  match, replacing arbitrary 8192/16384 settings that silently capped the long-form
-  evaluation cases. Add `scripts/probe_context_budget.py`, which computes the inference
-  KV cache from the checkpoint config and measures the attention step cost on the real
-  layer shapes. Measured: 128K inference needs 1.9 GB of cache because 28 of 35 layers
-  use a 512-token sliding window and every layer has a single KV head, while a 64K
-  training step projects to 12.7 minutes. FlashAttention is unavailable because the
-  full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
-  memory-efficient SDPA is the only O(n) path.
-
-- Add the held-out long-form final-evaluation suite: six cases over three public-domain
-  works that supply a multi-chapter manuscript and ask for more, so the axis is long-range
-  continuity, plan adherence, revision propagation and arc closure rather than short
-  single-scenario capability. `longform_suite.py` and
-  `scripts/build_longform_suite.py` compile deterministic slices into the shared scenario
-  contract, refuse to build when a check cites a fact its supplied text lacks, and refuse
-  to build when a work is already in use by training or by the development suite.
-
-- Bind the pinned EQ-Bench Longform Writing release as the external long-form anchor.
-  `longform.py` renders the upstream 13-step plan-then-eight-chapters protocol,
-  compiles twelve `final_eval` scenarios through the existing compile contract, and
-  reimplements the upstream criteria, weights and arithmetic, including its
-  chapter-degradation and staccato-penalty behaviour. Generation is reply-only in
-  `faithful` mode for comparability and file-delivering in `workspace` mode, which is
-  labelled an adaptation. `acquire_sources` gains the pinned `eqbench_longform`
-  selection. Upstream's discontinuous staccato curve is documented and reproducible via
-  `legacy_curve=True` rather than silently replicated.
-
-- Add `reward.py`, the training-side RL scalar. Version 0 combines anchored 1-5 quality,
-  intent and continuity judgments with deterministic mechanics, applies a declared
-  critical-failure cap, composes stages with the final project state, and computes
-  within-group advantages with a zero-variance report. A withheld judgment makes the
-  reward unavailable rather than zero, and only pre-declared criteria can be critical.
-
-- Restructure task preparation around one validated `Sampler` value: `Sampler.build`
-  checks the selection and derives its index-addressable content, and
-  `iter_requests` / `build_request` / `prepare_task_requests` each take it. This removes
-  a seven-parameter contract duplicated across three functions, eager-validates instead
-  of deferring errors to first iteration, and drops an unreachable branch.
-- Give each specificity decision point one behavior and one introduction level and
-  derive the per-family split from that table, replacing a nested ladder that restated
-  every point up to five times and admitted non-monotonic splits. The table is
-  validated at import, and an always-stated point can no longer be withheld silently.
-- Resolve a request's source packet once per batch instead of once per validation and
-  again per generation. Prepared batches are byte-identical to before the refactor.
-
-- Make task preparation streaming and source-referencing: `iter_requests` and
-  `build_request` yield one request at a time, each derivable from its index and seeded
-  per-key permutations instead of shared RNG state, so a batch can resume mid-way.
-  Requests carry a source id and hash rather than the passage; `resolve_packet` inlines
-  it for model calls and validation. On the 100-request fixture this drops the prepared
-  payload from 558 KB to 134 KB and embeds no source text. Batch and request
-  `schema_version` is 3.
-
-- Add the specificity ladder: a structured `instruction_specificity`
-  (`level`, `stated`, `withheld`) with per-family decision points, ask-required vs
-  default-safe behavior classes, and matched request ladders. Coverage reports the
-  level and withheld points.
-
-- Specify the training-distribution axes (task variables vs nuisance variables, reward
-  invariance across nuisance axes) and treat underspecified requests as the primary case:
-  clarify when a decision is consequential and undetermined, proceed when it is not, and
-  reward the outcome against the author's hidden preference rather than the act of asking.
-  Specify the simulated-author loop (deterministic environment gate, scripted controller,
-  cached paid user model) that supplies author turns without a human.
-
-- Record the first 100-task generation result: 54 of 100 admitted, 5 needs_revision, 41
-  invalid on mechanical contract checks, $3.79 of the $10 cap spent.
-
-- Pin the task-generator output schema (exact top-level keys, follow-up count,
-  check `method`/`kind`, one prose selector per F1/F2/F5 stage, verbatim quotes),
-  admit evidence quotes that match after whitespace collapsing, and ignore extra
-  top-level keys. Enable thinking on author (`max_tokens=32768`) and reviewer
-  (`max_tokens=16384`) calls.
-
-- Allow explicit reconciliation of interrupted paid-call reservations to a terminal
-  `abandoned` accounting key that retains the charge without blocking later calls.
-
-- Switch the paid task author, reviewer, and output judge to DeepSeek V4.1 Flash
-  (`deepseek-flash`) over its direct OpenAI-compatible API. Replace the GLM-5.3/Reka
-  OpenRouter client with a provider-neutral `PaidClient` plus an isolated DeepSeek
-  transport; update pricing to the direct route with cache-hit accounting. Verified by
-  a live smoke call (valid JSON, `deepseek-flash`, $0.000024).
-
-- Settle the RL optimizer as a critic-free group method (GRPO-family, not PPO) and
-  reject a staged GRPO → critic-warmup → PPO pipeline; record the reward the algorithm
-  consumes and flag pointwise-vs-pairwise judge output as the next reward decision.
-  Add retrieval-coverage and reward-format validation tasks to the RL preparation plan.
-
-- Add deferred final-base candidates (Gemma 4 12B, Qwen3.8-27B, Qwen3.5-9B,
-  Qwen3-Coder-Next) with size, license, and local-fitness notes; base choice waits on
-  the mini-eval subset.
-
-- Add Python-driven GLM/Reka task generation and independent review with a shared
-  $10 budget, resumable calls, source and schema checks, and visible/private export.
-  Add a GLM output-grader adapter using existing rubrics; live calls await credentials.
-
-- Specify purpose-dependent information coverage, relevance, density and structure
-  measurements, including prose contribution and a proposed bounded nonfiction slice.
-
-- Specify a proposed initial mixed RL reward, task-specific quality rubrics,
-  critical-failure cap, unavailable-grading behavior and multi-stage aggregation.
-
-- Identify released Skywork and RM-R1 reward-model candidates; record local memory,
-  scoring-interface limits and criteria for deferring custom reward-model training.
-
-- Review LitBench, HANNA, LiteraryTaste and WritingPreferenceBench as writing-reward
-  references; distinguish preferences, dimensional ratings and unlabeled prose.
-
-- Expand task-authoring options to 60 genres with explicit blends, 40 tropes,
-  32 situations and continuity challenges; preserve source style in continuations
-  and distinguish sampled options from verified narrative diversity.
-
-- Compile training-system and synthetic-data research; prepare 100 source-backed
-  task-generation assignments with coverage, hashes, lineage checks, and no API calls.
-  Record GLM-5.3/Reka selection and keep generated-task admission pending.
-
-- Record the 3090-first training decision, defer GPU rental, and outline optional
-  W&B logging for written critiques, prose, metrics, and artifacts.
-
-- Research composed multi-turn RL with simulated author feedback and context
-  compaction; record reward/credit requirements and verified context limits.
-
-- Specify on-demand branching-fiction RL tasks, source-backed judge context, and
-  separate mechanical, semantic, and source-overlap rewards.
-
-- Research SFT as an RL bootstrap, writing-specific rewards, local judge candidates,
-  and provider restrictions; replace the fixed SFT expansion prerequisite with a
-  proposed direct-RL versus short-SFT-plus-RL comparison.
-
-- Create a labeled 24-trajectory SFT seed from upstream-train human stories, two
-  Gutenberg works, and original synthetic projects; save tool traces, source lineage,
-  token masks, and review materials. Plan expansion before substantive SFT.
-- Fix SFT evaluation exclusions to use actual catalog source IDs and lineage groups.
-
-- Prepare Python-driven Gemma SFT with native assistant/tool-call loss masks,
-  grouped data exclusions, optional QLoRA execution, and pinned training dependencies.
-  Verify five pending format probes and TRL label preservation without training.
-
-- Record the next training-experiment TODO beside the full research plans, covering
-  failure analysis, separate training data, QLoRA verification, and checkpoint evaluation.
-
-- Record candidate harness, serving provider, and model on scorecards and report
-  groups; keep scores from different execution systems separate.
-
-- Record the completed Grok/OpenCode pilot: five task passes, mean Astra prose
-  rating 4/5, and explicit comparisons with the same Gemma cases and harness limits.
-
-- Add a five-case xAI Grok/OpenCode pilot with native tool traces, isolated scenario
-  directories, saved artifacts, and shared Astra rubric scoring.
-
-- Complete and publish all 50 custom-suite Astra judgments: 29 required-task passes,
-  21 failures, archived pre-grading views, and a 50-session isolation audit.
-
-- Distinguish missing required prose delimiters from ambiguous extraction, so
-  missing file delivery fails completion instead of remaining pending.
-
-- Add a dedicated Astra literary-grading instruction profile, isolated sessions,
-  locked call accounting, and versioned custom50 semantic scorecard reports.
-
-- Freeze the approved 32-output Creative Writing baseline, enforce its $2 grading
-  cap, and report subset scores separately from the full benchmark.
-
-- Add resumable external generation, official IFEval scoring, and an isolated
-  EvalPlus runner for the 32-task coding diagnostic. Pause paid prose grading
-  while the baseline subset is reconsidered.
-
-- Preserve omitted Creative Writing rubric criteria as unscored, matching the
-  upstream instruction to skip inapplicable criteria.
-
-- Add a Python-driven Creative Writing v3 runner, saved rubric judgments, and an
-  Anthropic spending ledger with request reservations and cached responses.
-- Prepare the authorized 50-case E2B-IT run and remove an unnecessary supernatural
-  qualifier from historical-fiction context; preserve previous pilot artifacts.
-
-- Add the Python research evaluation suite, local Transformers/PEFT inference,
-  constrained agent workspace, artifact extraction, scoring, and saved-run reports.
 - Prepare 50 development scenarios with ten genres and explicit/loose instructions;
   record source lineage, review materials, coverage, and current/deferred work.
 - Keep conversational replies as ordinary text and use Gemma native tool calls for local instruction-tuned inference.

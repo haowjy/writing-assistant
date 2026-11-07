@@ -1,0 +1,6 @@
+# Retired DAPO GPU-fit runner
+
+The legacy GPU-fit runner was retired after Phase 8 passed. Its source remains in commit
+`9cb9944`, in `main`'s history.
+
+The supported task-graph training path is documented in [task-graph training](task-graph-training.md).

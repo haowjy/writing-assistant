@@ -14,6 +14,10 @@ class Completion:
     usage: dict = field(default_factory=dict)
 
 
+class CandidateResponseError(ValueError):
+    """A returned model response violates the conversation protocol."""
+
+
 class Backend(Protocol):
     """Completion clients may emit transport/model diagnostics before returning."""
 
@@ -82,7 +86,7 @@ class ChatServerBackend:
             )
         choice = result["choices"][0]
         if choice.get("finish_reason") not in ("stop", "tool_calls"):
-            raise ValueError(f"Incomplete generation: {choice.get('finish_reason')}")
+            raise CandidateResponseError(f"Incomplete generation: {choice.get('finish_reason')}")
         raw = choice["message"]
         # Keep only portable conversation fields; avoid passing server-specific metadata back.
         message = {key: raw[key] for key in ("role", "content", "tool_calls") if key in raw}

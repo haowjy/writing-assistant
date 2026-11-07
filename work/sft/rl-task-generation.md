@@ -32,10 +32,11 @@ coverage, relevance, density and structure measurements by output type. Statisti
 quality weights remain inactive pending validation.
 
 Start with `raw = 0.40 * quality + 0.30 * intent + 0.20 * continuity + 0.10 * mechanics`.
-All four components range from zero to one. These weights are a starting hypothesis,
-not validated experimental findings. The scalar and group-advantage helpers now
-exist in [`reward.py`](../../src/writing_agent/reward.py); checkpointed graph rollout
-execution and native GRPO optimization are not implemented by those helpers.
+All four components range from zero to one. These weights were a starting hypothesis,
+not validated experimental findings. The former scalar and group-advantage helpers are
+preserved in [`reward.py` at commit `9cb9944`](https://github.com/haowjy/writing-assistant/blob/9cb9944/src/writing_agent/reward.py),
+but Phase 9 design §2.1 rejects this holistic 1–5 reward approach in favor of task-graph
+`RewardV1`; the old helper is historical, not a current training implementation.
 
 | Component | Initial scorer | Meaning |
 |---|---|---|

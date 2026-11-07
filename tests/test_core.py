@@ -1,4 +1,5 @@
 import copy
+import errno
 import json
 import tempfile
 import unittest
@@ -6,10 +7,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_agent.agent import run_agent
-from writing_agent.backends import ChatServerBackend, ScriptedBackend
+from writing_agent.backends import CandidateResponseError, ChatServerBackend, ScriptedBackend
 from writing_agent.data import export_sft, read_records, validate_records
 from writing_agent.evaluation import evaluate, score
-from writing_agent.workspace import Workspace, dispatch
+from writing_agent.workspace import Workspace, WorkspaceInfrastructureError, dispatch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,8 +47,36 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(self.workspace.search("MARA")[0]["path"], "notes/facts.md")
         self.assertFalse(dispatch(self.workspace, "resolve", {"path": "."})["ok"])
         self.assertFalse(dispatch(self.workspace, "read_file", {"path": 42})["ok"])
+        self.assertTrue(dispatch(self.workspace, "read_file", {"path": "missing"})["valid"])
+        with (
+            patch.object(
+                self.workspace, "read_file", side_effect=OSError(errno.EIO, "disk failed")
+            ),
+            self.assertRaises(WorkspaceInfrastructureError),
+        ):
+            dispatch(self.workspace, "read_file", {"path": "notes/facts.md"})
         with self.assertRaises(ValueError):
             self.workspace.write_file("huge", "x" * 128_001)
+
+    def test_write_below_file_path_is_a_recoverable_tool_error(self):
+        self.workspace.write_file("occupied", "not a directory")
+
+        result = dispatch(
+            self.workspace,
+            "write_file",
+            {"path": "occupied/child.txt", "content": "draft"},
+        )
+
+        self.assertEqual((result["ok"], result["valid"]), (False, True))
+
+    def test_overlong_path_is_a_recoverable_tool_error(self):
+        result = dispatch(
+            self.workspace,
+            "write_file",
+            {"path": "x" * 5000, "content": "draft"},
+        )
+
+        self.assertEqual((result["ok"], result["valid"]), (False, True))
 
 
 class AgentTests(unittest.TestCase):
@@ -70,6 +99,18 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result["tool_errors"], 1)
         self.assertEqual(result["messages"][-2]["role"], "tool")
 
+    def test_unexpected_tool_failure_is_explicit_infrastructure(self):
+        message = {
+            "role": "assistant",
+            "tool_calls": [{"id": "1", "function": {"name": "list_dir", "arguments": {}}}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            with patch.object(workspace, "list_dir", side_effect=RuntimeError("host failed")):
+                result = run_agent(ScriptedBackend([message]), workspace, [])
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["failure_class"], "infrastructure")
+
     def test_step_limit_and_backend_error(self):
         tool_message = {
             "role": "assistant",
@@ -87,6 +128,81 @@ class AgentTests(unittest.TestCase):
             failed = run_agent(ScriptedBackend([]), Workspace(Path(tmp)), [])
         self.assertEqual(result["status"], "step_limit")
         self.assertEqual(failed["status"], "error")
+        self.assertEqual(failed["failure_class"], "infrastructure")
+
+    def test_candidate_protocol_failure_is_separate_from_harness_value_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            candidate = run_agent(
+                ScriptedBackend([{"role": "user", "content": "not an assistant"}]),
+                workspace,
+                [],
+            )
+            with patch.object(workspace, "snapshot", side_effect=ValueError("harness bug")):
+                infrastructure = run_agent(
+                    ScriptedBackend([{"role": "assistant", "content": "Hello."}]),
+                    workspace,
+                    [],
+                )
+        self.assertEqual(candidate["failure_class"], "candidate_invalid")
+        self.assertEqual(infrastructure["failure_class"], "infrastructure")
+
+    def test_tool_call_without_id_is_a_candidate_failure(self):
+        response = {
+            "role": "assistant",
+            "tool_calls": [{"function": {"name": "list_dir", "arguments": {}}}],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            result = run_agent(ScriptedBackend([response]), Workspace(Path(temporary)), [])
+        self.assertEqual(result["failure_class"], "candidate_invalid")
+
+    def test_continue_after_saved_answer_and_external_followup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Workspace(Path(tmp))
+            initial = [{"role": "user", "content": "Draft."}]
+            followups = ["Revise."]
+            first = {"role": "assistant", "content": "Draft one."}
+            second = {"role": "assistant", "content": "Revised."}
+            events = []
+            partial = run_agent(
+                ScriptedBackend([first]),
+                workspace,
+                initial,
+                followups=followups,
+                emit=events.append,
+            )
+            self.assertEqual(partial["status"], "error")
+            self.assertEqual(partial["messages"][-1], {"role": "user", "content": "Revise."})
+            state = {**partial, "step": 1}
+            continued_events = []
+            continued = run_agent(
+                ScriptedBackend([second]),
+                workspace,
+                initial,
+                followups=followups,
+                resume=state,
+                emit=continued_events.append,
+            )
+            uninterrupted = run_agent(
+                ScriptedBackend([first, second]),
+                Workspace(Path(tmp) / "fresh"),
+                initial,
+                followups=followups,
+            )
+            for field in ("status", "messages", "turns", "output", "tool_calls", "usage"):
+                self.assertEqual(continued[field], uninterrupted[field])
+            self.assertEqual(
+                [e["step"] for e in continued_events if e["type"] == "generation"], [1]
+            )
+            self.assertFalse(any(e["type"] == "input" for e in continued_events))
+            with self.assertRaisesRegex(ValueError, "continuation boundary"):
+                run_agent(
+                    ScriptedBackend([second]),
+                    workspace,
+                    initial,
+                    followups=followups,
+                    resume={**state, "messages": state["messages"][:-1]},
+                )
 
     def test_tool_budget_stops_mutations(self):
         calls = [
@@ -216,7 +332,7 @@ class AgentTests(unittest.TestCase):
         with patch(
             "urllib.request.urlopen", return_value=io.BytesIO(json.dumps(response).encode())
         ):
-            with self.assertRaisesRegex(ValueError, "Incomplete generation"):
+            with self.assertRaises(CandidateResponseError):
                 ChatServerBackend({"model": "test", "base_url": "http://localhost/v1"}).complete(
                     [], []
                 )

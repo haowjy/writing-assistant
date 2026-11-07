@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "id": "t2-winter-garden",
+  "public": {
+    "brief": "Write a short, original scene in scene.txt about tending a small winter greenhouse before dawn. The greenhouse key is blue. Include the public detail warm soil if it fits; field-notes.txt is optional. Keep the scene under 70 words.",
+    "initial_files": {
+      "scene.txt": "Frost brightens the greenhouse panes."
+    }
+  },
+  "probe_settings": {
+    "training_mode": "native",
+    "max_context_tokens": 4096,
+    "max_tokens_per_decision": 512,
+    "max_generated_tokens": 1536,
+    "max_writer_turns": 6,
+    "max_tool_calls": 8
+  },
+  "checks": {
+    "required_id": "scene_nonempty",
+    "components": {
+      "scene_nonempty": 1000,
+      "stated_detail": 2500,
+      "public_detail": 2000,
+      "scene_word_range": 2500,
+      "field_notes_nonempty": 2000
+    },
+    "optional": [
+      {
+        "id": "stated_detail",
+        "kind": "contains",
+        "path": "scene.txt",
+        "text": "blue key"
+      },
+      {
+        "id": "public_detail",
+        "kind": "contains",
+        "path": "scene.txt",
+        "text": "warm soil"
+      },
+      {
+        "id": "scene_word_range",
+        "kind": "word_range",
+        "path": "scene.txt",
+        "min": 24,
+        "max": 70
+      },
+      {
+        "id": "field_notes_nonempty",
+        "kind": "nonempty",
+        "path": "field-notes.txt"
+      }
+    ]
+  },
+  "scripted_lineages": {
+    "nonempty_only": {
+      "scene": "Frost softens the rows. A sparrow tests the roof.",
+      "notes": null
+    },
+    "phrase_and_detail": {
+      "scene": "The blue key warms in her hand above the warm soil.",
+      "notes": null
+    },
+    "word_range": {
+      "scene": "The blue key warms in her hand above the warm soil. She opens the door slowly, smelling mint and rain, while the first pale stripe of morning crosses each patient green leaf.",
+      "notes": null
+    },
+    "all_optional": {
+      "scene": "The blue key warms in her hand above the warm soil. She opens the door slowly, smelling mint and rain, while the first pale stripe of morning crosses each patient green leaf.",
+      "notes": "The mint survived the night."
+    },
+    "stated_detail": {
+      "scene": "The blue key glints beside the greenhouse door.",
+      "notes": null
+    }
+  }
+}

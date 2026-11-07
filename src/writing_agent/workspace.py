@@ -4,15 +4,55 @@ This is a path-constrained filesystem interface, not an OS security sandbox.
 Only the harness should have write access while a task runs.
 """
 
+import errno
 from pathlib import Path
+
+from writing_agent.task_graph_contracts import TOOL_SCHEMAS
+
+
+class WorkspaceInfrastructureError(RuntimeError):
+    """Host filesystem failure, not a candidate tool mistake."""
+
+
+def is_candidate_filesystem_error(workspace: "Workspace", arguments: dict, error: OSError) -> bool:
+    """Return whether a filesystem failure is explained by a requested workspace path."""
+    if error.errno in {errno.ENOENT, errno.ENOTDIR, errno.EISDIR, errno.ENAMETOOLONG}:
+        return True
+    if error.errno != errno.EEXIST:
+        return False
+
+    path = arguments.get("path")
+    if not isinstance(path, str):
+        return False
+    try:
+        target = workspace.resolve(path)
+    except (OSError, ValueError):
+        return False
+
+    ancestor = target.parent
+    while ancestor != workspace.root:
+        if ancestor.is_file():
+            return True
+        if not ancestor.is_relative_to(workspace.root):
+            return False
+        ancestor = ancestor.parent
+    return False
 
 
 class Workspace:
-    def __init__(self, root: Path, max_bytes: int = 128_000, max_total_bytes: int = 1_000_000):
+    def __init__(
+        self,
+        root: Path,
+        max_bytes: int = 128_000,
+        max_total_bytes: int = 1_000_000,
+        *,
+        strict_decode: bool = False,
+    ):
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_bytes = max_bytes
         self.max_total_bytes = max_total_bytes
+        self.strict_decode = strict_decode
 
     def resolve(self, path: str) -> Path:
         if not isinstance(path, str) or Path(path).is_absolute() or ".." in Path(path).parts:
@@ -70,7 +110,11 @@ class Workspace:
             relative = file.relative_to(self.root).as_posix()
             try:
                 content = self.read_file(relative)
-            except (UnicodeError, ValueError):
+            except UnicodeError:
+                if self.strict_decode:
+                    raise
+                continue
+            except ValueError:
                 continue
             for number, line in enumerate(content.splitlines(), 1):
                 if query.casefold() in line.casefold():
@@ -85,53 +129,6 @@ class Workspace:
             for p in sorted(self.root.rglob("*"))
             if p.is_file()
         }
-
-
-def _schema(name: str, description: str, required: list[str], **properties: str) -> dict:
-    return {
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    key: {"type": "string", "description": value}
-                    for key, value in properties.items()
-                },
-                "required": required,
-                "additionalProperties": False,
-            },
-        },
-    }
-
-
-TOOL_SCHEMAS = [
-    _schema("list_dir", "List a workspace directory (up to 500 entries).", [], path="Directory"),
-    _schema("read_file", "Read a UTF-8 workspace file.", ["path"], path="File"),
-    _schema(
-        "search",
-        "Literal case-insensitive search; up to 100 matches in 1000 files.",
-        ["query"],
-        query="Text",
-        path="File or directory",
-    ),
-    _schema(
-        "write_file",
-        "Create or replace a file. Commit canon only when authorized.",
-        ["path", "content"],
-        path="File",
-        content="Complete text",
-    ),
-    _schema(
-        "patch_file",
-        "Replace one exact text span; fails on ambiguous matches.",
-        ["path", "old", "new"],
-        path="File",
-        old="Unique old text",
-        new="Replacement",
-    ),
-]
 
 
 def dispatch(workspace: Workspace, name: str, arguments: dict) -> dict:
@@ -153,5 +150,11 @@ def dispatch(workspace: Workspace, name: str, arguments: dict) -> dict:
         return {"ok": False, "valid": False, "error": str(exc)}
     try:
         return {"ok": True, "valid": True, "result": getattr(workspace, name)(**arguments)}
-    except (OSError, ValueError, TypeError) as exc:
+    except OSError as exc:
+        if is_candidate_filesystem_error(workspace, arguments, exc):
+            return {"ok": False, "valid": True, "error": str(exc)}
+        raise WorkspaceInfrastructureError(
+            f"Workspace filesystem failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    except (ValueError, TypeError) as exc:
         return {"ok": False, "valid": True, "error": str(exc)}

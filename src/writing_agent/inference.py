@@ -10,8 +10,13 @@ from contextlib import contextmanager
 from importlib.metadata import version
 from pathlib import Path
 
-from writing_agent.backends import Completion
+from writing_agent.backends import CandidateResponseError, Completion
 from writing_agent.catalog import fingerprint
+from writing_agent.native_parse_errors import (
+    NATIVE_TOOL_ARGUMENTS_NOT_OBJECT,
+    NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE,
+    is_native_output_parse_error,
+)
 from writing_agent.suite import run_selected
 
 PROTOCOL = "gemma-native-v1"
@@ -105,15 +110,51 @@ def render_messages(messages: list[dict]) -> list[dict]:
 
 def parse_response(tokenizer, text: str, *, prefix: str) -> dict:
     """Use the checkpoint's response grammar, preserving native delimiters until parsed."""
-    message = tokenizer.parse_response(text, prefix=prefix)
+    try:
+        message = tokenizer.parse_response(text, prefix=prefix)
+    except ValueError as exc:
+        if is_native_output_parse_error(exc):
+            raise CandidateResponseError(str(exc)) from exc
+        raise
     calls = message.get("tool_calls", [])
     if text.count("<|tool_call>") != len(calls):
-        raise ValueError("Native tool-call output was not completely parsed")
+        raise CandidateResponseError(NATIVE_TOOL_CALL_OUTPUT_INCOMPLETE)
     for i, call in enumerate(calls):
         call["id"] = f"call_{i}"
         if not isinstance(call["function"]["arguments"], dict):
-            raise ValueError("Native tool arguments must be an object")
+            raise CandidateResponseError(NATIVE_TOOL_ARGUMENTS_NOT_OBJECT)
     return message
+
+
+def generate_with_seed(model, inputs, generation: dict, *, seed: int):
+    """Run one live-model generation call without leaking RNG or module modes."""
+    import torch
+
+    device = model.device
+    inputs = (
+        inputs.to(device)
+        if hasattr(inputs, "to")
+        else {
+            key: value.to(device) if hasattr(value, "to") else value
+            for key, value in inputs.items()
+        }
+    )
+    devices = [device.index or 0] if device.type == "cuda" else []
+    modes = [(module, module.training) for module in model.modules()]
+    try:
+        model.eval()
+        with torch.random.fork_rng(devices=devices), torch.inference_mode():
+            torch.random.default_generator.manual_seed(seed)
+            for index in devices:
+                torch.cuda.default_generators[index].manual_seed(seed)
+            return model.generate(**inputs, **generation)
+    finally:
+        for module, training in modes:
+            module.training = training
+
+
+class ContextBudgetExceeded(CandidateResponseError):
+    """Prior candidate output grew the conversation past its context budget."""
 
 
 class TransformersBackend:
@@ -126,6 +167,8 @@ class TransformersBackend:
             raise ValueError("Choose chat or transcript formatting explicitly")
         if config["max_tokens"] < 1 or config["context_tokens"] < 1:
             raise ValueError("Token budgets must be positive")
+        if config.get("max_generated_tokens", config["max_tokens"]) < config["max_tokens"]:
+            raise ValueError("Total generated-token budget must cover one complete call")
         if config["temperature"] < 0 or not 0 < config["top_p"] <= 1:
             raise ValueError("Invalid sampling configuration")
         thinking = config.get("enable_thinking", config["prompt_format"] == "chat")
@@ -137,12 +180,9 @@ class TransformersBackend:
         self.config = copy.deepcopy(config)
         self.config["enable_thinking"] = thinking
         self.calls = 0
+        self.generated_tokens = 0
 
-    def complete(
-        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
-    ) -> Completion:
-        import torch
-
+    def prepare_inputs(self, messages: list[dict], tools: list[dict]):
         rendered = render_messages(messages)
         if self.config["prompt_format"] == "chat":
             prompt = self.tokenizer.apply_chat_template(
@@ -161,6 +201,12 @@ class TransformersBackend:
             prompt = "\n\n".join(f"{m['role'].upper()}:\n{m['content']}" for m in rendered)
             prompt += "\n\nASSISTANT:\n"
             inputs = self.tokenizer(prompt, return_tensors="pt")
+        return prompt, inputs
+
+    def complete(
+        self, messages: list[dict], tools: list[dict], *, emit=lambda event: None
+    ) -> Completion:
+        prompt, inputs = self.prepare_inputs(messages, tools)
         inputs = inputs.to(self.model.device)
         input_tokens = inputs["input_ids"].shape[-1]
         emit(
@@ -172,8 +218,17 @@ class TransformersBackend:
             }
         )
         limit = self.config["max_tokens"]
+        if "max_generated_tokens" in self.config:
+            remaining = self.config["max_generated_tokens"] - self.generated_tokens
+            if remaining <= 0:
+                raise CandidateResponseError("Total generated-token budget exhausted")
+            limit = min(limit, remaining)
         if input_tokens + limit > self.config["context_tokens"]:
-            raise ValueError("Context budget exceeded; history was not truncated")
+            if self.calls:
+                raise ContextBudgetExceeded(
+                    "Context budget exceeded after candidate output; history was not truncated"
+                )
+            raise ValueError("Initial prompt exceeds context budget; history was not truncated")
         temperature = self.config["temperature"]
         generation = {
             "max_new_tokens": limit,
@@ -189,29 +244,16 @@ class TransformersBackend:
             generation.update(temperature=temperature, top_p=self.config["top_p"])
         if temperature > 0:
             generation.update({k: self.config[k] for k in ("min_p", "top_k") if k in self.config})
-        device = self.model.device
-        devices = [device.index or 0] if device.type == "cuda" else []
-        # Keep a training caller's RNG and per-module train/eval modes intact.
-        modes = [(module, module.training) for module in self.model.modules()]
-        try:
-            self.model.eval()
-            with torch.random.fork_rng(devices=devices), torch.inference_mode():
-                torch.random.default_generator.manual_seed(self.config["seed"] + self.calls)
-                for index in devices:
-                    torch.cuda.default_generators[index].manual_seed(
-                        self.config["seed"] + self.calls
-                    )
-                self.calls += 1
-                output = self.model.generate(**inputs, **generation)[0][input_tokens:]
-        finally:
-            for module, training in modes:
-                module.training = training
+        seed = self.config["seed"] + self.calls
+        self.calls += 1
+        output = generate_with_seed(self.model, inputs, generation, seed=seed)[0][input_tokens:]
         eos = self.model.generation_config.eos_token_id
         eos = eos if isinstance(eos, list) else [eos]
         text = self.tokenizer.decode(output, skip_special_tokens=False)
+        self.generated_tokens += len(output)
         emit({"type": "model_output", "text": text, "output_ids": output.tolist()})
         if len(output) >= limit and int(output[-1]) not in eos:
-            raise ValueError(f"Generation token limit reached; incomplete output: {text}")
+            raise CandidateResponseError(f"Incomplete generation at token limit: {text}")
         return Completion(
             (
                 parse_response(self.tokenizer, text, prefix=prompt)

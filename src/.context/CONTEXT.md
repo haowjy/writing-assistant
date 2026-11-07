@@ -10,13 +10,190 @@ retains its smoke-evaluation and training-format workflows.
   isolated workspaces, resume identities, saved results, and fresh-reader conditions.
 - [agent.py](../writing_agent/agent.py) owns the bounded conversation/tool loop;
   [workspace.py](../writing_agent/workspace.py) owns file operations and storage limits.
+- [task_graph.py](../writing_agent/task_graph.py) owns core environment value records and
+  their approved identities. [task_graph_store.py](../writing_agent/task_graph_store.py)
+  owns private content-addressed persistence, typed reference closure, structural checkpoint
+  saving, and the atomic mutable lineage head. A semantic verifier is required at construction;
+  runtime commits publish through it. Runtime stepping does not materialize a workspace. Runtime lineages must
+  pin `task-graph-derive-v1`; a lineage without that pin is refused at the versions
+  reference, and the store has no patch-effect fallback.
+  [task_graph_contracts.py](../writing_agent/task_graph_contracts.py) adds detailed
+  execution contracts as immutable artifacts referenced by the frozen Phase 1 node shape;
+  [task_graph_admission.py](../writing_agent/task_graph_admission.py) resolves their
+  public/private closure and rejects an unsound graph before sampling.
+- **Transition seam (new core).** [task_graph_wire.py](../writing_agent/task_graph_wire.py)
+  is the field-spec vocabulary, strict decoder and `WireRecord` base;
+  [task_graph_records.py](../writing_agent/task_graph_records.py) declares input, outcome, and
+  context `WireRecord`s, plus runtime port-descriptor and manifest records. V1 records remain
+  unchanged; V2 sampling, manifest-descriptor, and training-admission records are additive.
+  Context content and revision records live here. Pure group record classes live in
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py).
+  [task_graph_record_contracts.py](../writing_agent/task_graph_record_contracts.py) declares
+  sealed wire contracts, while [task_graph_payloads.py](../writing_agent/task_graph_payloads.py)
+  provides codecs for shared payload shapes without record classes. Reference edges derive
+  from the field annotations, and the store follows them in shared closure.
+  [task_graph_calls.py](../writing_agent/task_graph_calls.py) owns sampled-message intake,
+  call parsing, exact rejection-message codes and the tool effect contract.
+  [task_graph_tool_outcomes.py](../writing_agent/task_graph_tool_outcomes.py) reads verified
+  member start/final views to pair every committed tool call with its result and derive the
+  final file delta; trace checks and P1 evidence share this reader.
+  [task_graph_transition.py](../writing_agent/task_graph_transition.py) owns the immutable
+  view/transition types. [task_graph_controller.py](../writing_agent/task_graph_controller.py)
+  is the pure directive boundary (`next_step`, `select_edge`, `applicable_checks`); it does
+  not step a writer,
+  execute checks, accept author transition/completion claims, or mutate runtime state.
+  [task_graph_derive_entry.py](../writing_agent/task_graph_derive_entry.py) derives a node's
+  entry state and root artifacts; the writer, author, outcome and context derive modules
+  build each step through
+  [task_graph_derive_common.py](../writing_agent/task_graph_derive_common.py).
+  [task_graph_derive_context.py](../writing_agent/task_graph_derive_context.py) calls
+  `require_quiescent`, `select_context`, and `charge_budget` directly, derives member starts
+  from persisted group specs, and takes named seed contexts from view ancestry.
+  [task_graph_gate.py](../writing_agent/task_graph_gate.py) assembles the derive
+  registries into the one `derive_input` dispatch, re-admits from the versions-pinned
+  policy, and folds typed events as the store's mandatory verifier. The gate's
+  checkpoint-keyed view cache holds only published views and skips derives only; store
+  closure still re-reads and hashes persisted bytes on every operation.
+  [task_graph_environment.py](../writing_agent/task_graph_environment.py) is the producer:
+  entry, cold open, head resume, per-step verification, derive-persist-publish commits,
+  member starts, and the typed port inputs that are the privacy boundary.
+  [task_graph_rollout.py](../writing_agent/task_graph_rollout.py) is the synchronous
+  driver loop, and [task_graph_gatherers.py](../writing_agent/task_graph_gatherers.py)
+  holds the thin port adapters that turn a typed port input into a recorded input. See
+  [transition-seam.md](transition-seam.md) for how to add a record or a derive and for the
+  layer order; [gate-and-rollout.md](gate-and-rollout.md) for gate, store and environment
+  contracts; [rollout-execution.md](rollout-execution.md) for driver, gatherer, resume and
+  acceptance-test contracts; and [group-coordination.md](group-coordination.md) for groups.
+- **Task-graph runtime.** The transition-seam modules are the runtime. Each commit contains
+  one typed input event; the same derive computes the producer transition and verifies it
+  during publication. Cold opens and resumes use `RolloutEnvironment` and the gate's verified
+  view. Context records carry the content chain and revisions;
+  `OutcomeV1` carries outcome, reward and eligibility. `RolloutDriver` gets the verified
+  directive and typed port input through `step_input`; there is no runtime log or workspace
+  materialization. See [transition-seam.md](transition-seam.md),
+  [gate-and-rollout.md](gate-and-rollout.md), and
+  [rollout-execution.md](rollout-execution.md) for the contracts.
+- [task_graph_sampling.py](../writing_agent/task_graph_sampling.py) owns the single
+  V1/V2 writer-turn decoder and structural sampling evidence checks. The shared
+  [task_graph_native_contracts.py](../writing_agent/task_graph_native_contracts.py) owns
+  `NativeSamplingBudget`, `NativeSamplingHistory`, and the manifest-policy-rendering binding
+  used by seal and derive paths. [task_graph_token_ledger.py](../writing_agent/task_graph_token_ledger.py)
+  owns the little-endian u32 token codec shared by ledger readers/writers and training export;
+  [task_graph_context_roots.py](../writing_agent/task_graph_context_roots.py) owns the fail-closed
+  context ancestry walk used by V2 sampling, native history, eligibility and training export.
+  The V2 ledger and root-binding rules are detailed in
+  [transition-seam.md](transition-seam.md); native sampler behavior is in
+  [rollout-execution.md](rollout-execution.md). [task_graph_eligibility.py](../writing_agent/task_graph_eligibility.py)
+  owns the ordered pure structural-eligibility decision, which `derive_reward` persists;
+  it reads only the verified view and hash-addressed evidence through the artifact reader.
+  [task_graph_accounting.py](../writing_agent/task_graph_accounting.py)
+  supplies pure sampled, tool, context-append and exhaustion policy to production
+  and replay; persisted budget/charge artifacts remain independently compared claims.
+  [task_graph_ports.py](../writing_agent/task_graph_ports.py) defines immutable
+  descriptors and typed sampling, execution-environment, tool-provider, and evaluator
+  ports without importing concrete adapters. [task_graph_composition.py](../writing_agent/task_graph_composition.py)
+  owns the persisted runtime manifest, sealed session, local transaction publisher,
+  and runner that invokes a backend from verified current messages.
+  [task_graph_local.py](../writing_agent/task_graph_local.py) supplies offline scripted
+  sampling and a local workspace environment composed with the text provider. Its
+  staging path never enters a public port. Direct `submit_action` is an explicitly
+  unbound legacy/offline path; a bound session checks descriptor identity and any
+  started group member receipt before effects.
+  [task_graph_evaluation.py](../writing_agent/task_graph_evaluation.py) admits only
+  versioned evidence families with replay-only verifiers. Deterministic and fixture
+  families recompute exactly; transcript-review checks persisted transcript
+  provenance and declared status against frozen inputs and an authorized private
+  evaluator packet, without claiming subjective correctness. Injection does not
+  override admitted schemas, semantic replay, or the native-ineligible decision. `prepare_request` pins caller-owned evidence;
+  `prepare_verified_messages` checks typed messages against the active projection
+  at preparation, publication, and recovery. The sampling decoder alone binds
+  duplicated trace/action/request claims and dispatches V1/V2 ledger evidence. The bound sampling input carries the
+  complete canonical persisted request/options value; composition stores typed
+  binary logprob output and constructs its ref without backend CAS access. Only the
+  composition runner invokes `SampleBackend`. The [author derive](../writing_agent/task_graph_derive_author.py)
+  builds author requests and replies, disclosure and authorized requirement updates. The
+  [scripted policy module](../writing_agent/task_graph_scripted.py) contains only pure
+  script-policy helpers used by author derives and gatherers.
+  [task_graph_compaction.py](../writing_agent/task_graph_compaction.py) owns the
+  fixed visible-message summary, complete-exchange selection, immutable context
+  operation evidence, and context byte accounting.
+  [task_graph_group_contract.py](../writing_agent/task_graph_group_contract.py)
+  resolves the sealed group environment, validates group policy and derives seeds;
+  [task_graph_group_records.py](../writing_agent/task_graph_group_records.py) defines the
+  member-result, decision, advantage and credit records and the typed scripted-terminal and
+  execution-failure records; the sealed `GroupSpecV1` and `ContextPolicyV1` and their
+  binding rules live in `task_graph_record_contracts.py`.
+  [task_graph_group.py](../writing_agent/task_graph_group.py) starts each member as its own
+  new-core lineage through `RolloutEnvironment.start_member` (a retry resumes through
+  `open_head`). It admits collected results, and results finalized after a reopen, against
+  gate-verified member views. It computes group advantages, and writer-only segment credit
+  from the view's samples. It never samples models or emits native token masks. A
+  coordinator requires a `RolloutEnvironment` and has no bare-store start path. It is
+  not the trainer; Phase 8 connects it to the task-graph DAPO trainer through
+  `TaskGraphRollouts`. See
+  [group-coordination.md](group-coordination.md), and
+  [group coordination](../../docs/task-graph-groups.md) for the user-facing API.
+  [task_graph_training_layout.py](../writing_agent/task_graph_training_layout.py) owns the
+  pure native token layout shared by group segment-credit spans and export. The
+  [training export](../writing_agent/task_graph_training_export.py) derives a
+  `TrainingBatchV1` and byte artifacts from a settled native group; token masks are
+  reconstructed from V2 ledgers, while tokenizer-backed admission remains adapter-side.
+  [native_audit.py](../writing_agent/native_audit.py) re-renders committed context, audits
+  exported token layouts and pinned tokenizer files, then returns `TrainingAdmissionV1`.
+  `GroupCoordinatorV1` owns durable admission and trainer-consumption receipts; the
+  all-admitted requirement is defined in [transition-seam.md](transition-seam.md).
+  `inspect_group_offline` repeats the batch
+  and admission derivation from stored evidence and the pinned local tokenizer without
+  network access; its canonical report contains no prompt, packet, context or token data.
+  [task_graph_probe_tasks.py](../writing_agent/task_graph_probe_tasks.py) owns pure probe-task
+  loading, admitted-entry construction, persistence, task-entry records, and private canaries;
+  callers can supply a config directory, with the repository task set as the default.
+  [grpo_task_graph_probe_experiment.py](../writing_agent/grpo_task_graph_probe_experiment.py)
+  owns the recipe, tokenizer binding, tiny Gemma fixture, and trainer composition. The config
+  builder and trace check load task data through the core module; the CPU scripted sampler
+  remains in the smoke script. Criterion 6 uses
+  [grpo_task_graph_probe_privacy.py](../writing_agent/grpo_task_graph_probe_privacy.py)
+  to scan run artifacts for its two canaries outside `training/private`. Both sit in one
+  private, non-admitted check record, outside the evaluator packet, so they detect a bulk
+  private-store dump and not leakage of an admitted check spec. `unused_author_preference`
+  is a legacy id: the probe tasks have no author packet. Its sibling scope reports per-member input reconstruction
+  from that member's verified lineage, not general absence of unplanted shared or sibling-derived
+  text.
+- **Task-graph training (Phase 8).** [native_gemma.py](../writing_agent/native_gemma.py)
+  is the native `SampleBackend` and renderer, and
+  [native_protocol.py](../writing_agent/native_protocol.py) owns the native protocol; see
+  [rollout-execution.md](rollout-execution.md) for sampling and parsing contracts.
+  [grpo_task_graph.py](../writing_agent/grpo_task_graph.py) owns `TaskGraphRollouts`, TRL's
+  `rollout_func`. For each step it asserts the active adapter and pins the behavior policy,
+  claims the step and seals one native group. It then runs the members serially on the live
+  model, finalizes, re-hashes the adapter, audits and admits, and returns `prompt_ids`,
+  `completion_ids`, `env_mask` and `rollout_rewards = advantage_f64`, with
+  `scale_rewards="none"`. It also owns the task-graph experiment identity, which binds every
+  `grpo*`, `native_*` and `task_graph*` source file, and the model-free resume preflight.
+  The glob binds files by name, so code that decides how a rollout is scored, halted or
+  admitted must live in a module it matches. Moving such code into, say, `inference.py`
+  silently drops it from the identity; that is why the parse-error classifier is the leaf
+  `native_parse_errors.py`.
+  [grpo_task_graph_observer.py](../writing_agent/grpo_task_graph_observer.py) records TRL's
+  loss inputs and recomputed logprobs, read-only.
+  [training_stages.py](../writing_agent/training_stages.py) is the generic stage supervisor:
+  subprocess stages, wall-time kill, resource records and the exclusive attempt marker.
+  [grpo_task_graph_probe.py](../writing_agent/grpo_task_graph_probe.py) runs the P1 phases,
+  and [grpo_task_graph_probe_evidence.py](../writing_agent/grpo_task_graph_probe_evidence.py)
+  computes `result.json`. See [task-graph training](../../docs/task-graph-training.md).
+- [legacy_graph.py](../writing_agent/legacy_graph.py) is an opt-in compiler from the
+  existing visible brief/files/follow-ups/tools/budgets and private checks into one
+  scripted writer node. Its projections match the unchanged `run_selected` call;
+  compiling a graph never opts a scenario into a new runner.
 - [backends.py](../writing_agent/backends.py) defines the model interface and HTTP transport.
   [inference.py](../writing_agent/inference.py) loads local Transformers/PEFT weights,
   renders native Gemma tools, parses responses with the pinned tokenizer, and adapts
   generation to that interface.
   Inputs contain messages and permitted tools, never evaluator labels.
 - [catalog.py](../writing_agent/catalog.py) owns source identity, lineage, imports,
-  atomic JSON artifacts, and overlap inspection. [acquisition.py](../writing_agent/acquisition.py)
+  JSON artifact formats, and overlap inspection. [atomic_io.py](../writing_agent/atomic_io.py)
+  owns durable atomic byte/JSON replacement shared by catalog outputs, trainer reservations,
+  trace reports and offline inspections. [acquisition.py](../writing_agent/acquisition.py)
   handles the selected upstream releases. [development.py](../writing_agent/development.py)
   compiles the authored world records into development cases.
 - [artifacts.py](../writing_agent/artifacts.py) extracts designated prose and inspects
@@ -35,6 +212,29 @@ Optional data, lexical-metric, and model dependencies live in separate extras.
 
 ## Records and replay
 
+Task-graph immutable objects can exist before publication, but only canonical
+`refs/<lineage>.json` head files are lineage authority. Their persisted body contains
+only `head_commit`; expected-head is a compare-and-swap request. A transaction writes
+and flushes immutable events, a full checkpoint, and its commit before atomically
+replacing the head under the lineage lock. Unreachable files are harmless orphans. Checkpoint
+opening and lineage resume go through `RolloutEnvironment.open` or `open_head`; the verified
+`RuntimeHandle` contains state and context, not a workspace. The environment never rewinds an
+event log.
+
+Reference closure uses a thread-local, re-entrant operation scope with a typed traversal
+and loaded, active, and completed sets. Closure-validated immutable objects are reused
+only within the outermost store or role operation; each later operation re-reads and
+re-hashes them. Artifact reads return deep JSON-shaped copies, so caller mutation cannot
+alter a verified value. Checkpoint/commit/event depth is traversed iteratively; supplemental
+and imported references cannot bypass the validators for their resolved record domain.
+There is no process-global validation cache. Immutable-name and ref-name retries repeat
+their containing-directory durability barrier even when equal bytes or the matching
+head are already visible.
+Every non-null authority head must target a checkpoint in its named lineage. A first
+commit must start from a parentless checkpoint, which may belong to another lineage (a
+group member starts from the shared entry); later commit ancestry may not cross lineages.
+There is no mid-lineage branch operation in the runtime API.
+
 Catalog records carry normalized content in `text`; local imports also preserve raw
 bytes and a text file, with hashes for both representations. Content from the imported
 file replaces any stale text supplied in metadata. Profile and overlap consumers use
@@ -43,6 +243,11 @@ the same canonical text.
 Compiled releases separate visible packages from private labels. Runtime workspaces
 contain only initial files supplied by the visible package. These path-constrained
 file tools are not an OS sandbox; no arbitrary shell is exposed to candidates.
+Store roots and workspace destinations reject lexical `..`, static symlink ancestry,
+and any tree overlap before creation, then use the one checked absolute path. A store
+root's parent must already be a real private directory; initialization creates only the
+root and its fixed children and repeats each containing-directory fsync on retry.
+Concurrent hostile path replacement remains outside this trusted-harness threat model.
 
 Resume identity covers visible inputs, experimental observation metadata (including
 builder identity and condition), model configuration, and package source hashes.
@@ -58,6 +263,17 @@ returned observation text using the recorded tokenizer (whitespace estimates by
 default); rejected reads do not expose their content. Storage is measured in UTF-8
 bytes. Provider usage retains nested detail fields: do not sum a detail into its
 parent total a second time.
+
+## Task-graph runtime
+
+Each runtime commit stores one typed input event and its pure derive produces the successor
+state and artifacts. The same derive verifies each commit during publication; opening a saved
+checkpoint re-admits and folds it through the gate. Store construction requires a verifier, and
+runtime lineages pin `task-graph-derive-v1`. `WriterTurnV1` pins `context_revision_ref`; optional
+adapter-trace context claims are bound when present. There is no separate writer-request record.
+`EnvironmentStateV1.history` stores nonnegative `action_count` and `tool_result_count` values.
+See the rollout and transition-seam context above for context-record, outcome, driver, resume,
+and group contracts.
 
 ## Scoring contracts
 
@@ -111,7 +327,9 @@ has a single KV head, so 128K costs about 1.9 GB. `inference.kv_cache_bytes` com
 that from a checkpoint config, and `scripts/probe_context_budget.py` also measures the
 attention step cost. FlashAttention is unavailable for this model because the
 full-attention layers use `global_head_dim=512`, above the FA kernel limit, so
-memory-efficient SDPA is the only O(n) path and the cost of length is time, not memory.
+SDPA is the configured alternative. These inference cache/attention estimates do not
+establish GRPO training fit: dense logits, activations and backward buffers also grow
+with trajectory length.
 `SFTSettings.max_length` is an acceptance bound that rejects overflow and never pads, so
 widening it costs nothing until long trajectories exist to fill it; a long window is a
 data problem before it is a compute problem.
@@ -134,6 +352,32 @@ template. Tool results are associated with calls and rendered as native response
 The backend receives the trace emitter and records actual model inputs before
 generation and outputs before parsing. Base transcript conditions cannot use tools.
 Earlier custom-protocol results retain their identities and remain historical.
+
+Graph admission is a separate pre-execution gate. Every writer node names a public
+`NodeContractV1` artifact; author packets, scripts, decision bindings, requirement
+versions, and checks resolve through explicitly private references. Guards are limited
+to the `GuardContractV1` vocabulary and competing exits require unique numeric
+precedence. The graph has an immutable hop bound and every node an immutable visit
+bound. Admission validates tools, writer families, interaction coverage, check scope
+and controller/check versions without invoking a model. Admission supports `none` and
+fixed `scripted_author` interaction. `simulated_author` fails closed until its
+role-specific packet, policy and binding contracts exist, and mandatory feedback is
+admitted only on `scripted_author` nodes. Any writer node that declares a typed
+evaluator packet, interactive or not, has that packet and its reward contract resolved;
+a `legacy-evaluation-package` body is not resolved as a typed packet.
+Check admission uses exact evaluator-version-specific program schemas; semantic-v1 is
+not an admitted evaluator. Mapping and store-backed admission share the same typed
+closure and visibility rules. Author text is audit input and is never inspected for
+routing (controller rules: [transition-seam.md](transition-seam.md)). Outcome records keep
+task, execution, stop, reward, and training-eligibility state independent.
+
+The scripted-author slice admits only a terminal edge guaranteed when required
+completion checks pass: an unconditional guard, a fixed completion predicate, or
+`check_status(pass)` for a required `each_turn`/`node_exit_candidate` check. Optional
+and `before_feedback` checks cannot guarantee that edge because completion routing
+reads only the current terminal check batch. Distinct precedence still decides which
+of several matching edges wins; failed required checks take the typed incomplete
+outcome and declared reward path instead of a completion edge.
 
 Genre is separate from prose style and is carried into results and grouping.
 Authored genre contexts create derivative sources linked to the original world;
@@ -231,7 +475,38 @@ assistant text/tool calls/endings, and mask embedded observations. Preparation
 rejects overlength data, reasoning fields, special-token input, and known evaluation
 source groups. Saved token labels are preserved by the TRL collator. Training
 requires explicit execution and matching prepared hashes; no benchmarks run from
-the trainer. GPU training and checkpoint restore remain unverified.
+the trainer. SFT GPU training and checkpoint restore remain unverified.
+
+`grpo_config.py` owns `TaskGraphGRPOSettings` and the task-graph-only public TRL DAPO
+configuration. Its reward scaling is fixed to `none`; only task-graph group advantages
+reach TRL. `grpo_runtime.py` admits the sole supported `trl-6c5f135-streaming` route by
+verifying the approved TRL/Liger Python source trees before model loading. It admits dense
+Gemma4 only and disables unrelated Liger replacements through public configuration. The
+maintained FP32 streaming softcap is an accepted numerical variant, not native BF16 parity.
+
+`grpo_task_graph.py` composes verified task-graph sampling, export, tokenizer-backed
+admission and TRL rollouts. `grpo_trainer.py` owns the one task-graph trainer lifecycle,
+checkpoint callback, local resume/quarantine and adapter export. `grpo_checkpoint.py`
+seals checkpoint and adapter bytes; `grpo_identity.py` hashes the actual caller-owned base
+tensors and selected PEFT adapter tensors for trainer policy bindings and trace checks.
+`grpo_task_graph` refuses pending, invalid, unadmitted or unbound groups before returning
+rows to TRL. Exact ties carry the task-graph's exact zero advantage, with scaling disabled.
+An explicit training microbatch divides the full group, and the trainer updates once per
+group. The task-graph resume preflight checks durable reservations before loading weights.
+Resume accepts only a checkpoint directly inside the run's own output directory: the
+preflight refuses any other with `TaskGraphResumeLocationRefused` before a model is built,
+and `run_trainer` refuses it again with `CheckpointLocationError`. These two checks are the
+only guard against resuming one run from another run's checkpoint with the same identity;
+keep both when changing resume.
+
+The legacy standalone DAPO rollout, probe, full48, GPU-fit and fork runners, along with the
+`trl-1.13` route, were retired after P1 passed; their source remains in commit `9cb9944`, in
+`main`'s history. They have no import path from the task-graph
+trainer. The short [retirement pointer](../../docs/grpo.md) records the boundary.
+`grpo_gpu.py` retains the D23 display policy and ownership gate used by the task-graph probe;
+`training_stages.py` remains its generic stage supervisor. The separate
+[`scripts/probe_context_budget.py`](../../scripts/probe_context_budget.py) utility measures
+general local-model context and attention costs and is not a training runner.
 
 `task_generation.Sampler.build` validates a selection once and derives its
 index-addressable content; `iter_requests` streams from it, `build_request` returns the
@@ -249,17 +524,9 @@ table; an inconsistent table is rejected at import. Coverage reports the level a
 withheld points.
 Prepared requests are not generated or accepted training tasks.
 
-`reward.py` is the training-side scalar, and it is the only place a combined writing
-score is computed; `scoring.py` must keep computing none. Version 0 weights quality,
-intent and continuity as anchored 1-5 ratings and mechanics as the mean of the task's
-applicable mechanical checks, so an inapplicable check earns no free credit and a
-repeated check counts once. A withheld judgment leaves the reward unavailable rather
-than zero, because a judge timeout and a bad draft are different events. A critical
-criterion counts only when it was declared before sampling, so a rubric weakness cannot
-be promoted after the answer is seen. Group advantages are the within-group
-standardised rewards; they cancel a per-prompt judge offset but not rank flips or
-length bias, and an all-tie group yields no signal and is reported rather than hidden.
-The research script binds their hashes to source inventory and generator instructions.
+The task-graph's `RewardV1` is the sole training reward owner. The former standalone
+holistic reward experiment was retired because Phase 9 design §2.1 rejects 1–5 scalar
+rewards; it remains reproducible from commit `9cb9944` in `main`'s history.
 Variation vocabulary is caller-supplied data.
 Source-preserving continuations receive no genre blend and retain source style.
 Tropes, situations and continuity challenges remain authoring suggestions until the
@@ -298,3 +565,22 @@ scores pending.
 Grading packet version 3 includes each completed turn’s reply and file snapshot, so
 planning and earlier revisions remain assessable after later stages replace them.
 Prose quality still uses only designated prose selections.
+
+### Testing with torch
+
+CI runs `unittest discover` without torch, Transformers or TRL, so the inference
+generation tests, the `native_*` tokenizer tests and the trainer, probe and trace-check
+tests skip. Run them under the Phase 8 overlay (the `env-phase8/` environment in the
+`task-graph-training` work item, described in
+[task-graph training](../../docs/task-graph-training.md)), offline, in one process:
+
+```bash
+# W is the task-graph-training work item directory.
+PYTHONPATH=src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 \
+  CUDA_VISIBLE_DEVICES='' "$W/env-phase8/bin/python" -m unittest discover -s tests
+```
+
+It takes about 18 minutes on CPU. The only expected skip is the creative-writing benchmark
+test when its upstream data is not downloaded. Any model-backed skip means the environment
+is wrong. Use discovery rather than a list of overlay modules, because a list misses
+model-backed tests outside it, such as the inference generation tests.
