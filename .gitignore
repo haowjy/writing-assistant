@@ -19,3 +19,4 @@ work/spawn-reports/
 .mars/models-cache.json
 .mars/.models-cache.lock
 .mars/staging/
+mars.lock
