@@ -7,7 +7,8 @@ author's style and proposes genuinely different directions.
 
 The project restarted in November 2026. There is no code yet. Work proceeds in this order:
 
-1. A creative-writing benchmark and an RL environment, run on open-weight models only.
+1. A creative-writing benchmark and an RL environment, built and debugged on open-weight models
+   (free to run); once the environment works, frontier models join as subjects and judges.
 2. Training, once both work.
 3. Comparing model-development ideas against them, on a held-out split never used for
    selection.
