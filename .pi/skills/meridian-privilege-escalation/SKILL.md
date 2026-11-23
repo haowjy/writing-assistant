@@ -1,0 +1,84 @@
+---
+name: meridian-privilege-escalation
+description: Use when a spawn fails due to sandbox or permission restrictions.
+---
+
+# Privilege Escalation
+
+Meridian agents run with constrained permissions by default: sandboxed filesystems, restricted tools, harness-specific limitations. When a spawn can't complete its task because of these constraints, you can escalate permissions per-spawn without changing the agent profile.
+
+## Escalation Discipline
+
+Prefer the least-privilege escalation that unblocks the task. Try targeted fixes first (`--approval auto`) before broad overrides (`--approval yolo`, `--sandbox danger-full-access`). Broad overrides disable safety checks entirely: if you're reaching for `yolo` or `danger-full-access`, surface the situation to the user first and let them approve the escalation. An autonomous agent silently granting itself maximum permissions defeats the purpose of having tiers.
+
+## Sandbox Tiers (Codex only)
+
+The `--sandbox` flag controls Codex's process sandboxing: filesystem, network, and process isolation. Other harnesses have different escalation paths: Claude supports approval escalation (`--approval`) but not sandbox tier changes. OpenCode permissions vary by configuration. See Approval Modes and Model/Harness Switching below.
+
+Tiers from most to least restrictive:
+
+| Tier | What it allows |
+|---|---|
+| `read-only` | Read files only. No writes, no process execution. |
+| `workspace-write` | Read/write within the workspace. No network listeners, no access outside project. |
+| `danger-full-access` | Full filesystem and process access with reduced safety checks. |
+
+Override per-spawn:
+```bash
+meridian spawn -a coder --sandbox danger-full-access --prompt-file integration-tests.md --bg
+```
+
+Agent profiles set a default tier (e.g. `sandbox: workspace-write`). The `--sandbox` flag overrides it for that specific spawn only. The tier passes through directly to Codex's `--sandbox` flag.
+
+## Approval Modes
+
+The `--approval` flag controls how the harness handles tool-call approvals:
+
+| Mode | Behavior |
+|---|---|
+| `default` | Harness decides (each harness has its own default policy). |
+| `confirm` | User approves each tool call. |
+| `auto` | Auto-approve safe operations, prompt for dangerous ones. |
+| `yolo` | Approve everything. No prompts. |
+
+Override per-spawn:
+```bash
+meridian spawn -a coder --approval auto --prompt-file task.md --bg
+meridian spawn -a coder --approval yolo --prompt-file task.md --bg   # use yolo sparingly
+```
+
+## Model/Harness Switching
+
+Different models route to different harnesses, and each harness has different capability profiles. Switching the model can bypass harness-level restrictions entirely:
+
+```bash
+# Choose an alias from `meridian mars models list`; use `--live` when you need
+# to confirm the needed harness is runnable on this machine.
+# Some harnesses have sandboxes that restrict network binding;
+# switching to a harness without sandbox restrictions sidesteps the issue.
+meridian spawn -a coder -m MODEL_ALIAS --prompt-file task.md --bg
+```
+
+Run `meridian mars models list` to see catalog aliases and static routing hints.
+Run `meridian mars models list --live` before switching models specifically to
+escape a local harness restriction.
+
+## Common Escalation Scenarios
+
+**"Can't bind to a port / start a server"**
+On Codex: sandbox restricts network listeners → `--sandbox danger-full-access`.
+On Claude: not sandbox-restricted → check if the tool is in the allowedTools list, or use `--approval auto`.
+
+**"Can't write files outside workspace"**
+On Codex: sandbox restricts filesystem scope → `--sandbox danger-full-access` for that spawn.
+On Claude: escalate to the user: they can approve `--approval yolo` for that spawn.
+
+**"Can't access the network / fetch URLs"**
+On Codex: sandbox or tool restriction → ensure WebFetch/WebSearch are in the agent's tools list, or escalate sandbox.
+On Claude: ensure the agent profile includes WebFetch/WebSearch tools.
+
+**"Permission denied on tool call"**: approval mode is blocking.
+→ `--approval auto` first. If that's not enough, surface to the user before using `--approval yolo`.
+
+**"Context too small for the task"**: model limitation.
+→ Switch to a model with a larger context window via `-m`.

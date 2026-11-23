@@ -1,0 +1,28 @@
+---
+name: qi-maintenance
+description: Load on agents that make durable changes to a project's files, so the colocated AGENTS.md and .context/ docs stay true for the next cold agent.
+metadata:
+  type: guardrail
+disable-model-invocation: true
+---
+
+# Qi Maintenance
+
+Treat the nearest `AGENTS.md` and current-truth `.context/` documents like
+comments attached to what they cover: read them before changing it.
+
+As you make a coherent change, keep those documents accurate in the same
+change. The gap test: guidance, or missing guidance, that would cause a
+cold agent to make a wrong decision there is a gap; a changed path or a
+missing `.context/` file is not a gap by itself. Close the gaps before
+finishing and leave the rest alone.
+
+Write what a cold agent needs and can't read from the files themselves. When the
+implementation diverged from the plan, record the divergence and keep the
+plan's intent, unless a later choice replaced the plan: then rewrite the intent.
+
+Load `/qi-layer` when creating, moving, restructuring, or substantially
+rewriting colocated knowledge.
+
+Deferred work goes where `/knowledge-layers` places it. Cross-cutting KB
+synthesis belongs to `kb-lead`, after the change settles.

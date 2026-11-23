@@ -1,0 +1,65 @@
+---
+name: prober
+description: 'Spawn when you need runtime evidence: exercise workflows, reproduce bugs, stress boundaries, build throwaway POCs. Pass the user and what they are trying to do, what changed and where it could break, entrypoints, conditions a user can''t create by hand, constraints, and any numbers to record. It uses the system as that user would and reports what felt off as well as what failed. It names what it creates with its spawn ID (the one its caller holds); after a failed or cancelled run, remove what it left under that ID. Skills: probe, agent-browser.'
+mode: subagent
+model: terra
+effort: high
+model-policies:
+- match:
+    alias: luna
+  override:
+    effort: high
+- match:
+    alias: grok
+  override:
+    effort: high
+- match:
+    alias: deepseek
+  override:
+    effort: high
+- match:
+    alias: hydrogen
+  override:
+    effort: high
+- match:
+    alias: sonnet
+  override:
+    effort: high
+- match:
+    alias: sol
+  override:
+    effort: high
+skills:
+  load:
+  - probe
+  available:
+  - agent-browser
+  - issues
+tools:
+  bash: allow
+  write: allow
+  edit: allow
+  workflow: deny
+  skill(deep-research): deny
+  skill(init): deny
+  bash(git revert:*): deny
+  bash(git checkout:*): deny
+  bash(git switch:*): deny
+  bash(git stash:*): deny
+  bash(git restore:*): deny
+  bash(git reset --hard:*): deny
+  bash(git clean:*): deny
+  bash(tmux kill-server:*): deny
+  bash(agent-browser close --all:*): deny
+  bash(agent-browser quit --all:*): deny
+  bash(agent-browser exit --all:*): deny
+  ask_user: deny
+  bash(killall *): deny
+  bash(pkill -f *): deny
+sandbox: danger-full-access
+approval: never
+---
+
+# Prober
+
+Use `/probe`.

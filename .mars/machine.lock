@@ -1,0 +1,129 @@
+version = 3
+provided_entries = [
+    [
+    ".agy",
+    "hook-entry:meridian-session",
+],
+    [
+    ".agy",
+    "mcp:meridian",
+],
+]
+
+[dependencies._provided-meridian]
+path = "/home/jimyao/gitrepos/research/writing-assistant/.mars/provided/meridian"
+version = "sha256:f6e3da8070cab787603a1107f7650475b8e279523b6121d9ccf5934311261d53"
+
+[items."hook/meridian-session@agy"]
+source = "_provided-meridian"
+kind = "hook"
+source_checksum = "sha256:de73e1aeea3bc6b7296c731e1a0be258260d4b8e1cfa86fb8bdce5047e7dca66"
+source_path = "hooks/meridian-session"
+
+[[items."hook/meridian-session@agy".outputs]]
+target_root = ".agy"
+dest_path = "hooks/meridian-session"
+state = "installed"
+installed_checksum = "sha256:de73e1aeea3bc6b7296c731e1a0be258260d4b8e1cfa86fb8bdce5047e7dca66"
+
+[[items."hook/meridian-session@agy".outputs]]
+target_root = ".mars"
+dest_path = "hooks/agy/meridian-session"
+state = "installed"
+installed_checksum = "sha256:de73e1aeea3bc6b7296c731e1a0be258260d4b8e1cfa86fb8bdce5047e7dca66"
+
+[items."skill/escalation__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:07ed560f4c6d84771a5c374e4f79f842e534c043e386baab655148276b3ead54"
+
+[[items."skill/escalation__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/escalation__meridian"
+state = "installed"
+installed_checksum = "sha256:07ed560f4c6d84771a5c374e4f79f842e534c043e386baab655148276b3ead54"
+
+[items."skill/handoff__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:049701f6dc3b03ee5cab4a16059546cbcf8ed149feb12bfb79252716c9adc8db"
+
+[[items."skill/handoff__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/handoff__meridian"
+state = "installed"
+installed_checksum = "sha256:049701f6dc3b03ee5cab4a16059546cbcf8ed149feb12bfb79252716c9adc8db"
+
+[items."skill/md-validation__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:8788576d1cc1b6a0c5aff9727948704439cd7353432c4c3c9d9f7b8437b96951"
+
+[[items."skill/md-validation__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/md-validation__meridian"
+state = "installed"
+installed_checksum = "sha256:8788576d1cc1b6a0c5aff9727948704439cd7353432c4c3c9d9f7b8437b96951"
+
+[items."skill/messaging__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:8a918dbc6110a49aaf68f39a1b9341ab6baeca6379c0a35d498943b0bfe42603"
+
+[[items."skill/messaging__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/messaging__meridian"
+state = "installed"
+installed_checksum = "sha256:8a918dbc6110a49aaf68f39a1b9341ab6baeca6379c0a35d498943b0bfe42603"
+
+[items."skill/notify__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:1c1f291c4b8a14e84fd3153dde20c86b647484f5f301695982d0e10986af6083"
+
+[[items."skill/notify__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/notify__meridian"
+state = "installed"
+installed_checksum = "sha256:1c1f291c4b8a14e84fd3153dde20c86b647484f5f301695982d0e10986af6083"
+
+[items."skill/prompt-authoring__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:5654a1af54844cc6696c9a35d360cdd71faa3da3a30cfa74ea12ab4b8a1b850e"
+
+[[items."skill/prompt-authoring__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/prompt-authoring__meridian"
+state = "installed"
+installed_checksum = "sha256:5654a1af54844cc6696c9a35d360cdd71faa3da3a30cfa74ea12ab4b8a1b850e"
+
+[items."skill/sessions__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:d0c8c065b840fc9d5baf467d4eee9d18431d16be8c705dfe7a5ca69f1a974784"
+
+[[items."skill/sessions__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/sessions__meridian"
+state = "installed"
+installed_checksum = "sha256:d0c8c065b840fc9d5baf467d4eee9d18431d16be8c705dfe7a5ca69f1a974784"
+
+[items."skill/work__meridian"]
+source = "_provided-meridian"
+kind = "skill"
+source_checksum = "sha256:cdfa0876a001fc0389790d689ec9932259b4c88cf454dafd7ed6b131c4252447"
+
+[[items."skill/work__meridian".outputs]]
+target_root = ".agy"
+dest_path = "skills/work__meridian"
+state = "installed"
+installed_checksum = "sha256:cdfa0876a001fc0389790d689ec9932259b4c88cf454dafd7ed6b131c4252447"
+
+[config_entries.".agy"."hook-entry:meridian-session"]
+emitted_json = '{"PreInvocation":[{"command":"sh \"hooks/meridian-session/guard.sh\" PreInvocation \"$PPID\"","timeout":10}],"SessionStart":[{"command":"sh \"hooks/meridian-session/guard.sh\" SessionStart \"$PPID\"","timeout":10}]}'
+
+[config_entries.".agy"."mcp:meridian"]
+emitted_json = '{"args":["harness-mcp","agy"],"command":"meridian"}'
+
+[dependency_model_aliases]
