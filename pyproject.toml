@@ -5,6 +5,7 @@ description = "Creative-writing benchmark and RL environment for long-running fi
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.0",
+    "pyarrow>=18.0",
 ]
 
 [project.scripts]

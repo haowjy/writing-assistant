@@ -3,6 +3,6 @@
 Imports nothing else from the package.
 """
 
-from writing_assistant.episode.model import CallRecord, Episode, Event
+from writing_assistant.episode.model import CallRecord, Episode, EpisodeView, Event, norm_path
 
-__all__ = ["CallRecord", "Episode", "Event"]
+__all__ = ["CallRecord", "Episode", "EpisodeView", "Event", "norm_path"]

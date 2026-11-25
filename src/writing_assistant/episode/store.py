@@ -1,0 +1,143 @@
+"""Task rows and episodes on disk, split assignment, and dated Parquet shards.
+
+Task rows and saved episodes are files another process (or an older build) wrote, so
+loading validates them; everything after loading trusts the types.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import json
+from collections.abc import Iterable
+from dataclasses import dataclass, field, fields
+from pathlib import Path
+from typing import Any
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from writing_assistant.episode.model import Episode
+
+SPLITS = ("train", "dev", "test")
+# split_of buckets: sha256(source_group) mod 100 -> train [0, 70), dev [70, 85), test [85, 100).
+# Changing these moves rows between splits; the held-out test split must never move.
+SPLIT_EDGES = (70, 85)
+EPISODES_FILE = "episodes.jsonl"
+
+
+@dataclass(frozen=True)
+class Task:
+    task_id: str
+    suite: str
+    kind: str
+    split: str  # its works' split; a task mounting two works needs both in one split
+    work_ids: list[str] = field(default_factory=list)
+    payload: dict[str, Any] = field(default_factory=dict)
+
+
+def split_of(source_group: str) -> str:
+    """"train" | "dev" | "test", stable across runs and machines. `local_dev` rows are
+    stamped by the local_dev loader, never hashed."""
+    key = source_group.strip().casefold().encode()
+    bucket = int.from_bytes(hashlib.sha256(key).digest()[:8], "big") % 100
+    return "train" if bucket < SPLIT_EDGES[0] else "dev" if bucket < SPLIT_EDGES[1] else "test"
+
+
+def assert_train_split(rows: Iterable[Any]) -> None:
+    """Refuse anything that is not `train`: the guard every training loader calls."""
+    bad = [_get(r, "task_id") or _get(r, "work_id") or repr(r)[:60] for r in rows if _get(r, "split") != "train"]
+    if bad:
+        raise ValueError(f"{len(bad)} non-train rows reached a training path: {bad[:5]}")
+
+
+def _get(row: Any, key: str) -> Any:
+    return row.get(key) if isinstance(row, dict) else getattr(row, key, None)
+
+
+def matches(row: dict[str, Any], where: str | None) -> bool:
+    """`where` is comma-separated `key=value` equality tests (`kind=pov_write,source=gutenberg`);
+    a key is looked up in the row, then in its `payload`. Values compare as strings."""
+    if not where:
+        return True
+    for clause in where.split(","):
+        key, sep, value = clause.partition("=")
+        if not sep:
+            raise ValueError(f"bad where clause {clause!r}: expected key=value")
+        key = key.strip()
+        got = row[key] if key in row else row.get("payload", {}).get(key)
+        if got is None or str(got) != value.strip():
+            return False
+    return True
+
+
+def load_rows(path: str | Path, suite: str | None = None, split: str | None = None, where: str | None = None) -> list[Task]:
+    """Task rows from a JSONL or Parquet file, filtered by suite, split and `where`."""
+    path = Path(path)
+    if path.suffix == ".parquet":
+        # Parquet fills keys a row lacks with null (columns and struct fields are unions).
+        raw = [_drop_nulls(r) for r in pq.read_table(path).to_pylist()]
+    else:
+        raw = _jsonl(path)
+    names = {f.name for f in fields(Task)}
+    tasks = []
+    for n, row in enumerate(raw, 1):
+        missing = {"task_id", "suite", "kind", "split"} - set(row)
+        if missing or row["split"] not in (*SPLITS, "local_dev"):
+            raise ValueError(f"{path}:{n}: bad task row (missing {sorted(missing)}, split {row.get('split')!r})")
+        if (suite is None or row["suite"] == suite) and (split is None or row["split"] == split) and matches(row, where):
+            tasks.append(Task(**{k: v for k, v in row.items() if k in names}))
+    return tasks
+
+
+def _drop_nulls(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: _drop_nulls(v) for k, v in value.items() if v is not None}
+    return value
+
+
+def _jsonl(path: Path) -> list[dict[str, Any]]:
+    with path.open(encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def save_episodes(episodes: Iterable[Episode], out: str | Path) -> Path:
+    """Append episodes to `<out>/episodes.jsonl`, one complete episode per line."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / EPISODES_FILE
+    lines = "".join(json.dumps(ep.to_dict(), ensure_ascii=False) + "\n" for ep in episodes)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(lines)
+    return path
+
+
+def load_episodes(run_dir: str | Path) -> list[Episode]:
+    """Every episode saved in a run, parent_id/condition intact for re-pairing twins."""
+    path = Path(run_dir) / EPISODES_FILE
+    episodes = [Episode.from_dict(d) for d in _jsonl(path)]
+    seen: set[str] = set()
+    for ep in episodes:
+        if ep.ep_id in seen:
+            raise ValueError(f"{path}: episode {ep.ep_id} saved twice")
+        seen.add(ep.ep_id)
+    return episodes
+
+
+def write_shard(rows: list[dict[str, Any]], dir: str | Path) -> Path:
+    """Write rows as `<dir>/YYYY-MM-DD-NNN.parquet` (UTC date, next free NNN). Never overwrites."""
+    dir = Path(dir)
+    dir.mkdir(parents=True, exist_ok=True)
+    # from_pylist would take the columns from the first row and drop keys later rows add.
+    keys = list(dict.fromkeys(k for r in rows for k in r))
+    table = pa.Table.from_pydict({k: [r.get(k) for r in rows] for k in keys})
+    day = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
+    for n in range(1000):
+        path = dir / f"{day}-{n:03d}.parquet"
+        try:
+            with path.open("xb") as f:
+                pq.write_table(table, f)
+            return path
+        except FileExistsError:
+            continue
+    raise RuntimeError(f"{dir}: 1000 shards already written on {day}")

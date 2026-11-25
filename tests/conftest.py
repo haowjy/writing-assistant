@@ -15,7 +15,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from writing_assistant.episode import CallRecord, Episode, Event
+from writing_assistant.episode import CallRecord, Episode
 from writing_assistant.search.providers import Doc, Hit
 
 # A scripted reply: plain text, or {"text": ..., "tool_calls": [{"name": ..., "arguments": {...}}]},
@@ -119,10 +119,7 @@ def _fake_turn(replies: list[str] | dict[str, list[str]]):
     queues = {k: list(v) for k, v in replies.items()} if isinstance(replies, dict) else list(replies)
 
     async def turn(ep: Episode, actor: str, message: str) -> str:
-        turn_idx = sum(1 for e in ep.events if e.kind == "deliver")
-        ep.events.append(
-            Event(len(ep.events), actor, "deliver", {"turn_idx": turn_idx, "message": message}, {actor: "full"})
-        )
+        turn_idx = ep.deliver(actor, message)
         turn.deliveries.append((ep.ep_id, actor, message))
         reply = (queues[actor] if isinstance(queues, dict) else queues).pop(0)
         ep.calls.append(
