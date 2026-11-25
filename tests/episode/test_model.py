@@ -137,3 +137,39 @@ def test_complete_requires_an_attesting_call_per_delivery():
     ep.fail("driver_crashed")
     ep.complete()
     assert (ep.status, ep.failure_reason) == ("failed", "driver_crashed")
+
+
+def test_a_saved_episode_loads_back_whole(tmp_path):
+    """Re-scoring reads only the saved episode: a field left out of the save, or one that
+    loads back as another type, silently changes what a re-score sees."""
+    from dataclasses import MISSING, fields
+
+    from writing_assistant.episode.store import load_episodes, save_episodes
+
+    ep = Episode(
+        ep_id="t~pov_view", task_id="t", suite="1a", split="test", parent_id="t", condition="pov_view",
+        meta={"driver": "direct", "row": {"k": 3, "mode": "instruction"}},
+        files={"a.md": "Zoë «x»"}, file_revs={"a.md": 2},
+        state={"world": {"secrets": {"s": {"text": "x", "known_by": ["npc"]}}}, "pov": {"arm": "pov_view"}},
+        actors={"writer": "gemma-4-26b", "author": "scripted"}, actor_tools={"writer": ["episode_read"]},
+        status="truncated", failure_reason="writer was cut off at max_tokens=10",
+    )
+    ep.log("dm", "world", {"text": "hidden", "rolls": [3, 17]}, {"dm": "full", "pc": "redacted"})
+    ep.deliver("writer", "write it")
+    ep.calls.append(CallRecord(
+        actor="writer", turn_idx=0, endpoint="gemma-4-26b", messages=[{"role": "user", "content": "write it"}],
+        response="It was dark.", tool_calls=[{"id": "c1", "name": "episode_read", "arguments": {"path": "a.md"}}],
+        tools_advertised=["episode_read"], usage={"input_tokens": 9, "output_tokens": 4, "cost_usd": 1.5e-05},
+        ext={"logprobs": [-0.1]}, finish_reason="length", reasoning="Thinking about the dark.",
+    ))
+    # Every field carries a non-default value, so a field added later must be added here too.
+    def defaults(obj):
+        return [f.name for f in fields(obj)
+                if getattr(obj, f.name) == (f.default_factory() if f.default_factory is not MISSING else f.default)]
+
+    assert defaults(ep) == [] and defaults(ep.calls[0]) == []
+
+    save_episodes([ep], tmp_path)
+    [back] = load_episodes(tmp_path)
+    assert back == ep and back.to_dict() == ep.to_dict()
+    assert back.events[0].data["rolls"] == [3, 17] and back.view("pc").events[0].data == {}

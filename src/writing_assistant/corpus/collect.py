@@ -155,6 +155,27 @@ def _import_book(corpus: Corpus, fetch: _Polite, book: dict[str, Any]) -> Work |
     return None
 
 
+def list_gutenberg(query: dict[str, Any], pages: list[int], *, http: httpx.Client | None = None,
+                   delay: float = DELAY) -> list[dict[str, Any]]:
+    """Gutendex records (metadata only, no text) for the given 1-based result pages of a
+    query (`languages`, `topic`, `search`, `sort`, ...). Pages past the end are skipped. For
+    choosing what to import: `collect` with `ids` then fetches the text."""
+    own = http is None
+    http = http or httpx.Client(timeout=120, follow_redirects=False, headers={"User-Agent": "writing-assistant-bench/0"})
+    try:
+        fetch = _Polite(http, delay)
+        books = []
+        for page in pages:
+            resp = fetch.get(GUTENDEX, {**query, "page": page})
+            if resp is None:
+                continue
+            books += [b for b in resp.json()["results"] if b.get("media_type") == "Text"]
+        return books
+    finally:
+        if own:
+            http.close()
+
+
 COLLECTORS: dict[str, Callable[[Corpus, _Polite, dict[str, Any]], list[Work]]] = {"gutenberg": collect_gutenberg}
 
 

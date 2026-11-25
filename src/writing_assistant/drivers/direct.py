@@ -46,7 +46,8 @@ class DirectDriver:
 
     async def turn(self, session: Session, message: str) -> str:
         """Run the tool loop for one delivery (already logged by the Turn binding) until the
-        model replies without a tool call. Past `max_steps` calls the episode is truncated."""
+        model replies without a tool call. Past `max_steps` calls, or when the model is cut off
+        at `max_tokens` before replying, the episode is truncated."""
         conv: _Conversation = session.handle
         ep, actor = conv.ep, session.actor
         turn_idx = ep.current_turn(actor)
@@ -67,16 +68,22 @@ class DirectDriver:
             ep.calls.append(rec)
             conv.messages.append(assistant_message(rec))
             if not rec.tool_calls:
+                if rec.finish_reason == "length":
+                    _truncate(ep, f"{actor} was cut off at max_tokens={self.max_tokens}")
                 return rec.response
             for call in rec.tool_calls:
                 result = await dispatch_tool(ep, actor, call["name"], call["arguments"], self.tools)
                 conv.messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result, ensure_ascii=False)}
                 )
-        if ep.status == "running":
-            ep.status = "truncated"
-            ep.failure_reason = f"{actor} exceeded {self.max_steps} model calls in one turn"
+        _truncate(ep, f"{actor} exceeded {self.max_steps} model calls in one turn")
         return rec.response if rec else ""
 
     async def close(self, session: Session) -> None:
         session.handle.messages.clear()
+
+
+def _truncate(ep: Episode, reason: str) -> None:
+    if ep.status == "running":
+        ep.status = "truncated"
+        ep.failure_reason = reason

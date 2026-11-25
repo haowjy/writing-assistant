@@ -18,11 +18,12 @@ from typing import Any
 import numpy as np
 import pytest
 
-from writing_assistant.drivers import Session
+from writing_assistant.cli import Binding, bind_subject
 from writing_assistant.drivers.direct import DirectDriver
 from writing_assistant.episode import CallRecord, Episode
 from writing_assistant.episode.tools import ToolTable
 from writing_assistant.llm.client import split_reasoning
+from writing_assistant.suites import SUBJECT
 from writing_assistant.search.providers import Doc, Hit
 
 MODELS_TOML = Path(__file__).resolve().parents[1] / "models.toml"
@@ -123,21 +124,18 @@ class FakeProvider:
 
 
 def _fake_turn(replies: list[Reply] | dict[str, list[Reply]], tools: ToolTable | None = None, **driver_kw: Any):
-    """A `Turn` bound the way cli.py binds one: a session per (episode, actor), the delivery
-    logged with `Episode.deliver`, then the real `DirectDriver` over a `FakeLLM` (so tool calls
-    run through `dispatch_tool` and every call is attested). `replies` follow FakeLLM: one
-    queue, or a dict keyed by endpoint (`ep.actors[actor]`); a tool-using turn takes one reply
-    per model call. `turn.llm` exposes the requests, to assert on what a model was shown."""
+    """cli.py's `Binding` over the real `DirectDriver` and a `FakeLLM`, so tool calls run
+    through `dispatch_tool` and every call is attested. `replies` follow FakeLLM: one queue,
+    or a dict keyed by endpoint (`ep.actors[actor]`); a tool-using turn takes one reply per
+    model call. Actors still on the `SUBJECT` placeholder are bound to the endpoint
+    "subject" here, as cli.py binds them to --endpoint. `turn.llm` exposes the requests."""
     llm = FakeLLM(replies)
-    driver = DirectDriver(llm, tools or {}, **driver_kw)
-    sessions: dict[tuple[str, str], Session] = {}
+    binding = Binding(DirectDriver(llm, tools or {}, **driver_kw))
 
     async def turn(ep: Episode, actor: str, message: str) -> str:
-        key = (ep.ep_id, actor)
-        if key not in sessions:
-            sessions[key] = await driver.open(ep, actor, ep.actors[actor])
-        ep.deliver(actor, message)
-        return await driver.turn(sessions[key], message)
+        if ep.actors.get(actor) == SUBJECT:
+            bind_subject([ep], "subject-endpoint")
+        return await binding(ep, actor, message)
 
     turn.llm = llm
     return turn

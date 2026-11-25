@@ -79,6 +79,7 @@ class LLMClient:
         self.endpoints: dict[str, dict[str, Any]] = self.config["endpoints"]
         self._http: httpx.AsyncClient | None = None
         self._slots: dict[str, asyncio.Semaphore] = {}
+        self.spent: dict[str, float] = {}  # endpoint -> USD the host reported for this client's calls
 
     async def chat(
         self,
@@ -101,6 +102,7 @@ class LLMClient:
             rec = await adapter(self._client(), ep, self._headers(ep), messages, tools, temperature, max_tokens, seed)
         rec.endpoint = endpoint
         rec.messages = list(messages)
+        self.spent[endpoint] = self.spent.get(endpoint, 0.0) + rec.usage.get("cost_usd", 0.0)
         rec.tools_advertised = [t["name"] for t in tools or []]
         return rec
 
