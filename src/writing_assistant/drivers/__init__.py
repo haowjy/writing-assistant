@@ -32,4 +32,7 @@ class Driver(Protocol):
     async def close(self, session: Session) -> None: ...
 
 
-DRIVERS: dict[str, Callable[..., Driver]] = {}
+from writing_assistant.drivers.direct import DirectDriver  # noqa: E402  (needs Session above)
+
+# name -> constructor; cli.py builds the chosen one with the client and the suite's tools.
+DRIVERS: dict[str, Callable[..., Driver]] = {"direct": DirectDriver}

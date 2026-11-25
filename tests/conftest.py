@@ -2,7 +2,7 @@
 
 - `fake_llm(replies, ...)` -> FakeLLM, the `LLMClient` surface (`chat`, `embed`, `is_local`).
 - `fake_provider(...)` -> FakeProvider, a search `Provider`.
-- `fake_turn(replies)` -> a `Turn` that records each delivery and an attesting call.
+- `fake_turn(replies, tools)` -> a `Turn` over the real direct driver and a FakeLLM.
 """
 
 from __future__ import annotations
@@ -15,7 +15,10 @@ from typing import Any
 import numpy as np
 import pytest
 
+from writing_assistant.drivers import Session
+from writing_assistant.drivers.direct import DirectDriver
 from writing_assistant.episode import CallRecord, Episode
+from writing_assistant.episode.tools import ToolTable
 from writing_assistant.search.providers import Doc, Hit
 
 # A scripted reply: plain text, or {"text": ..., "tool_calls": [{"name": ..., "arguments": {...}}]},
@@ -113,28 +116,24 @@ class FakeProvider:
         return self.docs.get(canonical_id)
 
 
-def _fake_turn(replies: list[str] | dict[str, list[str]]):
-    """A `Turn` that logs the delivery, returns the actor's next scripted reply and attests
-    the call with the actor's tools. `turn.deliveries` lists (ep_id, actor, message)."""
-    queues = {k: list(v) for k, v in replies.items()} if isinstance(replies, dict) else list(replies)
+def _fake_turn(replies: list[Reply] | dict[str, list[Reply]], tools: ToolTable | None = None, **driver_kw: Any):
+    """A `Turn` bound the way cli.py binds one: a session per (episode, actor), the delivery
+    logged with `Episode.deliver`, then the real `DirectDriver` over a `FakeLLM` (so tool calls
+    run through `dispatch_tool` and every call is attested). `replies` follow FakeLLM: one
+    queue, or a dict keyed by endpoint (`ep.actors[actor]`); a tool-using turn takes one reply
+    per model call. `turn.llm` exposes the requests, to assert on what a model was shown."""
+    llm = FakeLLM(replies)
+    driver = DirectDriver(llm, tools or {}, **driver_kw)
+    sessions: dict[tuple[str, str], Session] = {}
 
     async def turn(ep: Episode, actor: str, message: str) -> str:
-        turn_idx = ep.deliver(actor, message)
-        turn.deliveries.append((ep.ep_id, actor, message))
-        reply = (queues[actor] if isinstance(queues, dict) else queues).pop(0)
-        ep.calls.append(
-            CallRecord(
-                actor=actor,
-                turn_idx=turn_idx,
-                endpoint=ep.actors.get(actor, ""),
-                messages=[{"role": "user", "content": message}],
-                response=reply,
-                tools_advertised=list(ep.actor_tools.get(actor, [])),
-            )
-        )
-        return reply
+        key = (ep.ep_id, actor)
+        if key not in sessions:
+            sessions[key] = await driver.open(ep, actor, ep.actors[actor])
+        ep.deliver(actor, message)
+        return await driver.turn(sessions[key], message)
 
-    turn.deliveries = []
+    turn.llm = llm
     return turn
 
 
