@@ -1,0 +1,85 @@
+# The only configuration file. Code names an endpoint; this file maps the name to a kind,
+# URL, model and key, so switching a host, provider or model touches no Python.
+# kind: "openai" (chat completions), "openai-embeddings", "anthropic".
+
+[endpoints.qwen3-8b]
+kind = "openai"
+base_url = "http://127.0.0.1:8000/v1"
+model = "Qwen/Qwen3-8B"
+api_key_env = ""
+local = true            # may receive local_dev text; absent means hosted
+cutoff = "2025-04"      # training cutoff, for post-cutoff familiarity at report time
+
+[endpoints.mini-9b]
+kind = "openai"
+base_url = "http://j-mini48:8080/v1"
+model = "gemma-3-9b-it"
+api_key_env = ""
+
+[endpoints.style-embed]
+kind = "openai-embeddings"
+base_url = "http://j-mini48:8081/v1"
+model = "StyleDistance/styledistance"
+api_key_env = ""
+
+[endpoints.semantic-embed]
+kind = "openai-embeddings"
+base_url = "http://j-mini48:8081/v1"
+model = "nomic-embed-text-v2"
+api_key_env = ""
+
+[endpoints.claude-opus]
+kind = "anthropic"
+model = "claude-opus-4-5"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[endpoints.openrouter-judge]
+kind = "openai"
+base_url = "https://openrouter.ai/api/v1"
+model = "<cross-family judge model>"
+api_key_env = "OPENROUTER_API_KEY"
+
+# Default placement: `eval` points at API endpoints (OpenRouter / Anthropic) where the KB's
+# evaluation rules allow a model judge, because it runs once per episode; `train` points at
+# local endpoints (j-mini48, the 3090, a Colab-served vLLM over a tunnel) because a reward is
+# called thousands of times per step. Both profiles pass the same human-label gates.
+[judges.eval]           # final-evaluation profile; never used as a training reward
+fact = "mini-9b"
+outline = "mini-9b"
+craft_pair = "openrouter-judge"
+edit_pair = "openrouter-judge"
+secret_2afc = "mini-9b"
+author_verify = "openrouter-judge"
+embed_semantic = "semantic-embed"
+embed_style = "style-embed"
+forecast = "mini-9b"
+
+[judges.train]          # v2: a different family from judges.eval for craft_pair and author_verify
+fact = "mini-9b"
+outline = "mini-9b"
+craft_pair = "qwen3-8b"
+edit_pair = "qwen3-8b"
+secret_2afc = "mini-9b"
+author_verify = "qwen3-8b"
+embed_semantic = "semantic-embed"
+embed_style = "style-embed"
+forecast = "mini-9b"
+
+[search]
+web = ["exa", "tavily", "serper", "searxng"]         # spillover order; drop a name to remove a provider
+papers = ["openalex", "s2", "exa", "arxiv"]
+cache = "cache/search.sqlite"
+
+[search.rates]           # requests per second, burst
+exa = [2.0, 5]
+tavily = [1.0, 3]
+serper = [1.0, 3]
+searxng = [0.5, 2]
+arxiv = [0.33, 1]
+openalex = [5.0, 10]
+s2 = [1.0, 3]
+
+[search.keys]
+exa = "EXA_API_KEY"
+tavily = "TAVILY_API_KEY"
+serper = "SERPER_API_KEY"

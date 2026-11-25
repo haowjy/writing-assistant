@@ -5,13 +5,19 @@ manuscript plus a knowledge base of character, world, timeline and decision note
 committed canon apart from tentative ideas, tracks what each character knows, writes in the
 author's style and proposes genuinely different directions.
 
-The project restarted in November 2026. There is no code yet. Work proceeds in this order:
+The project restarted in November 2026. Work proceeds in this order:
 
 1. A creative-writing benchmark and an RL environment, built and debugged on open-weight models
    (free to run); once the environment works, frontier models join as subjects and judges.
 2. Training, once both work.
 3. Comparing model-development ideas against them, on a held-out split never used for
    selection.
+
+The benchmark is the `writing_assistant` package under `src/` (Python 3.12, `uv`). Its
+packages are layered and `tests/test_layering.py` enforces the direction; the layer table and
+the four protocols are in the work item's `plan/benchmark-code.md` §2. Run tests with
+`CUDA_VISIBLE_DEVICES= uv run pytest` (no test may touch the network or a GPU); the fakes in
+`tests/conftest.py` stand in for models, search providers and the `Turn` binding.
 
 Project knowledge lives in the Meridian KB, not in this repo: run `meridian context --name kb`
 and start at its `index.md` (goals, vocabulary, evaluation principles, training lessons). Work
