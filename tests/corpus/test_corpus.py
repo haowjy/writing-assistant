@@ -25,7 +25,7 @@ def prose(seed: int, words: int) -> str:
     return "\n\n".join(" ".join(toks[i : i + 60]) + "." for i in range(0, words, 60))
 
 
-def book(seed: int, n_chapters: int, words: int = 400) -> str:
+def book(seed: int, n_chapters: int, words: int = 700) -> str:
     chapters = "\n\n".join(f"CHAPTER {i + 1}.\n\n{prose(seed * 100 + i, words)}" for i in range(n_chapters))
     return (
         f"*** START OF THE PROJECT GUTENBERG EBOOK {seed} ***\n\nA BOOK\n\nCONTENTS\n\n"

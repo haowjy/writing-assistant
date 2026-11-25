@@ -179,8 +179,10 @@ def collect(
     http = http or httpx.Client(timeout=120, follow_redirects=False, headers={"User-Agent": "writing-assistant-bench/0"})
     try:
         fetch = _Polite(http, delay)
-        return [w for name, query in sources.items() for w in COLLECTORS[name](corpus, fetch, query)]
+        written = [w.work_id for name, query in sources.items() for w in COLLECTORS[name](corpus, fetch, query)]
     finally:
         if own:
             http.close()
+    # Re-read: each add moved every familiarity percentile, so earlier returns are stale.
+    return [corpus.get(work_id) for work_id in written]
 

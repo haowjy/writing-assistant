@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from writing_assistant.corpus.text import truncate_tokens
+from writing_assistant.corpus.text import count_tokens, truncate_tokens
 
 if TYPE_CHECKING:
     from writing_assistant.corpus.rows import Corpus, Work
@@ -55,13 +55,12 @@ def _rank(seed: Any, *key: Any) -> bytes:
     return hashlib.sha256("\0".join(map(str, (seed, *key))).encode()).digest()
 
 
-def _prose(chapter: str, budget: int) -> str:
-    """A chapter's opening prose within `budget` tokens: the heading line and any short title
-    paragraphs after it dropped."""
+def _prose(chapter: str) -> str:
+    """A chapter without its heading line and any short title paragraphs after it."""
     paragraphs = [p.strip() for p in chapter.split("\n\n")[1:] if p.strip()] or [chapter]
     while len(paragraphs) > 1 and len(paragraphs[0].split()) < _MIN_PARAGRAPH:
         paragraphs.pop(0)
-    return truncate_tokens("\n\n".join(paragraphs), budget)
+    return "\n\n".join(paragraphs)
 
 
 async def partition_author_corpus(
@@ -75,7 +74,8 @@ async def partition_author_corpus(
 ) -> AuthorSplit:
     """Partition one author's works. With three or more works the roles are split by book
     (targets from one, verifier references from another, exemplars from the rest); with
-    fewer, by chapter across the pooled chapters. Either way no chapter serves two roles.
+    fewer, by chapter across the pooled chapters. Either way no chapter serves two roles, and
+    only chapters with at least `passage_tokens` of prose serve at all.
     Beat sheets come from `corpus.judges.outline`, so this runs at build time. ValueError
     when the works span authors or leave fewer than max(K_VALUES) exemplar chapters."""
     groups = {w.source_group for w in works}
@@ -85,7 +85,14 @@ async def partition_author_corpus(
     order = sorted(works, key=lambda w: _rank(seed, w.work_id))
 
     def keyed(ws: list[Work]) -> list[tuple[str, int, str]]:
-        chs = [(w.work_id, i, ch) for w in ws for i, ch in enumerate(corpus.chapters(w))]
+        # A chapter whose prose cannot fill the budget (a prologue, a short letter) serves no
+        # role: a short exemplar would make `k` measure prompt length again.
+        chs = [
+            (w.work_id, i, ch)
+            for w in ws
+            for i, ch in enumerate(corpus.chapters(w))
+            if count_tokens(_prose(ch)) >= passage_tokens
+        ]
         return sorted(chs, key=lambda c: _rank(seed, c[0], c[1]))
 
     if len(order) >= 3:
@@ -99,7 +106,7 @@ async def partition_author_corpus(
         raise ValueError(f"{group}: {len(pool_chs)} exemplar chapters, need {max(K_VALUES)}")
 
     def passages(chs: list[tuple[str, int, str]]) -> list[Passage]:
-        return [Passage(work_id, i, _prose(ch, passage_tokens)) for work_id, i, ch in chs]
+        return [Passage(work_id, i, truncate_tokens(_prose(ch), passage_tokens)) for work_id, i, ch in chs]
 
     outline = corpus.judges.outline
     targets = [Target(await outline(p.text), p) for p in passages(target_chs)]

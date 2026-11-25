@@ -13,7 +13,8 @@ import unicodedata
 # about 2021 start at the START line; older ones carry the full licence header, and the
 # oldest end their header with the "SMALL PRINT" line instead.
 _PG_START = re.compile(
-    r"^\s*(\*{3}\s*START OF (THE|THIS) PROJECT GUTENBERG E-?BOOK.*"
+    # A long title wraps the marker onto a second line, so read through to its closing ***.
+    r"^\s*(\*{3}\s*START OF (THE|THIS) PROJECT GUTENBERG E-?BOOK[^*]*\*{3}.*"
     r"|\*END\*THE SMALL PRINT!.*)$",
     re.I | re.M,
 )
@@ -77,7 +78,7 @@ _KEYWORD = re.compile(
 _BARE = re.compile(r"^(?P<num>[IVXLCDM]+|\d{1,3})(\.|\.\s+(?P<rest>\S.*)|)$")
 _MAX_HEADING = 80  # characters; a longer line is prose
 _MIN_BODY = 50  # words; a shorter segment is a contents line or a part title page
-_TOC_BODY = 300  # words; a segment this short whose label recurs later is a contents entry
+_TOC_BODY = 300  # words; a leading segment this short whose label recurs is a contents entry
 FALLBACK_WORDS = 5000  # chunk size for a long text with no headings
 
 
@@ -111,7 +112,8 @@ def split_chapters(body: str) -> list[str]:
     book with none, bare numerals. Every heading level splits (a play yields scenes, a book in
     parts yields its chapters), then segments with under 50 words of body are dropped (contents
     lines, part title pages, an ACT line directly followed by SCENE 1), as are segments under
-    300 words whose label recurs later (a contents list with a synopsis per entry). Text before
+    300 words, before the first chapter kept, whose label recurs later (a contents list with a
+    synopsis per entry). Text before
     the first heading (title page, preface, contents) is dropped. A text with fewer than two
     chapters is cut at paragraph breaks into ~5,000-word pieces, so no caller gets one giant
     chapter from a long book."""
@@ -124,12 +126,16 @@ def split_chapters(body: str) -> list[str]:
         end = heads[n + 1][0] if n + 1 < len(heads) else len(lines)
         text = "\n".join(lines[i:end]).strip()
         segments.append((label, text, _words(text) - _words(lines[i])))
-    later_labels = [{label for label, _, _ in segments[n + 1:]} for n in range(len(segments))]
-    chapters = [
-        text
-        for n, (label, text, body_words) in enumerate(segments)
-        if body_words >= _MIN_BODY and not (body_words < _TOC_BODY and label in later_labels[n])
-    ]
+    last_seen = {label: n for n, (label, _, _) in enumerate(segments)}
+    chapters: list[str] = []
+    for n, (label, text, body_words) in enumerate(segments):
+        if body_words < _MIN_BODY:
+            continue
+        # Only before the first chapter kept: later, a short chapter whose number recurs is a
+        # real one in a book that restarts numbering (Hamlet IV.1 vs V.1).
+        if not chapters and body_words < _TOC_BODY and last_seen[label] > n:
+            continue
+        chapters.append(text)
     if len(chapters) >= 2 or _words(body) <= 2 * FALLBACK_WORDS:
         return chapters or [body.strip()]
     return _chunks(body, FALLBACK_WORDS)
@@ -161,13 +167,14 @@ def count_tokens(text: str) -> int:
 
 def truncate_tokens(text: str, budget: int) -> str:
     """The longest prefix of `text` with at most `budget` tokens, cut back to the last sentence
-    end when one falls in the final half of the budget."""
+    end when one falls in the final fifth of the budget (else at a word boundary), so passages
+    cut to one budget stay within 20% of each other."""
     matches = list(_TOKEN.finditer(text))
     if len(matches) <= budget:
         return text.strip()
     cut = text[: matches[budget - 1].end()]
     sentence_ends = [m.end() for m in re.finditer(r"[.!?][\"'”’)]?(?=\s)", cut)]
-    if sentence_ends and count_tokens(cut[: sentence_ends[-1]]) >= budget // 2:
+    if sentence_ends and count_tokens(cut[: sentence_ends[-1]]) >= budget * 4 // 5:
         cut = cut[: sentence_ends[-1]]
     return cut.strip()
 
