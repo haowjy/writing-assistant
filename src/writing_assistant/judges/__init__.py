@@ -1,19 +1,19 @@
 """Judges keyed by calibrated use: calibration is per use (200 yes/no, 40/60/80 pairs).
 
-`judges_from(models_toml, client, profile)` builds a `Judges` from `[judges.eval]` or
-`[judges.train]` in models.toml; every value there is an endpoint name.
+`judges_from(client, profile)` builds a `Judges` from `[judges.eval]` or `[judges.train]` in
+the models.toml the client parsed; every value there is an endpoint name. A use the profile
+does not name is unavailable: its judge raises `Unscored("unavailable")` when called.
 
-A model judge that cannot score an item raises `Unscored` (`reason` "refusal" or
-"unparseable"); catch it and leave the item unscored, never default it. Each field is a
-`Judge` whose `stamp` ({use, endpoint, model, prompt}) is what a stored judgment is traced to.
+A model judge that cannot score an item raises `Unscored` (`reason` "refusal",
+"unparseable", "truncated" or "unavailable"); catch it and leave the item unscored, never
+default it. Each field is a `Judge` whose `stamp` ({use, endpoint, model, prompt}) is what a
+stored judgment is traced to.
 """
 
 from __future__ import annotations
 
-import tomllib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, fields
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from writing_assistant.judges import readability
@@ -59,32 +59,37 @@ class Judge:
 PASSAGE_BREAK = "\n\n* * *\n\n"
 
 
-def judges_from(models_toml: str | Path, client: LLMClient, profile: str) -> Judges:
-    cfg = tomllib.loads(Path(models_toml).read_text())
-    uses: dict[str, str] = cfg["judges"][profile]
+def judges_from(client: LLMClient, profile: str) -> Judges:
+    uses: dict[str, str] = client.config["judges"][profile]
     model_uses = {f.name for f in fields(Judges)} - {"readability"}
-    if missing := model_uses - uses.keys():
-        raise KeyError(f"[judges.{profile}] names no endpoint for {sorted(missing)}")
+    if unknown := uses.keys() - model_uses:
+        raise KeyError(f"[judges.{profile}] names unknown uses {sorted(unknown)}")
 
     def judge(use: str, prompt: str, fn: Callable[..., Any]) -> Judge:
-        ep = uses[use]
-        return Judge(fn, {"use": use, "endpoint": ep, "model": cfg["endpoints"][ep]["model"], "prompt": prompt})
+        ep = uses.get(use)
+        if ep is None:
+            return Judge(_unavailable, {"use": use, "endpoint": "", "model": "", "prompt": prompt})
+        return Judge(lambda *args: fn(ep, *args), {"use": use, "endpoint": ep, "model": client.endpoints[ep]["model"], "prompt": prompt})
 
     return Judges(
-        fact=judge("fact", FACT.version, lambda q, ev: yes_no(client, uses["fact"], q, ev)),
-        outline=judge("outline", OUTLINE.version, lambda text: outline(client, uses["outline"], text)),
-        craft_pair=judge("craft_pair", CRAFT.version, lambda a, b, ref: ab(client, uses["craft_pair"], CRAFT, a, b, ref)),
-        edit_pair=judge("edit_pair", EDIT.version, lambda ed, orig, obj: ab(client, uses["edit_pair"], EDIT, ed, orig, obj)),
-        secret_2afc=judge("secret_2afc", SECRET.version, lambda tr, sa, sb: ab(client, uses["secret_2afc"], SECRET, sa, sb, tr)),
+        fact=judge("fact", FACT.version, lambda ep, q, ev: yes_no(client, ep, q, ev)),
+        outline=judge("outline", OUTLINE.version, lambda ep, text: outline(client, ep, text)),
+        craft_pair=judge("craft_pair", CRAFT.version, lambda ep, a, b, ref: ab(client, ep, CRAFT, a, b, ref)),
+        edit_pair=judge("edit_pair", EDIT.version, lambda ep, ed, orig, obj: ab(client, ep, EDIT, ed, orig, obj)),
+        secret_2afc=judge("secret_2afc", SECRET.version, lambda ep, tr, sa, sb: ab(client, ep, SECRET, sa, sb, tr)),
         author_verify=judge(
             "author_verify", AUTHOR.version,
-            lambda a, b, passages: ab(client, uses["author_verify"], AUTHOR, a, b, PASSAGE_BREAK.join(passages)),
+            lambda ep, a, b, passages: ab(client, ep, AUTHOR, a, b, PASSAGE_BREAK.join(passages)),
         ),
-        embed_semantic=judge("embed_semantic", "", lambda texts: embed(client, uses["embed_semantic"], texts)),
-        embed_style=judge("embed_style", "", lambda texts: embed(client, uses["embed_style"], texts)),
-        forecast=judge("forecast", FORECAST.version, lambda prefix, n: forecasts(client, uses["forecast"], prefix, n)),
+        embed_semantic=judge("embed_semantic", "", lambda ep, texts: embed(client, ep, texts)),
+        embed_style=judge("embed_style", "", lambda ep, texts: embed(client, ep, texts)),
+        forecast=judge("forecast", FORECAST.version, lambda ep, prefix, n: forecasts(client, ep, prefix, n)),
         readability=Judge(
             readability.profile,
             {"use": "readability", "endpoint": "", "model": readability.SPACY_MODEL, "prompt": readability.VERSION},
         ),
     )
+
+
+async def _unavailable(*args: Any) -> Any:
+    raise Unscored("unavailable", [])

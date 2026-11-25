@@ -2,6 +2,15 @@
 
 Task rows and saved episodes are files another process (or an older build) wrote, so
 loading validates them; everything after loading trusts the types.
+
+Where task rows live (they hold book text, so never in git):
+- public rows: `TASKS_DIR/<suite>.jsonl`, written by scripts/build_seed_tasks.py, each row
+  `train`/`dev`/`test` by `split_of`;
+- personal rows: `LOCAL_DEV_DIR/tasks/<suite>.jsonl`. The local_dev loader stamps every row
+  there `split = "local_dev"` whatever the file says; nothing hashes, syncs or exports them,
+  and cli.py runs them inside `llm.client.local_only()`, so their text reaches no hosted
+  endpoint. A public file carrying a `local_dev` row is refused.
+`WA_DATA` overrides the data root (tests, another machine).
 """
 
 from __future__ import annotations
@@ -9,6 +18,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -19,6 +29,10 @@ import pyarrow.parquet as pq
 
 from writing_assistant.episode.model import Episode
 
+DATA = Path(os.environ.get("WA_DATA", "/data/jimyao/research/writing-assistant"))
+TASKS_DIR = DATA / "tasks"
+LOCAL_DEV_DIR = DATA / "local_dev"
+LOCAL_DEV = "local_dev"
 SPLITS = ("train", "dev", "test")
 # split_of buckets: sha256(source_group) mod 100 -> train [0, 70), dev [70, 85), test [85, 100).
 # Changing these moves rows between splits; the held-out test split must never move.
@@ -71,19 +85,43 @@ def matches(row: dict[str, Any], where: str | None) -> bool:
     return True
 
 
+def task_rows(suite: str, split: str, where: str | None = None) -> list[Task]:
+    """A suite's task rows for one split: `local_dev` from the local_dev loader, the rest from
+    the public rows. No file means no rows."""
+    if split == LOCAL_DEV:
+        return load_local_dev(suite, where)
+    path = TASKS_DIR / f"{suite}.jsonl"
+    return load_rows(path, suite=suite, split=split, where=where) if path.exists() else []
+
+
+def load_local_dev(suite: str, where: str | None = None, root: Path | None = None) -> list[Task]:
+    """Rows under `local_dev/tasks/<suite>.jsonl`, every one stamped `split = "local_dev"`."""
+    path = (root or LOCAL_DEV_DIR) / "tasks" / f"{suite}.jsonl"
+    if not path.exists():
+        return []
+    rows = [r | {"split": LOCAL_DEV} for r in _jsonl(path)]
+    return _tasks(rows, path, suite, LOCAL_DEV, where, allowed=(LOCAL_DEV,))
+
+
 def load_rows(path: str | Path, suite: str | None = None, split: str | None = None, where: str | None = None) -> list[Task]:
-    """Task rows from a JSONL or Parquet file, filtered by suite, split and `where`."""
+    """Public task rows from a JSONL or Parquet file, filtered by suite, split and `where`.
+    A `local_dev` row here is refused: those come only from the local_dev loader."""
     path = Path(path)
     if path.suffix == ".parquet":
         # Parquet fills keys a row lacks with null (columns and struct fields are unions).
         raw = [_drop_nulls(r) for r in pq.read_table(path).to_pylist()]
     else:
         raw = _jsonl(path)
+    return _tasks(raw, path, suite, split, where, allowed=SPLITS)
+
+
+def _tasks(raw: list[dict], path: Path, suite: str | None, split: str | None, where: str | None,
+           allowed: tuple[str, ...]) -> list[Task]:
     names = {f.name for f in fields(Task)}
     tasks = []
     for n, row in enumerate(raw, 1):
         missing = {"task_id", "suite", "kind", "split"} - set(row)
-        if missing or row["split"] not in (*SPLITS, "local_dev"):
+        if missing or row["split"] not in allowed:
             raise ValueError(f"{path}:{n}: bad task row (missing {sorted(missing)}, split {row.get('split')!r})")
         if (suite is None or row["suite"] == suite) and (split is None or row["split"] == split) and matches(row, where):
             tasks.append(Task(**{k: v for k, v in row.items() if k in names}))

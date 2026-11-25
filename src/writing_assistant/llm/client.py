@@ -11,13 +11,25 @@ A `CallRecord` comes back with `actor=""` and `turn_idx=None`; a driver fills th
 Server responses are untrusted: missing `usage` gives `{}`, tool-call arguments may arrive as
 JSON text or an object, and arguments that are not valid JSON are kept as the raw string (the
 tool's validator then refuses them).
+
+Thinking never reaches `CallRecord.response`: a host's `reasoning_content` and an inline
+`<think>...</think>` block both go to `CallRecord.reasoning`, so scorers, judges and the next
+actor see only the reply, and the saved call still has the thinking.
+
+`local_only()` is the one guard on `local_dev` text: inside it, every chat and embed call to
+an endpoint without `local = true` raises `LocalOnly` before anything is sent.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import json
+import logging
 import os
 import tomllib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -26,21 +38,47 @@ import numpy as np
 
 from writing_assistant.episode import CallRecord
 
+log = logging.getLogger(__name__)
+
 ANTHROPIC_URL = "https://api.anthropic.com/v1"
 ANTHROPIC_VERSION = "2023-06-01"
 EMBED_BATCH = 64
 TIMEOUT = 600.0  # seconds; local models on small GPUs are slow; per endpoint: `timeout = ...`
+CONCURRENCY = 16  # requests in flight per endpoint; per endpoint: `concurrency = ...`
+RETRIES = 6  # attempts on 429, 5xx and transport errors, backing off 2, 4, 8, ... s (or Retry-After)
+# Each adapter's stop words mapped to one vocabulary; anything else is kept as the host said it.
+_FINISH = {
+    "stop": "stop", "end_turn": "stop", "stop_sequence": "stop", "eos": "stop",
+    "length": "length", "max_tokens": "length", "model_length": "length",
+    "tool_calls": "tool_calls", "tool_use": "tool_calls", "function_call": "tool_calls",
+    "content_filter": "refusal", "refusal": "refusal",
+}
+
+_LOCAL_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar("local_only", default=False)
+
+
+class LocalOnly(RuntimeError):
+    """A hosted endpoint was asked to receive `local_dev` text."""
+
+
+@contextmanager
+def local_only(active: bool = True) -> Iterator[None]:
+    """Within this block (and the asyncio tasks it starts), only `local = true` endpoints
+    may be called. cli.py enters it around everything that handles a `local_dev` row."""
+    token = _LOCAL_ONLY.set(active or _LOCAL_ONLY.get())
+    try:
+        yield
+    finally:
+        _LOCAL_ONLY.reset(token)
 
 
 class LLMClient:
     def __init__(self, models_toml: str | Path) -> None:
-        self.endpoints: dict[str, dict[str, Any]] = tomllib.loads(Path(models_toml).read_text())["endpoints"]
+        # models.toml is parsed here once; judges_from and cli.py read `config`.
+        self.config: dict[str, Any] = tomllib.loads(Path(models_toml).read_text())
+        self.endpoints: dict[str, dict[str, Any]] = self.config["endpoints"]
         self._http: httpx.AsyncClient | None = None
-
-    def is_local(self, endpoint: str) -> bool:
-        """Whether the endpoint may receive `local_dev` text (`local = true`). The check
-        belongs to whoever sends that text."""
-        return bool(self._endpoint(endpoint).get("local", False))
+        self._slots: dict[str, asyncio.Semaphore] = {}
 
     async def chat(
         self,
@@ -52,32 +90,45 @@ class LLMClient:
         max_tokens: int,
         seed: int | None = None,
     ) -> CallRecord:
-        ep = self._endpoint(endpoint)
+        ep = self._guard(endpoint)
         if ep["kind"] == "openai":
             adapter = _openai_compat
         elif ep["kind"] == "anthropic":
             adapter = _anthropic
         else:
             raise ValueError(f"endpoint {endpoint!r} is kind {ep['kind']!r}, not a chat endpoint")
-        rec = await adapter(self._client(), ep, self._headers(ep), messages, tools, temperature, max_tokens, seed)
+        async with self._slot(endpoint):
+            rec = await adapter(self._client(), ep, self._headers(ep), messages, tools, temperature, max_tokens, seed)
         rec.endpoint = endpoint
         rec.messages = list(messages)
         rec.tools_advertised = [t["name"] for t in tools or []]
         return rec
 
     async def embed(self, texts: list[str], *, endpoint: str) -> np.ndarray:
-        ep = self._endpoint(endpoint)
+        ep = self._guard(endpoint)
         if ep["kind"] != "openai-embeddings":
             raise ValueError(f"endpoint {endpoint!r} is kind {ep['kind']!r}, not openai-embeddings")
         rows: list[list[float]] = []
         for i in range(0, len(texts), EMBED_BATCH):
-            rows += await _openai_embeddings(self._client(), ep, self._headers(ep), texts[i : i + EMBED_BATCH])
+            async with self._slot(endpoint):
+                rows += await _openai_embeddings(self._client(), ep, self._headers(ep), texts[i : i + EMBED_BATCH])
         return np.asarray(rows, dtype=np.float32).reshape(len(texts), -1) if rows else np.zeros((0, 0), np.float32)
 
     async def aclose(self) -> None:
         if self._http is not None:
             await self._http.aclose()
             self._http = None
+
+    def _guard(self, name: str) -> dict[str, Any]:
+        ep = self._endpoint(name)
+        if _LOCAL_ONLY.get() and not ep.get("local", False):
+            raise LocalOnly(f"endpoint {name!r} is hosted (no `local = true`) and this call carries local_dev text")
+        return ep
+
+    def _slot(self, name: str) -> asyncio.Semaphore:
+        if name not in self._slots:
+            self._slots[name] = asyncio.Semaphore(self.endpoints[name].get("concurrency", CONCURRENCY))
+        return self._slots[name]
 
     def _endpoint(self, name: str) -> dict[str, Any]:
         if name not in self.endpoints:
@@ -132,9 +183,50 @@ def _parse_args(raw: Any) -> Any:
 
 
 async def _post(http: httpx.AsyncClient, url: str, headers: dict, body: dict, timeout: float) -> dict[str, Any]:
-    resp = await http.post(url, json=body, headers=headers, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    """POST with a slow retry on 429, 5xx and transport errors; any other status raises at
+    once. Errors name the URL and status only, never the headers (they carry the key)."""
+    for attempt in range(1, RETRIES + 1):
+        wait = 2.0**attempt
+        try:
+            resp = await http.post(url, json=body, headers=headers, timeout=timeout)
+        except httpx.TransportError as e:
+            if attempt == RETRIES:
+                raise
+            log.warning("%s: %s; retry %d in %.0fs", url, type(e).__name__, attempt, wait)
+            await asyncio.sleep(wait)
+            continue
+        if resp.status_code == 429 or resp.status_code >= 500:
+            if attempt == RETRIES:
+                resp.raise_for_status()
+            after = resp.headers.get("retry-after", "")
+            wait = float(after) if after.replace(".", "", 1).isdigit() else wait
+            log.warning("%s: HTTP %d; retry %d in %.0fs", url, resp.status_code, attempt, wait)
+            await asyncio.sleep(wait)
+            continue
+        if resp.is_error:
+            raise httpx.HTTPStatusError(f"HTTP {resp.status_code} from {url}: {resp.text[:300]}", request=resp.request, response=resp)
+        return resp.json()
+    raise AssertionError("unreachable")
+
+
+def split_reasoning(content: str, reasoning: str = "") -> tuple[str, str]:
+    """(reply, reasoning). Text after the last `</think>` is the reply (some servers drop the
+    opening tag); a `<think>` never closed means the reply was cut off while thinking, so
+    the whole text is reasoning and the reply is empty."""
+    if "</think>" in content:
+        head, content = content.rsplit("</think>", 1)
+        reasoning = "\n\n".join(x for x in (reasoning, head.replace("<think>", "", 1).strip()) if x)
+    elif content.lstrip().startswith("<think>"):
+        reasoning = "\n\n".join(x for x in (reasoning, content.lstrip()[len("<think>"):].strip()) if x)
+        content = ""
+    return content.strip(), reasoning
+
+
+def _usage(usage: dict[str, Any], names: tuple[tuple[str, str], ...]) -> dict[str, float]:
+    out = {k: usage[src] for k, src in names if isinstance(usage.get(src), int | float)}
+    if isinstance(usage.get("estimated_cost"), int | float):  # DeepInfra reports the call's price
+        out["cost_usd"] = usage["estimated_cost"]
+    return out
 
 
 async def _openai_compat(http, ep, headers, messages, tools, temperature, max_tokens, seed) -> CallRecord:
@@ -148,6 +240,7 @@ async def _openai_compat(http, ep, headers, messages, tools, temperature, max_to
         body["seed"] = seed
     if tools:
         body["tools"] = [{"type": "function", "function": t} for t in tools]
+    body |= ep.get("params", {})  # per-endpoint extras, e.g. chat_template_kwargs
     data = await _post(http, ep["base_url"].rstrip("/") + "/chat/completions", headers, body, ep.get("timeout", TIMEOUT))
     choices = data.get("choices") or []
     if not choices or not isinstance(choices[0].get("message"), dict):
@@ -161,11 +254,14 @@ async def _openai_compat(http, ep, headers, messages, tools, temperature, max_to
         }
         for i, c in enumerate(msg.get("tool_calls") or [])
     ]
-    usage = data.get("usage") or {}
+    reply, reasoning = split_reasoning(msg.get("content") or "", msg.get("reasoning_content") or msg.get("reasoning") or "")
+    finish = choices[0].get("finish_reason") or ""
     return CallRecord(
-        response=msg.get("content") or "",
+        response=reply,
         tool_calls=calls,
-        usage={k: usage[src] for k, src in (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens")) if usage.get(src) is not None},
+        usage=_usage(data.get("usage") or {}, (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens"))),
+        finish_reason=_FINISH.get(finish, finish),
+        reasoning=reasoning,
     )
 
 
@@ -214,13 +310,15 @@ async def _anthropic(http, ep, headers, messages, tools, temperature, max_tokens
     data = await _post(http, url, headers | {"anthropic-version": ANTHROPIC_VERSION}, body, ep.get("timeout", TIMEOUT))
     if not isinstance(data.get("content"), list):
         raise ValueError(f"{ep['model']}: response has no content: {str(data)[:300]}")
-    usage = data.get("usage") or {}
+    finish = data.get("stop_reason") or ""
     return CallRecord(
         response="".join(b.get("text", "") for b in data["content"] if b.get("type") == "text"),
+        reasoning="".join(b.get("thinking", "") for b in data["content"] if b.get("type") == "thinking"),
+        finish_reason=_FINISH.get(finish, finish),
         tool_calls=[
             {"id": b["id"], "name": b["name"], "arguments": b.get("input", {})}
             for b in data["content"]
             if b.get("type") == "tool_use"
         ],
-        usage={k: usage[k] for k in ("input_tokens", "output_tokens") if usage.get(k) is not None},
+        usage=_usage(data.get("usage") or {}, (("input_tokens", "input_tokens"), ("output_tokens", "output_tokens"))),
     )

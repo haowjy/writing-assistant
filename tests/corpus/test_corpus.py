@@ -181,12 +181,14 @@ async def test_overlap_separates_context_from_memorization(tmp_path):
 
 
 async def test_export_never_writes_restricted_text(tmp_path):
-    corpus = Corpus(tmp_path / "cache")
+    corpus = Corpus(tmp_path / "cache", local_dev_dir=tmp_path / "local")
     texts = {n: book(n, 2) for n in (1, 2, 3, 4)}
     add(corpus, 1, "A", texts[1])
     add(corpus, 2, "B", texts[2], licence="copyrighted")
     add(corpus, 3, "C", texts[3], licence=None)
-    add(corpus, 4, "D", texts[4], split="local_dev")
+    add(Corpus(tmp_path / "local"), 4, "D", texts[4])  # under local_dev/: stamped local_dev on load
+    corpus = Corpus(tmp_path / "cache", local_dev_dir=tmp_path / "local")
+    assert corpus.get("gutenberg:4").split == "local_dev" and corpus.select(include_local_dev=True)[-1].work_id == "gutenberg:4"
     out = export_public(corpus, tmp_path / "out").read_text()
     rows = {r["work_id"]: r for r in map(json.loads, out.splitlines())}
     assert sorted(rows) == ["gutenberg:1", "gutenberg:2", "gutenberg:3"]

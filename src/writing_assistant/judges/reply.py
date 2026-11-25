@@ -35,12 +35,17 @@ class Prompt:
         ]
 
 
-class Unscored(Exception):
-    """The judge could not score this item. `reason` is "refusal" (the model declined) or
-    "unparseable" (no answer in the expected form, including an empty or truncated reply);
-    `records` are the calls that produced it, for storing beside the unscored item."""
+Reason = Literal["refusal", "unparseable", "truncated", "unavailable"]
 
-    def __init__(self, reason: Literal["refusal", "unparseable"], records: list[CallRecord]) -> None:
+
+class Unscored(Exception):
+    """The judge could not score this item. `reason` is "refusal" (the model or its host
+    declined), "unparseable" (no answer in the expected form, including an empty reply),
+    "truncated" (cut off at max_tokens before answering) or "unavailable" (models.toml names
+    no endpoint for this use); `records` are the calls that produced it, for storing beside
+    the unscored item."""
+
+    def __init__(self, reason: Reason, records: list[CallRecord]) -> None:
         self.reason = reason
         self.records = records
         tail = " | ".join(r.response[:160].replace("\n", " ") for r in records)
@@ -57,15 +62,8 @@ _MARKUP = " \t*_#>`.,:;!?\"'“”‘’()[]"
 
 
 def answer_text(rec: CallRecord) -> str:
-    """The reply with thinking removed. Text after the last `</think>` is the answer (some
-    servers drop the opening tag); a `<think>` never closed means the reply was cut off
-    while thinking, so there is no answer."""
-    text = rec.response
-    if "</think>" in text:
-        text = text.rsplit("</think>", 1)[1]
-    elif "<think>" in text:
-        return ""
-    return text.strip()
+    """The reply. The client has already moved any thinking to `rec.reasoning`."""
+    return rec.response.strip()
 
 
 def pick[T](rec: CallRecord, options: dict[str, T]) -> T:
@@ -81,8 +79,13 @@ def pick[T](rec: CallRecord, options: dict[str, T]) -> T:
     lines = [ln.strip(_MARKUP).lower() for ln in text.splitlines() if ln.strip(_MARKUP)]
     if lines and lines[-1] in options:
         return options[lines[-1]]
-    raise Unscored(refusal_or_garbage(text), [rec])
+    raise Unscored(why_unanswered(rec), [rec])
 
 
-def refusal_or_garbage(text: str) -> Literal["refusal", "unparseable"]:
-    return "refusal" if _REFUSAL.search(text) else "unparseable"
+def why_unanswered(rec: CallRecord) -> Reason:
+    """Why a reply holds no usable answer: the host's stop reason first, then the text."""
+    if rec.finish_reason == "refusal":
+        return "refusal"
+    if rec.finish_reason == "length":
+        return "truncated"
+    return "refusal" if _REFUSAL.search(rec.response) else "unparseable"

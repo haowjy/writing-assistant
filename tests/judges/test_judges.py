@@ -14,7 +14,7 @@ MODELS = Path(__file__).resolve().parents[2] / "models.toml"
 
 
 def judges(fake_llm, replies):
-    return judges_from(MODELS, fake_llm(replies), "eval")
+    return judges_from(fake_llm(replies), "eval")
 
 
 @pytest.mark.parametrize(
@@ -37,7 +37,8 @@ async def test_fact_parses(fake_llm, reply, want):
     [
         ("I'm sorry, but I can't help with sexually explicit content.", "refusal"),
         ("The evidence is ambiguous on this point.", "unparseable"),
-        ("<think>Let me consider whether the key", "unparseable"),  # cut off while thinking
+        ({"text": "<think>Let me consider whether the key", "finish": "length"}, "truncated"),  # cut off while thinking
+        ({"text": "", "finish": "refusal"}, "refusal"),  # the host's content filter
         ("", "unparseable"),
     ],
 )
@@ -45,7 +46,7 @@ async def test_fact_unscored(fake_llm, reply, reason):
     j = judges(fake_llm, [reply])
     with pytest.raises(Unscored) as e:
         await j.fact("q", "evidence")
-    assert e.value.reason == reason and e.value.records[0].response == reply
+    assert e.value.reason == reason and len(e.value.records) == 1  # the call is kept beside the unscored item
 
 
 async def test_pairwise_averages_both_orders(fake_llm):
@@ -54,13 +55,13 @@ async def test_pairwise_averages_both_orders(fake_llm):
     assert await j.craft_pair("a", "b", "reference") == 1.0  # consistent: a both times
     assert await j.author_verify("a", "b", ["p1", "p2"]) == 0.5  # position bias cancels
     assert await j.edit_pair("edited", "original", "objection") == 0.75  # tie, then a
-    assert j.author_verify.stamp == {"use": "author_verify", "endpoint": "openrouter-judge",
-                                     "model": "<cross-family judge model>", "prompt": "author-v1"}
+    assert j.author_verify.stamp == {"use": "author_verify", "endpoint": "hy4",
+                                     "model": "tencent/Hy4", "prompt": "author-v1"}
 
 
 async def test_pairwise_one_order_failing_is_unscored(fake_llm):
     llm = fake_llm(["ANSWER: A", "I cannot compare these passages."])
-    j = judges_from(MODELS, llm, "eval")
+    j = judges_from(llm, "eval")
     with pytest.raises(Unscored) as e:
         await j.secret_2afc("transcript", "secret", "decoy")
     assert e.value.reason == "refusal" and len(e.value.records) == 2
@@ -93,7 +94,7 @@ async def test_outline_and_forecast(fake_llm):
 
 async def test_embed_and_reference_index(fake_llm, tmp_path):
     llm = fake_llm(vectors={"x": [3.0, 4.0], "y": [0.0, 2.0], "z": [0.0, 0.0]})
-    j = judges_from(MODELS, llm, "eval")
+    j = judges_from(llm, "eval")
     v = await j.embed_semantic(["x", "y"])
     assert np.allclose(np.linalg.norm(v, axis=1), 1.0)
     idx = ReferenceIndex(ids=["x", "y"], vectors=v, model="nomic-embed-text-v2")
@@ -102,7 +103,10 @@ async def test_embed_and_reference_index(fake_llm, tmp_path):
     assert back.ids == ["x", "y"] and back.model == "nomic-embed-text-v2"
     assert np.allclose(back.nearest_distance(np.array([[0.0, 1.0], [1.0, 0.0]])), [0.0, 0.4])
     with pytest.raises(ValueError):
-        await j.embed_style(["z"])
+        await j.embed_semantic(["z"])
+    with pytest.raises(Unscored) as e:  # models.toml names no style-embedding endpoint
+        await j.embed_style(["x"])
+    assert e.value.reason == "unavailable"
 
 
 def test_readability_on_fixed_text():

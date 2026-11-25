@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from writing_assistant.judges.reply import MAX_TOKENS, Prompt, Unscored, answer_text, refusal_or_garbage
+from writing_assistant.judges.reply import MAX_TOKENS, Prompt, Unscored, answer_text, why_unanswered
 
 if TYPE_CHECKING:
     from writing_assistant.llm.client import LLMClient
@@ -31,5 +31,5 @@ async def forecasts(client: LLMClient, endpoint: str, prefix: str, n: int) -> li
     items = [m.strip() for m in re.findall(r"^\s*\d+\s*[.)]\s*(.+?)\s*$", reply, re.MULTILINE)]
     items = [i for i in items if i]
     if len(items) < n:
-        raise Unscored(refusal_or_garbage(reply), [rec])
+        raise Unscored(why_unanswered(rec), [rec])
     return items[:n]

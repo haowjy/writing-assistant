@@ -5,6 +5,10 @@ On disk, under one cache directory (never committed, never synced whole):
     works.jsonl             one Work per line, append-only; the last line for a work_id wins
     text/ab/abcdef...       the bytes as fetched, named by their sha256 (`content_hash`)
 
+Personal works live apart, in the same layout under `local_dev/corpus/` (store.LOCAL_DEV_DIR):
+the loader stamps each of them `split = "local_dev"` whatever its row says, and their text is
+read from there. `select` leaves them out unless asked; export never writes them.
+
 A collector writes the text first, then appends the row, so an interrupted run never leaves
 a row without its text; a re-run appends a row only when something in it changed.
 """
@@ -21,13 +25,13 @@ from typing import TYPE_CHECKING, Any
 
 from writing_assistant.corpus import overlap as _overlap
 from writing_assistant.corpus.text import decode, gutenberg_body, split_chapters
-from writing_assistant.episode.store import matches
+from writing_assistant.episode.store import DATA, LOCAL_DEV, LOCAL_DEV_DIR, matches
 
 if TYPE_CHECKING:
     from writing_assistant.episode import Episode
     from writing_assistant.judges import Judges
 
-CACHE_DIR = Path("/data/jimyao/research/writing-assistant/corpus-cache")
+CACHE_DIR = DATA / "corpus-cache"
 INDEX_FILE = "works.jsonl"
 # Licences whose text may leave this machine. Anything else, a missing licence included,
 # leaves as url + content_hash only.
@@ -65,8 +69,10 @@ class Corpus:
     """The works index and text cache under `cache_dir`. Built once in cli.py and carried in
     `Services.corpus`; `judges` is for build-time callers (authors.py, kb.py)."""
 
-    def __init__(self, cache_dir: Path = CACHE_DIR, judges: Judges | None = None) -> None:
+    def __init__(self, cache_dir: Path = CACHE_DIR, judges: Judges | None = None,
+                 local_dev_dir: Path | None = None) -> None:
         self.cache_dir = Path(cache_dir)
+        self.local_dev_dir = Path(local_dev_dir) if local_dev_dir else LOCAL_DEV_DIR / "corpus"
         self.judges = judges
         self._works: dict[str, Work] | None = None
         self._texts: dict[str, str] = {}
@@ -77,7 +83,11 @@ class Corpus:
     @property
     def works(self) -> dict[str, Work]:
         if self._works is None:
-            self._works = _with_familiarity(_load_index(self.cache_dir / INDEX_FILE))
+            local = {i: replace(w, split=LOCAL_DEV) for i, w in _load_index(self.local_dev_dir / INDEX_FILE).items()}
+            public = _load_index(self.cache_dir / INDEX_FILE)
+            if clash := local.keys() & public.keys():
+                raise ValueError(f"work ids in both the public and the local_dev corpus: {sorted(clash)[:5]}")
+            self._works = _with_familiarity(public | local)
         return self._works
 
     def get(self, work_id: str) -> Work:
@@ -129,7 +139,8 @@ class Corpus:
         """The work's text from the cache: decoded, and for Gutenberg the book between the
         licence header and footer."""
         if work.content_hash not in self._texts:
-            raw = self._text_path(work.content_hash).read_bytes()
+            root = self.local_dev_dir if work.split == LOCAL_DEV else self.cache_dir
+            raw = (root / "text" / work.content_hash[:2] / work.content_hash).read_bytes()
             text = decode(raw)
             self._texts[work.content_hash] = gutenberg_body(text) if work.source == "gutenberg" else text
         return self._texts[work.content_hash]

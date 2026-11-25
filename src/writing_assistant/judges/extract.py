@@ -6,7 +6,7 @@ import json
 import re
 from typing import TYPE_CHECKING
 
-from writing_assistant.judges.reply import MAX_TOKENS, TEMPERATURE, Prompt, Unscored, answer_text, pick, refusal_or_garbage
+from writing_assistant.judges.reply import MAX_TOKENS, TEMPERATURE, Prompt, Unscored, answer_text, pick, why_unanswered
 
 if TYPE_CHECKING:
     from writing_assistant.llm.client import LLMClient
@@ -45,11 +45,11 @@ OUTLINE = Prompt(
 
 
 async def yes_no(client: LLMClient, endpoint: str, question: str, evidence: str) -> bool:
+    """Raises `Unscored` on a refusal or a reply with no YES/NO answer."""
     rec = await client.chat(
         FACT.messages(question=question, evidence=evidence),
         endpoint=endpoint, temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
     )
-    """Raises `Unscored` on a refusal or a reply with no YES/NO answer."""
     return pick(rec, {"yes": True, "no": False})
 
 
@@ -73,5 +73,5 @@ async def outline(client: LLMClient, endpoint: str, text: str) -> list[dict]:
         for it in items
     )
     if not ok:
-        raise Unscored(refusal_or_garbage(reply), [rec])
+        raise Unscored(why_unanswered(rec), [rec])
     return [{"role": it["role"].strip(), "paraphrase": it["paraphrase"].strip()} for it in items]

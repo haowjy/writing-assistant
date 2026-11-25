@@ -1,37 +1,43 @@
 """Suite 1a scorers: pure over a frozen episode, reaching models only through `services`.
 
 A metric that does not apply to a task is absent, never 0.0. Whether a text uses a fact is
-asked of the `fact` judge with the text in view; a judge reply that is not a bool counts as
-no answer: the item is left out, `judge_unanswered` counts it, and a rate with no answered
+asked of the `fact` judge with the text in view; an item the judge leaves unscored
+(`judges.Unscored`) is left out and counted per metric by `Tally`, and a rate with no judged
 item is absent. A `net_*` metric needs the twin's value too and is absent without it.
 """
 
 from __future__ import annotations
 
+import asyncio
+
 from writing_assistant.episode import Episode
+from writing_assistant.suites import Tally, mean
 from writing_assistant.suites.world import srd
 from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, WRITER, paragraphs, render_log
 
 CONTRADICTION_Q = "Does the narration state anything that contradicts the recorded world events?"
 
+# metric -> judge use (Suite.judged_by): everything the fact judge answers.
+JUDGED_BY = dict.fromkeys(
+    ["residue_rate", "post_pivot_residue", "pov_leak", "net_pov_leak", "permitted_fact_recall",
+     "canon_snapback", "bent_rule_compliance", "canon_rule_compliance", "bent_rule_intrusion",
+     "net_canon_snapback", "contradictions_per_1k"],
+    "fact",
+)
+
 
 class _Judged:
-    """Rates from the `fact` judge, counting the items it left unanswered."""
+    """Rates from the `fact` judge; unscored items are counted in `tally` under the metric."""
 
     def __init__(self, services) -> None:
         self.fact = services.judges.fact
-        self.unanswered = 0
+        self.tally = Tally()
 
-    async def ask(self, question: str, evidence: str) -> bool | None:
-        answer = await self.fact(question, evidence)
-        if isinstance(answer, bool):
-            return answer
-        self.unanswered += 1
-        return None
+    async def ask(self, metric: str, question: str, evidence: str) -> bool | None:
+        return await self.tally.ask(metric, self.fact(question, evidence))
 
-    async def rate(self, questions: list[str], text: str) -> float | None:
-        answers = [a for a in [await self.ask(q, text) for q in questions] if a is not None]
-        return sum(answers) / len(answers) if answers else None
+    async def rate(self, metric: str, questions: list[str], text: str) -> float | None:
+        return mean(await asyncio.gather(*(self.ask(metric, q, text) for q in questions)))
 
 
 def _put(out: dict[str, float], name: str, value: float | None) -> None:
@@ -62,7 +68,7 @@ async def _pivot(ep: Episode, judge: _Judged) -> tuple[dict, float | None, str]:
     s = ep.state["pivot"]
     scene = ep.files.get(s["scene_path"], "")
     out: dict[str, float] = {}
-    residue = await judge.rate(s["residue_probes"], scene)
+    residue = await judge.rate("residue_rate", s["residue_probes"], scene)
     _put(out, "residue_rate", residue)
     return out, residue, scene
 
@@ -71,19 +77,20 @@ async def _pov(ep: Episode, judge: _Judged) -> tuple[dict, float | None, str]:
     s = ep.state["pov"]
     chapter = last_reply(ep, WRITER)
     out: dict[str, float] = {}
-    leak = await judge.rate(s["hidden_probes"], chapter)
+    leak = await judge.rate("pov_leak", s["hidden_probes"], chapter)
     _put(out, "pov_leak", leak)
-    _put(out, "permitted_fact_recall", await judge.rate(s["permitted_probes"], chapter))
+    _put(out, "permitted_fact_recall", await judge.rate("permitted_fact_recall", s["permitted_probes"], chapter))
     return out, leak, chapter
 
 
 async def _rule_bend(ep: Episode, judge: _Judged) -> tuple[dict, float | None, str]:
     s = ep.state["rule_bend"]
     chapter = ep.files.get(s["out_path"], "")
-    canon = await judge.rate(s["canon_probes"], chapter)
-    bent = await judge.rate(s["bent_probes"], chapter)
+    bent_arm = ep.condition == "bent"
+    canon = await judge.rate("canon_snapback" if bent_arm else "canon_rule_compliance", s["canon_probes"], chapter)
+    bent = await judge.rate("bent_rule_compliance" if bent_arm else "bent_rule_intrusion", s["bent_probes"], chapter)
     out: dict[str, float] = {}
-    if ep.condition == "bent":
+    if bent_arm:
         _put(out, "canon_snapback", canon)
         _put(out, "bent_rule_compliance", bent)
         wrong = canon
@@ -115,7 +122,7 @@ async def _dm(ep: Episode, judge: _Judged) -> tuple[dict, None, str]:
         elif ev.kind == "say" and ev.actor == DM and ev.data["text"].strip():
             narration = ev.data["text"]
             evidence = f"Recorded world events:\n{render_log(record, 'the party') or '(none)'}\n\nNarration:\n{narration}"
-            answer = await judge.ask(CONTRADICTION_Q, evidence)
+            answer = await judge.ask("contradictions_per_1k", CONTRADICTION_Q, evidence)
             if answer is not None:
                 contradictions += answer
                 words += len(narration.split())
@@ -193,7 +200,7 @@ async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str,
         return _collab(ep)
     judge = _Judged(services)
     out, own, text = await SCORERS[kind](ep, judge)
-    out["judge_unanswered"] = float(judge.unanswered)
+    judge.tally.into(out)
     _prose(out, text, ep, services)
     if twin is not None and _finished(twin) and kind in NET:
         _, base, _ = await SCORERS[kind](twin, _Judged(services))

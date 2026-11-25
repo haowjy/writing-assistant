@@ -1,7 +1,7 @@
 """Suite 1a tasks: `setup` builds the episodes a task row describes, `play` runs them.
 
-Every model-driven actor is mapped to the endpoint placeholder `SUBJECT`; cli.py replaces
-it with the endpoint under test. Files a task mounts are written straight into `ep.files`
+Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`; cli.py
+replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
 at rev 1 with no event, which is how the record says the benchmark wrote them.
 
 Twins are children of the episode they are paired with (`parent_id` = that episode's id,
@@ -46,9 +46,9 @@ from typing import Any
 
 from writing_assistant.episode import Episode, Event, norm_path
 from writing_assistant.episode.tools import dispatch_tool
+from writing_assistant.suites import SUBJECT
 from writing_assistant.suites.world import author, srd
 
-SUBJECT = "subject"
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
 WORKSPACE = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_list"]
 TWINS = {"pivot": "clean_b", "full_view": "twin_swap", "pov_view": "twin_swap", "bent": "twin_swap"}

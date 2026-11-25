@@ -1,69 +1,97 @@
 # The only configuration file. Code names an endpoint; this file maps the name to a kind,
 # URL, model and key, so switching a host, provider or model touches no Python.
 # kind: "openai" (chat completions), "openai-embeddings", "anthropic".
+# Optional per endpoint: local = true (may receive local_dev text; absent means hosted),
+# cutoff (training cutoff, for post-cutoff familiarity at report time), timeout (s),
+# concurrency (requests in flight, default 16), params (extra request-body fields).
+# Keys come from the environment; `wa-bench` loads `.env` from the working directory.
 
-[endpoints.qwen3-8b]
+# -- subjects (DeepInfra; DECISIONS #11) ---------------------------------------------------
+
+[endpoints."qwen3.5-9b"]
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "Qwen/Qwen3.5-9B"
+api_key_env = "DEEPINFRA_API_KEY"
+
+[endpoints.gemma-4-26b]
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "google/gemma-4-26B-A4B-it"
+api_key_env = "DEEPINFRA_API_KEY"
+
+[endpoints.inkling-2-mini]
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "thinkingmachines/Inkling-2-Mini"
+api_key_env = "DEEPINFRA_API_KEY"
+
+# -- judges (DeepInfra; open weights are the primary judges, DECISIONS #11) ----------------
+
+[endpoints.deepseek-v4-flash]
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "deepseek-ai/DeepSeek-V4-Flash"
+api_key_env = "DEEPINFRA_API_KEY"
+
+[endpoints.hy4]
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "tencent/Hy4"
+api_key_env = "DEEPINFRA_API_KEY"
+
+[endpoints.deepseek-v4-pro]
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "deepseek-ai/DeepSeek-V4-Pro"
+api_key_env = "DEEPINFRA_API_KEY"
+
+[endpoints.qwen3-embed]
+kind = "openai-embeddings"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "Qwen/Qwen3-Embedding-0.6B"
+api_key_env = "DEEPINFRA_API_KEY"
+
+# -- local example: the only kind of endpoint that may receive local_dev text --------------
+
+[endpoints.qwen3-8b-local]
 kind = "openai"
 base_url = "http://127.0.0.1:8000/v1"
 model = "Qwen/Qwen3-8B"
 api_key_env = ""
-local = true            # may receive local_dev text; absent means hosted
-cutoff = "2025-04"      # training cutoff, for post-cutoff familiarity at report time
+local = true
+cutoff = "2025-04"
 
-[endpoints.mini-9b]
-kind = "openai"
-base_url = "http://j-mini48:8080/v1"
-model = "gemma-3-9b-it"
-api_key_env = ""
-
-[endpoints.style-embed]
-kind = "openai-embeddings"
-base_url = "http://j-mini48:8081/v1"
-model = "StyleDistance/styledistance"
-api_key_env = ""
-
-[endpoints.semantic-embed]
-kind = "openai-embeddings"
-base_url = "http://j-mini48:8081/v1"
-model = "nomic-embed-text-v2"
-api_key_env = ""
-
-[endpoints.claude-opus]
-kind = "anthropic"
-model = "claude-opus-4-5"
-api_key_env = "ANTHROPIC_API_KEY"
-
-[endpoints.openrouter-judge]
-kind = "openai"
-base_url = "https://openrouter.ai/api/v1"
-model = "<cross-family judge model>"
-api_key_env = "OPENROUTER_API_KEY"
-
-# Default placement: `eval` points at API endpoints (OpenRouter / Anthropic) where the KB's
-# evaluation rules allow a model judge, because it runs once per episode; `train` points at
-# local endpoints (j-mini48, the 3090, a Colab-served vLLM over a tunnel) because a reward is
-# called thousands of times per step. Both profiles pass the same human-label gates.
+# Every value is an endpoint name. A use with no entry (embed_style: no style-embedding
+# model is served anywhere yet) is unavailable: its judge raises Unscored("unavailable"),
+# so whatever needs it reports itself unavailable instead of failing the run.
 [judges.eval]           # final-evaluation profile; never used as a training reward
-fact = "mini-9b"
-outline = "mini-9b"
-craft_pair = "openrouter-judge"
-edit_pair = "openrouter-judge"
-secret_2afc = "mini-9b"
-author_verify = "openrouter-judge"
-embed_semantic = "semantic-embed"
-embed_style = "style-embed"
-forecast = "mini-9b"
+fact = "deepseek-v4-flash"
+outline = "deepseek-v4-flash"
+secret_2afc = "deepseek-v4-flash"
+forecast = "deepseek-v4-flash"
+craft_pair = "hy4"
+edit_pair = "hy4"
+author_verify = "hy4"
+embed_semantic = "qwen3-embed"
 
-[judges.train]          # v2: a different family from judges.eval for craft_pair and author_verify
-fact = "mini-9b"
-outline = "mini-9b"
-craft_pair = "qwen3-8b"
-edit_pair = "qwen3-8b"
-secret_2afc = "mini-9b"
-author_verify = "qwen3-8b"
-embed_semantic = "semantic-embed"
-embed_style = "style-embed"
-forecast = "mini-9b"
+[judges.train]          # a different model from judges.eval for the pairwise judges
+fact = "deepseek-v4-flash"
+outline = "deepseek-v4-flash"
+secret_2afc = "deepseek-v4-flash"
+forecast = "deepseek-v4-flash"
+craft_pair = "deepseek-v4-pro"
+edit_pair = "deepseek-v4-pro"
+author_verify = "deepseek-v4-pro"
+embed_semantic = "qwen3-embed"
+
+# "<profile>.<use>" entries whose human-label gate has passed (benchmark.md, judge stack).
+# `wa-bench report` marks every metric that depends on any other model judge as ungated.
+[gates]
+passed = []
+
+[storage]
+bucket = ""             # private gs:// working copy for `wa-bench sync`; empty = not set up
 
 [search]
 web = ["exa", "tavily", "serper", "searxng"]         # spillover order; drop a name to remove a provider
