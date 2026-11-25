@@ -58,4 +58,6 @@ class Suite(Protocol):
         ...
 
 
-SUITES: dict[str, Suite] = {}
+from writing_assistant.suites.world import suite_1a  # noqa: E402  (last, so suite packages can import Turn and Services from here)
+
+SUITES: dict[str, Suite] = {"1a": suite_1a}
