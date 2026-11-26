@@ -208,6 +208,16 @@ def record(run_dir: Path, services: Services, profile: str | None) -> None:
     _write_json(run_dir / RUN_FILE, info)
 
 
+async def close(services: Services) -> None:
+    """End a command: cancel what is still in flight (a gather whose sibling raised leaves
+    its other calls running), then close the client, so no request goes out after a stop."""
+    stragglers = asyncio.all_tasks() - {asyncio.current_task()}
+    for task in stragglers:
+        task.cancel()
+    await asyncio.gather(*stragglers, return_exceptions=True)
+    await services.llm.aclose()
+
+
 # -- run -----------------------------------------------------------------------------------
 
 async def cmd_run(args: argparse.Namespace) -> int:
@@ -309,7 +319,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
         stopped = group.exceptions[0]
     finally:
         record(run_dir, services, None if args.no_score else args.judges)
-        await services.llm.aclose()
+        await close(services)
     print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
     if stopped:
@@ -335,7 +345,7 @@ async def cmd_score(args: argparse.Namespace) -> int:
     except* AccountError as group:
         sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); no scores were written")
     finally:
-        await services.llm.aclose()
+        await close(services)
     # Merged by ep_id: the rows and judgments of episodes `--where` did not select stay.
     path = run_dir / f"scores-{args.judges}.jsonl"
     _write_jsonl(path, list(({r["ep_id"]: r for r in read_jsonl(path)} | {r["ep_id"]: r for r in rows}).values()))
