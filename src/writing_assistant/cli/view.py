@@ -40,13 +40,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from writing_assistant.cli import ERRORS_FILE, row_meta
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
 from writing_assistant.episode.segments import STORE_FILE, closed_episodes, open_episodes
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, read_jsonl, task_rows
 from writing_assistant.llm.client import LLMClient
+from writing_assistant.run import ERRORS_FILE, row_meta
 from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, play
 
 # The built page; any path that is not an API call or a built file is the page's own route.

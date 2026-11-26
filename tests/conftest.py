@@ -18,11 +18,11 @@ from typing import Any
 import numpy as np
 import pytest
 
-from writing_assistant.cli import Binding, bind_subject
 from writing_assistant.drivers.direct import DirectDriver
 from writing_assistant.episode import CallRecord, Episode
 from writing_assistant.episode.tools import ToolTable
 from writing_assistant.llm.client import split_reasoning
+from writing_assistant.run import Binding
 from writing_assistant.suites import SUBJECT
 from writing_assistant.search.providers import Doc, Hit
 
@@ -129,17 +129,20 @@ class FakeProvider:
 
 
 def _fake_turn(replies: list[Reply] | dict[str, list[Reply]], tools: ToolTable | None = None, **driver_kw: Any):
-    """cli.py's `Binding` over the real `DirectDriver` and a `FakeLLM`, so tool calls run
+    """`run.Binding` over the real `DirectDriver` and a `FakeLLM`, so tool calls run
     through `dispatch_tool` and every call is attested. `replies` follow FakeLLM: one queue,
     or a dict keyed by endpoint (`ep.actors[actor]`); a tool-using turn takes one reply per
-    model call. Actors still on the `SUBJECT` placeholder are bound to the endpoint
-    "subject" here, as cli.py binds them to --endpoint. `turn.llm` exposes the requests."""
+    model call. Actors still on the `SUBJECT` placeholder are mapped to the endpoint
+    "subject-endpoint" at their first delivery. That is later than a run binds them (before
+    the episode is first saved, which is when a store takes its `meta`), so nothing is
+    recorded in `meta` here. `turn.llm` exposes the requests."""
     llm = FakeLLM(replies)
-    binding = Binding(DirectDriver(llm, tools or {}, **driver_kw))
+    driver = DirectDriver(llm, tools or {}, **driver_kw)
+    binding = Binding(driver, driver)
 
     async def turn(ep: Episode, actor: str, message: str) -> None:
         if ep.actors.get(actor) == SUBJECT:
-            bind_subject([ep], "subject-endpoint")
+            ep.actors = {a: "subject-endpoint" if e == SUBJECT else e for a, e in ep.actors.items()}
         await binding(ep, actor, message)
 
     turn.llm = llm

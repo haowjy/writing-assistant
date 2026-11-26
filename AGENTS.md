@@ -21,7 +21,26 @@ stand as written there; the suite protocol changed. A suite no longer has a `pla
 last_reply)` is one step (do what the last reply calls for, name the next delivery) that
 `suites.play()`, the only loop, drives. A driver likewise rebuilds its conversation from the
 episode at `open()`, so an episode saved when a delivery returns continues as the original
-would have (`suites/__init__.py`). Run tests with
+would have (`suites/__init__.py`).
+
+`run/` sits between `suites`/`drivers` and `cli` (it is not in that plan's table). It holds
+the play itself: `Runner.play` takes a group of episodes, saves them before play and each
+time a delivery returns, closes them together and scores them. `cli` parses arguments, opens
+the run directory and chooses what is played; anything else that needs episodes played (a
+generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
+
+- The subject is the actors `setup` left on the `SUBJECT` placeholder. `run.bind_subject`
+  maps them to the endpoint under test and records them in `meta["subject_actors"]`; a
+  rollout rebinds those and no other seat. An episode stored before they were recorded (the
+  `base-*` stores) is read as: the actors on its `meta["endpoint"]`.
+- An actor that is not the subject is driven through `direct` whatever `--driver` is, with
+  the `max_tokens` and `max_steps` in `state["sampling"][actor]` when `setup` gave them
+  (otherwise the run's). No suite sets them yet.
+
+A store takes an episode's `meta` once, when it first saves it: bind and stamp an episode
+before its first `Store.append`.
+
+Run tests with
 `CUDA_VISIBLE_DEVICES= uv run pytest` (no test may touch the network or a GPU); the fakes in
 `tests/conftest.py` stand in for models, search providers and the model client.
 

@@ -1,7 +1,7 @@
 """Suite 1a tasks: `setup` builds the episodes a task row describes, `next_delivery` steps one.
 
-Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`; cli.py
-replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
+Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`;
+`run.bind_subject` replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
 at rev 1 with no event, which is how the record says the benchmark wrote them.
 
 A twin is forked from the episode it is the baseline of (`fork(..., baseline=True)`), so it

@@ -56,8 +56,8 @@ class LocalOnly(RuntimeError):
 @contextmanager
 def local_only(active: bool = True) -> Iterator[None]:
     """Within this block (and the asyncio tasks it starts), local_dev text may be read and
-    only `local = true` endpoints may be called. cli.py enters it around everything that
-    handles a local_dev row."""
+    only `local = true` endpoints may be called. `run` and the command line enter it around
+    everything that handles a local_dev row."""
     token = _LOCAL_ONLY.set(active or _LOCAL_ONLY.get())
     try:
         yield

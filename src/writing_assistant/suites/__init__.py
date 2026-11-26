@@ -3,14 +3,15 @@
 A suite keeps no state outside the episode. Its `next_delivery()` is one step of the turn
 schedule: given the reply to the last delivery, it does what that reply calls for and names
 the next delivery. `play()` here is the only loop over it, and makes each delivery through
-`Turn`; cli.py binds a `Driver` to that, so suites never import drivers. Because the step
+`Turn`; `run.Binding` binds the drivers to that, so suites never import drivers. Because the step
 reads its place from the episode (`ep.state`, the log), an episode copied when a delivery
 returns continues, through the same `play()`, exactly as the original would have. A suite
 package never imports another suite package.
 
-- `setup()` maps every model-driven actor to the placeholder `SUBJECT`; cli.py replaces it
-  with the endpoint under test before `play()`, and its Turn binding refuses to call a
-  placeholder.
+- `setup()` maps every actor the model under test plays to the placeholder `SUBJECT`;
+  `run.bind_subject` replaces it with the endpoint under test before `play()` and records
+  which actors those were, and the Turn binding refuses to call a placeholder. An actor
+  another model plays is mapped by `setup()` to that model's endpoint and stays on it.
 - Twins: the twin of an episode is the one whose `baseline_of` is that episode's `ep_id`;
   `setup()` makes it with `fork(..., baseline=True)`. An episode nothing names is scored
   without a twin. A rollout (`Episode.rollout_of`) has none and gets no `net_*`: its
@@ -26,7 +27,7 @@ package never imports another suite package.
   and a kind that asks for a length passes that length to `reply_output` (a floor below it);
   with none, those functions raise `NoOutput` and the scorer writes no outcome metric, only
   `n_no_output.<reason>`. Bookkeeping metrics (tool calls, rejections) read the log and are
-  written whenever the episode ran. A failed episode is never scored (cli.py skips it).
+  written whenever the episode ran. A failed episode is never scored (`run.score_episode` skips it).
 """
 
 from __future__ import annotations
@@ -48,12 +49,12 @@ if TYPE_CHECKING:
     from writing_assistant.llm.client import LLMClient
     from writing_assistant.search.gateway import SearchGateway
 
-# (episode, actor, message): one delivery, made and answered. The binding in cli.py appends
+# (episode, actor, message): one delivery, made and answered. `run.Binding` appends
 # the `deliver` event (`Episode.deliver`) before the driver runs, so every delivery is on the
 # record; the reply is read back from the episode (`Episode.last_reply`), never returned.
 Turn = Callable[[Episode, str, str], Awaitable[None]]
 
-SUBJECT = "subject"  # endpoint placeholder for the model under test; cli.py replaces it
+SUBJECT = "subject"  # endpoint placeholder for the model under test; `run.bind_subject` replaces it
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,7 @@ class KindAbout:
 
 
 class Suite(Protocol):
-    tools: ToolTable  # the suite's static tool table; cli.py hands it to the driver
+    tools: ToolTable  # the suite's static tool table; `run.Runner` hands it to the drivers
     judged_by: dict[str, str]  # metric -> judge use it depends on
     about: dict[str, KindAbout]  # task kind -> what it is, in plain words
     metric_about: dict[str, str]  # metric -> what a value means, in a sentence

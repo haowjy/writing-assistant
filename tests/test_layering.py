@@ -14,7 +14,8 @@ ALLOWED = {
     "corpus": {"episode", "llm", "search", "judges"},
     "suites": {"episode", "llm", "search", "judges", "corpus"},
     "drivers": {"episode", "llm"},
-    "cli": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers"},
+    "run": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers"},
+    "cli": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers", "run"},
     "label_ui": set(),
 }
 # Leaves inside a layer: a module only its layer's entry point imports. `cli/view.py` reads

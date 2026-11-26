@@ -14,10 +14,11 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli import ERRORS_FILE, episode_row
+from writing_assistant.cli import episode_row
 from writing_assistant.episode.segments import closed_episodes, open_episodes
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
+from writing_assistant.run import ERRORS_FILE
 from writing_assistant.suites import SUITES, mean
 
 # The five metrics that get a familiarity gap column (benchmark.md, "The Corpus").
