@@ -70,9 +70,10 @@ class MadeUp:
         ep.state["system_prompts"] = {seat: s["brief"] for seat, s in models.items()}
         ep.state["sampling"] = {seat: s["sampling"] for seat, s in models.items() if "sampling" in s}
         ep.state["heard_by"] = {seat: s["heard_by"] for seat, s in seats.items() if "heard_by" in s}
+        restricted = ep.state.get("file_acl", {})
         for seat, s in seats.items():
-            for path in s.get("reads", []):
-                ep.state["file_acl"][path].append(seat)  # only a path the position restricts needs granting
+            for path in restricted.keys() & set(s.get("reads", [])):  # any other path is open to every seat already
+                restricted[path].append(seat)
         ep.state["script"] = script.script(p.get("script", []))
         ep.state["converse"] = converse.conversation(list(seats), {"seat": p.get("opening", next(iter(seats))), "text": p["request"]},
                                                      p["max_turns"])

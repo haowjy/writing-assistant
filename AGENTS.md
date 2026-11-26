@@ -40,7 +40,8 @@ generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
   or any model called. The resolved cast (name, endpoint, model) is in run.json's identity
   (without `subject`, which `endpoint` and `model` already are) and on every episode a run
   binds (`meta["cast"]`, `subject` included); who really answered a call is
-  `CallRecord.endpoint`. `report --baseline` refuses two runs whose episodes used a cast
+  `CallRecord.endpoint`. `report --baseline` matches the baseline's rollouts of a checkpoint
+  whatever group they are in (a group is one run's), and refuses two runs whose episodes used a cast
   name, other than `subject`, played by different models; the page's side-by-side screen
   does not check.
 - The ten `base-*` stores were written when a run overwrote its subject's seats with its

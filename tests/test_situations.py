@@ -213,7 +213,7 @@ def test_one_situation_is_played_by_whichever_cast_the_run_names_and_says_who_pl
                      ("gemma-4-26b", 16384, 0.7), ("gemma-4-26b", 300, 0.2)}
     capsys.readouterr()
     cli.main(["report", "--run", str(b), "--judges", "none", "--baseline", str(a)])
-    assert "vs baseline" in capsys.readouterr().out
+    assert "draft_words" in (out := capsys.readouterr().out) and "Δ 0.000 vs baseline" in out, out
     with pytest.raises(SystemExit, match=r"different casts: counterpart is gemma-4-26b \(.*\) here and qwen3-32b-mini"):
         cli.main(["report", "--run", str(own), "--judges", "none", "--baseline", str(a)])
 

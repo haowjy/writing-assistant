@@ -132,8 +132,10 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
     if errors := read_jsonl(run_dir / ERRORS_FILE):
         header.append(f"task errors: {len(errors)} (see {ERRORS_FILE})")
     by = ["rollout_of", "group", *keys]
+    # A group is one run's, so the baseline's rollouts of a checkpoint are matched whatever group they are in.
     rollouts = _entries(suite, judges, by, _summarise(run_dir, judges, by, where, rollouts=True)[1], passed,
-                        _summarise(baseline, judges, by, where, rollouts=True)[1] if baseline else None)
+                        _summarise(baseline, judges, ["rollout_of", *keys], where, rollouts=True)[1] if baseline else None,
+                        base_keys=["rollout_of", *keys])
     stored = read_run(run_dir, lambda store: store.groups(judges), {})
     for entry in rollouts:
         g = stored[entry["key"]["group"]]
@@ -144,8 +146,10 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
                                _summarise(baseline, judges, keys, where)[1] if baseline else None)}
 
 
-def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set[str], base: dict | None) -> list[dict[str, Any]]:
-    """`build_report`'s entry for each of `_summarise`'s groups; `base` is the baseline run's groups."""
+def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set[str], base: dict | None,
+             base_keys: list[str] | None = None) -> list[dict[str, Any]]:
+    """`build_report`'s entry for each of `_summarise`'s groups; `base` is the baseline run's
+    groups, keyed by `base_keys` when those are fewer than `keys`."""
     out = []
     for key in sorted(groups):
         g = groups[key]
@@ -168,7 +172,8 @@ def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set
             if other := {k: int(v) for k, v in unscored.items() if k != "refusal"}:
                 notes.append(f"unscored {other}")
             if base is not None:
-                b = mean(base.get(key, {}).get("values", {}).get(name, []))
+                theirs = tuple(v for k, v in zip(keys, key, strict=True) if k in (base_keys or keys))
+                b = mean(base.get(theirs, {}).get("values", {}).get(name, []))
                 notes.append(f"Δ {_fmt(mean(vals) - b) if b is not None else '-'} vs baseline")
             fam = sorted(g["familiarity"].get(name, []))
             if len(fam) >= 3:
