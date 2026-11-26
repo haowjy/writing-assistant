@@ -38,7 +38,7 @@ SPLITS = ("train", "dev", "test")
 # split_of buckets: sha256(source_group) mod 100 -> train [0, 70), dev [70, 85), test [85, 100).
 # Changing these moves rows between splits; the held-out test split must never move.
 SPLIT_EDGES = (70, 85)
-EPISODES_FILE = "episodes.jsonl"
+EPISODES_FILE, RUN_FILE = "episodes.jsonl", "run.json"  # in a run directory (cli.py)
 
 
 @dataclass(frozen=True)
@@ -104,7 +104,7 @@ def load_local_dev(suite: str, where: str | None = None, root: Path | None = Non
     path = (root or LOCAL_DEV_DIR) / "tasks" / f"{suite}.jsonl"
     if not path.exists():
         return []
-    rows = [r | {"split": LOCAL_DEV} for r in _jsonl(path)]
+    rows = [r | {"split": LOCAL_DEV} for r in read_jsonl(path)]
     return _tasks(rows, path, suite, LOCAL_DEV, where, allowed=(LOCAL_DEV,))
 
 
@@ -116,7 +116,7 @@ def load_rows(path: str | Path, suite: str | None = None, split: str | None = No
         # Parquet fills keys a row lacks with null (columns and struct fields are unions).
         raw = [_drop_nulls(r) for r in pq.read_table(path).to_pylist()]
     else:
-        raw = _jsonl(path)
+        raw = read_jsonl(path)
     return _tasks(raw, path, suite, split, where, allowed=SPLITS)
 
 
@@ -139,9 +139,13 @@ def _drop_nulls(value: Any) -> Any:
     return value
 
 
-def _jsonl(path: Path) -> list[dict[str, Any]]:
-    with path.open(encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Rows of a JSONL file another process may have been writing: [] when it does not exist,
+    and a last line without its newline (a write cut short) is ignored."""
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").split("\n")
+    return [json.loads(line) for line in lines[:-1] if line.strip()]
 
 
 def save_episodes(episodes: Iterable[Episode], out: str | Path) -> Path:
@@ -158,7 +162,7 @@ def save_episodes(episodes: Iterable[Episode], out: str | Path) -> Path:
 def load_episodes(run_dir: str | Path) -> list[Episode]:
     """Every episode saved in a run, parent_id/condition intact for re-pairing twins."""
     path = Path(run_dir) / EPISODES_FILE
-    episodes = [Episode.from_dict(d) for d in _jsonl(path)]
+    episodes = [Episode.from_dict(d) for d in read_jsonl(path)]
     seen: set[str] = set()
     for ep in episodes:
         if ep.ep_id in seen:

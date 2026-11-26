@@ -18,6 +18,7 @@ class World1a:
     tools = srd.TOOLS
     twins = tasks_1a.TWINS
     judged_by = score_1a.JUDGED_BY
+    text_fields = tasks_1a.TEXT_FIELDS
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("1a", split, where)

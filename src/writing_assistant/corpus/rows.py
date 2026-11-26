@@ -1,4 +1,4 @@
-"""`Work` rows, the corpus index and text cache on disk, and the public export.
+"""`Work` rows, and the corpus index and text cache on disk.
 
 On disk, under one cache directory (never committed, never synced whole):
 
@@ -7,7 +7,7 @@ On disk, under one cache directory (never committed, never synced whole):
 
 Personal works live apart, in the same layout under `local_dev/corpus/` (store.LOCAL_DEV_DIR):
 the loader stamps each of them `split = "local_dev"` whatever its row says, and their text is
-read from there. `select` leaves them out unless asked; export never writes them.
+read from there. `select` leaves them out unless asked; `release.py` never lets them leave.
 
 A collector writes the text first, then appends the row, so an interrupted run never leaves
 a row without its text; a re-run appends a row only when something in it changed.
@@ -33,9 +33,6 @@ if TYPE_CHECKING:
 
 CACHE_DIR = DATA / "corpus-cache"
 INDEX_FILE = "works.jsonl"
-# Licences whose text may leave this machine. Anything else, a missing licence included,
-# leaves as url + content_hash only.
-PERMISSIVE = frozenset({"public-domain", "cc-by", "cc-by-sa", "author-granted"})
 
 
 @dataclass(frozen=True)
@@ -44,7 +41,7 @@ class Work:
     source: str
     source_group: str  # the author for fiction (first listed); `split` hashes from it
     title: str
-    licence: str | None  # one of PERMISSIVE, "copyrighted", or None when the source does not say
+    licence: str | None  # one of release.PERMISSIVE, "copyrighted", or None when the source does not say
     url: str  # where the cached bytes came from
     content_hash: str  # sha256 of those bytes
     split: str  # split_of(source_group), or "local_dev" stamped by the local_dev loader
@@ -205,22 +202,3 @@ def _with_familiarity(works: dict[str, Work]) -> dict[str, Work]:
             pcts.append((lo + hi) / 2 / len(values))
         out[work_id] = replace(w, familiarity=sum(pcts) / len(pcts) if pcts else None)
     return out
-
-
-# -- export -----------------------------------------------------------------------------------
-
-
-def export_public(corpus: Corpus, out: Path) -> Path:
-    """`wa-bench export --public <out>`: every non-`local_dev` work as one JSONL row in
-    `<out>/works.jsonl`, with the text inline only when its licence is in PERMISSIVE; the
-    rest carry `url` and `content_hash` for the reader to fetch and check."""
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / INDEX_FILE
-    with path.open("w", encoding="utf-8") as f:
-        for work in corpus.select():
-            row = asdict(work)
-            if work.licence in PERMISSIVE:
-                row["text"] = corpus.text(work)
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    return path

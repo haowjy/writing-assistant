@@ -9,8 +9,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli import ERRORS_FILE, RUN_FILE, _jsonl, twins_of
-from writing_assistant.episode.store import load_episodes, matches
+from writing_assistant.cli import ERRORS_FILE, twins_of
+from writing_assistant.episode.store import RUN_FILE, load_episodes, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import SUITES, mean
 
@@ -26,7 +26,7 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) 
     loaded = load_episodes(run_dir)
     twins = {t.ep_id for t in twins_of(loaded, SUITES[info["suite"]]).values()}
     episodes = {ep.ep_id: ep for ep in loaded if ep.ep_id not in twins}
-    scores = {r["ep_id"]: r for r in _jsonl(run_dir / f"scores-{profile}.jsonl")}
+    scores = {r["ep_id"]: r for r in read_jsonl(run_dir / f"scores-{profile}.jsonl")}
     groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "unflagged": defaultdict(list),
                                                               "familiarity": defaultdict(list), "counts": Counter()})
     for ep in episodes.values():
@@ -92,7 +92,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())})")
     if (run_dir / "guardrails.json").exists():
         print(_guardrails_line(run_dir / "guardrails.json"))
-    errors = _jsonl(run_dir / ERRORS_FILE)
+    errors = read_jsonl(run_dir / ERRORS_FILE)
     if errors:
         print(f"task errors: {len(errors)} (see {ERRORS_FILE})")
     for key in sorted(groups):

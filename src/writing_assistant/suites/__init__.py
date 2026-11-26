@@ -62,6 +62,9 @@ class Suite(Protocol):
     tools: ToolTable  # the suite's static tool table; cli.py hands it to the driver
     twins: dict[str, str]  # scored condition -> the condition of its twin (a child episode)
     judged_by: dict[str, str]  # metric -> judge use it depends on
+    # task kind -> the payload fields that carry work text ("passage.text", "exemplars[].text",
+    # "files.*"): what corpus/release.py hashes when a work is not permissive
+    text_fields: dict[str, list[str]]
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]: ...
 

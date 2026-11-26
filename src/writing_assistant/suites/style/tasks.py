@@ -35,6 +35,9 @@ WRITER = "writer"
 EDIT_TOOLS = ["episode_read", "episode_edit", "episode_write"]
 MODES = ("instruction", "continuation", "style_retrieved")
 _RUN = 12  # words: a shared run this long between an exemplar and a hidden passage is a leak
+# Payload fields that carry work text (corpus/release.py); beat sheets are paraphrases.
+TEXT_FIELDS = {"k_exemplar_scene": ["exemplars[].text", "y_star.text", "verifier_refs[].text", "impostor.text"],
+               "critique_edit": ["passage.text"]}
 # Sampling temperature per task kind, stamped on each episode (`ep.meta`) and read by drivers.
 TEMPERATURE = {"k_exemplar_scene": 0.7, "critique_edit": 0.7}
 

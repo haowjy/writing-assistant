@@ -30,7 +30,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime as dt
-import hashlib
 import json
 import os
 import shutil
@@ -43,16 +42,18 @@ from typing import Any
 
 from writing_assistant.corpus import Corpus
 from writing_assistant.corpus.collect import collect
-from writing_assistant.corpus.rows import PERMISSIVE, export_public
+from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
-from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, TASKS_DIR, Task, load_episodes, matches, save_episodes
+from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, RUN_FILE, Task, load_episodes, matches, read_jsonl, save_episodes
 from writing_assistant.judges import Judges, judges_from
 from writing_assistant.llm.client import LLMClient, local_only
 from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
 
 ROOT = Path(__file__).resolve().parents[3]
-RUN_FILE, ERRORS_FILE = "run.json", "errors.jsonl"
+ERRORS_FILE = "errors.jsonl"
+# task kind -> payload fields that carry work text (the licence rule in corpus/release.py)
+TEXT_FIELDS = {kind: fields for suite in SUITES.values() for kind, fields in suite.text_fields.items()}
 
 
 # -- the Turn binding ----------------------------------------------------------------------
@@ -119,8 +120,10 @@ def code_version() -> str:
 
 
 def row_meta(task: Task) -> dict[str, Any]:
-    """The row's scalar fields, stamped on each episode for `--where` and `--group-by`."""
-    scalars = {k: v for k, v in task.payload.items() if isinstance(v, str | int | float | bool) and not (isinstance(v, str) and len(v) > 200)}
+    """The row's scalar fields, stamped on each episode for `--where` and `--group-by`; a
+    field marked as work text is not one of them."""
+    text = {f.split(".")[0].removesuffix("[]") for f in TEXT_FIELDS.get(task.kind, [])}
+    scalars = {k: v for k, v in task.payload.items() if isinstance(v, str | int | float | bool) and k not in text}
     return scalars | {"kind": task.kind, "split": task.split, "work_ids": ",".join(task.work_ids)}
 
 
@@ -131,10 +134,6 @@ def _now() -> str:
 def _append(path: Path, row: dict) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def _jsonl(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] if path.exists() else []
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -298,10 +297,10 @@ async def cmd_score(args: argparse.Namespace) -> int:
         await services.llm.aclose()
     # Merged by ep_id: the rows and judgments of episodes `--where` did not select stay.
     path = run_dir / f"scores-{args.judges}.jsonl"
-    _write_jsonl(path, list(({r["ep_id"]: r for r in _jsonl(path)} | {r["ep_id"]: r for r in rows}).values()))
+    _write_jsonl(path, list(({r["ep_id"]: r for r in read_jsonl(path)} | {r["ep_id"]: r for r in rows}).values()))
     rescored = {r["ep_id"] for r in rows}
     jpath = run_dir / f"judgments-{args.judges}.jsonl"
-    _write_jsonl(jpath, [j for j in _jsonl(jpath) if j["scored"] not in rescored] + judgments)
+    _write_jsonl(jpath, [j for j in read_jsonl(jpath) if j["scored"] not in rescored] + judgments)
     record(run_dir, services, args.judges)
     errors = sum("error" in r for r in rows)
     print(f"{path}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, {errors} scorer errors; "
@@ -335,76 +334,11 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
-def _hash_long_strings(value: Any) -> Any:
-    """Every string of 200+ characters replaced by its sha256: the licence rule for text
-    inside a task payload whose works are not all permissive."""
-    if isinstance(value, str) and len(value) >= 200:
-        return {"sha256": hashlib.sha256(value.encode()).hexdigest()}
-    if isinstance(value, dict):
-        return {k: _hash_long_strings(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_hash_long_strings(v) for v in value]
-    return value
-
-
-def public_task_rows(corpus: Corpus) -> dict[str, list[dict]]:
-    """Every public task row, payload text inline only when all its works are permissive.
-    Reads only TASKS_DIR, so local_dev rows (under local_dev/) never appear."""
-    out = {}
-    for path in sorted(TASKS_DIR.glob("*.jsonl")):
-        rows = []
-        for row in _jsonl(path):
-            if row.get("split") == LOCAL_DEV:
-                continue
-            licences = {corpus.get(w).licence for w in row.get("work_ids", [])}
-            if not licences <= PERMISSIVE:
-                row = row | {"payload": _hash_long_strings(row.get("payload", {}))}
-            rows.append(row)
-        out[path.stem] = rows
-    return out
-
-
 def cmd_export(args: argparse.Namespace) -> int:
-    corpus = Corpus()
     out = Path(args.public)
-    export_public(corpus, out)
-    (out / "tasks").mkdir(parents=True, exist_ok=True)
-    for suite, rows in public_task_rows(corpus).items():
-        (out / "tasks" / f"{suite}.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-    print(f"{out}: works.jsonl and tasks/ written (text inline only for {sorted(PERMISSIVE)})")
+    export_public(Corpus(), out, TEXT_FIELDS)
+    print(f"{out}: works.jsonl and tasks/ written (work text inline only for {sorted(PERMISSIVE)})")
     return 0
-
-
-def stage_sync(stage: Path, runs: Path, corpus: Corpus) -> Counter[str]:
-    """What `sync` uploads, staged under `stage`: works.jsonl plus permissive texts, public
-    task rows, and each run's files with episodes filtered: never local_dev, and only
-    episodes whose works are all permissive (the rest are left out, not hashed)."""
-    counts: Counter[str] = Counter()
-    export_public(corpus, stage / "corpus")
-    for suite, rows in public_task_rows(corpus).items():
-        (stage / "tasks").mkdir(parents=True, exist_ok=True)
-        (stage / "tasks" / f"{suite}.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-    for run_dir in sorted(p for p in runs.glob("*") if (p / RUN_FILE).exists()):
-        dest = stage / "runs" / run_dir.name
-        dest.mkdir(parents=True, exist_ok=True)
-        keep = set()
-        lines = []
-        for d in _jsonl(run_dir / EPISODES_FILE):
-            licences = {corpus.get(w).licence for w in d["state"].get("work_ids", [])}
-            if d["split"] == LOCAL_DEV or not licences <= PERMISSIVE:
-                counts["episodes_left_out"] += 1
-                continue
-            keep.add(d["ep_id"])
-            lines.append(json.dumps(d, ensure_ascii=False) + "\n")
-        (dest / EPISODES_FILE).write_text("".join(lines))
-        counts["episodes"] += len(lines)
-        for path in [*run_dir.glob("scores-*.jsonl"), *run_dir.glob("judgments-*.jsonl")]:
-            rows = [r for r in _jsonl(path) if r["ep_id"] in keep and r.get("scored", r["ep_id"]) in keep]
-            (dest / path.name).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-        for name in (RUN_FILE, "guardrails.json"):
-            if (run_dir / name).exists():
-                shutil.copy(run_dir / name, dest / name)
-    return counts
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -412,7 +346,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
     stage = Path(args.stage)
     if stage.exists():
         shutil.rmtree(stage)
-    counts = stage_sync(stage, Path(args.runs), Corpus())
+    counts = stage_sync(stage, Path(args.runs), Corpus(), TEXT_FIELDS)
     print(f"staged {stage}: {dict(counts)}")
     if args.dry_run:
         return 0

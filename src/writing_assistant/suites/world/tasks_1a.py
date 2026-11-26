@@ -52,6 +52,10 @@ from writing_assistant.suites.world import author, srd
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
 WORKSPACE = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_list"]
 TWINS = {"pivot": "clean_b", "full_view": "twin_swap", "pov_view": "twin_swap", "bent": "twin_swap"}
+# Payload fields that may carry work text (corpus/release.py). pov_write and dm_play logs and
+# rule_bend rules are written by the benchmark; rule_bend's canon is mounted from the corpus.
+TEXT_FIELDS = {"pivot_unbinding": ["files.*"], "collab_edit": ["text", "files.*", "rounds[].edit.text"],
+               "pov_write": [], "dm_play": [], "rule_bend": []}
 # Sampling temperature per task kind, stamped on each episode (`ep.meta`) and read by drivers.
 TEMPERATURE = {"pivot_unbinding": 0.7, "dm_play": 0.7, "pov_write": 0.7, "rule_bend": 0.7, "collab_edit": 0.7}
 PUBLIC = {"*": "full"}
