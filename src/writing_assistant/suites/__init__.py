@@ -8,10 +8,11 @@ reads its place from the episode (`ep.state`, the log), an episode copied when a
 returns continues, through the same `play()`, exactly as the original would have. A suite
 package never imports another suite package.
 
-- `setup()` maps every actor the model under test plays to the placeholder `SUBJECT`;
-  `run.bind_subject` replaces it with the endpoint under test before `play()` and records
-  which actors those were, and the Turn binding refuses to call a placeholder. An actor
-  another model plays is mapped by `setup()` to that model's endpoint and stays on it.
+- A seat (an entry in `Episode.actors`) is `scripted`, which the suite's step speaks for,
+  or names who plays it by a cast name: `SUBJECT` for the model under test, any other name
+  (`counterpart`, `master`, ...) for another model. `setup()` writes those names and
+  nothing overwrites them: the run's cast maps each to an endpoint when the seat is first
+  called (`run.Binding`), so one stored episode is played by any cast.
 - Twins: the twin of an episode is the one whose `baseline_of` is that episode's `ep_id`;
   `setup()` makes it with `fork(..., baseline=True)`. An episode nothing names is scored
   without a twin. A rollout (`Episode.rollout_of`) has none and gets no `net_*`: its
@@ -54,7 +55,7 @@ if TYPE_CHECKING:
 # record; the reply is read back from the episode (`Episode.last_reply`), never returned.
 Turn = Callable[[Episode, str, str], Awaitable[None]]
 
-SUBJECT = "subject"  # endpoint placeholder for the model under test; `run.bind_subject` replaces it
+SUBJECT = "subject"  # the cast name of the model under test: the run's endpoint
 
 
 @dataclass(frozen=True)

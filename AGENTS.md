@@ -29,17 +29,33 @@ time a delivery returns, closes them together and scores them. `cli` parses argu
 the run directory and chooses what is played; anything else that needs episodes played (a
 generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
 
-- The subject is the actors `setup` left on the `SUBJECT` placeholder. `run.bind_subject`
-  maps them to the endpoint under test and records them in `meta["subject_actors"]`; a
-  rollout rebinds those and no other seat. Every stored episode has the key (the `base-*`
-  stores had it added when their score rows were imported).
-- An actor that is not the subject is driven through `direct` whatever `--driver` is, with
-  the `max_tokens` and `max_steps` in `state["sampling"][actor]` when `setup` gave them
-  (otherwise the run's). No suite sets them yet.
+- A **seat** is an entry in `Episode.actors`. `setup` gives it `scripted` (the suite's step
+  speaks for it) or a **cast name**: `subject`, the model under test, or any other name the
+  task uses (`counterpart`, `master`, ...). Nothing writes an endpoint there. The run's
+  **cast** maps names to endpoints: `subject` is `--endpoint`, the rest come from the
+  `[cast.<name>]` table `--cast` picks in `models.toml` (a table defining `subject` or
+  `scripted` is refused). `run.Binding` looks a seat up when it is first called, so one
+  stored episode is played by any cast and a rollout onto another subject changes no other
+  seat. `Runner.bind` refuses a seat whose name the cast lacks, before the episode is saved
+  or any model called. The resolved cast (name, endpoint, model) is in run.json's identity
+  (without `subject`, which `endpoint` and `model` already are) and on every episode a run
+  binds (`meta["cast"]`, `subject` included); who really answered a call is
+  `CallRecord.endpoint`. `report --baseline` refuses two runs whose episodes used a cast
+  name, other than `subject`, played by different models; the page's side-by-side screen
+  does not check.
+- The ten `base-*` stores were written when a run overwrote its subject's seats with its
+  endpoint and listed them in `meta["subject_actors"]` (added by the import). Readers do
+  not care; `Runner.rollouts` puts `subject` back on those seats, and that line goes when
+  the stores do. An episode left open by a build before the cast cannot be resumed.
+- A seat that is not the subject's is driven through `direct` whatever `--driver` is. What
+  a seat samples with is the episode's when `setup` gave it
+  (`state["sampling"][seat]`: `temperature`, `max_tokens`, `max_steps`), so the other seats
+  keep their limits whatever `--max-tokens` a run has; otherwise the temperature is the
+  task kind's (`meta["temperature"]`) or 0.7, and the limits are the run's.
 
 A store takes an episode's `meta` once, when it first saves it: bind and stamp an episode
 before its first `Store.append`. `Runner.bind` is the one place a run's stamps are put
-(`endpoint`, `model`, `max_tokens`, `code`, `run_id`, `round`), and `Runner.rollouts` adds a
+(`endpoint`, `model`, `cast`, `max_tokens`, `code`, `run_id`, `round`), and `Runner.rollouts` adds a
 member's `group` and `group_size`.
 
 Run tests with
@@ -63,7 +79,7 @@ uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (n
 uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in judge-cache.jsonl
 llmpick start gemma-4-26b-qat                        # serve the subject first
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
-uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N [--round R] --out runs/<new>   # a group of N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
+uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N [--round R] [--cast bench] --out runs/<new>   # a group of N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
 uv run wa-bench situate --run runs/<id> --at '<closed ep_id>' --row task.json [--from-run runs/<other>]   # store a new task (suite, kind, payload) on that episode's final files; play it with run --from '<name>@0'
 uv run wa-bench score --run runs/<id> --judges eval|train [--pending]   # re-score saved episodes; --pending: only those whose scorer raised
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
@@ -113,7 +129,7 @@ the value, so `--where "author=Austen, Jane,mode=instruction"` works.
 `run` defaults to the `dev` split; `test` is held out and never used to choose anything, so
 `--split test` also needs `--held-out-test` and every such run is logged in
 `test-split-uses.jsonl` (in the data directory, beside `tasks/`). A run directory is resumable (same `--out`); a resume with
-another `--max-tokens` is refused, and an HTTP 401/402/403 from a host stops the run with
+another `--max-tokens` or `--cast` is refused, and an HTTP 401/402/403 from a host stops the run with
 exit 1.
 
 ## How episodes are stored

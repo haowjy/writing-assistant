@@ -2,7 +2,6 @@
 store's score rows and what the report prints."""
 
 import copy
-import gc
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -65,23 +64,6 @@ def bench(tmp_path, monkeypatch, fake_llm):
 def run_and_score(capsys, out, *argv):
     cli.main(["run", "--suite", "1a", "--endpoint", "gemma-4-26b", "--out", str(out), *argv])
     capsys.readouterr()
-
-
-class Killed(BaseException):
-    """Stands in for the process dying: nothing in `wa-bench` catches it."""
-
-
-def killed(*argv) -> None:
-    """`wa-bench` with these arguments, killed part-way. What the dead invocation held is
-    then let go as a dead process's is: its frames, kept alive by the exception, hold the
-    open run.lock that tells the next `run` another one is alive."""
-    try:
-        cli.main(list(argv))
-    except BaseException as e:
-        assert isinstance(e, Killed) or e.subgroup(Killed), e
-    else:
-        raise AssertionError("the invocation was not killed")
-    gc.collect()
 
 
 def groups(out, profile="eval") -> dict:
@@ -232,7 +214,7 @@ def test_re_scoring_a_stored_run_reproduces_its_rows(bench, capsys):
     assert [r | {"scored_at": ""} for r in after.values()] == [r | {"scored_at": ""} for r in before.values()]
 
 
-def test_a_score_killed_between_episodes_leaves_the_earlier_rows_and_no_partial_one(bench, capsys, monkeypatch, fake_llm):
+def test_a_score_killed_between_episodes_leaves_the_earlier_rows_and_no_partial_one(bench, capsys, monkeypatch, fake_llm, killed):
     other = copy.deepcopy(POV_ROW) | {"task_id": "pov-2"}
     other["payload"]["permitted_probes"] = ["Does the chapter mention the wind?"]
     out = bench([POV_ROW, other], chapter("Mira turned the glove over."))
@@ -240,7 +222,7 @@ def test_a_score_killed_between_episodes_leaves_the_earlier_rows_and_no_partial_
 
     def dies_at_the_second_task(messages, tools, endpoint):
         if "wind" in _last_user(messages).split("Question:")[1]:
-            raise Killed
+            raise killed.Killed
         return fact_judge(messages, tools, endpoint)
 
     llm = fake_llm({"qwen3-14b-mini": [dies_at_the_second_task] * 400})
@@ -274,7 +256,7 @@ def test_two_runs_rolling_out_one_checkpoint_make_two_groups_whose_members_never
         assert len(both.names()) == 6 and both.groups("eval") == a | b
 
 
-def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_its_size(bench, capsys, monkeypatch, fake_llm):
+def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_its_size(bench, capsys, monkeypatch, fake_llm, killed):
     """A run killed while it plays a group leaves it short: one member closed, two open, one
     never made. The group is not settled, though the base's half is whole. The same command
     again works the group id out again, continues the open members and makes only the
@@ -291,7 +273,7 @@ def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_
 
     def dies_at_its_second_call(m, t, e, calls=iter(range(100))):
         if next(calls) == 1:
-            raise Killed
+            raise killed.Killed
         return chapter("Mira waited.")
 
     llm = fake_llm({"gemma-4-26b": [dies_at_its_second_call] * 100})

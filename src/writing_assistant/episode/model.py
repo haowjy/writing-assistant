@@ -115,7 +115,7 @@ class Episode:
     files: dict[str, str] = field(default_factory=dict)
     file_revs: dict[str, int] = field(default_factory=dict)
     state: dict[str, Any] = field(default_factory=dict)
-    actors: dict[str, str] = field(default_factory=dict)  # actor -> endpoint name or "scripted"
+    actors: dict[str, str] = field(default_factory=dict)  # seat -> "scripted" or a cast name (the run maps it to an endpoint)
     actor_tools: dict[str, list[str]] = field(default_factory=dict)
     calls: list[CallRecord] = field(default_factory=list)
     status: Literal["running", "completed", "truncated", "failed"] = "running"

@@ -2,8 +2,8 @@
 
 A driver is constructed by `run.Runner` with the model client and the suite's tool table; `open`
 gets the episode, so everything per-episode (actor tools, the actor's system prompt in
-`ep.state["system_prompts"][actor]`, the sampling temperature in `ep.meta["temperature"]`,
-limits the episode fixes for the actor in `ep.state["sampling"][actor]`)
+`ep.state["system_prompts"][actor]`, the task kind's sampling temperature in
+`ep.meta["temperature"]`, what the episode fixes for the actor in `ep.state["sampling"][actor]`)
 is read from it, and so is the conversation so far when the episode is already under way: a
 driver keeps nothing between turns that it could not rebuild from the episode.
 """

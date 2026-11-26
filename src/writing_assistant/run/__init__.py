@@ -4,14 +4,17 @@ What a command, and later a generation loop or a trainer, calls to get episodes 
 parses no arguments and chooses no tasks. A caller opens the run directory and its store,
 builds one `Runner` and hands it groups of episodes.
 
-- `Binding` is the `Turn` that `suites.play()` delivers through. The subject's actors go
-  through the run's driver; every other model actor goes through `direct`, so a seat the
-  episode fixes (its endpoint in `actors`, its limits in `state["sampling"]`) is the same
-  whatever harness the subject is run through.
-- The subject's actors are the ones `setup()` left on the `SUBJECT` placeholder.
-  `bind_subject` maps them to the endpoint under test and records them in
-  `meta["subject_actors"]`, so a rollout played against another endpoint rebinds those
-  and no other seat.
+- A **seat** is an entry in `Episode.actors`; its value is `scripted` or a **cast name**:
+  `subject` (the model under test) or any other name the task uses. The run's **cast** maps
+  cast names to endpoints: `subject` is the run's endpoint, the rest come from a
+  `[cast.<name>]` table of models.toml (`cast_from`). Nothing writes an endpoint into
+  `actors`: `Binding` looks a seat's name up when the seat is first called, so the same
+  stored episode is played by any cast, and a rollout onto another subject changes no
+  other seat. The resolved cast is stamped on every episode a run binds (`meta["cast"]`:
+  name -> endpoint and model).
+- `Binding` is the `Turn` that `suites.play()` delivers through. The subject's seats go
+  through the run's driver; every other model seat goes through `direct`, so it is the
+  same whatever harness the subject is run through (its limits in `state["sampling"]`).
 - `Runner.play` is the one way episodes are played: saved before play and each time a
   delivery returns, closed together, then scored. A task's episodes are played as one
   (they close together, so a reader never sees an arm without its twin); a rollout alone.
@@ -54,6 +57,12 @@ from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally, pl
 
 ROOT = Path(__file__).resolve().parents[3]
 ERRORS_FILE = "errors.jsonl"
+
+
+def resolved(endpoints: dict[str, dict[str, Any]], cast: dict[str, str]) -> dict[str, dict[str, str]]:
+    """A cast as it is recorded: each name with its endpoint and that endpoint's model, as a
+    judge's stamp has them, so a comparison reads stores and no machine's models.toml."""
+    return {name: {"endpoint": endpoint, "model": endpoints[endpoint]["model"]} for name, endpoint in sorted(cast.items())}
 
 
 def now() -> str:
@@ -103,44 +112,42 @@ def run_info(run_dir: Path) -> Iterator[dict[str, Any]]:
         os.close(fd)
 
 
-# -- the subject and the Turn binding ------------------------------------------------------
+# -- the cast and the Turn binding ---------------------------------------------------------
 
-def subject_actors(ep: Episode) -> list[str]:
-    """The actors the model under test plays: the ones recorded when the episode was
-    bound, or, before that, the ones still on the placeholder."""
-    if "subject_actors" in ep.meta:
-        return ep.meta["subject_actors"]
-    return [a for a, e in ep.actors.items() if e == SUBJECT]
-
-
-def bind_subject(eps: list[Episode], endpoint: str) -> None:
-    """Map each episode's subject actors to `endpoint` and record who they are. Of an
-    episode bound before (a rollout of a stored one) it rebinds those actors only."""
-    for ep in eps:
-        subject = subject_actors(ep)
-        ep.actors |= dict.fromkeys(subject, endpoint)
-        ep.meta["subject_actors"] = subject
+def cast_from(config: dict[str, Any], name: str) -> dict[str, str]:
+    """The `[cast.<name>]` table of models.toml: cast name -> endpoint, for every model seat
+    that is not the subject's. `subject` is the run's endpoint and `scripted` is no model,
+    so a table that defines either is refused."""
+    tables = config.get("cast", {})
+    if name not in tables:
+        raise ValueError(f"no [cast.{name}] in models.toml; it has {sorted(tables)}")
+    cast = tables[name]
+    if reserved := sorted({SUBJECT, "scripted"} & cast.keys()):
+        raise ValueError(f"[cast.{name}] defines {', '.join(reserved)}: `{SUBJECT}` is the run's --endpoint and "
+                         "`scripted` is a seat the suite speaks for, so a cast names neither")
+    if unknown := {n: e for n, e in cast.items() if e not in config["endpoints"]}:
+        raise ValueError(f"[cast.{name}] names endpoints models.toml does not have: {unknown}")
+    return dict(cast)
 
 
 class Binding:
-    """The `Turn` that `suites.play()` makes each delivery through: (episode, actor, message).
-    Logs the delivery with `Episode.deliver`, then runs the actor's driver in the actor's
-    session, opening one on first use of each (episode, actor); a fork has its own ep_id, so
-    its own session. `driver` plays the subject's actors and `direct` every other one.
-    Refuses an actor still mapped to the `SUBJECT` placeholder or to `scripted`."""
+    """The `Turn` that `suites.play()` makes each delivery through: (episode, seat, message).
+    Logs the delivery with `Episode.deliver`, then runs the seat's driver in the seat's
+    session, opening one on first use of each (episode, seat); a fork has its own ep_id, so
+    its own session. The session is opened on `cast[ep.actors[seat]]`: `driver` plays the
+    subject's seats and `direct` every other one (two drivers only while a run can choose a
+    harness for its subject)."""
 
-    def __init__(self, driver: Driver, direct: Driver) -> None:
-        self.driver, self.direct = driver, direct
+    def __init__(self, cast: dict[str, str], driver: Driver, direct: Driver) -> None:
+        self.cast, self.driver, self.direct = cast, driver, direct
         self.sessions: dict[tuple[str, str], tuple[Driver, Session]] = {}
 
     async def __call__(self, ep: Episode, actor: str, message: str) -> None:
-        endpoint = ep.actors[actor]
-        if endpoint in (SUBJECT, "scripted"):
-            raise RuntimeError(f"{ep.ep_id}: actor {actor!r} is {endpoint!r}, not bound to an endpoint")
         key = (ep.ep_id, actor)
         if key not in self.sessions:
-            driver = self.driver if actor in subject_actors(ep) else self.direct
-            self.sessions[key] = driver, await driver.open(ep, actor, endpoint)
+            name = ep.actors[actor]
+            driver = self.driver if name == SUBJECT else self.direct
+            self.sessions[key] = driver, await driver.open(ep, actor, self.cast[name])
         ep.deliver(actor, message)
         driver, session = self.sessions[key]
         await driver.turn(session, message)
@@ -250,8 +257,9 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
 
 
 class Runner:
-    """One run's play: a suite, the endpoint under test, the store the episodes and their
-    score rows go to, and the run directory (its name, and where errors are recorded).
+    """One run's play: a suite, the endpoint under test and the endpoints of the other cast
+    names (`cast`), the store the episodes and their score rows go to, and the run
+    directory (its name, and where errors are recorded).
     `run_id` is the run's identity (run.json `id`) and `round` the caller's name for this
     pass over a checkpoint (a trainer's policy step): the two name the groups this runner
     makes. `profile` names the judges `services` was built with (the rows are stored under
@@ -259,24 +267,31 @@ class Runner:
     statuses, `task_errors`, `score_errors`) for the caller to report."""
 
     def __init__(self, suite: Suite, services: Services, store: Store, run_dir: Path, *, run_id: str, endpoint: str,
-                 driver: str, max_tokens: int, profile: str, concurrency: int, round: str = "0",
-                 score: bool = True) -> None:
+                 driver: str, max_tokens: int, profile: str, concurrency: int, cast: dict[str, str] | None = None,
+                 round: str = "0", score: bool = True) -> None:
         self.suite, self.services, self.store, self.run_dir = suite, services, store, run_dir
-        self.endpoint, self.profile, self.scoring, self.run_id, self.round = endpoint, profile, score, run_id, round
-        self.binding = Binding(DRIVERS[driver](services.llm, suite.tools, max_tokens=max_tokens),
+        self.profile, self.scoring, self.run_id, self.round = profile, score, run_id, round
+        self.cast = {SUBJECT: endpoint} | (cast or {})
+        self.binding = Binding(self.cast, DRIVERS[driver](services.llm, suite.tools, max_tokens=max_tokens),
                                DirectDriver(services.llm, suite.tools, max_tokens=max_tokens))
         code = code_version()
         # Stamped on every episode this run binds, so a run resumed after a code change says which is which.
         self.meta = {"driver": driver, "harness": f"{driver}@{code}", "code": code, "endpoint": endpoint,
                      "model": services.llm.endpoints[endpoint]["model"], "max_tokens": max_tokens,
+                     "cast": resolved(services.llm.endpoints, self.cast),
                      "run": run_dir.name, "run_id": run_id, "round": round}
         self.sem = asyncio.Semaphore(concurrency)
         self.counts: Counter[str] = Counter()
 
     def bind(self, eps: list[Episode]) -> list[Episode]:
-        """Make episodes this run's: the subject's actors on its endpoint, its stamps in `meta`."""
-        bind_subject(eps, self.endpoint)
+        """Make episodes this run's: its stamps in `meta`, the cast that will play them
+        included. A seat whose cast name this run's cast lacks is refused here, before the
+        episode is saved or any seat called."""
         for ep in eps:
+            for seat, name in ep.actors.items():
+                if name != "scripted" and name not in self.cast:
+                    raise ValueError(f"{ep.ep_id}: seat {seat!r} is played by {name!r}, and this run's cast names only "
+                                     f"{', '.join(sorted(self.cast))} (--cast picks a [cast.<name>] table of models.toml)")
             ep.meta |= self.meta
         return eps
 
@@ -290,8 +305,9 @@ class Runner:
 
     def rollouts(self, source: Episode, at: int, n: int) -> list[Episode]:
         """The members the store does not hold yet of this run's group of `n` rollouts of
-        `source`, an episode loaded at its turn checkpoint `at`: bound to this run and
-        stamped with the group and its size, to be played each on its own. A group's size
+        `source`, an episode loaded at its turn checkpoint `at`: bound to this run (so
+        played by its cast, whatever cast played the source) and stamped with the group and
+        its size, to be played each on its own. A group's size
         is fixed when it is first asked for and is per source episode (a base and its twin
         rolled out `n` times each are one group of 2n): another size under the same round
         is refused, since readers tell a whole group from a short one by it."""
@@ -307,10 +323,13 @@ class Runner:
             if ep.ep_id in stored and self.store.chain(ep.ep_id)[-2:-1] != [source.seg]:
                 raise ValueError(f"{self.store.path} already holds {ep.ep_id}, a rollout of another episode named "
                                  f"{source.ep_id} (from another run's store); give these rollouts their own --out")
-        new = self.bind([ep for ep in members if ep.ep_id not in stored])
+        new = [ep for ep in members if ep.ep_id not in stored]
         for ep in new:
+            # The base-* stores were written when a run overwrote its subject's seats with its
+            # endpoint and listed them here: give those seats their cast name back.
+            ep.actors |= dict.fromkeys(ep.meta.pop("subject_actors", []), SUBJECT)
             ep.meta |= {"group": group, "group_size": n}
-        return new
+        return self.bind(new)
 
     def unfinished(self) -> dict[str, list[Episode]]:
         """The store's open episodes as they are played on: a task's together under its

@@ -3,13 +3,16 @@
 A metric whose judge has not passed its human-label gate (`[gates] passed` in models.toml,
 `Suite.judged_by`) prints marked "ungated" in a run's own report and is left out of a
 `--baseline` comparison (DECISIONS #12): looking at it calibrates the gate, comparing
-models on it would not be a result."""
+models on it would not be a result. `--baseline` is also refused when a cast name other than
+`subject` that both runs' episodes used was played by different models: the two subjects
+then met different partners, and the difference is not the subjects'."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -19,7 +22,7 @@ from writing_assistant.episode.segments import closed_episodes, open_episodes, r
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.run import ERRORS_FILE
-from writing_assistant.suites import SUITES, mean
+from writing_assistant.suites import SUBJECT, SUITES, mean
 
 # The five metrics that get a familiarity gap column (benchmark.md, "The Corpus").
 FAMILIARITY_GAP = ("discriminator_fool_rate", "verifier_match", "pairwise_craft_win", "score_100_endings", "restraint_score")
@@ -70,6 +73,17 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
                 if name in FAMILIARITY_GAP and row.get("familiarity") is not None:
                     g["familiarity"][name].append((float(row["familiarity"]), value))
     return info, groups, codes
+
+
+def other_cast(run_dir: Path) -> dict[str, set[str]]:
+    """Cast name -> who played it (`endpoint (model)`, as each episode was stamped) over the
+    run's closed episodes, for the names their seats use other than the subject's."""
+    played: dict[str, set[str]] = defaultdict(set)
+    for ep in closed_episodes(run_dir):
+        for name in set(ep.actors.values()) - {SUBJECT}:
+            if stamp := ep.meta.get("cast", {}).get(name):
+                played[name].add(f"{stamp['endpoint']} ({stamp['model']})")
+    return played
 
 
 def _fmt(x: float | None) -> str:
@@ -182,6 +196,12 @@ def cmd_report(args: argparse.Namespace) -> int:
     # Conditions are arms (full_view and pov_view measure different things): never averaged.
     keys = group_by + ([] if "condition" in group_by else ["condition"])
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
+    if args.baseline:
+        ours, theirs = other_cast(run_dir), other_cast(Path(args.baseline))
+        if differ := {name: (ours[name], theirs[name]) for name in ours.keys() & theirs.keys() if ours[name] != theirs[name]}:
+            sys.exit(f"{run_dir} and {args.baseline} were played with different casts: " + "; ".join(
+                f"{name} is {', '.join(sorted(a))} here and {', '.join(sorted(b))} there" for name, (a, b) in sorted(differ.items()))
+                + ". The other seats differ, so the runs do not compare their subjects")
     report = build_report(run_dir, args.judges, keys, args.where, Path(args.baseline) if args.baseline else None, passed)
     print("\n".join(report["header"]))
     for g in report["groups"]:

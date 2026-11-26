@@ -5,7 +5,8 @@ itself (bind, deliver, save, close, score) is `run.Runner`, which other callers 
 
 A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one):
 
-    run.json            what was run: suite, driver, endpoint, model, split, max_tokens; `id`,
+    run.json            what was run: suite, driver, endpoint, model, split, max_tokens, cast (each
+                        cast name but `subject` with its endpoint and model); `id`,
                         random, minted when the directory is claimed (the run's identity in
                         every group it makes); one
                         entry per invocation (time, code version, where, limit); the USD the
@@ -38,7 +39,7 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
     guardrails.json     from `wa-bench guardrails --run`
 
 `run` resumes a directory that already has a run.json for the same suite, driver, endpoint,
-model, split and max_tokens (anything else is refused, and of two runs starting together in a
+model, split, max_tokens and cast (anything else is refused, and of two runs starting together in a
 new directory one claims it: `run.run_info`): tasks with stored episodes are
 skipped (`--where` may differ between invocations), closed episodes with no scores row are
 scored first, and every open episode (a run killed mid-task, a task whose play raised) is
@@ -67,8 +68,10 @@ make the same name. A group's size is fixed by the first command that asks for i
 episode rolled out; every member carries it in `meta["group_size"]`): asking again with
 another N is refused, and more rollouts of the checkpoint are another `--round`. A rollout
 has no twin: it is scored on its own metrics and gets no `net_*`. A twin
-can be rolled out like any episode, and its rollouts are baselines of nothing. Only the
-subject's actors (`meta["subject_actors"]`) are rebound to `--endpoint`. `report`,
+can be rolled out like any episode, and its rollouts are baselines of nothing. A rollout is
+played by this run's cast, whatever played its source: a seat names a cast name (`subject`,
+or one `--cast`'s table maps), so another `--endpoint` changes who plays the subject's seats
+and nothing else. A seat whose name the cast lacks stops the command before play. `report`,
 `view` and calibration sampling keep rollouts out of the run's own numbers; `report` lists
 them per group and says which groups are settled (`Store.groups`).
 
@@ -115,7 +118,7 @@ from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, ha
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.run import ROOT, Runner, code_version, run_info, score_into, situate
+from writing_assistant.run import ROOT, Runner, cast_from, code_version, resolved, run_info, score_into, situate
 from writing_assistant.run import now as _now
 from writing_assistant.suites import SUITES, Services
 
@@ -184,9 +187,14 @@ async def cmd_run(args: argparse.Namespace) -> int:
     if args.split == "test" and not args.held_out_test:
         sys.exit("--split test is the held-out split, never used to choose anything; pass --held-out-test to run "
                  f"it, and the run is logged in {TEST_USES}")
-    if args.split == LOCAL_DEV and not services.llm.endpoints[args.endpoint].get("local"):
+    try:
+        cast = cast_from(services.llm.config, args.cast) if args.cast else {}
+    except ValueError as e:
+        sys.exit(f"--cast {args.cast}: {e}")
+    hosted = [e for e in (args.endpoint, *cast.values()) if not services.llm.endpoints[e].get("local")]
+    if args.split == LOCAL_DEV and hosted:
         sys.exit(f"--split local_dev plays personal text, which may reach only an endpoint with `local = true`; "
-                 f"{args.endpoint!r} is hosted. Local endpoints: "
+                 f"{', '.join(map(repr, hosted))} is hosted. Local endpoints: "
                  f"{sorted(n for n, e in services.llm.endpoints.items() if e.get('local'))}")
     if args.source and (args.where or args.limit):
         sys.exit("--from plays rollouts of one stored episode; --where and --limit choose task rows and do not apply")
@@ -212,14 +220,14 @@ async def cmd_run(args: argparse.Namespace) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
                 "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split,
-                "max_tokens": args.max_tokens}
+                "max_tokens": args.max_tokens, "cast": resolved(services.llm.endpoints, cast)}
     code = code_version()
     # The directory is this run's, or becomes it, before anything is stored in it: of two
     # first invocations one claims the identity and the other is held to it.
     with run_info(run_dir) as info:
         if not info:
             info |= identity | {"started": _now(), "reported_apart": args.driver == "direct"}
-        elif {k: info.get(k) for k in identity} != identity:
+        elif {k: info.get(k) for k in identity} | {"cast": info.get("cast", {})} != identity:  # none before runs had one
             sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}; this one is {identity}")
         run_id = info.setdefault("id", uuid.uuid4().hex)  # a directory claimed before runs had one gets it now
         store = Store(run_dir / STORE_FILE)  # one this build does not write is refused here, run.json unchanged
@@ -228,7 +236,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                                              "where": args.where, "limit": args.limit}])
 
     runner = Runner(suite, services, store, run_dir, run_id=run_id, endpoint=args.endpoint, driver=args.driver,
-                    max_tokens=args.max_tokens, profile=args.judges, concurrency=args.concurrency,
+                    max_tokens=args.max_tokens, profile=args.judges, concurrency=args.concurrency, cast=cast,
                     round=args.round, score=not args.no_score)
     stopped: AccountError | None = None
 
@@ -422,6 +430,7 @@ def parser() -> argparse.ArgumentParser:
     r = sub.add_parser("run", help="set up, play, save and score a suite's tasks against one endpoint")
     r.add_argument("--suite", required=True, choices=sorted(SUITES))
     r.add_argument("--endpoint", required=True, help="models.toml endpoint name of the subject")
+    r.add_argument("--cast", help="[cast.<name>] in models.toml: the endpoint of every model seat that is not the subject's")
     r.add_argument("--driver", default="direct", choices=sorted(DRIVERS))
     r.add_argument("--split", default="dev", choices=["train", "dev", "test", LOCAL_DEV])
     r.add_argument("--held-out-test", action="store_true",

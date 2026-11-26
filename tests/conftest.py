@@ -4,11 +4,13 @@
   `embed`) over the repository's models.toml.
 - `fake_provider(...)` -> FakeProvider, a search `Provider`.
 - `fake_turn(replies, tools)` -> a `Turn` over the real direct driver and a FakeLLM.
+- `killed(*argv)` runs `wa-bench` until a scripted reply raises `killed.Killed`.
 """
 
 from __future__ import annotations
 
 import asyncio
+import gc
 import hashlib
 import tomllib
 from collections.abc import Callable
@@ -19,7 +21,7 @@ import numpy as np
 import pytest
 
 from writing_assistant.drivers.direct import DirectDriver
-from writing_assistant.episode import CallRecord, Episode
+from writing_assistant.episode import CallRecord
 from writing_assistant.episode.tools import ToolTable
 from writing_assistant.llm.client import split_reasoning
 from writing_assistant.run import Binding
@@ -63,9 +65,8 @@ class FakeLLM:
         return queue.pop(0)
 
     async def chat(self, messages, tools=None, *, endpoint, temperature, max_tokens, seed=None) -> CallRecord:
-        self.requests.append(
-            {"messages": list(messages), "tools": tools, "endpoint": endpoint, "temperature": temperature}
-        )
+        self.requests.append({"messages": list(messages), "tools": tools, "endpoint": endpoint,
+                              "temperature": temperature, "max_tokens": max_tokens})
         reply = self._next(endpoint)
         if callable(reply):
             reply = reply(messages, tools, endpoint)
@@ -128,23 +129,16 @@ class FakeProvider:
         return self.docs.get(canonical_id)
 
 
-def _fake_turn(replies: list[Reply] | dict[str, list[Reply]], tools: ToolTable | None = None, **driver_kw: Any):
+def _fake_turn(replies: list[Reply] | dict[str, list[Reply]], tools: ToolTable | None = None,
+               cast: dict[str, str] | None = None, **driver_kw: Any):
     """`run.Binding` over the real `DirectDriver` and a `FakeLLM`, so tool calls run
     through `dispatch_tool` and every call is attested. `replies` follow FakeLLM: one queue,
-    or a dict keyed by endpoint (`ep.actors[actor]`); a tool-using turn takes one reply per
-    model call. Actors still on the `SUBJECT` placeholder are mapped to the endpoint
-    "subject-endpoint" at their first delivery. That is later than a run binds them (before
-    the episode is first saved, which is when a store takes its `meta`), so nothing is
-    recorded in `meta` here. `turn.llm` exposes the requests."""
+    or a dict keyed by endpoint; a tool-using turn takes one reply per model call. The
+    subject's seats are played by the endpoint "subject-endpoint", and `cast` maps any other
+    cast name the episodes use to an endpoint. `turn.llm` exposes the requests."""
     llm = FakeLLM(replies)
     driver = DirectDriver(llm, tools or {}, **driver_kw)
-    binding = Binding(driver, driver)
-
-    async def turn(ep: Episode, actor: str, message: str) -> None:
-        if ep.actors.get(actor) == SUBJECT:
-            ep.actors = {a: "subject-endpoint" if e == SUBJECT else e for a, e in ep.actors.items()}
-        await binding(ep, actor, message)
-
+    turn = Binding({SUBJECT: "subject-endpoint"} | (cast or {}), driver, driver)
     turn.llm = llm
     return turn
 
@@ -162,3 +156,30 @@ def fake_provider():
 @pytest.fixture
 def fake_turn():
     return _fake_turn
+
+
+class Killed(BaseException):
+    """Stands in for the process dying: nothing in `wa-bench` catches it."""
+
+
+def _killed(*argv: str) -> None:
+    """`wa-bench` with these arguments, killed part-way. What the dead invocation held is
+    then let go as a dead process's is: its frames, kept alive by the exception, hold the
+    open run.lock that tells the next `run` another one is alive."""
+    from writing_assistant import cli
+
+    try:
+        cli.main(list(argv))
+    except BaseException as e:
+        assert isinstance(e, Killed) or e.subgroup(Killed), e
+    else:
+        raise AssertionError("the invocation was not killed")
+    gc.collect()
+
+
+_killed.Killed = Killed
+
+
+@pytest.fixture
+def killed():
+    return _killed

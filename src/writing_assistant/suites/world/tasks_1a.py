@@ -1,8 +1,8 @@
 """Suite 1a tasks: `setup` builds the episodes a task row describes, `next_delivery` steps one.
 
-Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`;
-`run.bind_subject` replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
-at rev 1 with no event, which is how the record says the benchmark wrote them.
+Every model-driven actor is the model under test's (the cast name `suites.SUBJECT`).
+Files a task mounts are written straight into `ep.files` at rev 1 with no event, which is
+how the record says the benchmark wrote them.
 
 A twin is forked from the episode it is the baseline of (`fork(..., baseline=True)`), so it
 names that episode in `baseline_of`: both POV arms have a `twin_swap`, and the name is what

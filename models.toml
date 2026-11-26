@@ -149,6 +149,22 @@ embed_semantic = "qwen3-embed-mini"
 
 # "<profile>.<use>" entries whose human-label gate has passed (benchmark.md, judge stack).
 # `wa-bench report` marks every metric that depends on any other model judge as ungated.
+# -- casts ----------------------------------------------------------------------------------
+# `wa-bench run --cast <name>`: who plays each model seat that is not the subject's. A seat
+# names a cast name (`counterpart`, `master`, ...) and the run maps it to an endpoint here;
+# `subject` is always the run's --endpoint and `scripted` is no model, so neither is defined.
+# The resolved cast is part of a run's identity, and `report --baseline` compares two runs
+# only when the names their episodes used resolve to the same endpoint and model.
+
+[cast.bench]            # benchmark: the other seats are the same model for every subject
+counterpart = "qwen3-32b-mini"
+master = "qwen3-32b-mini"
+
+[cast.self]             # training: one served model in every seat (the subject's server)
+counterpart = "gemma-4-26b"
+master = "gemma-4-26b"
+
+
 [gates]
 passed = []
 
