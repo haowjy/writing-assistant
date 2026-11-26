@@ -6,21 +6,52 @@
 # concurrency (requests in flight, default 16), params (extra request-body fields).
 # Keys come from the environment; `wa-bench` loads `.env` from the working directory.
 
-# -- subjects (DeepInfra; DECISIONS #11) ---------------------------------------------------
+# -- subjects: local on the RTX 3090 (DECISIONS #13) ---------------------------------------
+# Served through `llmpick` (one at a time; profiles in ~/.config/llmpick/profiles.toml), each on
+# its own port so a call never reaches another model. A llama.cpp server ignores `model`; it is
+# the weights file, so a run's identity names the quantisation, and run.json `served` records
+# the file and engine build that answered. `concurrency` is the server's slot count: a request
+# queued behind a full server would spend its timeout waiting.
 
-[endpoints."qwen3.5-9b"]
+[endpoints.inkling-2-mini]          # llmpick start inkling-5.4-x4 (4 slots, no drafter)
+kind = "openai"
+base_url = "http://127.0.0.1:18080/v1"
+model = "Inkling-2-Mini-ATX-NVFP4Q8-5.4bpw.gguf"
+api_key_env = ""
+local = true
+concurrency = 4
+
+[endpoints."qwen3.5-9b"]            # llmpick start qwen3.5-9b-q8
+kind = "openai"
+base_url = "http://127.0.0.1:18083/v1"
+model = "Qwen3.5-9B-Q8_0.gguf"
+api_key_env = ""
+local = true
+concurrency = 4
+
+[endpoints.gemma-4-26b]             # llmpick start gemma-4-26b-qat
+kind = "openai"
+base_url = "http://127.0.0.1:18084/v1"
+model = "gemma-4-26B_q4_0-it.gguf"
+api_key_env = ""
+local = true
+concurrency = 4
+
+# -- subjects on DeepInfra: fallbacks only (DECISIONS #11, #13) ----------------------------
+
+[endpoints."qwen3.5-9b-deepinfra"]
 kind = "openai"
 base_url = "https://api.deepinfra.com/v1/openai"
 model = "Qwen/Qwen3.5-9B"
 api_key_env = "DEEPINFRA_API_KEY"
 
-[endpoints.gemma-4-26b]
+[endpoints.gemma-4-26b-deepinfra]
 kind = "openai"
 base_url = "https://api.deepinfra.com/v1/openai"
 model = "google/gemma-4-26B-A4B-it"
 api_key_env = "DEEPINFRA_API_KEY"
 
-[endpoints.inkling-2-mini]
+[endpoints.inkling-2-mini-deepinfra]
 kind = "openai"
 base_url = "https://api.deepinfra.com/v1/openai"
 model = "thinkingmachines/Inkling-2-Mini"
@@ -56,19 +87,12 @@ base_url = "https://api.deepinfra.com/v1/openai"
 model = "Qwen/Qwen3-Embedding-0.6B"
 api_key_env = "DEEPINFRA_API_KEY"
 
-# -- local example: the only kind of endpoint that may receive local_dev text --------------
-
-[endpoints.qwen3-8b-local]
-kind = "openai"
-base_url = "http://127.0.0.1:8000/v1"
-model = "Qwen/Qwen3-8B"
-api_key_env = ""
-local = true
-cutoff = "2025-04"
-
 # Every value is an endpoint name. A use with no entry (embed_style: no style-embedding
 # model is served anywhere yet) is unavailable: its judge raises Unscored("unavailable"),
 # so whatever needs it reports itself unavailable instead of failing the run.
+[judges.none]           # no judge at all: `run --judges none` plays now and scores what needs
+                        # no model; `score --judges eval` judges the saved run later
+
 [judges.eval]           # final-evaluation profile; never used as a training reward
 fact = "deepseek-v4-flash"
 outline = "deepseek-v4-flash"

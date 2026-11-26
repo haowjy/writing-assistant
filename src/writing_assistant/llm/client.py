@@ -68,6 +68,10 @@ class LLMClient:
         self._http: httpx.AsyncClient | None = None
         self._slots: dict[str, asyncio.Semaphore] = {}
         self.spent: dict[str, float] = {}  # endpoint -> USD the host reported for this client's calls
+        # endpoint -> the builds that answered: the response's `model` and `system_fingerprint`.
+        # A local llama.cpp server names the weights file it loaded and its build there, so a
+        # run records which quantisation and engine its numbers hold for.
+        self.served: dict[str, set[str]] = {}
 
     async def chat(
         self,
@@ -91,6 +95,8 @@ class LLMClient:
         rec.endpoint = endpoint
         rec.messages = list(messages)
         self.spent[endpoint] = self.spent.get(endpoint, 0.0) + rec.usage.get("cost_usd", 0.0)
+        if served := rec.ext.get("served"):
+            self.served.setdefault(endpoint, set()).add(served)
         rec.tools_advertised = [t["name"] for t in tools or []]
         return rec
 
@@ -255,6 +261,7 @@ async def _openai_compat(http, ep, headers, messages, tools, temperature, max_to
         usage=_usage(data.get("usage") or {}, (("input_tokens", "prompt_tokens"), ("output_tokens", "completion_tokens"))),
         finish_reason=_FINISH.get(finish, finish),
         reasoning=reasoning,
+        ext={"served": " ".join(str(x) for x in (data.get("model"), data.get("system_fingerprint")) if x)},
     )
 
 

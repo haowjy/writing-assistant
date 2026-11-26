@@ -51,6 +51,7 @@ class FakeLLM:
         self.endpoints = self.config["endpoints"]
         self.requests: list[dict[str, Any]] = []  # every chat() call, for prompt assertions
         self.spent: dict[str, float] = {}
+        self.served: dict[str, set[str]] = {}
 
     async def aclose(self) -> None:
         pass

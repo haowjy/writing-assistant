@@ -4,11 +4,16 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
 
     run.json            what was run: suite, driver, endpoint, model, split, max_tokens; one
                         entry per invocation (time, code version, where, limit); the USD the
-                        hosts reported. Each episode's meta has its own temperature, max_tokens
+                        hosts reported; `served`, every build that answered each endpoint (the
+                        response's model and system_fingerprint: on a local llama.cpp server,
+                        the weights file and engine build). Each episode's meta has its own temperature, max_tokens
                         and code version, so a run resumed after a code change says which is which
     episodes.jsonl      every saved episode, appended one task at a time; never rewritten
     errors.jsonl        tasks that raised in setup or play (not saved; a resume reruns them)
-    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored, and the
+    scores-<profile>.jsonl  `<profile>` is `--judges`, a `[judges.<profile>]` table in
+                        models.toml; `none` names no judge, so a run with no judge served
+                        plays and scores what needs no model now and is re-scored later with
+                        `score --judges eval`. One row per episode: metrics, or why it was not scored, and the
                         `code` version that scored it; a twin's row says only whose baseline it
                         is (`baseline_of`). `wa-bench score` replaces the rows of the episodes it
                         scored, never episodes.jsonl
@@ -106,6 +111,8 @@ def load_dotenv(path: Path) -> None:
 
 def services_for(models: Path, profile: str) -> Services:
     client = LLMClient(models)
+    if profile not in client.config["judges"]:
+        sys.exit(f"no [judges.{profile}] in {models}; it has {sorted(client.config['judges'])}")
     judges = judges_from(client, profile)
     return Services(llm=client, judges=judges, search=None, refs=None, corpus=Corpus(judges=judges))
 
@@ -199,12 +206,15 @@ async def score_all(suite: Suite, episodes: list[Episode], services: Services, c
     return [row | {"code": code} for row, _ in scored], [j for _, js in scored for j in js]
 
 
-def record_spent(run_dir: Path, services: Services) -> None:
-    """Add the USD the hosts reported to run.json."""
+def record_usage(run_dir: Path, services: Services) -> None:
+    """Add the USD the hosts reported, and the builds that answered, to run.json."""
     info = json.loads((run_dir / RUN_FILE).read_text())
     spent = info.setdefault("spent_usd", {})
     for endpoint, usd in services.llm.spent.items():
         spent[endpoint] = round(spent.get(endpoint, 0.0) + usd, 6)
+    served = info.setdefault("served", {})
+    for endpoint, builds in services.llm.served.items():
+        served[endpoint] = sorted(set(served.get(endpoint, [])) | builds)
     _write_json(run_dir / RUN_FILE, info)
 
 
@@ -318,7 +328,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
     except* AccountError as group:
         stopped = group.exceptions[0]
     finally:
-        record_spent(run_dir, services)
+        record_usage(run_dir, services)
         await close(services)
     print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
@@ -351,7 +361,7 @@ async def cmd_score(args: argparse.Namespace) -> int:
     rescored = {r["ep_id"] for r in rows}
     jpath = run_dir / f"judgments-{args.judges}.jsonl"
     _write_jsonl(jpath, [j for j in read_jsonl(jpath) if j["scored"] not in rescored] + judgments)
-    record_spent(run_dir, services)
+    record_usage(run_dir, services)
     errors = sum("error" in r for r in rows)
     print(f"{path}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, {errors} scorer errors; "
           f"spent ${sum(services.llm.spent.values()):.4f}")
@@ -424,20 +434,20 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--where", help="key=value[,key=value]: task row fields, then payload fields; a comma not followed by key= stays in the value")
     r.add_argument("--limit", type=int, help="run at most this many tasks")
     r.add_argument("--out", help="run directory (resumed when it exists)")
-    r.add_argument("--judges", default="eval", choices=["eval", "train"])
+    r.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     r.add_argument("--no-score", action="store_true", help="play and save only; score later")
     r.add_argument("--concurrency", type=int, default=8, help="tasks in flight")
     r.add_argument("--max-tokens", type=int, default=16384, help="per model call, thinking included")
 
     s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired)")
     s.add_argument("--run", required=True)
-    s.add_argument("--judges", default="eval", choices=["eval", "train"])
+    s.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     s.add_argument("--where", help="key=value[,key=value]: the episode's row fields and its condition, as in report")
     s.add_argument("--concurrency", type=int, default=8)
 
     rp = sub.add_parser("report", help="metrics per group, with gates, refusals and baseline deltas")
     rp.add_argument("--run", required=True)
-    rp.add_argument("--judges", default="eval", choices=["eval", "train"])
+    rp.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     rp.add_argument("--group-by", help="comma-separated row fields (kind, k, mode, author, condition, ...)")
     rp.add_argument("--where")
     rp.add_argument("--baseline")

@@ -101,6 +101,8 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())}); "
               "counts only the chat-call cost a host reports (DeepInfra's estimated_cost): embedding calls "
               "and hosts that report no cost add nothing")
+    if served := info.get("served"):
+        print("served: " + "; ".join(f"{k} {' | '.join(v)}" for k, v in served.items()))
     if (run_dir / "guardrails.json").exists():
         print(_guardrails_line(run_dir / "guardrails.json"))
     errors = read_jsonl(run_dir / ERRORS_FILE)
