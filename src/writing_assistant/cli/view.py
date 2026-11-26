@@ -789,7 +789,10 @@ def cmd_view(args: argparse.Namespace) -> int:
         raise SystemExit(f"{', '.join(private)} hold local_dev text: serve them on loopback only")
     server = HTTPServer((args.host, args.port), make_handler(runs, loopback))
     shown = "localhost" if loopback else args.host
-    print(f"viewing {len(runs)} run{'s' * (len(runs) > 1)} at http://{shown}:{server.server_address[1]}/", flush=True)
+    # The URL opens the first run's own suite and split (a `local_dev` run is on no other
+    # screen); the page's picker lists every suite and split the loaded runs have.
+    scope = next((f"{i['suite']}/{i['split']}" for r in runs.values() if (i := r.info())), "")
+    print(f"viewing {len(runs)} run{'s' * (len(runs) > 1)} at http://{shown}:{server.server_address[1]}/{scope}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
