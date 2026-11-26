@@ -101,11 +101,16 @@ class Tally:
     judgments: list[dict[str, Any]] = field(default_factory=list)
 
     async def ask(self, metric: str, judge: Judge, *args: Any, about: str | None = None) -> Any:
+        # The slot is taken before the await: judgments keep the order the items were asked
+        # in, not the order the judge answered, so a stored id (`<ep_id>#<n>`) names the
+        # same item when the run is re-scored.
+        item = judge.item(*args)
+        if item:
+            slot = {"metric": metric, **({"ep_id": about} if about else {}), **item}
+            self.judgments.append(slot)
         j = await judge.judge(*args)
-        if j.item:
-            self.judgments.append({"metric": metric, **({"ep_id": about} if about else {}), **j.item,
-                                   "model": j.value, "unscored": j.unscored, "judge": judge.stamp,
-                                   "replies": j.replies})
+        if item:
+            slot |= {"model": j.value, "unscored": j.unscored, "judge": judge.stamp, "replies": j.replies}
         if j.unscored:
             self.unscored[(metric, j.unscored)] += 1
             return None
