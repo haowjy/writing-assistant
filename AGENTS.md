@@ -111,7 +111,10 @@ other episode format and no reader for an older one.
 - Play continues, or is forked, from a turn checkpoint only. `--from '<ep_id>@<n>'` forks
   the named episode's turn checkpoint `n` `--rollouts` times; with `--from-run` the
   episode's chain and its twin's are first copied into the new run's store, so every store
-  is self-contained.
+  is self-contained. `n` counts the named episode's own checkpoints, 0 being its start: for
+  an episode `run` set up, `n` is the checkpoint taken when its n-th delivery returned; a
+  rollout starts where it was forked, so `@1` of a rollout of `<ep_id>@3` is the source's
+  fourth delivery.
 - A **rollout** records what it replays in `Episode.rollout_of` (source `ep_id`, checkpoint)
   and is named `<ep_id>@<n>.<i>`, so each samples with its own seed. It is scored against
   its source's stored twin, so its `net_*` subtract the baseline the source's do; a rollout
