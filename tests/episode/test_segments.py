@@ -1,5 +1,7 @@
 from dataclasses import MISSING, fields
 
+import pytest
+
 from writing_assistant.episode import CallRecord, Episode
 from writing_assistant.episode.segments import Store
 
@@ -38,3 +40,24 @@ def test_a_saved_episode_loads_back_whole(tmp_path):
         [back] = store.episodes()
     assert back == ep
     assert back.events[0].data["rolls"] == [3, 17] and back.view("pc").events[0].data == {}
+
+
+def test_a_fork_made_past_what_its_parent_has_stored_is_refused(tmp_path):
+    """A fork is stored after a position in its parent's log. Past the parent's last
+    checkpoint nothing is stored there yet, so the fork would load with whatever the parent
+    put there later: a resumed parent that played on differently would rewrite its child."""
+    def say(ep, text):
+        ep.log("dm", "say", {"text": text}, {"*": "full"})
+
+    with Store(tmp_path / "store.db") as store:
+        parent = Episode(ep_id="p", task_id="t", suite="1a", split="dev")
+        say(parent, "stored")
+        store.append(parent)
+        say(parent, "in flight")
+        ahead = parent.fork("ahead")
+        with pytest.raises(ValueError, match="past the 1 events and 0 calls stored"):
+            store.append(ahead)
+        assert store.names(closed=False) == ["p"]
+        store.append(parent)
+        store.append(ahead)
+        assert store.load("p~ahead") == ahead

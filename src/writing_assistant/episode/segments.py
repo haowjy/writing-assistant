@@ -28,6 +28,9 @@ machines, is the same idempotent operation.
 
 What the caller owes the store:
 - `append` only before play or when a delivery has returned; `close` when play has ended.
+- A fork of a stored episode is saved from one of its stored positions: `append` refuses a
+  fork made past the parent's last checkpoint. (A parent nothing has saved is saved with
+  its fork, as it then stands.)
 - After an episode's first save its files change only through `Episode.write_file`. Before
   it they may be set with no event (what `setup` mounts), and the start records them.
 - State is plain JSON.
@@ -212,6 +215,14 @@ class Store:
                 if ep.forked_from is None:
                     raise ValueError(f"{self.path}: {ep.ep_id} was forked from segment {seg}, which is not stored here")
                 self._save(ep.forked_from, "turn", False, tips)
+            # Only a parent's stored log is a fixed thing to be stored after: a fork made past
+            # it would load with whatever the parent's next checkpoint, or a resume, put there.
+            events, calls = self.db.execute("SELECT events, calls FROM checkpoints WHERE seg = ? ORDER BY n DESC LIMIT 1",
+                                            (seg,)).fetchone()
+            if n_events > events or n_calls > calls:
+                raise ValueError(f"{self.path}: {ep.ep_id} was forked from its parent at {n_events} events and {n_calls} "
+                                 f"calls, past the {events} events and {calls} calls stored of it; checkpoint the "
+                                 "parent first, or fork one of its stored checkpoints")
             if ep.forked_from is not None:
                 was_events, was_files = ep.forked_from.events[:n_events], _files_at(ep.forked_from, n_events)
             else:
