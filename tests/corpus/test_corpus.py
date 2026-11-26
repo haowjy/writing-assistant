@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import httpx
 import numpy as np
+import pytest
 
 from writing_assistant.corpus import Corpus, Work
 from writing_assistant.corpus.authors import K_VALUES, partition_author_corpus
@@ -204,3 +205,10 @@ async def test_export_never_writes_restricted_text(tmp_path):
     with local_only():  # work 4 is local_dev text, readable only under the guard
         for n in (2, 3, 4):
             assert corpus.text(corpus.get(f"gutenberg:{n}"))[:200] not in out
+
+    # A mistyped mark hashes nothing, so the copyrighted passage would leave: export refuses.
+    passage = {"work_id": "gutenberg:2", "text": texts[2].split("\n\n")[5]}
+    (tasks / "3.jsonl").write_text(json.dumps({"task_id": "e", "suite": "3", "kind": "critique_edit", "split": "dev",
+                                               "work_ids": ["gutenberg:2"], "payload": {"passage": passage}}) + "\n")
+    with pytest.raises(ValueError, match="still holds text of gutenberg:2"):
+        export_public(corpus, tmp_path / "out", {"3": {"critique_edit": ["passage.txt"]}}, tasks_dir=tasks)

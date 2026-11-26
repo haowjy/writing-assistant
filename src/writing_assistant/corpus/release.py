@@ -14,22 +14,36 @@ leave.
   marked field leaves as text only when every work the row draws on is permissive; the
   unmarked fields are the benchmark's own text and leave whole. A row draws on the works in
   `work_ids` and every `work_id` a payload passage names (a Suite 3 impostor is by another
-  author and is not in `work_ids`).
+  author and is not in `work_ids`). A mark that is mistyped, or missing for a new field,
+  would let text out silently, so a hashed row that still shares a `RUN`-word run with a
+  work it draws on is refused.
 - Episodes, and the scores and judgments rows about them, leave whole or not at all: only
   when every work the episode draws on is permissive (DECISIONS #12: left out, not hashed).
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import shutil
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, RUN_FILE, TASKS_DIR, load_rows, read_jsonl
+from writing_assistant.corpus.text import norm_words
+from writing_assistant.episode.model import strings
+from writing_assistant.episode.store import (
+    EPISODES_FILE,
+    LOCAL_DEV,
+    RUN_FILE,
+    TASKS_DIR,
+    load_rows,
+    local_only,
+    read_jsonl,
+)
 
 if TYPE_CHECKING:
     from writing_assistant.corpus.rows import Corpus
@@ -38,6 +52,10 @@ PERMISSIVE = frozenset({"public-domain", "cc-by", "cc-by-sa", "author-granted"})
 WORKS_FILE = "works.jsonl"
 TextFields = dict[str, list[str]]  # task kind -> marked payload paths
 SuiteFields = dict[str, TextFields]  # suite name -> its kinds' marks (every kind it has)
+# Words: a run this long shared with a work is that work's text (style/tasks.py's leak rule).
+# 8 words is too short: a Suite 3 beat paraphrase keeps "to the Fifth Northumberland
+# Fusiliers as Assistant Surgeon".
+RUN = 12
 
 
 def works_in(value: Any) -> set[str]:
@@ -80,13 +98,26 @@ def _hashed(value: Any, path: list[str]) -> Any:
     return value | {head: _hashed(value[head], rest)}
 
 
-def public_row(corpus: Corpus, row: dict, text_fields: TextFields) -> dict:
-    """The task row as it may leave: marked fields hashed unless every work is permissive."""
-    if may_leave(corpus, works_in(row)):
+def _runs(text: str) -> set[tuple[str, ...]]:
+    words = norm_words(text)
+    return {tuple(words[i : i + RUN]) for i in range(len(words) - RUN + 1)}
+
+
+def public_row(corpus: Corpus, row: dict, text_fields: TextFields,
+               work_runs: Callable[[str], set[tuple[str, ...]]]) -> dict:
+    """The task row as it may leave: marked fields hashed unless every work is permissive.
+    `work_runs(work_id)`: that work's `RUN`-word runs."""
+    works = works_in(row)
+    if may_leave(corpus, works):
         return row
     payload = row.get("payload", {})
     for field in text_fields[row["kind"]]:
         payload = _hashed(payload, field.split("."))
+    runs = set().union(*map(_runs, strings(payload)))
+    left = [w for w in sorted(works) if w in corpus.works and runs & work_runs(w)]
+    if left:
+        raise ValueError(f"{row['task_id']}: with its marked fields {text_fields[row['kind']]} hashed, the payload "
+                         f"still holds text of {left[0]}; mark the field that carries it in its suite's text_fields")
     return row | {"payload": payload}
 
 
@@ -94,6 +125,11 @@ def public_task_rows(corpus: Corpus, suites: SuiteFields, tasks_dir: Path = TASK
     """Suite name -> its public task rows (`<tasks_dir>/<suite>.jsonl`), as they may leave.
     Refuses a line that is not a task row of that suite (a local_dev row included: those
     live elsewhere)."""
+    @functools.cache
+    def work_runs(work_id: str) -> set[tuple[str, ...]]:
+        with local_only():  # compared on this machine; a local_dev work's text goes nowhere
+            return _runs(corpus.text(corpus.get(work_id)))
+
     out = {}
     for suite, text_fields in suites.items():
         path = tasks_dir / f"{suite}.jsonl"
@@ -104,7 +140,7 @@ def public_task_rows(corpus: Corpus, suites: SuiteFields, tasks_dir: Path = TASK
             if task.suite != suite or task.kind not in text_fields:
                 raise ValueError(f"{path}: {task.task_id} is not a task row of suite {suite} "
                                  f"(suite {task.suite!r}, kind {task.kind!r}; kinds {sorted(text_fields)})")
-            rows.append(public_row(corpus, asdict(task), text_fields))
+            rows.append(public_row(corpus, asdict(task), text_fields, work_runs))
         out[suite] = rows
     return out
 
