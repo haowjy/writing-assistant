@@ -118,8 +118,9 @@ other episode format and no reader for an older one.
 - A **rollout** records what it replays in `Episode.rollout_of` (source `ep_id`, checkpoint)
   and is named `<ep_id>@<n>.<i>`, so each samples with its own seed. It has no twin: it
   carries its own metrics only and gets no `net_*` (its source's twin had another
-  conversation, so subtracting it would not be a matched counterfactual), and a rollout of
-  a twin is refused. `report`, `view` and `build_calibration.py` keep rollouts apart from
+  conversation, so subtracting it would not be a matched counterfactual). A twin can be
+  rolled out too: its rollout carries its own metrics and is the baseline of nothing
+  (pairing rollouts into a counterfactual is not built). `report`, `view` and `build_calibration.py` keep rollouts apart from
   the run's task episodes: no headline number, list or sample includes one, and `report`
   prints them after the run's groups, per checkpoint. A rollout stores no task, so a
   directory holding only rollouts of a task has not played it.

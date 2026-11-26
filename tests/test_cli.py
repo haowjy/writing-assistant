@@ -114,21 +114,20 @@ def test_report_warns_about_any_scores_row_without_the_scoring_code(bench, capsy
 
 def test_rollouts_carry_their_own_metrics_and_stay_out_of_the_runs_numbers(bench, capsys):
     """A rollout says which checkpoint it replays, so rollouts of two checkpoints are all made.
-    It has no twin: it gets its own metrics and no `net_*`, with no twin counted as missing,
-    and a twin has no rollouts. The report of the run's own episodes is the same with the
-    rollouts stored beside them, which it lists apart, per checkpoint."""
+    It has no twin: it gets its own metrics and no `net_*`, with no twin counted as missing.
+    A twin's rollout is one more rollout, scored itself and the baseline of nothing. The
+    report of the run's own episodes is the same with the rollouts stored beside them, which
+    it lists apart, per checkpoint."""
     out = bench([POV_ROW], chapter("Mira turned the glove over."))
     run_and_score(capsys, out)
     cli.main(["report", "--run", str(out)])
     before = capsys.readouterr().out
     run_and_score(capsys, out, "--from", "pov-1~full_view@0", "--rollouts", "2")
     run_and_score(capsys, out, "--from", "pov-1~full_view@1", "--rollouts", "2")
-    with pytest.raises(SystemExit, match="a twin has no rollouts"):
-        cli.main(["run", "--suite", "1a", "--endpoint", "gemma-4-26b", "--out", str(out),
-                  "--from", "pov-1~full_view~twin_swap@0", "--rollouts", "2"])
+    run_and_score(capsys, out, "--from", "pov-1~full_view~twin_swap@0", "--rollouts", "2")
     rows = {r["ep_id"]: r for r in score_rows(out)}
-    assert len(rows) == 8 and "net_pov_leak" in rows["pov-1~full_view"]["metrics"]
-    for row in (rows[f"pov-1~full_view@{at}.{i}"] for at in (0, 1) for i in (0, 1)):
+    assert len(rows) == 10 and "net_pov_leak" in rows["pov-1~full_view"]["metrics"]
+    for row in (rows[f"pov-1~full_view{twin}@{at}.{i}"] for twin, at in (("", 0), ("", 1), ("~twin_swap", 0)) for i in (0, 1)):
         assert row["twin"] is None and row["metrics"]["pov_leak"] == 0.0
         assert not [m for m in row["metrics"] if "twin" in m or m.startswith("net_")], row
     cli.main(["report", "--run", str(out)])
@@ -136,8 +135,9 @@ def test_rollouts_carry_their_own_metrics_and_stay_out_of_the_runs_numbers(bench
     head, _, apart = report.partition("\nrollouts, by the checkpoint each was forked from")
     assert head == before, report
     assert [g.split(":")[0] for g in apart.splitlines() if g.startswith("== ")] == [
-        "== rollout_of=pov-1~full_view@0, condition=full_view", "== rollout_of=pov-1~full_view@1, condition=full_view"], report
-    assert "twin" not in apart, report
+        "== rollout_of=pov-1~full_view@0, condition=full_view", "== rollout_of=pov-1~full_view@1, condition=full_view",
+        "== rollout_of=pov-1~full_view~twin_swap@0, condition=twin_swap"], report
+    assert "twin had no artefact" not in apart, report
 
 
 def test_of_two_first_invocations_one_claims_the_directory_and_the_other_is_refused(bench, monkeypatch, fake_llm):

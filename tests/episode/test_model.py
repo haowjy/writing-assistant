@@ -105,8 +105,8 @@ async def test_fork_tool_calls_never_reach_parent():
         ("e@3.0", ("e", 3), "base"), ("e@3.1", ("e", 3), "base")]
     twin = parent.fork("twin", baseline=True)
     assert twin.baseline_of == "e"
-    with pytest.raises(ValueError, match="is a twin"):
-        twin.rollout(0, 0)
+    again = twin.rollout(0, 0)  # a twin's rollout is the baseline of nothing
+    assert (again.ep_id, again.rollout_of, again.condition, again.baseline_of) == ("e~twin@0.0", ("e~twin", 0), "twin", None)
 
 
 def test_fork_swap_replaces_one_leaf_and_refuses_perceived_events():

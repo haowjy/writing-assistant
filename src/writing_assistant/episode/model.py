@@ -236,11 +236,8 @@ class Episode:
         """Rollout `i` of this episode as the store loaded it at its turn checkpoint `at`: a
         fork under the same condition to play on from there, named `<ep_id>@<at>.<i>`, so
         rollouts of different checkpoints never share a name and each samples with its own
-        seed. It has no twin and is scored on its own metrics only. A twin has no rollouts:
-        one would be a baseline of nothing."""
-        if self.baseline_of is not None:
-            raise ValueError(f"{self.ep_id} is a twin (the baseline of {self.baseline_of}), and a twin has no rollouts: "
-                             "one would be a baseline of nothing")
+        seed. It has no twin and is scored on its own metrics only. A twin's rollout is the
+        same thing: it replays the control checkpoint and is the baseline of nothing."""
         child = self.fork(self.condition)
         child.ep_id, child.rollout_of = f"{self.ep_id}@{at}.{i}", (self.ep_id, at)
         return child

@@ -50,9 +50,9 @@ for an episode `run` set up it is the number of deliveries that had returned. Th
 `--from-run`'s, whose chain is first copied into this run's store so the store stays
 self-contained. Rollout `i` is named `<ep_id>@<n>.<i>` and records what it is a rollout of
 (`Episode.rollout_of`), so each samples with its own seed; one already stored is not made
-again. A rollout has no twin: it is scored on its own metrics and gets no `net_*`, and a
-twin has no rollouts. `report`, `view` and calibration sampling keep rollouts out of the
-run's own numbers.
+again. A rollout has no twin: it is scored on its own metrics and gets no `net_*`. A twin
+can be rolled out like any episode, and its rollouts are baselines of nothing. `report`,
+`view` and calibration sampling keep rollouts out of the run's own numbers.
 """
 
 from __future__ import annotations
