@@ -115,7 +115,7 @@ def _submit(ep: Episode, actor: str, args: dict) -> dict:
     return {"ok": True}
 
 
-def _schema(name: str, description: str, properties: dict, required: list[str]) -> dict:
+def schema(name: str, description: str, properties: dict, required: list[str]) -> dict:
     return {
         "name": name,
         "description": description,
@@ -125,11 +125,11 @@ def _schema(name: str, description: str, properties: dict, required: list[str]) 
 
 WORKSPACE_TOOLS: ToolTable = {
     "episode_read": (
-        _schema("episode_read", "Read one workspace file. Returns its text and current revision.", {"path": PATH}, ["path"]),
+        schema("episode_read", "Read one workspace file. Returns its text and current revision.", {"path": PATH}, ["path"]),
         _read,
     ),
     "episode_write": (
-        _schema(
+        schema(
             "episode_write",
             "Create or replace a whole workspace file. 'rev' must equal the file's current revision "
             "(0 for a file that does not exist yet); a stale revision is refused. Returns the new revision.",
@@ -139,7 +139,7 @@ WORKSPACE_TOOLS: ToolTable = {
         _write,
     ),
     "episode_edit": (
-        _schema(
+        schema(
             "episode_edit",
             "Replace one passage in an existing file. 'old' must occur exactly once in the file and "
             "'rev' must equal its current revision. Returns the new revision.",
@@ -154,7 +154,7 @@ WORKSPACE_TOOLS: ToolTable = {
         _edit,
     ),
     "episode_grep": (
-        _schema(
+        schema(
             "episode_grep",
             f"Search workspace files line by line with a Python regular expression. Returns at most "
             f"{GREP_LIMIT} matches as path, line number and line text.",
@@ -167,7 +167,7 @@ WORKSPACE_TOOLS: ToolTable = {
         _grep,
     ),
     "episode_list": (
-        _schema(
+        schema(
             "episode_list",
             "List workspace files with their revision and length in characters.",
             {"prefix": {"type": "string", "description": "Only list paths starting with this prefix."}},
@@ -176,7 +176,7 @@ WORKSPACE_TOOLS: ToolTable = {
         _list,
     ),
     "episode_submit": (
-        _schema(
+        schema(
             "episode_submit",
             "Submit your final answer for this task. A later submission replaces an earlier one.",
             {"text": {"type": "string", "minLength": 1, "description": "The answer."}},
@@ -255,8 +255,8 @@ async def dispatch_tool(ep: Episode, actor: str, name: str, args: Any, tools: To
     elif entry is None:
         result = _err(f"unknown tool '{name}'")
     else:
-        schema, fn = entry
-        problem = validate(schema["parameters"], args)
+        spec, fn = entry
+        problem = validate(spec["parameters"], args)
         if problem:
             result = _err(f"invalid arguments to {name}: {problem}")
         else:

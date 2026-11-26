@@ -34,8 +34,8 @@ import numpy as np
 from writing_assistant.corpus.authors import PASSAGE_TOKENS
 from writing_assistant.corpus.text import count_tokens, truncate_tokens
 from writing_assistant.episode import Episode
-from writing_assistant.suites import Tally
-from writing_assistant.suites.style.tasks import WRITER, paragraphs
+from writing_assistant.suites import Tally, last_reply, norm, paragraphs, prose_metrics
+from writing_assistant.suites.style.tasks import WRITER
 
 JUDGED_BY = {
     "discriminator_fool_rate": "author_verify",
@@ -45,25 +45,9 @@ JUDGED_BY = {
 }
 
 
-def last_reply(ep: Episode) -> str:
-    replies = [c.response for c in ep.calls if c.actor == WRITER]
-    return replies[-1].strip() if replies else ""
-
-
-def _prose(out: dict[str, float], text: str, ep: Episode, services) -> None:
-    out["output_words"] = float(len(text.split()))
-    if not text.strip():
-        return
-    out |= {f"readability_{k}": float(v) for k, v in services.judges.readability(text).items()}
-    overlap = services.corpus.overlap(text, ep)
-    for part, (run, coverage) in overlap.items():
-        out[f"overlap_{part}_run"], out[f"overlap_{part}_coverage"] = float(run), float(coverage)
-    out["overlap_flagged"] = float(services.corpus.flag(overlap))
-
-
 async def _scene(ep: Episode, services, out: dict[str, float], tally: Tally) -> str:
     s = ep.state["scene"]
-    text = last_reply(ep)
+    text = last_reply(ep, WRITER)
     if not text:
         return text
     j = services.judges
@@ -89,20 +73,16 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
     return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-def _norm(text: str) -> str:
-    return " ".join(text.split())
-
-
 async def _edit(ep: Episode, services, out: dict[str, float], tally: Tally) -> str:
     s = ep.state["edit"]
     original, after = s["original"], ep.files.get(s["path"], "")
-    before_pars = [_norm(p) for p in paragraphs(original)]
-    after_pars = [_norm(p) for p in paragraphs(after)]
+    before_pars = [norm(p) for p in paragraphs(original)]
+    after_pars = [norm(p) for p in paragraphs(after)]
     kept = set(after_pars)
     scope = {i - 1 for i in s["scope"]}
     outside = [p for i, p in enumerate(before_pars) if i not in scope]
     inside = [p for i, p in enumerate(before_pars) if i in scope]
-    out["edited"] = float(_norm(after) != _norm(original))
+    out["edited"] = float(norm(after) != norm(original))
     if outside:
         out["edit_scope"] = sum(p in kept for p in outside) / len(outside)
     out["scope_changed"] = sum(p not in kept for p in inside) / len(inside)
@@ -111,7 +91,7 @@ async def _edit(ep: Episode, services, out: dict[str, float], tally: Tally) -> s
         if win is not None:
             out["edit_pair_win"] = float(win)
     written = set(before_pars)
-    return "\n\n".join(p for p in paragraphs(after) if _norm(p) not in written)
+    return "\n\n".join(p for p in paragraphs(after) if norm(p) not in written)
 
 
 SCORERS = {"k_exemplar_scene": _scene, "critique_edit": _edit}
@@ -124,5 +104,5 @@ async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str,
     tally = Tally()
     prose = await SCORERS[ep.state["kind"]](ep, services, out, tally)
     tally.into(out)
-    _prose(out, prose, ep, services)
+    prose_metrics(out, prose, ep, services)
     return out

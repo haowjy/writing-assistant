@@ -108,6 +108,45 @@ def mean(values: Iterable[Any]) -> float | None:
     return sum(got) / len(got) if got else None
 
 
+# -- what every suite's scorers share --------------------------------------------------------
+
+def paragraphs(text: str) -> list[str]:
+    """Paragraphs separated by blank lines (a line of only whitespace is blank), stripped,
+    empty ones dropped. The one split every task and scorer uses."""
+    out, cur = [], []
+    for line in text.splitlines():
+        if line.strip():
+            cur.append(line)
+        elif cur:
+            out.append("\n".join(cur).strip())
+            cur = []
+    if cur:
+        out.append("\n".join(cur).strip())
+    return out
+
+
+def norm(text: str) -> str:
+    """Whitespace collapsed: how paragraphs are compared, so reflowing changes nothing."""
+    return " ".join(text.split())
+
+
+def prose_metrics(out: dict[str, float], text: str, ep: Episode, services: Services) -> None:
+    """Every prose output: its length, readability profile and overlap (with the flag)."""
+    out["output_words"] = float(len(text.split()))
+    if not text.strip():
+        return
+    out |= {f"readability_{k}": float(v) for k, v in services.judges.readability(text).items()}
+    overlap = services.corpus.overlap(text, ep)
+    for part, (run, coverage) in overlap.items():
+        out[f"overlap_{part}_run"], out[f"overlap_{part}_coverage"] = float(run), float(coverage)
+    out["overlap_flagged"] = float(services.corpus.flag(overlap))
+
+
+def last_reply(ep: Episode, actor: str) -> str:
+    replies = [c.response for c in ep.calls if c.actor == actor]
+    return replies[-1].strip() if replies else ""
+
+
 # Last, so suite packages can import SUBJECT, Tally and Turn from here.
 from writing_assistant.suites import style  # noqa: E402
 from writing_assistant.suites.world import suite_1a  # noqa: E402

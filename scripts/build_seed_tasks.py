@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import copy
 import hashlib
 import json
 import random
@@ -52,8 +51,9 @@ from writing_assistant.episode.store import TASKS_DIR, Task, split_of
 from writing_assistant.judges import Unscored, judges_from
 from writing_assistant.judges.extract import FACT, OUTLINE
 from writing_assistant.llm.client import LLMClient
-from writing_assistant.suites.style.tasks import beats, paragraphs
-from writing_assistant.suites.world import srd, tasks_1a
+from writing_assistant.suites import paragraphs
+from writing_assistant.suites.style.tasks import beats
+from writing_assistant.suites.world import tasks_1a
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = TASKS_DIR / ".judge-cache.jsonl"

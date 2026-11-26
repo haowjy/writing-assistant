@@ -43,11 +43,10 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
-from typing import Any
 
-from writing_assistant.episode import Episode, Event, norm_path
+from writing_assistant.episode import Episode, Event, norm_path, strings
 from writing_assistant.episode.tools import dispatch_tool
-from writing_assistant.suites import SUBJECT
+from writing_assistant.suites import SUBJECT, paragraphs
 from writing_assistant.suites.world import author, srd
 
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
@@ -125,20 +124,6 @@ def _collab_entry(ep: Episode, entry: dict) -> None:
         return
     i = text.index(hit)
     ep.write_file(AUTHOR, path, text[:i] + entry["edit"]["text"] + text[i + len(hit):], PUBLIC)
-
-
-def paragraphs(text: str) -> list[str]:
-    """Blank-line separated paragraphs, stripped, empty ones dropped."""
-    out, cur = [], []
-    for line in text.splitlines():
-        if line.strip():
-            cur.append(line)
-        elif cur:
-            out.append("\n".join(cur).strip())
-            cur = []
-    if cur:
-        out.append("\n".join(cur).strip())
-    return out
 
 
 # -- rule_bend -----------------------------------------------------------------------------
@@ -235,13 +220,13 @@ def setup_pov(task, services) -> list[Episode]:
                          "hidden_probes": p["hidden_probes"], "permitted_probes": p["permitted_probes"]}
     swap = {"event_idx": i, "data": p["swap"]["data"], "state": p["swap"].get("state", {}), "restricted": [pov]}
     # The strings the swap removes from the hidden event must not survive anywhere else.
-    secret = set(_strings(base.events[i].data)) - set(_strings(swap["data"]))
+    secret = set(strings(base.events[i].data)) - set(strings(swap["data"]))
     eps = []
     for arm in ("full_view", "pov_view"):
         ep = base.fork(arm)
         ep.state["pov"]["arm"] = arm
         twin = ep.fork("twin_swap", swap=swap)
-        reachable = _reachable_strings(twin)
+        reachable = _reachablestrings(twin)
         left = [s for s in secret if any(s in text for text in reachable)]
         if left:
             raise ValueError(f"{task.task_id}: the swap twin still contains hidden-event text {left[0]!r}")
@@ -249,21 +234,11 @@ def setup_pov(task, services) -> list[Episode]:
     return eps
 
 
-def _strings(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        return [s for v in value.values() for s in _strings(v)]
-    if isinstance(value, list):
-        return [s for v in value for s in _strings(v)]
-    return []
-
-
-def _reachable_strings(ep: Episode) -> list[str]:
+def _reachablestrings(ep: Episode) -> list[str]:
     """Every string a prompt could be built from: events, files, world state, system prompts.
     Compared as strings, never as JSON text, whose escapes would hide a quote or an accent."""
-    return [*_strings([e.data for e in ep.events]), *ep.files.values(),
-            *_strings(ep.state.get("world", {})), *_strings(ep.state.get("system_prompts", {}))]
+    return [*strings([e.data for e in ep.events]), *ep.files.values(),
+            *strings(ep.state.get("world", {})), *strings(ep.state.get("system_prompts", {}))]
 
 
 def render_log(events: list[Event], pov_name: str) -> str:

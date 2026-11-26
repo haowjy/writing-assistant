@@ -237,6 +237,17 @@ class Episode:
         return cls(**d)
 
 
+def strings(value: Any) -> list[str]:
+    """Every string inside a JSON value (dict values and list items, recursively)."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in strings(v)]
+    return []
+
+
 def _deep_merge(into: dict[str, Any], new: dict[str, Any]) -> None:
     for k, v in new.items():
         if isinstance(v, dict) and isinstance(into.get(k), dict):

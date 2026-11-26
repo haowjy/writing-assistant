@@ -29,7 +29,7 @@ from typing import Any
 
 from writing_assistant.corpus.text import norm_words
 from writing_assistant.episode import Episode, norm_path
-from writing_assistant.suites import SUBJECT
+from writing_assistant.suites import SUBJECT, paragraphs
 
 WRITER = "writer"
 EDIT_TOOLS = ["episode_read", "episode_edit", "episode_write"]
@@ -128,11 +128,6 @@ def edit_message(ep: Episode) -> str:
             f"Revise {s['path']} in place with the tools to answer the note. Paragraphs are separated by "
             "blank lines. Change only what the note asks for and leave every other paragraph exactly as "
             "it is. When the file is revised, reply with one line saying what you changed.")
-
-
-def paragraphs(text: str) -> list[str]:
-    """Blank-line separated paragraphs, stripped, empty ones dropped."""
-    return [p.strip() for p in text.replace("\r\n", "\n").split("\n\n") if p.strip()]
 
 
 # -- dispatch --------------------------------------------------------------------------------

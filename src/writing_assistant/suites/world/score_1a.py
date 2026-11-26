@@ -11,9 +11,9 @@ from __future__ import annotations
 import asyncio
 
 from writing_assistant.episode import Episode
-from writing_assistant.suites import Tally, mean
+from writing_assistant.suites import Tally, last_reply, mean, norm, paragraphs, prose_metrics
 from writing_assistant.suites.world import srd
-from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, WRITER, paragraphs, render_log
+from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, WRITER, render_log
 
 CONTRADICTION_Q = "Does the narration state anything that contradicts the recorded world events?"
 
@@ -43,23 +43,6 @@ class _Judged:
 def _put(out: dict[str, float], name: str, value: float | None) -> None:
     if value is not None:
         out[name] = float(value)
-
-
-def _prose(out: dict[str, float], text: str, ep: Episode, services) -> None:
-    """Every prose output: its length, readability profile and overlap (with the flag)."""
-    out["output_words"] = float(len(text.split()))
-    if not text.strip():
-        return
-    out |= {f"readability_{k}": float(v) for k, v in services.judges.readability(text).items()}
-    overlap = services.corpus.overlap(text, ep)
-    for part, (run, coverage) in overlap.items():
-        out[f"overlap_{part}_run"], out[f"overlap_{part}_coverage"] = float(run), float(coverage)
-    out["overlap_flagged"] = float(services.corpus.flag(overlap))
-
-
-def last_reply(ep: Episode, actor: str) -> str:
-    replies = [c.response for c in ep.calls if c.actor == actor]
-    return replies[-1] if replies else ""
 
 
 # -- per task ------------------------------------------------------------------------------
@@ -149,10 +132,10 @@ def _collab(ep: Episode) -> dict[str, float]:
         if open_turn is None:
             return
         before, scope = open_turn
-        after = _norm(doc)
-        scope = [_norm(p) for p in scope]
+        after = norm(doc)
+        scope = [norm(p) for p in scope]
         in_scope, other = [], []
-        for par in map(_norm, paragraphs(before)):
+        for par in map(norm, paragraphs(before)):
             (in_scope if any(s in par for s in scope) else other).append(par)
         changed = [p for p in other if p not in after]
         out_of_scope += len(changed)
@@ -168,8 +151,8 @@ def _collab(ep: Episode) -> dict[str, float]:
         elif ev.kind == "file_write" and ev.data["path"] == path:
             if ev.actor == AUTHOR:
                 close()
-                old = {_norm(p) for p in paragraphs(doc)}
-                human.update(p for p in map(_norm, paragraphs(ev.data["after"])) if p not in old)
+                old = {norm(p) for p in paragraphs(doc)}
+                human.update(p for p in map(norm, paragraphs(ev.data["after"])) if p not in old)
             doc = ev.data["after"]
     close()
 
@@ -179,10 +162,6 @@ def _collab(ep: Episode) -> dict[str, float]:
     if accepted and usage and None not in usage:
         out["tokens_per_accepted_edit"] = sum(usage) / accepted
     return out
-
-
-def _norm(text: str) -> str:
-    return " ".join(text.split())
 
 
 SCORERS = {"pivot_unbinding": _pivot, "pov_write": _pov, "rule_bend": _rule_bend, "dm_play": _dm}
@@ -201,7 +180,7 @@ async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str,
     judge = _Judged(services)
     out, own, text = await SCORERS[kind](ep, judge)
     judge.tally.into(out)
-    _prose(out, text, ep, services)
+    prose_metrics(out, text, ep, services)
     if twin is not None and _finished(twin) and kind in NET:
         _, base, _ = await SCORERS[kind](twin, _Judged(services))
         if own is not None and base is not None:

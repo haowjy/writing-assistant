@@ -18,9 +18,10 @@ them). So a recited target saved with `episode_write` and read back does not sub
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from writing_assistant.corpus.text import norm_words
+from writing_assistant.episode import strings
 from writing_assistant.episode.tools import WORKSPACE_TOOLS
 
 if TYPE_CHECKING:
@@ -97,17 +98,6 @@ def _perceived(event_visible_to: dict[str, str], models: set[str]) -> str | None
     return "full" if "full" in modes else "redacted" if "redacted" in modes else None
 
 
-def _strings(value: Any) -> Iterator[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for v in value.values():
-            yield from _strings(v)
-    elif isinstance(value, list):
-        for v in value:
-            yield from _strings(v)
-
-
 def benchmark_texts(ep: Episode) -> Iterable[str]:
     models = _models(ep)
     yield from (p for a, p in ep.state.get("system_prompts", {}).items() if a in models)
@@ -129,14 +119,14 @@ def benchmark_texts(ep: Episode) -> Iterable[str]:
         elif ev.kind == "tool":
             if ev.actor in models and ev.data["name"] not in WORKSPACE_TOOLS and ev.data["name"] not in FETCH_TOOLS:
                 # A suite tool may echo its arguments back; those words are the model's own.
-                echoed = set(_strings(ev.data["args"]))
-                yield from (s for s in _strings(ev.data["result"]) if s not in echoed)
+                echoed = set(strings(ev.data["args"]))
+                yield from (s for s in strings(ev.data["result"]) if s not in echoed)
         elif ev.actor not in models:
             mode = _perceived(ev.visible_to, models)
             if mode == "full":
-                yield from _strings(ev.data)
+                yield from strings(ev.data)
             elif mode == "redacted" and "redacted" in ev.data:
-                yield from _strings(ev.data["redacted"])
+                yield from strings(ev.data["redacted"])
     for path, text in ep.files.items():  # files setup() placed without logging a write
         if path not in first_write and any(ep.readable(m, path) for m in models):
             yield text
@@ -154,4 +144,4 @@ def _added(before: str | None, after: str) -> str:
 def fetched_texts(ep: Episode) -> Iterable[str]:
     for ev in ep.events:
         if ev.kind == "tool" and ev.data["name"] in FETCH_TOOLS:
-            yield from _strings(ev.data["result"])
+            yield from strings(ev.data["result"])

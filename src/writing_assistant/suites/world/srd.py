@@ -33,6 +33,7 @@ import re
 from typing import Any
 
 from writing_assistant.episode import Episode
+from writing_assistant.episode.tools import schema
 
 DM = "dm"
 CONDITIONS = (
@@ -288,14 +289,9 @@ def _reveal_tool(ep: Episode, actor: str, args: dict) -> dict:
     return _apply(ep, actor, out, tool="reveal", secret_id=args["secret_id"])
 
 
-def _schema(name: str, description: str, properties: dict, required: list[str]) -> dict:
-    return {"name": name, "description": description,
-            "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}}
-
-
 TOOLS = {
     "srd_roll": (
-        _schema(
+        schema(
             "srd_roll",
             "Roll dice with the world's seeded dice. 'expr' is NdM or NdM+K / NdM-K with N 1-20 and M 2-100 "
             "(e.g. '1d20+3'); anything else is refused. A hidden roll is seen by the DM only; otherwise everyone sees it.",
@@ -309,7 +305,7 @@ TOOLS = {
         _roll_tool,
     ),
     "srd_resolve": (
-        _schema(
+        schema(
             "srd_resolve",
             "Resolve one character action under the rules; the engine rolls the dice and updates HP, conditions, "
             "inventory and location, and everyone at the location perceives the result. Per action: "
@@ -339,7 +335,7 @@ TOOLS = {
         _resolve_tool,
     ),
     "srd_propose_event": (
-        _schema(
+        schema(
             "srd_propose_event",
             "Put a narrative event into the world at one location. Every id in 'visible_to' must be 'dm' or a "
             "character currently at that location; anyone elsewhere is refused. The DM always perceives it.",
@@ -353,7 +349,7 @@ TOOLS = {
         _event_tool,
     ),
     "srd_record_fact": (
-        _schema(
+        schema(
             "srd_record_fact",
             "Commit a fact about the world, known to the listed perceivers and the DM. Ids must be 'dm' or character ids.",
             {"text": {"type": "string", "minLength": 1, "description": "The fact."}, "visible_to": PERCEIVERS},
@@ -362,7 +358,7 @@ TOOLS = {
         _fact_tool,
     ),
     "srd_reveal": (
-        _schema(
+        schema(
             "srd_reveal",
             "Reveal a secret from the world brief to characters. A secret with a reveal location can only be "
             "revealed to characters who are at that location; otherwise it is refused.",

@@ -41,7 +41,7 @@ from writing_assistant.episode import Episode
 from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, TASKS_DIR, Task, load_episodes, matches, save_episodes
 from writing_assistant.judges import Judges, judges_from
 from writing_assistant.llm.client import LLMClient, local_only
-from writing_assistant.suites import SUBJECT, SUITES, Services, Suite
+from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, mean
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN_FILE, ERRORS_FILE = "run.json", "errors.jsonl"
@@ -319,10 +319,6 @@ def _summarise(run_dir: Path, profile: str, group_by: list[str], where: str | No
     return info, groups
 
 
-def _mean(xs: list[float]) -> float | None:
-    return sum(xs) / len(xs) if xs else None
-
-
 def _fmt(x: float | None) -> str:
     return "-" if x is None else f"{x:.3f}"
 
@@ -371,14 +367,14 @@ def cmd_report(args: argparse.Namespace) -> int:
             if other := {k: int(v) for k, v in unscored.items() if k != "refusal"}:
                 notes.append(f"unscored {other}")
             if base is not None:
-                b = _mean(base.get(key, {}).get("values", {}).get(name, []))
-                notes.append(f"Δ {_fmt(_mean(vals) - b) if b is not None else '-'} vs baseline")
+                b = mean(base.get(key, {}).get("values", {}).get(name, []))
+                notes.append(f"Δ {_fmt(mean(vals) - b) if b is not None else '-'} vs baseline")
             fam = sorted(g["familiarity"].get(name, []))
             if len(fam) >= 3:
                 third = len(fam) // 3
-                low, high = _mean([v for _, v in fam[:third]]), _mean([v for _, v in fam[-third:]])
+                low, high = mean([v for _, v in fam[:third]]), mean([v for _, v in fam[-third:]])
                 notes.append(f"low-fam {_fmt(low)}, gap {_fmt(high - low)}")
-            print(f"  {name:40} {_fmt(_mean(vals)):>8} {len(vals):>4} {_fmt(_mean(g['flagged'].get(name, []))):>8} "
+            print(f"  {name:40} {_fmt(mean(vals)):>8} {len(vals):>4} {_fmt(mean(g['flagged'].get(name, []))):>8} "
                   f"{_fmt(refused) if total else '':>8}  {'; '.join(notes)}")
         # metrics every item of which went unscored: absent above, never 0.0
         for k in sorted(g["counts"]):
