@@ -59,7 +59,39 @@ base_url = "https://api.deepinfra.com/v1/openai"
 model = "thinkingmachines/Inkling-2-Mini"
 api_key_env = "DEEPINFRA_API_KEY"
 
-# -- judges (DeepInfra; open weights are the primary judges, DECISIONS #11) ----------------
+# -- judges: local on the Mac mini j-mini48 over the tailnet (DECISIONS #13; p70) ---------
+# `local = true`: the Mac is the project's own machine. Thinking off, as for hy4; a judge's
+# calibration holds for this setting only.
+
+[endpoints.qwen3-32b-mini]
+kind = "openai"
+base_url = "http://j-mini48:8400/v1"
+model = "qwen3-32b"
+api_key_env = ""
+local = true
+# One in flight: the position-swapped second call then reuses the first call's cached
+# reference prefix. Measured 1.1 author_verify items/min at 1 against 0.6 at 4 (2026-11-25).
+concurrency = 1
+params = { chat_template_kwargs = { enable_thinking = false } }
+
+[endpoints.qwen3-14b-mini]
+kind = "openai"
+base_url = "http://j-mini48:8400/v1"
+model = "qwen3-14b"
+api_key_env = ""
+local = true
+concurrency = 4
+params = { chat_template_kwargs = { enable_thinking = false } }
+
+[endpoints.qwen3-embed-mini]
+kind = "openai-embeddings"
+base_url = "http://j-mini48:8400/v1"
+model = "qwen3-embed-0.6b"
+api_key_env = ""
+local = true
+concurrency = 4
+
+# -- judges on DeepInfra: fallbacks only, assigned to no profile (DECISIONS #11, #13) ------
 
 [endpoints.deepseek-v4-flash]
 kind = "openai"
@@ -96,24 +128,24 @@ api_key_env = "DEEPINFRA_API_KEY"
                         # no model; `score --judges eval` judges the saved run later
 
 [judges.eval]           # final-evaluation profile; never used as a training reward
-fact = "deepseek-v4-flash"
-outline = "deepseek-v4-flash"
-secret_2afc = "deepseek-v4-flash"
-forecast = "deepseek-v4-flash"
-craft_pair = "hy4"
-edit_pair = "hy4"
-author_verify = "hy4"
-embed_semantic = "qwen3-embed"
+fact = "qwen3-14b-mini"
+outline = "qwen3-14b-mini"
+secret_2afc = "qwen3-14b-mini"
+forecast = "qwen3-14b-mini"
+craft_pair = "qwen3-32b-mini"
+edit_pair = "qwen3-32b-mini"
+author_verify = "qwen3-32b-mini"
+embed_semantic = "qwen3-embed-mini"
 
 [judges.train]          # a different model from judges.eval for the pairwise judges
-fact = "deepseek-v4-flash"
-outline = "deepseek-v4-flash"
-secret_2afc = "deepseek-v4-flash"
-forecast = "deepseek-v4-flash"
-craft_pair = "deepseek-v4-pro"
-edit_pair = "deepseek-v4-pro"
-author_verify = "deepseek-v4-pro"
-embed_semantic = "qwen3-embed"
+fact = "qwen3-14b-mini"
+outline = "qwen3-14b-mini"
+secret_2afc = "qwen3-14b-mini"
+forecast = "qwen3-14b-mini"
+craft_pair = "qwen3-14b-mini"
+edit_pair = "qwen3-14b-mini"
+author_verify = "qwen3-14b-mini"
+embed_semantic = "qwen3-embed-mini"
 
 # "<profile>.<use>" entries whose human-label gate has passed (benchmark.md, judge stack).
 # `wa-bench report` marks every metric that depends on any other model judge as ungated.

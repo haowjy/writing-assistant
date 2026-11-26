@@ -65,11 +65,13 @@ def test_a_hosted_judge_leaves_a_local_dev_item_unscored_and_the_rest_scored(loc
             message, finish = {"role": "assistant", "content": "Sharpened paragraph two."}, "stop"
         return httpx.Response(200, json={"choices": [{"message": message, "finish_reason": finish}], "usage": {}})
 
-    client = LLMClient(MODELS_TOML)
+    models = local_dev_row / "models.toml"  # the eval profile's edit_pair judge on a hosted endpoint
+    models.write_text(MODELS_TOML.read_text().replace('edit_pair = "qwen3-32b-mini"', 'edit_pair = "hy4"', 1))
+    client = LLMClient(models)
     client._http = httpx.AsyncClient(transport=httpx.MockTransport(endpoint))
     monkeypatch.setattr(cli, "LLMClient", lambda models: client)
     out = local_dev_row / "run"
-    cli.main(["--models", str(MODELS_TOML), "run", "--suite", "3", "--split", "local_dev",
+    cli.main(["--models", str(models), "run", "--suite", "3", "--split", "local_dev",
               "--endpoint", "inkling-2-mini", "--out", str(out)])
     [row] = [json.loads(line) for line in (out / "scores-eval.jsonl").read_text().splitlines()]
     assert row["metrics"]["edited"] == 1.0 and row["metrics"]["edit_scope"] == 1.0

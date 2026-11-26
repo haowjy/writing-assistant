@@ -50,7 +50,7 @@ def bench(tmp_path, monkeypatch, fake_llm):
         (tmp_path / "tasks").mkdir(exist_ok=True)
         (tmp_path / "tasks" / "1a.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
         reply = writer if callable(writer) else lambda m, t, e: writer
-        llm = fake_llm({"gemma-4-26b": [reply] * 100, "deepseek-v4-flash": [fact_judge] * 400})
+        llm = fake_llm({"gemma-4-26b": [reply] * 100, "qwen3-14b-mini": [fact_judge] * 400})
         monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
         return tmp_path / "run"
 

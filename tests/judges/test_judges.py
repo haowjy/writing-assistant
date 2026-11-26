@@ -55,8 +55,8 @@ async def test_pairwise_averages_both_orders(fake_llm):
     assert await j.craft_pair("a", "b", "reference") == 1.0  # consistent: a both times
     assert await j.author_verify("a", "b", ["p1", "p2"]) == 0.5  # position bias cancels
     assert await j.edit_pair("edited", "original", "objection") == 0.75  # tie, then a
-    assert j.author_verify.stamp == {"use": "author_verify", "endpoint": "hy4",
-                                     "model": "tencent/Hy4", "prompt": "author-v2"}
+    assert j.author_verify.stamp == {"use": "author_verify", "endpoint": "qwen3-32b-mini",
+                                     "model": "qwen3-32b", "prompt": "author-v2"}
 
 
 async def test_pairwise_one_order_failing_is_unscored(fake_llm):
