@@ -103,6 +103,9 @@ class Episode:
     # ancestor nothing else saved; None on an episode loaded from a store.
     forked_from: Episode | None = field(default=None, repr=False, compare=False)
     baseline_of: str | None = None  # ep_id of the episode this one is the twin (the baseline) of
+    # (ep_id, turn checkpoint) of the stored episode this one replays from: set by `rollout()`.
+    # Readers keep rollouts apart from a run's task episodes.
+    rollout_of: tuple[str, int] | None = None
     condition: str = "base"
     meta: dict[str, Any] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
@@ -192,20 +195,17 @@ class Episode:
 
     # -- branching and outcome -------------------------------------------------------------
 
-    def fork(self, condition: str, swap: dict[str, Any] | None = None, *, baseline: bool = False,
-             rollout: int | None = None) -> Episode:
+    def fork(self, condition: str, swap: dict[str, Any] | None = None, *, baseline: bool = False) -> Episode:
         """A copy that shares nothing mutable with this episode except Event and CallRecord
-        objects (never mutated). Its id is `<parent>~<condition>`; with `rollout = n` it is
-        `<parent>~<condition>.<n>`, so repeated forks of one position under one condition have
-        their own ids and sample differently. `baseline` makes the copy this episode's twin:
-        the baseline its `net_*` metrics subtract.
+        objects (never mutated). Its id is `<parent>~<condition>`. `baseline` makes the copy
+        this episode's twin: the baseline its `net_*` metrics subtract.
 
         `swap = {"event_idx": i, "data": {...}, "state": {...}, "restricted": [seat, ...]}`
         replaces event i's data and deep-merges `state` leaf by leaf. It refuses an event that
         a restricted seat (the seats whose ignorance the twin tests) or everyone ("*") could
         perceive."""
         child = Episode(
-            ep_id=f"{self.ep_id}~{condition}" + ("" if rollout is None else f".{rollout}"),
+            ep_id=f"{self.ep_id}~{condition}",
             task_id=self.task_id,
             suite=self.suite,
             split=self.split,
@@ -230,6 +230,19 @@ class Episode:
                 raise ValueError(f"swap of event {i}: perceived by {sorted(seen_by)}")
             child.events[i] = replace(ev, data=copy.deepcopy(swap["data"]))
             _deep_merge(child.state, copy.deepcopy(swap.get("state", {})))
+        return child
+
+    def rollout(self, at: int, i: int) -> Episode:
+        """Rollout `i` of this episode as the store loaded it at its turn checkpoint `at`: a
+        fork under the same condition to play on from there, named `<ep_id>@<at>.<i>`, so
+        rollouts of different checkpoints never share a name and each samples with its own
+        seed. It is scored against this episode's twin. A twin has no rollouts: one would be
+        a baseline of nothing."""
+        if self.baseline_of is not None:
+            raise ValueError(f"{self.ep_id} is a twin (the baseline of {self.baseline_of}); rollouts are made of the "
+                             "episode a twin is the baseline of, and are scored against that twin")
+        child = self.fork(self.condition)
+        child.ep_id, child.rollout_of = f"{self.ep_id}@{at}.{i}", (self.ep_id, at)
         return child
 
     def fail(self, reason: str) -> None:

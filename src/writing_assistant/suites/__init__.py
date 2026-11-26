@@ -13,10 +13,10 @@ package never imports another suite package.
   placeholder.
 - Twins: the twin of an episode is the one whose `baseline_of` is that episode's `ep_id`;
   `setup()` makes it with `fork(..., baseline=True)`. An episode nothing names is scored
-  without a twin (a rollout forked from a checkpoint is one: `Episode.parent` says only what
-  an episode is stored after). A twin is a baseline, never scored on its own: the `score()`
-  of the episode it names judges it once, writes its rate as `twin_<metric>` and subtracts
-  it in the `net_*` metric.
+  without a twin. A rollout (`Episode.rollout_of`) is scored against the twin of the episode
+  it replays; `Episode.parent` says only what an episode is stored after. A twin is a
+  baseline, never scored on its own: the `score()` of each episode it is the baseline of
+  judges it, writes its rate as `twin_<metric>` and subtracts it in the `net_*` metric.
 - `judged_by` maps each metric to the judge use it depends on; `wa-bench report` marks a
   metric ungated until that use's human-label gate has passed. Metrics not listed are
   deterministic.

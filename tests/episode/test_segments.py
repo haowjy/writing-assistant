@@ -11,6 +11,7 @@ def test_a_saved_episode_loads_back_whole(tmp_path):
     arm.log("dm", "world", {"text": "hidden", "rolls": [3, 17]}, {"dm": "full", "pc": "redacted"})
     ep = arm.fork("twin_swap", baseline=True)
     ep.meta = {"driver": "direct", "row": {"k": 3, "mode": "instruction"}}
+    ep.rollout_of = ("t~pov_view", 2)
     ep.files["a.md"], ep.file_revs["a.md"] = "Zoë «x»", 2
     ep.state = {"world": {"secrets": {"s": {"text": "x", "known_by": ["npc"]}}}, "pov": {"arm": "pov_view"}}
     ep.actors = {"writer": "gemma-4-26b", "author": "scripted"}

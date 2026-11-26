@@ -101,8 +101,12 @@ async def test_fork_tool_calls_never_reach_parent():
     assert parent == before
     assert (child.condition, child.ep_id, child.baseline_of) == ("twin", "e~twin", None)
     assert child.parent == (parent.seg, len(parent.events), len(parent.calls)) and child.seg != parent.seg
-    assert [parent.fork("twin", rollout=n).ep_id for n in (0, 1)] == ["e~twin.0", "e~twin.1"]
-    assert parent.fork("twin", baseline=True).baseline_of == "e"
+    assert [(r.ep_id, r.rollout_of, r.condition) for r in (parent.rollout(3, 0), parent.rollout(3, 1))] == [
+        ("e@3.0", ("e", 3), "base"), ("e@3.1", ("e", 3), "base")]
+    twin = parent.fork("twin", baseline=True)
+    assert twin.baseline_of == "e"
+    with pytest.raises(ValueError, match="is a twin"):
+        twin.rollout(0, 0)
 
 
 def test_fork_swap_replaces_one_leaf_and_refuses_perceived_events():

@@ -66,15 +66,17 @@ _SCHEMA = (
     """CREATE TABLE segments (
         seg TEXT PRIMARY KEY, parent TEXT, parent_events INTEGER, parent_calls INTEGER,
         ep_id TEXT NOT NULL, task_id TEXT NOT NULL, suite TEXT NOT NULL, split TEXT NOT NULL,
-        condition TEXT NOT NULL, baseline_of TEXT, meta TEXT NOT NULL)""",
+        condition TEXT NOT NULL, baseline_of TEXT, rollout_of TEXT, rollout_at INTEGER, meta TEXT NOT NULL)""",
     "CREATE INDEX segments_split ON segments (split)",
+    "CREATE INDEX segments_parent ON segments (parent)",
     # events, calls: how many the episode holds after this checkpoint, inherited ones included
     """CREATE TABLE checkpoints (
         seg TEXT NOT NULL, n INTEGER NOT NULL, kind TEXT NOT NULL, events INTEGER NOT NULL,
         calls INTEGER NOT NULL, body BLOB NOT NULL, PRIMARY KEY (seg, n))""",
     "CREATE TABLE episodes (ep_id TEXT PRIMARY KEY, seg TEXT NOT NULL UNIQUE)",
 )
-_SEGMENT = "seg, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, meta"
+_SEGMENT = ("seg, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, "
+            "rollout_of, rollout_at, meta")
 _CLOSED = "EXISTS (SELECT 1 FROM checkpoints c WHERE c.seg = e.seg AND c.kind = 'closing')"
 
 
@@ -177,7 +179,7 @@ class Store:
                 self.db.execute("INSERT INTO episodes (ep_id, seg) VALUES (?, ?)", (ep.ep_id, ep.seg))
             except sqlite3.IntegrityError:
                 raise ValueError(f"{self.path}: another episode named {ep.ep_id!r} is already stored here (the same task "
-                                 "set up twice, or a fork repeated with no rollout number)") from None
+                                 "set up twice, or the same fork made twice)") from None
         tip = json.loads(json.dumps({"state": ep.state, "actors": ep.actors, "actor_tools": ep.actor_tools,
                                      "status": ep.status, "failure_reason": ep.failure_reason}))
         now = _Tip(last.n, len(ep.events), len(ep.calls), tip, last.listed or listed, last.ep)
@@ -218,7 +220,8 @@ class Store:
                         if e is not was and e != was}
             files = {p: files.get(p) for p in files.keys() | was_files.keys() if files.get(p) != was_files.get(p)}
         self._insert_segment((ep.seg, *(ep.parent or (None, None, None)), ep.ep_id, ep.task_id, ep.suite, ep.split,
-                              ep.condition, ep.baseline_of, json.dumps(ep.meta, ensure_ascii=False)))
+                              ep.condition, ep.baseline_of, *(ep.rollout_of or (None, None)),
+                              json.dumps(ep.meta, ensure_ascii=False)))
         return {"files": files, "replaced": replaced}
 
     def _insert_segment(self, row: tuple) -> None:
@@ -227,7 +230,7 @@ class Store:
         if other and (split in HELD_APART or other[0] in HELD_APART):
             raise ValueError(f"{self.path}: holds {other[0]!r} segments; a {split!r} one ({ep_id}) may not join them "
                              f"({' and '.join(HELD_APART)} segments share a store with no other split's)")
-        self.db.execute(f"INSERT INTO segments ({_SEGMENT}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+        self.db.execute(f"INSERT INTO segments ({_SEGMENT}) VALUES ({', '.join('?' * len(row))})", row)
 
     # -- reading ---------------------------------------------------------------------------
 
@@ -251,7 +254,8 @@ class Store:
         and each time a delivery returned has turn checkpoint n after its n-th delivery."""
         seg = self._seg(name)
         events, calls, files, tip, n, kind, head = self._rebuild(seg, at=at)
-        _, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, meta = head
+        (_, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of,
+         rollout_of, rollout_at, meta) = head
         if at is not None and n != at:
             raise LookupError(f"{self.path}: {ep_id} has no checkpoint {at} (its last is {n})")
         if at is not None and kind == "closing":
@@ -259,6 +263,7 @@ class Store:
                              f"continue from the end of an episode (its turn checkpoints are 0 to {at - 1})")
         ep = Episode(ep_id=ep_id, task_id=task_id, suite=suite, split=split, seg=seg,
                      parent=(parent, parent_events, parent_calls) if parent else None, baseline_of=baseline_of,
+                     rollout_of=(rollout_of, rollout_at) if rollout_of else None,
                      condition=condition, meta=json.loads(meta), events=events, calls=calls,
                      files={p: text for p, (text, _) in files.items()}, file_revs={p: rev for p, (_, rev) in files.items()},
                      **copy.deepcopy(tip))
@@ -270,6 +275,19 @@ class Store:
             listed = bool(self.db.execute("SELECT 1 FROM episodes WHERE seg = ?", (seg,)).fetchone())
             self._tips[seg] = _Tip(n, len(events), len(calls), tip, listed, weakref.ref(ep))
         return ep
+
+    def baseline(self, name: str) -> Episode | None:
+        """The twin the episode's `net_*` metrics subtract, when it is stored here and closed:
+        the fork of the episode that names it in `baseline_of`. A rollout has the twin of the
+        episode it replays, which is the segment it is stored after."""
+        seg, ep_id, parent, rollout_of = self.db.execute(
+            "SELECT seg, ep_id, parent, rollout_of FROM segments WHERE seg = ?", (self._seg(name),)).fetchone()
+        while rollout_of is not None:
+            seg, ep_id, parent, rollout_of = self.db.execute(
+                "SELECT seg, ep_id, parent, rollout_of FROM segments WHERE seg = ?", (parent,)).fetchone()
+        twin = self.db.execute(f"SELECT e.seg FROM segments e WHERE e.parent = ? AND e.baseline_of = ? AND {_CLOSED}",
+                               (seg, ep_id)).fetchone()
+        return self.load(twin[0]) if twin else None
 
     def chain(self, name: str) -> list[str]:
         """The episode's segment and its ancestors', root first."""

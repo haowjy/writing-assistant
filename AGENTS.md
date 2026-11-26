@@ -109,10 +109,16 @@ other episode format and no reader for an older one.
   at the same time; `run.lock` tells a starting run whether the open episodes are another
   live run's.
 - Play continues, or is forked, from a turn checkpoint only. `--from '<ep_id>@<n>'` forks
-  the checkpoint taken when the episode's n-th delivery returned (0: before the first)
-  `--rollouts` times; with `--from-run` the episode's chain is first copied into the new
-  run's store, so every store is self-contained. Rollouts are named
-  `<ep_id>~<condition>.<i>`, sample with their own seeds, and are scored without a twin.
+  the named episode's turn checkpoint `n` `--rollouts` times; with `--from-run` the
+  episode's chain and its twin's are first copied into the new run's store, so every store
+  is self-contained.
+- A **rollout** records what it replays in `Episode.rollout_of` (source `ep_id`, checkpoint)
+  and is named `<ep_id>@<n>.<i>`, so each samples with its own seed. It is scored against
+  its source's stored twin, so its `net_*` subtract the baseline the source's do; a rollout
+  of a twin is refused. `report`, `view` and `build_calibration.py` keep rollouts apart from
+  the run's task episodes: no headline number, list or sample includes one, and `report`
+  prints them after the run's groups, per checkpoint. A rollout stores no task, so a
+  directory holding only rollouts of a task has not played it.
 - Twins are paired by `Episode.baseline_of` (set by `fork(..., baseline=True)` in `setup`),
   never by who was forked from whom.
 - A `test` or `local_dev` segment never shares a store with another split's. `sync` uploads

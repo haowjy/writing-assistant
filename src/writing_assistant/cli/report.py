@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli import ERRORS_FILE, episode_row, twins_of
+from writing_assistant.cli import ERRORS_FILE, episode_row
 from writing_assistant.episode.segments import closed_episodes
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
@@ -24,20 +24,21 @@ from writing_assistant.suites import SUITES, mean
 FAMILIARITY_GAP = ("discriminator_fool_rate", "verifier_match", "pairwise_craft_win", "score_100_endings", "restraint_score")
 
 
-def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) -> tuple[dict, dict, Counter]:
+def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
+               rollouts: bool = False) -> tuple[dict, dict, Counter]:
     """(run.json, groups, scoring codes): groups maps a key (the episode's values for `keys`)
     to {metric: [values]} plus counts; the codes count the scores rows read per scoring code
-    (None: a row written before rows were stamped). Twins are baselines inside their parent's
-    net_* and are left out; `condition` is matched and grouped on like a row field."""
+    (None: a row written before rows were stamped). The run's task episodes, or with
+    `rollouts` its rollouts instead: the two are never summed. Twins are baselines inside
+    their parent's net_* and are left out; `condition` is matched and grouped on like a row
+    field, and so is a rollout's `rollout_of`."""
     info = json.loads((run_dir / RUN_FILE).read_text())
-    loaded = closed_episodes(run_dir)
-    twins = {t.ep_id for t in twins_of(loaded).values()}
-    episodes = {ep.ep_id: ep for ep in loaded if ep.ep_id not in twins}
+    episodes = [ep for ep in closed_episodes(run_dir) if ep.baseline_of is None and (ep.rollout_of is not None) == rollouts]
     scores = {r["ep_id"]: r for r in read_jsonl(run_dir / f"scores-{profile}.jsonl")}
     groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "unflagged": defaultdict(list),
                                                               "familiarity": defaultdict(list), "counts": Counter()})
     codes: Counter = Counter()
-    for ep in episodes.values():
+    for ep in episodes:
         row = episode_row(ep)
         if not matches(row, where):
             continue
@@ -82,10 +83,12 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
     """A run's report as data: `header` lines, then one entry per group with its counts, the
     episodes missing an artefact, the metric rows (numbers unformatted, `refused` None when no
     item was judged), the ungated metrics left out of a baseline comparison and the metrics
-    every item of which went unscored. `cmd_report` prints it; `wa-bench view` renders it."""
+    every item of which went unscored. `groups` are the run's task episodes and its headline
+    numbers; `rollouts` holds the same entries for the rollouts stored beside them, grouped
+    first by the checkpoint they were forked from. `cmd_report` prints it; `wa-bench view`
+    renders it."""
     info, groups, scored_by = _summarise(run_dir, judges, keys, where)
     suite = SUITES[info["suite"]]
-    base = _summarise(baseline, judges, keys, where)[1] if baseline else None
     codes = sorted({i["code"] for i in info.get("invocations", [])} or {info.get("code", "unknown")})
     header = [f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
               f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
@@ -105,6 +108,16 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
         header.append(guardrails_line(run_dir / "guardrails.json"))
     if errors := read_jsonl(run_dir / ERRORS_FILE):
         header.append(f"task errors: {len(errors)} (see {ERRORS_FILE})")
+    return {"info": info, "header": header,
+            "groups": _entries(suite, judges, keys, groups, passed,
+                               _summarise(baseline, judges, keys, where)[1] if baseline else None),
+            "rollouts": _entries(suite, judges, ["rollout_of", *keys],
+                                 _summarise(run_dir, judges, ["rollout_of", *keys], where, rollouts=True)[1], passed,
+                                 _summarise(baseline, judges, ["rollout_of", *keys], where, rollouts=True)[1] if baseline else None)}
+
+
+def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set[str], base: dict | None) -> list[dict[str, Any]]:
+    """`build_report`'s entry for each of `_summarise`'s groups; `base` is the baseline run's groups."""
     out = []
     for key in sorted(groups):
         g = groups[key]
@@ -142,7 +155,7 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
         out.append({"key": dict(zip(keys, key, strict=True)),
                     "counts": {k: int(v) for k, v in sorted(g["counts"].items()) if not k.startswith("n_")},
                     "missing": missing, "rows": rows, "left_out": left_out, "absent": absent})
-    return {"info": info, "header": header, "groups": out}
+    return out
 
 
 def cmd_report(args: argparse.Namespace) -> int:
@@ -157,17 +170,25 @@ def cmd_report(args: argparse.Namespace) -> int:
     report = build_report(run_dir, args.judges, keys, args.where, Path(args.baseline) if args.baseline else None, passed)
     print("\n".join(report["header"]))
     for g in report["groups"]:
-        label = ", ".join(f"{k}={v}" for k, v in g["key"].items())
-        print(f"\n== {label}: " + ", ".join(f"{k} {v}" for k, v in g["counts"].items()))
-        for what, missing in g["missing"].items():
-            print(f"  {what}: " + ", ".join(f"{reason} {n}" for reason, n in missing.items()))
-        print(f"  {'metric':40} {'mean':>8} {'n':>4} {'w/o flag':>8} {'refused':>8}  notes")
-        for r in g["rows"]:
-            refused = "" if r["refused"] is None else _fmt(r["refused"])
-            print(f"  {r['metric']:40} {_fmt(r['mean']):>8} {r['n']:>4} {_fmt(r['unflagged']):>8} {refused:>8}  "
-                  f"{'; '.join(r['notes'])}")
-        if g["left_out"]:
-            print(f"  left out of the comparison, judge not yet gated: {', '.join(g['left_out'])}")
-        for a in g["absent"]:
-            print(f"  {a['metric']:40} {'absent':>8}    0 {'':>8} {'':>8}  unscored: {a['reason']} x{a['n']}")
+        _print_group(g)
+    if report["rollouts"]:
+        print("\nrollouts, by the checkpoint each was forked from; none of them is in the numbers above")
+        for g in report["rollouts"]:
+            _print_group(g)
     return 0
+
+
+def _print_group(g: dict[str, Any]) -> None:
+    label = ", ".join(f"{k}={v}" for k, v in g["key"].items())
+    print(f"\n== {label}: " + ", ".join(f"{k} {v}" for k, v in g["counts"].items()))
+    for what, missing in g["missing"].items():
+        print(f"  {what}: " + ", ".join(f"{reason} {n}" for reason, n in missing.items()))
+    print(f"  {'metric':40} {'mean':>8} {'n':>4} {'w/o flag':>8} {'refused':>8}  notes")
+    for r in g["rows"]:
+        refused = "" if r["refused"] is None else _fmt(r["refused"])
+        print(f"  {r['metric']:40} {_fmt(r['mean']):>8} {r['n']:>4} {_fmt(r['unflagged']):>8} {refused:>8}  "
+              f"{'; '.join(r['notes'])}")
+    if g["left_out"]:
+        print(f"  left out of the comparison, judge not yet gated: {', '.join(g['left_out'])}")
+    for a in g["absent"]:
+        print(f"  {a['metric']:40} {'absent':>8}    0 {'':>8} {'':>8}  unscored: {a['reason']} x{a['n']}")

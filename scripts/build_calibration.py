@@ -60,10 +60,14 @@ def _stratum(ep_id: str, row: dict) -> str:
 
 def run_items(run: Path, use: str, profile: str) -> list[dict]:
     info = json.loads((run / "run.json").read_text())
-    rows = {ep.ep_id: ep.meta.get("row", {}) for ep in closed_episodes(run)}
+    episodes = closed_episodes(run)
+    rows = {ep.ep_id: ep.meta.get("row", {}) for ep in episodes}
+    # Rollouts are many plays of one checkpoint: sampled with a run's task episodes they would
+    # fill the file with one task, and each asks its source's twin the same questions again.
+    rollouts = {ep.ep_id for ep in episodes if ep.rollout_of}
     out = []
     for j in read_jsonl(run / f"judgments-{profile}.jsonl"):
-        if j["judge"]["use"] != use or j["model"] is None:
+        if j["judge"]["use"] != use or j["model"] is None or j["scored"] in rollouts:
             continue
         item = {k: j[k] for k in ("question", "evidence", "a", "b", "context") if k in j}
         out.append(item | {

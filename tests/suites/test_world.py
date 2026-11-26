@@ -232,7 +232,7 @@ async def test_a_stored_episode_reopened_at_any_turn_checkpoint_continues_as_the
             assert [r["messages"] for r in resumed.llm.requests] == rest
             assert reopened == ep and store.load(ep.ep_id) == ep
         with Store(path) as store:
-            rollout = store.load(ep.ep_id, at=n).fork(ep.condition, rollout=n)
+            rollout = store.load(ep.ep_id, at=n).rollout(n, 0)
             forked = fake_turn(replies[answered:], srd.TOOLS)
             await finish(store, rollout, forked)
             assert [r["messages"] for r in forked.llm.requests] == rest

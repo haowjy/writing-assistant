@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from writing_assistant.cli import row_meta, twins_of
+from writing_assistant.cli import row_meta
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
@@ -93,12 +93,21 @@ class Run:
         have = self.profiles()
         return asked if asked in have else (have[0] if have else "eval")
 
+    def closed(self) -> list[Episode]:
+        return self._cached("closed", lambda: closed_episodes(self.path))
+
     def episodes(self) -> dict[str, Episode]:
-        return self._cached("episodes", lambda: {ep.ep_id: ep for ep in closed_episodes(self.path)})
+        """The run's task episodes, twins included. Rollouts are not among them, so no list,
+        count or comparison of the run's own play takes one in."""
+        return self._cached("episodes", lambda: {ep.ep_id: ep for ep in self.closed() if ep.rollout_of is None})
+
+    def rollouts(self) -> dict[str, Episode]:
+        return self._cached("rollouts", lambda: {ep.ep_id: ep for ep in self.closed() if ep.rollout_of is not None})
 
     def twins(self) -> dict[str, Episode]:
-        """Parent ep_id -> twin, as the scorer pairs them."""
-        return self._cached("twins", lambda: twins_of(list(self.episodes().values())))
+        """Parent ep_id -> twin, among the run's task episodes."""
+        return self._cached("twins", lambda: {ep.baseline_of: ep for ep in self.episodes().values()
+                                              if ep.baseline_of in self.episodes()})
 
     def scores(self, profile: str) -> dict[str, dict]:
         return self._cached(("scores", profile),
@@ -127,7 +136,7 @@ class Run:
         # The suite's judged metrics in its own order: the page's default metric per task kind.
         return {"name": self.name, "suite": info["suite"], "endpoint": info["endpoint"], "model": info["model"],
                 "split": info["split"], "started": info.get("started"), "profiles": self.profiles(),
-                "episodes": len(self.episodes()), "twins": len(self.twins()),
+                "episodes": len(self.episodes()), "twins": len(self.twins()), "rollouts": len(self.rollouts()),
                 "judged": list(SUITES[info["suite"]].judged_by)}
 
 
@@ -344,11 +353,13 @@ def _kind(ep: Episode) -> str:
     return ep.state.get("kind") or ep.meta.get("row", {}).get("kind") or "?"
 
 
-def episode_list(run: Run, profile: str) -> list[dict[str, Any]]:
+def episode_list(run: Run, profile: str, rollouts: bool = False) -> list[dict[str, Any]]:
+    """The run's scored task episodes, or its rollouts, each of which also says what it is a
+    rollout of."""
     twin_ids = {t.ep_id for t in run.twins().values()}
     scores = run.scores(profile)
     out = []
-    for ep in run.episodes().values():
+    for ep in (run.rollouts() if rollouts else run.episodes()).values():
         if ep.ep_id in twin_ids:
             continue
         sc = _score_view(scores.get(ep.ep_id))
@@ -357,18 +368,20 @@ def episode_list(run: Run, profile: str) -> list[dict[str, Any]]:
                     "status": ep.status, "failure": ep.failure_reason, "row": _row_fields(ep),
                     "metrics": sc.get("metrics", {}), "not_scored": sc.get("not_scored"),
                     "no_output": [k.split(".", 1)[1] for k in counts if k.startswith("n_no_output.")],
-                    "words": sum(len(w["text"].split()) for w in written(ep))})
+                    "words": sum(len(w["text"].split()) for w in written(ep))}
+                   | ({"rollout_of": {"ep_id": ep.rollout_of[0], "checkpoint": ep.rollout_of[1]}} if rollouts else {}))
     return out
 
 
 def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> dict[str, Any] | None:
     """The episode's task as played in this run: every arm with its twin, each with what it was
-    shown, what it wrote, how (turns and calls), its scores and the judge items behind them."""
-    eps = run.episodes()
+    shown, what it wrote, how (turns and calls), its scores and the judge items behind them.
+    A rollout is shown alone: it is no part of the run's play of its task."""
+    eps = run.episodes() | ({ep_id: run.rollouts()[ep_id]} if ep_id in run.rollouts() else {})
     if ep_id not in eps:
         return None
     task_id = eps[ep_id].task_id
-    family = [ep for ep in eps.values() if ep.task_id == task_id]
+    family = [eps[ep_id]] if eps[ep_id].rollout_of else [ep for ep in run.episodes().values() if ep.task_id == task_id]
     twins = run.twins()
     twin_of = {t.ep_id: p for p, t in twins.items()}
     ordered = []
@@ -706,7 +719,8 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
             if url.path == "/api/report":
                 return self._json(run.report(profile) | {"profile": profile, "profiles": run.profiles()})
             if url.path == "/api/episodes":
-                return self._json({"profile": profile, "episodes": episode_list(run, profile)})
+                return self._json({"profile": profile, "episodes": episode_list(run, profile),
+                                   "rollouts": episode_list(run, profile, rollouts=True)})
             if url.path == "/api/episode":
                 fam = episode_family(run, q.get("ep", ""), profile, runs)
                 return self._json(fam) if fam else self._send(404, b"no such episode", "text/plain")
@@ -765,7 +779,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     loopback = args.host in LOOPBACK
     if not loopback:
         private = [r.name for r in runs.values() if r.info() and (r.info().get("split") == LOCAL_DEV or
-                                                                  any(e.split == LOCAL_DEV for e in r.episodes().values()))]
+                                                                  any(e.split == LOCAL_DEV for e in r.closed()))]
         if private:
             raise SystemExit(f"{', '.join(private)} hold local_dev text: serve them on loopback only")
     server = HTTPServer((args.host, args.port), make_handler(runs, loopback))
