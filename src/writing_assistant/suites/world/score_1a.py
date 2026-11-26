@@ -2,8 +2,10 @@
 
 Outcome metrics read the one artefact their task kind names in `OUTPUT` (the rule is in
 `suites/__init__.py`): the scene file, the chapter reply, the rule-bend chapter file, the
-collaborative document, the DM's narration over its recorded world events. Without it they
-are absent and `n_no_output.<reason>` is written instead. The DM's tool bookkeeping reads the
+DM's narration over its recorded world events. Without it they are absent and
+`n_no_output.<reason>` is written instead. `collab_edit` has one artefact per round, the
+document after the writer's edits in that round (`_collab`): a round without one loses its
+metrics and the other rounds keep theirs. The DM's tool bookkeeping reads the
 log and is written whenever the episode ran.
 
 A metric that does not apply to a task is absent, never 0.0. Whether a text uses a fact is
@@ -74,7 +76,6 @@ OUTPUT = {
     "pivot_unbinding": lambda ep: _written(ep, ep.state["pivot"]["scene_path"]),
     "pov_write": lambda ep: reply_output(ep, WRITER, POV_WORDS),
     "rule_bend": lambda ep: _written(ep, ep.state["rule_bend"]["out_path"]),
-    "collab_edit": lambda ep: _written(ep, ep.state["collab"]["path"]),
     "dm_play": _narration,
 }
 
@@ -150,6 +151,11 @@ def _collab(ep: Episode) -> dict[str, float]:
     delivery. Paragraphs are compared with whitespace collapsed and by containment in the
     whole document, so reflowing, splitting or merging paragraphs changes nothing.
 
+    A round's artefact is the document after the writer's edits in it: a round where the
+    writer wrote nothing counts `n_no_output.empty_output`, one never delivered (the script
+    cut short) `n_no_output.truncated`, and neither enters the metrics below, which are
+    absent when no round has an artefact.
+
     - `out_of_scope_edits`: paragraphs outside a round's scope the writer changed.
     - `clobbered_author_edits`: of those, paragraphs the scripted author wrote during the
       episode (the initial text is not counted: it was there before either of them).
@@ -163,14 +169,22 @@ def _collab(ep: Episode) -> dict[str, float]:
     authored: set[str] = set()
     clobbered: set[str] = set()
     out_of_scope = in_scope_rounds = 0
-    open_turn: tuple[str, list[str]] | None = None
+    open_turn: tuple[str, list[str], int] | None = None
+    wrote = False
     n = 0
+    counted: list[int] = []  # turn_idx of each round with an artefact
+    missing: dict[str, float] = {"n_no_output.truncated": float(author.remaining(ep.state))}
 
     def close() -> None:
         nonlocal out_of_scope, in_scope_rounds, open_turn
         if open_turn is None:
             return
-        before, scope = open_turn
+        before, scope, turn = open_turn
+        open_turn = None
+        if not wrote:
+            missing["n_no_output.empty_output"] = missing.get("n_no_output.empty_output", 0.0) + 1
+            return
+        counted.append(turn)
         after = norm(doc)
         scope = [norm(p) for p in scope]
         in_scope, other = [], []
@@ -180,24 +194,28 @@ def _collab(ep: Episode) -> dict[str, float]:
         out_of_scope += len(changed)
         clobbered.update(p for p in changed if p in authored)
         in_scope_rounds += any(p not in after for p in in_scope) and not changed
-        open_turn = None
 
     for ev in ep.events:
         if ev.kind == "deliver" and ev.actor == WRITER:
             close()
-            open_turn = (doc, rounds[n]["scope"])
+            open_turn, wrote = (doc, rounds[n]["scope"], ev.data["turn_idx"]), False
             n += 1
         elif ev.kind == "file_write" and ev.data["path"] == path:
             if ev.actor == AUTHOR:
                 close()
                 old = {norm(p) for p in paragraphs(doc)}
                 authored.update(p for p in map(norm, paragraphs(ev.data["after"])) if p not in old)
+            elif open_turn is not None:
+                wrote = True
             doc = ev.data["after"]
     close()
 
-    out = {"clobbered_author_edits": float(len(clobbered)), "out_of_scope_edits": float(out_of_scope),
-           "in_scope_rounds": float(in_scope_rounds)}
-    usage = [c.usage.get("output_tokens") for c in ep.calls if c.actor == WRITER]
+    out = {k: v for k, v in missing.items() if v}
+    if not counted:
+        return out
+    out |= {"clobbered_author_edits": float(len(clobbered)), "out_of_scope_edits": float(out_of_scope),
+            "in_scope_rounds": float(in_scope_rounds)}
+    usage = [c.usage.get("output_tokens") for c in ep.calls if c.actor == WRITER and c.turn_idx in counted]
     if in_scope_rounds and usage and None not in usage:
         out["tokens_per_in_scope_round"] = sum(usage) / in_scope_rounds
     return out
@@ -219,13 +237,13 @@ async def score(ep: Episode, services, tally: Tally, twin: Episode | None = None
     has one canon and one bent probe, so net_canon_snapback is -1, 0 or 1 per row, and a
     chapter that avoids the topic scores 0 on both sides."""
     kind = ep.state["kind"]
+    if kind == "collab_edit":
+        return _collab(ep)
     out = _dm_log(ep) if kind == "dm_play" else {}
     try:
         text = OUTPUT[kind](ep)
     except NoOutput as e:
         return out | {f"n_no_output.{e.reason}": 1.0}
-    if kind == "collab_edit":
-        return out | _collab(ep)
     metrics, own = await SCORERS[kind](ep, text, services, tally)
     out |= metrics
     if kind in NET:

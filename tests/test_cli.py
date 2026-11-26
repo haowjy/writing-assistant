@@ -125,3 +125,19 @@ def test_score_where_matches_condition_as_report_does_and_keeps_the_twin(bench, 
     cli.main(["score", "--run", str(out), "--where", "condition=full_view"])
     [row] = score_rows(out)
     assert row["condition"] == "full_view" and "net_pov_leak" in row["metrics"], row
+
+
+def test_a_collab_round_the_writer_skips_loses_its_metrics_and_keeps_the_earlier_rounds(bench, capsys):
+    text = "The river rose.\n\nNadia counted the passengers.\n\nThe engine coughed."
+    row = {"task_id": "collab-1", "suite": "1a", "kind": "collab_edit", "split": "dev", "work_ids": [], "payload": {
+        "brief": "A ferry crossing.", "path": "draft.md", "text": text,
+        "rounds": [{"request": "Tighten the second paragraph.", "scope": ["Nadia counted"]},
+                   {"request": "Make the engine scarier.", "scope": ["engine coughed"]}]}}
+    replies = iter([{"text": "", "tool_calls": [{"name": "episode_write", "arguments": {
+                        "path": "draft.md", "rev": 1, "text": text.replace("Nadia counted the passengers.", "Nadia counted nine.")}}]},
+                    "Done.", "I would leave the engine as it is."])
+    out = bench([row], lambda m, t, e: next(replies))
+    run_and_score(capsys, out)
+    [scores] = score_rows(out)
+    assert scores["metrics"] == scores["metrics"] | {"in_scope_rounds": 1.0, "out_of_scope_edits": 0.0,
+                                                     "n_no_output.empty_output": 1.0}, scores
