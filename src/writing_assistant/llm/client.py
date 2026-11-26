@@ -16,20 +16,17 @@ Thinking never reaches `CallRecord.response`: a host's `reasoning_content` and a
 `<think>...</think>` block both go to `CallRecord.reasoning`, so scorers, judges and the next
 actor see only the reply, and the saved call still has the thinking.
 
-`local_only()` is the one guard on `local_dev` text: inside it, every chat and embed call to
-an endpoint without `local = true` raises `LocalOnly` before anything is sent.
+Inside `episode.store.local_only()` (the guard on `local_dev` text), every chat and embed
+call to an endpoint without `local = true` raises `LocalOnly` before anything is sent.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import json
 import logging
 import os
 import tomllib
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +34,7 @@ import httpx
 import numpy as np
 
 from writing_assistant.episode import CallRecord
+from writing_assistant.episode.store import LocalOnly, under_local_only
 
 log = logging.getLogger(__name__)
 
@@ -53,24 +51,6 @@ _FINISH = {
     "tool_calls": "tool_calls", "tool_use": "tool_calls", "function_call": "tool_calls",
     "content_filter": "refusal", "refusal": "refusal",
 }
-
-_LOCAL_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar("local_only", default=False)
-
-
-class LocalOnly(RuntimeError):
-    """A hosted endpoint was asked to receive `local_dev` text."""
-
-
-@contextmanager
-def local_only(active: bool = True) -> Iterator[None]:
-    """Within this block (and the asyncio tasks it starts), only `local = true` endpoints
-    may be called. cli.py enters it around everything that handles a `local_dev` row."""
-    token = _LOCAL_ONLY.set(active or _LOCAL_ONLY.get())
-    try:
-        yield
-    finally:
-        _LOCAL_ONLY.reset(token)
-
 
 class LLMClient:
     def __init__(self, models_toml: str | Path) -> None:
@@ -123,7 +103,7 @@ class LLMClient:
 
     def _guard(self, name: str) -> dict[str, Any]:
         ep = self._endpoint(name)
-        if _LOCAL_ONLY.get() and not ep.get("local", False):
+        if under_local_only() and not ep.get("local", False):
             raise LocalOnly(f"endpoint {name!r} is hosted (no `local = true`) and this call carries local_dev text")
         return ep
 

@@ -35,14 +35,15 @@ class Prompt:
         ]
 
 
-Reason = Literal["refusal", "unparseable", "truncated", "unavailable"]
+Reason = Literal["refusal", "unparseable", "truncated", "unavailable", "local_only"]
 
 
 class Unscored(Exception):
     """The judge could not score this item. `reason` is "refusal" (the model or its host
     declined), "unparseable" (no answer in the expected form, including an empty reply),
-    "truncated" (cut off at max_tokens before answering) or "unavailable" (models.toml names
-    no endpoint for this use); `records` are the calls that produced it, for storing beside
+    "truncated" (cut off at max_tokens before answering), "unavailable" (models.toml names
+    no endpoint for this use) or "local_only" (the item is local_dev text and the judge's
+    endpoint is hosted); `records` are the calls that produced it, for storing beside
     the unscored item."""
 
     def __init__(self, reason: Reason, records: list[CallRecord]) -> None:

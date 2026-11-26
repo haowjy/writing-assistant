@@ -12,7 +12,7 @@ from writing_assistant.corpus.authors import K_VALUES, partition_author_corpus
 from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import export_public
 from writing_assistant.episode import Episode
-from writing_assistant.episode.store import split_of
+from writing_assistant.episode.store import local_only, split_of
 from writing_assistant.episode.tools import dispatch_tool
 
 VOCAB = [f"w{i}" for i in range(2000)]
@@ -195,5 +195,6 @@ async def test_export_never_writes_restricted_text(tmp_path):
     assert sorted(rows) == ["gutenberg:1", "gutenberg:2", "gutenberg:3"]
     assert rows["gutenberg:1"]["text"] == corpus.text(corpus.get("gutenberg:1"))
     assert all("text" not in rows[w] and rows[w]["content_hash"] for w in ("gutenberg:2", "gutenberg:3"))
-    for n in (2, 3, 4):
-        assert corpus.text(corpus.get(f"gutenberg:{n}"))[:200] not in out
+    with local_only():  # work 4 is local_dev text, readable only under the guard
+        for n in (2, 3, 4):
+            assert corpus.text(corpus.get(f"gutenberg:{n}"))[:200] not in out

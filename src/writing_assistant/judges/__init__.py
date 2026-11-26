@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from writing_assistant.episode.store import LocalOnly
 from writing_assistant.judges import readability
 from writing_assistant.judges.embed import ReferenceIndex, cosine, embed
 from writing_assistant.judges.extract import FACT, OUTLINE, outline, yes_no
@@ -76,6 +77,8 @@ class Judge:
             value, records = await self.fn(*args)
         except Unscored as e:
             return Judgment(None, e.reason, [r.response for r in e.records], self.item(*args))
+        except LocalOnly:  # local_dev text and a hosted judge: refused before sending
+            return Judgment(None, "local_only", [], self.item(*args))
         return Judgment(value, None, [r.response for r in records], self.item(*args))
 
 

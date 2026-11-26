@@ -22,7 +22,7 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
 model, split and max_tokens (anything else is refused): tasks with saved episodes are
 skipped (`--where` may differ between invocations). One task that raises, or one episode whose
 scoring raises, is recorded and the run goes on. `local_dev` rows are set up, played and
-scored inside `llm.client.local_only()`.
+scored inside `episode.store.local_only()`, and only against a `local = true` endpoint.
 """
 
 from __future__ import annotations
@@ -45,9 +45,10 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
-from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, RUN_FILE, Task, load_episodes, matches, read_jsonl, save_episodes
+from writing_assistant.episode.store import (EPISODES_FILE, LOCAL_DEV, RUN_FILE, Task, load_episodes, local_only, matches,
+                                             read_jsonl, save_episodes)
 from writing_assistant.judges import Judges, judges_from
-from writing_assistant.llm.client import LLMClient, local_only
+from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -212,6 +213,10 @@ async def cmd_run(args: argparse.Namespace) -> int:
     services = services_for(args.models, args.judges)
     if args.endpoint not in services.llm.endpoints:
         sys.exit(f"unknown endpoint {args.endpoint!r}; models.toml has {sorted(services.llm.endpoints)}")
+    if args.split == LOCAL_DEV and not services.llm.endpoints[args.endpoint].get("local"):
+        sys.exit(f"--split local_dev plays personal text, which may reach only an endpoint with `local = true`; "
+                 f"{args.endpoint!r} is hosted. Local endpoints: "
+                 f"{sorted(n for n, e in services.llm.endpoints.items() if e.get('local'))}")
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
     run_dir.mkdir(parents=True, exist_ok=True)
     identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
@@ -228,7 +233,8 @@ async def cmd_run(args: argparse.Namespace) -> int:
     _write_json(run_dir / RUN_FILE, info)
 
     done = {ep.task_id for ep in load_episodes(run_dir)} if (run_dir / EPISODES_FILE).exists() else set()
-    tasks = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit]
+    with local_only(args.split == LOCAL_DEV):
+        tasks = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit]
     print(f"{run_dir}: {len(tasks)} tasks to run ({len(done)} already saved)", flush=True)
     driver = DRIVERS[args.driver](services.llm, suite.tools, max_tokens=args.max_tokens)
     turn = Binding(driver)

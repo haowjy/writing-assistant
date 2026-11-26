@@ -1,4 +1,4 @@
-"""Task rows and episodes on disk, and split assignment.
+"""Task rows and episodes on disk, split assignment, and the local_dev guard.
 
 Task rows and saved episodes are files another process (or an older build) wrote, so
 loading validates them; everything after loading trusts the types.
@@ -7,19 +7,25 @@ Where task rows live (they hold book text, so never in git):
 - public rows: `TASKS_DIR/<suite>.jsonl`, written by scripts/build_seed_tasks.py, each row
   `train`/`dev`/`test` by `split_of`;
 - personal rows: `LOCAL_DEV_DIR/tasks/<suite>.jsonl`. The local_dev loader stamps every row
-  there `split = "local_dev"` whatever the file says; nothing hashes, syncs or exports them,
-  and cli.py runs them inside `llm.client.local_only()`, so their text reaches no hosted
-  endpoint. A public file carrying a `local_dev` row is refused.
+  there `split = "local_dev"` whatever the file says; nothing hashes, syncs or exports them.
+  A public file carrying a `local_dev` row is refused.
+
+`local_only()` is the one guard on `local_dev` text. Reading it (these rows, or a
+`local_dev` work's text in `Corpus.text`) outside the guard raises `LocalOnly`, and inside
+it every model call to an endpoint without `local = true` raises `LocalOnly` before
+anything is sent (`llm.client`). So text that was read was read under the guard.
 `WA_DATA` overrides the data root (tests, another machine).
 """
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -35,6 +41,35 @@ SPLITS = ("train", "dev", "test")
 # Changing these moves rows between splits; the held-out test split must never move.
 SPLIT_EDGES = (70, 85)
 EPISODES_FILE, RUN_FILE = "episodes.jsonl", "run.json"  # in a run directory (cli.py)
+
+
+_LOCAL_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar("local_only", default=False)
+
+
+class LocalOnly(RuntimeError):
+    """local_dev text was read outside `local_only()`, or a hosted endpoint was asked to
+    receive it."""
+
+
+@contextmanager
+def local_only(active: bool = True) -> Iterator[None]:
+    """Within this block (and the asyncio tasks it starts), local_dev text may be read and
+    only `local = true` endpoints may be called. cli.py enters it around everything that
+    handles a local_dev row."""
+    token = _LOCAL_ONLY.set(active or _LOCAL_ONLY.get())
+    try:
+        yield
+    finally:
+        _LOCAL_ONLY.reset(token)
+
+
+def under_local_only() -> bool:
+    return _LOCAL_ONLY.get()
+
+
+def require_local_only(what: str) -> None:
+    if not _LOCAL_ONLY.get():
+        raise LocalOnly(f"{what} is local_dev text: read it only inside episode.store.local_only()")
 
 
 @dataclass(frozen=True)
@@ -97,6 +132,7 @@ def task_rows(suite: str, split: str, where: str | None = None) -> list[Task]:
 
 def load_local_dev(suite: str, where: str | None = None, root: Path | None = None) -> list[Task]:
     """Rows under `local_dev/tasks/<suite>.jsonl`, every one stamped `split = "local_dev"`."""
+    require_local_only(f"local_dev task rows for suite {suite}")
     path = (root or LOCAL_DEV_DIR) / "tasks" / f"{suite}.jsonl"
     if not path.exists():
         return []

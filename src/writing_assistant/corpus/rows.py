@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from writing_assistant.corpus import overlap as _overlap
 from writing_assistant.corpus.text import decode, gutenberg_body, split_chapters
-from writing_assistant.episode.store import DATA, LOCAL_DEV, LOCAL_DEV_DIR, matches
+from writing_assistant.episode.store import DATA, LOCAL_DEV, LOCAL_DEV_DIR, matches, require_local_only
 
 if TYPE_CHECKING:
     from writing_assistant.episode import Episode
@@ -134,7 +134,10 @@ class Corpus:
 
     def text(self, work: Work) -> str:
         """The work's text from the cache: decoded, and for Gutenberg the book between the
-        licence header and footer."""
+        licence header and footer. A local_dev work's text is read only under
+        `episode.store.local_only()`, even when cached."""
+        if work.split == LOCAL_DEV:
+            require_local_only(work.work_id)
         if work.content_hash not in self._texts:
             root = self.local_dev_dir if work.split == LOCAL_DEV else self.cache_dir
             raw = (root / "text" / work.content_hash[:2] / work.content_hash).read_bytes()
