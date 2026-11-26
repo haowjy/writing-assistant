@@ -67,6 +67,14 @@ out of `report --baseline`. Each run stores the judge items behind its scores in
 `judgments-<profile>.jsonl`, in `label_ui.py`'s format. Runs, task rows and model outputs
 are not committed.
 
+A judge's calibration file is drawn from those stored judgments by
+`scripts/build_calibration.py sample --use <use> --runs <run dirs> --n <N> --out
+$WA_DATA/calibration/<file>` (balanced across the judge's answers, metrics, subjects and
+templates; `--build-checks` adds the `1a` build's later-event `fact` checks). `add-judge
+--endpoint <name>` adds another judge's answers to the same items, and `label_ui.py
+--agreement --judge <model>` scores them against the same labels. Label files are not
+committed.
+
 Project knowledge lives in the Meridian KB, not in this repo: run `meridian context --name kb`
 and start at its `index.md` (goals, vocabulary, evaluation principles, training lessons). Work
 items and their decisions are under `meridian context --name work`.

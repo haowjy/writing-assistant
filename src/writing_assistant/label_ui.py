@@ -1,7 +1,7 @@
 """Label judge-calibration items in a browser; labels are saved straight back to the JSONL.
 
     uv run python -m writing_assistant.label_ui --file calibration.jsonl [--port 8765]
-    uv run python -m writing_assistant.label_ui --file calibration.jsonl --agreement [--threshold 0.85 --min-labels 200]
+    uv run python -m writing_assistant.label_ui --file calibration.jsonl --agreement [--threshold 0.85 --min-labels 200] [--judge MODEL]
 
 Standalone: imports nothing from the package. One file holds one calibrated use. Each line
 is one item, either shape:
@@ -10,7 +10,9 @@ is one item, either shape:
     {"id": "p1", "question": "...", "context": "..." | ["..."], "a": "...", "b": "...", "model": 0.75}   # A/B
 
 `model` is the judge's answer (bool, or P(a)); null where the judge left the item unscored.
-The page adds `label` ("yes"/"no"/"a"/"b"/"skip") and `seq` (labelling order, so `u` undoes
+An item may also carry `answers` ({judge model: answer}, the same shape as `model`), so
+several judges are scored on one set of labels: `--agreement --judge MODEL` reads
+`answers[MODEL]` in place of `model`. The page adds `label` ("yes"/"no"/"a"/"b"/"skip") and `seq` (labelling order, so `u` undoes
 the latest label even after a reload). Keys: 1 / 2 answer (yes/no, or left/right), Space
 skips, u undoes. A/B sides are shown in an order fixed per id, so a file whose `a` is always
 the true answer still labels blind; the model's answer is never shown before labelling.
@@ -192,9 +194,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--agreement", action="store_true", help="print agreement for the file and exit")
     ap.add_argument("--threshold", type=float, help="with --agreement: the gate's agreement threshold")
     ap.add_argument("--min-labels", type=int, default=0, help="with --agreement: labels the gate needs")
+    ap.add_argument("--judge", help="with --agreement: score answers[JUDGE] instead of model")
     args = ap.parse_args(argv)
     if args.agreement:
-        s = agreement(Store(args.file).rows)
+        rows = Store(args.file).rows
+        if args.judge:
+            rows = [r | {"model": r.get("answers", {}).get(args.judge)} for r in rows]
+        s = agreement(rows)
         a = "n/a" if s["agreement"] is None else f"{s['agreement']:.3f}"
         print(f"agreement {a} on {s['n']} labels ({s['skipped']} skipped, {s['model_unscored']} unscored by the "
               f"judge, {s['labelled']}/{s['total']} items labelled)")
