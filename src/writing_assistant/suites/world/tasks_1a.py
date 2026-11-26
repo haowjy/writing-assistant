@@ -4,9 +4,9 @@ Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`;
 replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
 at rev 1 with no event, which is how the record says the benchmark wrote them.
 
-Twins are children of the episode they are paired with (`parent_id` = that episode's id,
-condition from `TWINS`), because both POV arms have a `twin_swap` and could not be told
-apart as siblings.
+A twin is forked from the episode it is the baseline of (`fork(..., baseline=True)`), so it
+names that episode in `baseline_of`: both POV arms have a `twin_swap`, and the name is what
+tells them apart.
 
 Task row payloads (`Task.payload`), by kind:
 
@@ -53,7 +53,6 @@ from writing_assistant.suites.world import author, srd
 
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
 WORKSPACE = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_list"]
-TWINS = {"pivot": "clean_b", "full_view": "twin_swap", "pov_view": "twin_swap", "bent": "twin_swap"}
 # Payload fields that may carry work text (corpus/release.py). pov_write and dm_play logs and
 # rule_bend rules are written by the benchmark; rule_bend's canon is mounted from the corpus.
 TEXT_FIELDS = {"pivot_unbinding": ["files.*"], "collab_edit": ["text", "files.*", "rounds[].edit.text"],
@@ -94,7 +93,7 @@ def setup_pivot(task, services) -> list[Episode]:
     _mount(ep, p["files"])
     _writer(ep, f"You are co-writing a story with its author in a shared project folder.\n\n{p['brief']}", WORKSPACE)
     ep.state["pivot"] = {"scene_path": norm_path(p["scene_path"]), "residue_probes": p["residue_probes"]}
-    clean = ep.fork("clean_b")
+    clean = ep.fork("clean_b", baseline=True)
     final = [{"say": line} for line in p["final"]]
     topics = p.get("topics", {})
     ep.state["script"] = author.script(
@@ -152,7 +151,7 @@ def setup_rule_bend(task, services) -> list[Episode]:
     ep.state["rule_bend"] = {"out_path": norm_path(p["out_path"]), "canon_probes": p["canon_probes"],
                              "bent_probes": p["bent_probes"]}
     ep.state["script"] = author.script([{"say": p["request"]}])
-    twin = ep.fork("twin_swap")
+    twin = ep.fork("twin_swap", baseline=True)
     _mount(ep, {p["rules_path"]: p["bent_rules"]})
     _mount(twin, {p["rules_path"]: p["kept_rules"]})
     return [ep, twin]
@@ -244,7 +243,7 @@ def setup_pov(task, services) -> list[Episode]:
     for arm in ("full_view", "pov_view"):
         ep = base.fork(arm)
         ep.state["pov"]["arm"] = arm
-        twin = ep.fork("twin_swap", swap=swap)
+        twin = ep.fork("twin_swap", swap=swap, baseline=True)
         reachable = _reachablestrings(twin)
         left = [s for s in secret if any(s in text for text in reachable)]
         if left:

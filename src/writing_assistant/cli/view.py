@@ -10,8 +10,9 @@ browser at once, and the histories never are (each call contributes its reply, r
 tool calls and their results).
 
 Runs are read through the same loader, twin pairing and report aggregation as `wa-bench
-report` (`build_report`), and re-read when a file in the run changes, so a run still being
-written can be watched. Fields an older build did not record load as their empty defaults
+report` (`build_report`), and re-read when a file in the run changes (the store's size and
+modification time move with every checkpoint), so a run still being written can be watched:
+its episodes appear as their tasks close. Fields an older build did not record load as their empty defaults
 and show as "not recorded". A task row is shown by running the suite's own `setup` and
 `play` with a Turn that answers nothing (`_no_model`): the episodes, forks, twin swaps and
 delivered messages are the ones a run would make. Held-out `test` rows are served only when
@@ -43,7 +44,8 @@ from writing_assistant.cli import row_meta, twins_of
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
-from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, load_episodes, read_jsonl, task_rows
+from writing_assistant.episode.segments import closed_episodes
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, read_jsonl, task_rows
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, play
 
@@ -69,7 +71,9 @@ class Run:
         self._cache: dict[Any, Any] = {}
 
     def _cached(self, key: Any, make: Any) -> Any:
-        sig = tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in sorted(self.path.iterdir()) if p.is_file())
+        # Not the store's journal: it exists only while a checkpoint is being written.
+        sig = tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in sorted(self.path.iterdir())
+                    if p.is_file() and not p.name.endswith("-journal"))
         if sig != self._sig:
             self._sig, self._cache = sig, {}
         if key not in self._cache:
@@ -90,11 +94,11 @@ class Run:
         return asked if asked in have else (have[0] if have else "eval")
 
     def episodes(self) -> dict[str, Episode]:
-        return self._cached("episodes", lambda: {ep.ep_id: ep for ep in load_episodes(self.path)})
+        return self._cached("episodes", lambda: {ep.ep_id: ep for ep in closed_episodes(self.path)})
 
     def twins(self) -> dict[str, Episode]:
         """Parent ep_id -> twin, as the scorer pairs them."""
-        return self._cached("twins", lambda: twins_of(list(self.episodes().values()), SUITES[self.info()["suite"]]))
+        return self._cached("twins", lambda: twins_of(list(self.episodes().values())))
 
     def scores(self, profile: str) -> dict[str, dict]:
         return self._cached(("scores", profile),
@@ -517,7 +521,7 @@ def task_family(task: Task, runs: dict[str, Run]) -> dict[str, Any]:
     except Exception as e:  # a row this build cannot set up: show why instead of failing the page
         return head | {"error": f"{type(e).__name__}: {e}"}
     by_id = {ep.ep_id: ep for ep in eps}
-    twin_of = {t.ep_id: p for p, t in twins_of(eps, suite).items()}
+    twin_of = {ep.ep_id: ep.baseline_of for ep in eps if ep.baseline_of}
     arms = [ep for ep in eps if ep.ep_id not in twin_of]
     given = {ep.ep_id: _given(ep) for ep in eps}
     fields = []
@@ -529,7 +533,7 @@ def task_family(task: Task, runs: dict[str, Run]) -> dict[str, Any]:
         fields.append({"field": name, "value": value, "reaches": seen})
     out = []
     for ep in eps:
-        parent = twin_of.get(ep.ep_id) or (ep.parent_id if ep.parent_id in by_id else None)
+        parent = twin_of.get(ep.ep_id)
         against = parent or (arms[0].ep_id if ep is not arms[0] else None)
         out.append({"ep_id": ep.ep_id, "condition": ep.condition, "twin_of": twin_of.get(ep.ep_id), "parent": parent,
                     "actors": ep.actors, "tools": ep.actor_tools, "system": _system(ep),

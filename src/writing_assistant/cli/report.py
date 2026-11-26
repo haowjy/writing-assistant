@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 from writing_assistant.cli import ERRORS_FILE, episode_row, twins_of
-from writing_assistant.episode.store import RUN_FILE, load_episodes, matches, read_jsonl
+from writing_assistant.episode.segments import closed_episodes
+from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import SUITES, mean
 
@@ -29,8 +30,8 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) 
     (None: a row written before rows were stamped). Twins are baselines inside their parent's
     net_* and are left out; `condition` is matched and grouped on like a row field."""
     info = json.loads((run_dir / RUN_FILE).read_text())
-    loaded = load_episodes(run_dir)
-    twins = {t.ep_id for t in twins_of(loaded, SUITES[info["suite"]]).values()}
+    loaded = closed_episodes(run_dir)
+    twins = {t.ep_id for t in twins_of(loaded).values()}
     episodes = {ep.ep_id: ep for ep in loaded if ep.ep_id not in twins}
     scores = {r["ep_id"]: r for r in read_jsonl(run_dir / f"scores-{profile}.jsonl")}
     groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "unflagged": defaultdict(list),

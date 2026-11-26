@@ -108,15 +108,19 @@ def test_report_warns_about_any_scores_row_without_the_scoring_code(bench, capsy
     assert "1 scores row written before the scoring code was stamped" in capsys.readouterr().out
 
 
-def test_a_parent_whose_twin_is_missing_says_so(bench, capsys):
+def test_a_rollout_has_no_twin_and_the_report_says_so(bench, capsys):
+    """Rollouts of one checkpoint are forks stored after it and baselines of nothing: each
+    has its own name, the arm it was forked from keeps its twin, and a rollout's missing
+    `net_*` is counted, not averaged in as a zero."""
     out = bench([POV_ROW], chapter("Mira turned the glove over."))
-    run_and_score(capsys, out, "--no-score")
-    episodes = out / "episodes.jsonl"
-    episodes.write_text("".join(line + "\n" for line in episodes.read_text().splitlines()
-                                if json.loads(line)["condition"] != "twin_swap"))
-    cli.main(["score", "--run", str(out)])
+    run_and_score(capsys, out)
+    run_and_score(capsys, out, "--from", "pov-1~full_view@0", "--rollouts", "2")
+    rows = {r["ep_id"]: r for r in score_rows(out)}
+    assert rows["pov-1~full_view"]["twin"] == "pov-1~full_view~twin_swap"
+    rollouts = [rows[f"pov-1~full_view~full_view.{n}"] for n in (0, 1)]
+    assert [(r["twin"], r["status"], "net_pov_leak" in r["metrics"]) for r in rollouts] == [(None, "completed", False)] * 2
     cli.main(["report", "--run", str(out)])
-    assert capsys.readouterr().out.count("twin had no artefact (no net_*): missing 1") == 2
+    assert "twin had no artefact (no net_*): missing 2" in capsys.readouterr().out
 
 
 def test_score_where_matches_condition_as_report_does_and_keeps_the_twin(bench, capsys):

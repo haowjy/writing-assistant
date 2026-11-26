@@ -11,7 +11,7 @@ log and is written whenever the episode ran.
 A metric that does not apply to a task is absent, never 0.0. Whether a text uses a fact is
 asked of the `fact` judge with the text in view; an item the judge leaves unscored
 (`judges.Unscored`) is left out and counted per metric by `Tally`, and a rate with no judged
-item is absent. The twin (`tasks_1a.TWINS`) is judged here, once, as the parent's baseline:
+item is absent. The twin (the episode whose `baseline_of` names this one) is judged here, once, as the parent's baseline:
 its rate is written as `twin_<metric>` and a `net_*` metric is the parent's rate minus it,
 absent when either side has no artefact or no judged item. A twin's missing artefact is
 counted as `n_twin_no_output.<reason>`; a twin that was never saved, as `missing`.

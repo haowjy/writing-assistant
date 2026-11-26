@@ -1,7 +1,7 @@
-"""Task rows and episodes on disk, split assignment, and the local_dev guard.
+"""Task rows on disk, split assignment, the local_dev guard and the JSONL helpers.
 
-Task rows and saved episodes are files another process (or an older build) wrote, so
-loading validates them; everything after loading trusts the types.
+Task rows are files another process (or an older build) wrote, so loading validates them;
+everything after loading trusts the types. Episodes are kept by `episode/segments.py`.
 
 Where task rows live (they hold book text, so never in git):
 - public rows: `TASKS_DIR/<suite>.jsonl`, written by scripts/build_seed_tasks.py, each row
@@ -30,7 +30,6 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.episode.model import Episode
 
 DATA = Path(os.environ.get("WA_DATA", "/data/jimyao/research/writing-assistant"))
 TASKS_DIR = DATA / "tasks"
@@ -40,7 +39,7 @@ SPLITS = ("train", "dev", "test")
 # split_of buckets: sha256(source_group) mod 100 -> train [0, 70), dev [70, 85), test [85, 100).
 # Changing these moves rows between splits; the held-out test split must never move.
 SPLIT_EDGES = (70, 85)
-EPISODES_FILE, RUN_FILE = "episodes.jsonl", "run.json"  # in a run directory (cli.py)
+RUN_FILE = "run.json"  # in a run directory (cli.py)
 # Every run on the held-out `test` split, one line each: the record that "never used for
 # selection" can be checked against. Not in TASKS_DIR: it names local paths and is no task.
 TEST_USES = DATA / "test-split-uses.jsonl"
@@ -172,13 +171,12 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in lines[:-1] if line.strip()]
 
 
-def append_jsonl(path: Path, rows: Iterable[dict[str, Any]], keep: int | None = None) -> None:
-    """Append rows, one per line, after cutting the file back to its first `keep` bytes
-    (default: its complete lines), so a line a killed writer left unfinished is not glued
-    to the next one."""
+def append_jsonl(path: Path, rows: Iterable[dict[str, Any]]) -> None:
+    """Append rows, one per line, after cutting the file back to its complete lines, so a
+    line a killed writer left unfinished is not glued to the next one."""
     text = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
     with path.open("ab") as f:
-        f.truncate(_complete_bytes(path) if keep is None else keep)
+        f.truncate(_complete_bytes(path))
         f.write(text.encode("utf-8"))
 
 
@@ -193,49 +191,3 @@ def _complete_bytes(path: Path) -> int:
             return size
         f.seek(0)
         return f.read().rfind(b"\n") + 1
-
-
-_TASK_ID = re.compile(r'"task_id": "((?:[^"\\]|\\.)*)"')
-
-
-def _episodes_bytes(path: Path) -> int:
-    """How much of episodes.jsonl holds whole tasks. A task's episodes are written in one
-    append, so a last line cut short means its task is incomplete: the earlier lines of that
-    task are dropped with it, and a resume plays the task again."""
-    keep = _complete_bytes(path)
-    if keep == path.stat().st_size:
-        return keep
-    data = path.read_bytes()
-    m = _TASK_ID.search(data[keep:].decode("utf-8", "replace"))
-    if m is None:
-        return keep
-    lines = data[:keep].split(b"\n")[:-1]
-    while lines and json.loads(lines[-1]).get("task_id") == json.loads(f'"{m.group(1)}"'):
-        keep -= len(lines.pop()) + 1
-    return keep
-
-
-def save_episodes(episodes: Iterable[Episode], out: str | Path) -> Path:
-    """Append one task's episodes to `<out>/episodes.jsonl`, one complete episode per line,
-    first cutting off an incomplete task a killed run left at the end."""
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / EPISODES_FILE
-    append_jsonl(path, (ep.to_dict() for ep in episodes), _episodes_bytes(path) if path.exists() else 0)
-    return path
-
-
-def load_episodes(run_dir: str | Path) -> list[Episode]:
-    """Every episode saved in a run, parent_id/condition intact for re-pairing twins; an
-    incomplete task at the end (a run killed mid-write) is left out, as a resume replays it."""
-    path = Path(run_dir) / EPISODES_FILE
-    if not path.exists():
-        return []
-    lines = path.read_bytes()[: _episodes_bytes(path)].decode("utf-8").split("\n")[:-1]
-    episodes = [Episode.from_dict(json.loads(line)) for line in lines if line.strip()]
-    seen: set[str] = set()
-    for ep in episodes:
-        if ep.ep_id in seen:
-            raise ValueError(f"{path}: episode {ep.ep_id} saved twice")
-        seen.add(ep.ep_id)
-    return episodes

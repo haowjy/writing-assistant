@@ -5,12 +5,14 @@ continued from a copy taken mid-play."""
 
 import copy
 import json
+import shutil
 from collections import Counter
 from types import SimpleNamespace
 
 import pytest
 
 from writing_assistant.episode import Episode
+from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import Task
 from writing_assistant.episode.tools import dispatch_tool
 from writing_assistant.judges import Judge
@@ -116,7 +118,7 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
     pov = by_id["pov-1~pov_view"]
 
     # The swap twin differs from its parent only in the designated event and its state.
-    assert full_twin.parent_id == full.ep_id
+    assert full_twin.baseline_of == full.ep_id and pov.baseline_of is None
     assert [i for i, (a, b) in enumerate(zip(full.events, full_twin.events, strict=True)) if a != b] == [2]
     assert full_twin.events[2].data["text"] == SWAPPED
     assert {k for k in full.state["world"] if full.state["world"][k] != full_twin.state["world"][k]} == {"secrets", "facts"}
@@ -180,30 +182,78 @@ PIVOT_REPLIES = ["Done. Should the lighthouse stay?", "Storm added.", "Moved inl
     (DM_TASK, DM_REPLIES, [("dm", "say", "Mira hears nothing."), ("dm", "say", "Tam steps out beside Mira."), ("dm", "say", "They wait.")]),
     (PIVOT_TASK, PIVOT_REPLIES, [("writer", "deliver", "Yes, keep the lighthouse.\n\nAdd the storm.")]),
 ], ids=["dm_play", "pivot_unbinding"])
-async def test_an_episode_copied_when_a_delivery_returns_continues_as_the_original(fake_turn, task, replies, logged):
-    """The copy is what a store would hold (the episode as JSON); it is reopened with a new
-    driver and a client that has only the replies not yet given. What the suite does after a
-    reply (the DM's narration on the log, the author answering a question) must not be lost
-    with the loop that was running, nor the conversation with the session."""
+async def test_a_stored_episode_reopened_at_any_turn_checkpoint_continues_as_the_original(fake_turn, tmp_path, task, replies, logged):
+    """Saved through the store as a run saves it (before play, when each delivery returns,
+    closed at the end), then reopened two ways with a new driver and a client holding only
+    the replies not yet given: the store file as a kill at that moment would have left it,
+    continued as the same episode; and a fork of that checkpoint in the finished store. What
+    the suite does after a reply (the DM's narration on the log, the author answering a
+    question) must not be lost with the loop that was running, nor the conversation with the
+    session."""
+    killed = []  # (the store file when delivery n had returned, the requests answered by then)
+
+    async def finish(store, ep, turn, copies=False):
+        async def saved(ep, actor, message):
+            await turn(ep, actor, message)
+            store.append(ep)
+            if copies:
+                killed.append((shutil.copy(store.path, tmp_path / f"killed-{len(killed) + 1}.db"), len(turn.llm.requests)))
+
+        await play(suite_1a, [ep], saved)
+        ep.complete()
+        store.close(ep)
+
+    def whole(ep):
+        return ep.events, ep.calls, ep.files, ep.file_revs, ep.state, ep.actors, ep.actor_tools, ep.status, ep.failure_reason
+
     ep = suite_1a.setup(task, None)[0]
     turn = fake_turn(replies, srd.TOOLS)
-    copies = []
-
-    async def copying(ep, actor, message):
-        await turn(ep, actor, message)
-        copies.append((json.dumps(ep.to_dict()), len(turn.llm.requests)))
-
-    await play(suite_1a, [ep], copying)
-    assert len(copies) == len(ep.state["script"]["turns"])
+    path = tmp_path / "store.db"
+    with Store(path) as store:
+        store.append(ep)
+        await finish(store, ep, turn, copies=True)
+        assert store.load(ep.ep_id) == ep
+        with pytest.raises(ValueError, match="closing checkpoint"):
+            store.load(ep.ep_id, at=len(killed) + 1)
+    assert len(killed) == len(ep.state["script"]["turns"])
     log = [(e.actor, e.kind, e.data.get("text") or e.data.get("message")) for e in ep.events]
     assert [entry for entry in logged if entry not in log] == []
-    for saved, answered in copies:
-        reopened = Episode.from_dict(json.loads(saved))
-        rest = fake_turn(replies[answered:], srd.TOOLS)
-        await play(suite_1a, [reopened], rest)
-        assert [r["messages"] for r in rest.llm.requests] == [r["messages"] for r in turn.llm.requests[answered:]]
-        assert reopened.events == ep.events
-        assert reopened.to_dict() == ep.to_dict()
+
+    for n, (copy_path, answered) in enumerate(killed, 1):
+        rest = [r["messages"] for r in turn.llm.requests[answered:]]
+        with Store(copy_path) as store:
+            assert store.names() == []
+            [reopened] = store.episodes(closed=False)
+            resumed = fake_turn(replies[answered:], srd.TOOLS)
+            await finish(store, reopened, resumed)
+            assert [r["messages"] for r in resumed.llm.requests] == rest
+            assert reopened == ep and store.load(ep.ep_id) == ep
+        with Store(path) as store:
+            rollout = store.load(ep.ep_id, at=n).fork(ep.condition, rollout=n)
+            forked = fake_turn(replies[answered:], srd.TOOLS)
+            await finish(store, rollout, forked)
+            assert [r["messages"] for r in forked.llm.requests] == rest
+            assert whole(rollout) == whole(ep) and whole(store.load(rollout.ep_id)) == whole(ep)
+
+
+def test_a_fork_that_differs_from_its_parent_at_birth_loads_as_itself(tmp_path):
+    """Twins and arms are stored as what they changed against the episode they were forked
+    from, and some of that is on no event: a twin's script, a POV arm's state, a swapped
+    event, a rules file mounted after the fork. Each must load as itself, not as its parent."""
+    corpus = SimpleNamespace(select=lambda where: [None], chapters=lambda work: ["Chapter one.", "Chapter two."])
+    rules = Task("bend-1", "1a", "rule_bend", "dev", ["w1"], {
+        "rules_path": "rules.md", "bent_rules": "Magic costs memory.", "kept_rules": "Magic is free.",
+        "out_path": "scene.md", "canon_probes": ["q?"], "bent_probes": ["q?"], "request": "Write the scene."})
+    eps = [ep for task in (PIVOT_TASK, POV_TASK, rules) for ep in suite_1a.setup(task, SimpleNamespace(corpus=corpus))]
+    by_id = {ep.ep_id: ep for ep in eps}
+    assert by_id["bend-1"].files["rules.md"] != by_id["bend-1~twin_swap"].files["rules.md"]
+    assert by_id["pivot-1"].state["script"] != by_id["pivot-1~clean_b"].state["script"]
+    assert by_id["pov-1~full_view"].events != by_id["pov-1~full_view~twin_swap"].events
+    with Store(tmp_path / "store.db") as store:
+        store.append(*eps)
+        assert set(store.names(closed=False)) == set(by_id)  # the base both POV arms fork from is stored unlisted
+    with Store(tmp_path / "store.db", readonly=True) as store:
+        assert [store.load(ep.ep_id) for ep in eps] == eps
 
 
 async def test_no_secret_template_spans_two_splits_and_dev_and_test_hold_three_each():

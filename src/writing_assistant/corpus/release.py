@@ -19,6 +19,10 @@ leave.
   work it draws on is refused.
 - Episodes, and the scores and judgments rows about them, leave whole or not at all: only
   when every work the episode draws on is permissive (DECISIONS #12: left out, not hashed).
+  A run's store file never leaves: `sync` writes a new store holding the closed episodes
+  that may, each with the ancestors it was forked from. The test is made of every segment
+  in an episode's chain, over the state at each of its checkpoints (state changes along a
+  chain, and an ancestor is copied whole), and one segment failing keeps the episode back.
 """
 
 from __future__ import annotations
@@ -35,15 +39,8 @@ from typing import TYPE_CHECKING, Any
 
 from writing_assistant.corpus.text import norm_words
 from writing_assistant.episode.model import strings
-from writing_assistant.episode.store import (
-    EPISODES_FILE,
-    LOCAL_DEV,
-    RUN_FILE,
-    TASKS_DIR,
-    load_rows,
-    local_only,
-    read_jsonl,
-)
+from writing_assistant.episode.segments import STORE_FILE, Store
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TASKS_DIR, load_rows, local_only, read_jsonl
 
 if TYPE_CHECKING:
     from writing_assistant.corpus.rows import Corpus
@@ -167,18 +164,33 @@ def export_public(corpus: Corpus, out: Path, suites: SuiteFields, tasks_dir: Pat
 
 def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> Counter[str]:
     """What `wa-bench sync` uploads, staged under `stage`: the public export under `corpus/`
-    and `tasks/`, and each run's files with episodes, scores and judgments filtered."""
+    and `tasks/`, and each run's files with episodes, scores and judgments filtered. The
+    staged `store.db` is written here, never copied."""
     counts: Counter[str] = Counter()
     export_public(corpus, stage / "corpus", suites)
     shutil.move(stage / "corpus" / "tasks", stage / "tasks")
     for run_dir in sorted(p for p in runs.glob("*") if (p / RUN_FILE).exists()):
         dest = stage / "runs" / run_dir.name
-        episodes = [d for d in read_jsonl(run_dir / EPISODES_FILE)
-                    if d["split"] != LOCAL_DEV and may_leave(corpus, works_in(d["state"]))]
-        counts["episodes_left_out"] += len(read_jsonl(run_dir / EPISODES_FILE)) - len(episodes)
-        counts["episodes"] += len(episodes)
-        keep = {d["ep_id"] for d in episodes}
-        _write_jsonl(dest / EPISODES_FILE, episodes)
+        dest.mkdir(parents=True)
+        keep: set[str] = set()
+        if (run_dir / STORE_FILE).exists():
+            with Store(run_dir / STORE_FILE, readonly=True) as store, Store(dest / STORE_FILE) as staged:
+                leaves: dict[str, bool] = {}  # seg -> whether that segment may leave
+
+                def segment_leaves(seg: str) -> bool:
+                    split, states = store.snapshots(seg)
+                    return split != LOCAL_DEV and all(may_leave(corpus, works_in(state)) for state in states)
+
+                for ep_id in store.names():
+                    chain = store.chain(ep_id)
+                    for seg in chain:
+                        if seg not in leaves:
+                            leaves[seg] = segment_leaves(seg)
+                    if all(leaves[seg] for seg in chain):
+                        store.copy_chain(ep_id, staged, listed=True)
+                        keep.add(ep_id)
+                counts["episodes_left_out"] += len(store.names()) - len(keep)
+                counts["episodes"] += len(keep)
         for path in [*run_dir.glob("scores-*.jsonl"), *run_dir.glob("judgments-*.jsonl")]:
             _write_jsonl(dest / path.name, [r for r in read_jsonl(path)
                                             if r["ep_id"] in keep and r.get("scored", r["ep_id"]) in keep])

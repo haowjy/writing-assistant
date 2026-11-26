@@ -1,7 +1,9 @@
 """Event, CallRecord, Episode: the Episode is the only state.
 
 Suite state is plain JSON in `Episode.state`; files are immutable strings in a dict, so a
-fork is a copy of a few containers. A saved episode (`to_dict`) is the whole state.
+fork is a copy of a few containers. An episode holds no history of itself: what it was at an
+earlier point is kept by the store (`episode/segments.py`), which saves it as a segment of a
+tree and needs `seg`, `parent` and `forked_from` here for that.
 
 Conventions other packages rely on:
 - `state["file_acl"]`: `{path or "dir/": [actor, ...]}`. A covered path is reachable only by
@@ -17,7 +19,8 @@ from __future__ import annotations
 
 import copy
 import posixpath
-from dataclasses import asdict, dataclass, field, replace
+import uuid
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 EventKind = Literal["tool", "say", "deliver", "file_write", "world", "decision", "swap"]
@@ -42,6 +45,9 @@ class CallRecord:
 
     actor: str = ""
     turn_idx: int | None = None  # the delivery this call served; None outside a delivery
+    # How many events the episode held when the call was appended: the results of its tool
+    # calls are the actor's `tool` events from there on.
+    at_event: int = 0
     endpoint: str = ""
     messages: list[dict[str, Any]] = field(default_factory=list)
     response: str = ""  # the reply text only: never the model's reasoning
@@ -87,7 +93,16 @@ class Episode:
     task_id: str
     suite: str
     split: Literal["train", "dev", "test", "local_dev"]
-    parent_id: str | None = None
+    # Storage identity, unique in every store; `ep_id` is the readable name scores, judgments
+    # and sampling seeds use, unique within one store.
+    seg: str = field(default_factory=lambda: uuid.uuid4().hex)
+    # (seg, events, calls) of the episode this one was forked from and how much of its log it
+    # took. It says what this episode is stored after and nothing else: twins are `baseline_of`.
+    parent: tuple[str, int, int] | None = None
+    # The parent itself while this process still holds it, so that saving a fork can save an
+    # ancestor nothing else saved; None on an episode loaded from a store.
+    forked_from: Episode | None = field(default=None, repr=False, compare=False)
+    baseline_of: str | None = None  # ep_id of the episode this one is the twin (the baseline) of
     condition: str = "base"
     meta: dict[str, Any] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
@@ -177,20 +192,26 @@ class Episode:
 
     # -- branching and outcome -------------------------------------------------------------
 
-    def fork(self, condition: str, swap: dict[str, Any] | None = None) -> Episode:
+    def fork(self, condition: str, swap: dict[str, Any] | None = None, *, baseline: bool = False,
+             rollout: int | None = None) -> Episode:
         """A copy that shares nothing mutable with this episode except Event and CallRecord
-        objects (never mutated). Its id is `<parent>~<condition>`.
+        objects (never mutated). Its id is `<parent>~<condition>`; with `rollout = n` it is
+        `<parent>~<condition>.<n>`, so repeated forks of one position under one condition have
+        their own ids and sample differently. `baseline` makes the copy this episode's twin:
+        the baseline its `net_*` metrics subtract.
 
         `swap = {"event_idx": i, "data": {...}, "state": {...}, "restricted": [seat, ...]}`
         replaces event i's data and deep-merges `state` leaf by leaf. It refuses an event that
         a restricted seat (the seats whose ignorance the twin tests) or everyone ("*") could
         perceive."""
         child = Episode(
-            ep_id=f"{self.ep_id}~{condition}",
+            ep_id=f"{self.ep_id}~{condition}" + ("" if rollout is None else f".{rollout}"),
             task_id=self.task_id,
             suite=self.suite,
             split=self.split,
-            parent_id=self.ep_id,
+            parent=(self.seg, len(self.events), len(self.calls)),
+            forked_from=self,
+            baseline_of=self.ep_id if baseline else None,
             condition=condition,
             meta=copy.deepcopy(self.meta),
             events=list(self.events),
@@ -233,18 +254,6 @@ class Episode:
                 return
         if self.status == "running":
             self.status = "completed"
-
-    # -- serialisation ---------------------------------------------------------------------
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> Episode:
-        d = dict(d)
-        d["events"] = [Event(**e) for e in d["events"]]
-        d["calls"] = [CallRecord(**c) for c in d["calls"]]
-        return cls(**d)
 
 
 def strings(value: Any) -> list[str]:

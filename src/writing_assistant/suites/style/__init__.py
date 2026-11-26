@@ -13,7 +13,6 @@ from writing_assistant.suites.style import score, tasks
 
 class Style:
     tools: dict = {}  # workspace tools only
-    twins: dict[str, str] = {}  # no twins: each episode is scored on its own
     judged_by = score.JUDGED_BY
     about = tasks.ABOUT
     metric_about = score.ABOUT

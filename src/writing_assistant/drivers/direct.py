@@ -65,7 +65,7 @@ class DirectDriver:
                 max_tokens=self.max_tokens,
                 seed=conv.seed,
             )
-            rec = replace(rec, actor=actor, turn_idx=turn_idx)
+            rec = replace(rec, actor=actor, turn_idx=turn_idx, at_event=len(ep.events))
             ep.calls.append(rec)
             conv.messages.append(assistant_message(rec))
             if not rec.tool_calls:
@@ -91,14 +91,14 @@ def _conversation(ep: Episode, actor: str) -> list[dict[str, Any]]:
     """What `actor` has been sent and has answered so far. Before its first call that is its
     system prompt. After, it is the last call's messages, that call's reply and the results
     of the reply's tool calls: a turn stopped at `max_steps` ends on tool calls whose results
-    reached no later call, and they are the actor's last `tool` events."""
+    reached no later call, and they are the actor's `tool` events since that call."""
     last = next((c for c in reversed(ep.calls) if c.actor == actor), None)
     if last is None:
         system = ep.state.get("system_prompts", {}).get(actor)
         return [{"role": "system", "content": system}] if system else []
     messages = [*last.messages, assistant_message(last)]
     if last.tool_calls:
-        results = [e for e in ep.events if e.kind == "tool" and e.actor == actor][-len(last.tool_calls):]
+        results = [e for e in ep.events[last.at_event:] if e.kind == "tool" and e.actor == actor]
         if [e.data["name"] for e in results] != [c["name"] for c in last.tool_calls]:
             raise ValueError(f"{ep.ep_id}: the log does not hold the results of {actor}'s last tool calls")
         messages += [_tool_message(call, e.data["result"]) for call, e in zip(last.tool_calls, results)]

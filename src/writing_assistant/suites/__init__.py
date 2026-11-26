@@ -11,11 +11,12 @@ package never imports another suite package.
 - `setup()` maps every model-driven actor to the placeholder `SUBJECT`; cli.py replaces it
   with the endpoint under test before `play()`, and its Turn binding refuses to call a
   placeholder.
-- Twins: the twin of an episode is the saved episode whose `parent_id` is that episode's
-  `ep_id` and whose `condition` is `suite.twins[episode.condition]`. A condition missing
-  from `twins` is scored without a twin. A twin is a baseline, never scored on its own: its
-  parent's `score()` judges it once, writes its rate as `twin_<metric>` and subtracts it in
-  the `net_*` metric.
+- Twins: the twin of an episode is the one whose `baseline_of` is that episode's `ep_id`;
+  `setup()` makes it with `fork(..., baseline=True)`. An episode nothing names is scored
+  without a twin (a rollout forked from a checkpoint is one: `Episode.parent` says only what
+  an episode is stored after). A twin is a baseline, never scored on its own: the `score()`
+  of the episode it names judges it once, writes its rate as `twin_<metric>` and subtracts
+  it in the `net_*` metric.
 - `judged_by` maps each metric to the judge use it depends on; `wa-bench report` marks a
   metric ungated until that use's human-label gate has passed. Metrics not listed are
   deterministic.
@@ -82,7 +83,6 @@ class KindAbout:
 
 class Suite(Protocol):
     tools: ToolTable  # the suite's static tool table; cli.py hands it to the driver
-    twins: dict[str, str]  # scored condition -> the condition of its twin (a child episode)
     judged_by: dict[str, str]  # metric -> judge use it depends on
     about: dict[str, KindAbout]  # task kind -> what it is, in plain words
     metric_about: dict[str, str]  # metric -> what a value means, in a sentence
