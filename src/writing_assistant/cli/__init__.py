@@ -48,7 +48,7 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
-from writing_assistant.episode.store import (LOCAL_DEV, RUN_FILE, Task, append_jsonl, load_episodes, local_only, matches,
+from writing_assistant.episode.store import (LOCAL_DEV, RUN_FILE, TEST_USES, Task, append_jsonl, load_episodes, local_only, matches,
                                              read_jsonl, save_episodes)
 from writing_assistant.judges import Judges, judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
@@ -215,6 +215,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
     services = services_for(args.models, args.judges)
     if args.endpoint not in services.llm.endpoints:
         sys.exit(f"unknown endpoint {args.endpoint!r}; models.toml has {sorted(services.llm.endpoints)}")
+    if args.split == "test" and not args.held_out_test:
+        sys.exit("--split test is the held-out split, never used to choose anything; pass --held-out-test to run "
+                 f"it, and the run is logged in {TEST_USES}")
     if args.split == LOCAL_DEV and not services.llm.endpoints[args.endpoint].get("local"):
         sys.exit(f"--split local_dev plays personal text, which may reach only an endpoint with `local = true`; "
                  f"{args.endpoint!r} is hosted. Local endpoints: "
@@ -233,6 +236,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
         info = identity | {"started": _now(), "reported_apart": args.driver == "direct"}
     info.setdefault("invocations", []).append({"at": _now(), "code": code, "where": args.where, "limit": args.limit})
     _write_json(run_dir / RUN_FILE, info)
+    if args.split == "test":
+        append_jsonl(TEST_USES, [identity | {"at": _now(), "run": str(run_dir.resolve()), "code": code,
+                                             "where": args.where, "limit": args.limit}])
 
     saved = load_episodes(run_dir)
     done = {ep.task_id for ep in saved}
@@ -404,6 +410,8 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--endpoint", required=True, help="models.toml endpoint name of the subject")
     r.add_argument("--driver", default="direct", choices=sorted(DRIVERS))
     r.add_argument("--split", default="dev", choices=["train", "dev", "test", LOCAL_DEV])
+    r.add_argument("--held-out-test", action="store_true",
+                   help="required with --split test; each such run is appended to tasks/test-split-uses.jsonl")
     r.add_argument("--where", help="key=value[,key=value]: task row fields, then payload fields; a comma not followed by key= stays in the value")
     r.add_argument("--limit", type=int, help="run at most this many tasks")
     r.add_argument("--out", help="run directory (resumed when it exists)")
