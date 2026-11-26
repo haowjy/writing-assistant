@@ -10,8 +10,8 @@ browser at once, and the histories never are (each call contributes its reply, r
 tool calls and their results).
 
 Runs are read through the same loader, twin pairing and report aggregation as `wa-bench
-report` (`build_report`), and re-read when a file in the run changes (the store's size and
-modification time move with every checkpoint), so a run still being written can be watched:
+report` (`build_report`), and re-read when a file the page reads changes (the store's size
+and modification time move with every checkpoint), so a run still being written can be watched:
 its episodes appear as their tasks close. Fields an older build did not record load as their empty defaults
 and show as "not recorded". A task row is shown by running the suite's own `setup` and
 `play` with a Turn that answers nothing (`_no_model`): the episodes, forks, twin swaps and
@@ -44,7 +44,7 @@ from writing_assistant.cli import row_meta
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
-from writing_assistant.episode.segments import closed_episodes
+from writing_assistant.episode.segments import STORE_FILE, closed_episodes
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, read_jsonl, task_rows
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, play
@@ -71,9 +71,11 @@ class Run:
         self._cache: dict[Any, Any] = {}
 
     def _cached(self, key: Any, make: Any) -> Any:
-        # Not the store's journal: it exists only while a checkpoint is being written.
-        sig = tuple((p.name, p.stat().st_mtime_ns, p.stat().st_size) for p in sorted(self.path.iterdir())
-                    if p.is_file() and not p.name.endswith("-journal"))
+        # The files the page reads, by name: these are only ever replaced whole or appended to.
+        # A live run's journal and `.tmp` files come and go between a listing and a stat.
+        files = [self.path / name for name in (RUN_FILE, STORE_FILE, "guardrails.json")]
+        files += sorted(p for pattern in ("scores-*.jsonl", "judgments-*.jsonl") for p in self.path.glob(pattern))
+        sig = tuple((p.name, stat.st_mtime_ns, stat.st_size) for p in files if p.exists() for stat in [p.stat()])
         if sig != self._sig:
             self._sig, self._cache = sig, {}
         if key not in self._cache:

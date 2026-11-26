@@ -43,8 +43,9 @@ resumable. `local_dev` rows are set up, played and
 scored inside `episode.store.local_only()`, and only against a `local = true` endpoint.
 
 `run --from <ep_id>@<n> --rollouts N` plays no task rows: it forks turn checkpoint `n` of a
-stored episode N times (`n` deliveries had returned; 0 is before the first) and plays each
-fork on from there against `--endpoint`. The episode is read from this run's store, or from
+stored episode N times and plays each fork on from there against `--endpoint`. `n` counts
+that episode's own checkpoints (0: its start; a rollout's start is where it was forked), so
+for an episode `run` set up it is the number of deliveries that had returned. The episode is read from this run's store, or from
 `--from-run`'s, whose chain is first copied into this run's store so the store stays
 self-contained. Rollout `i` is named `<ep_id>@<n>.<i>` and records what it is a rollout of
 (`Episode.rollout_of`), so each samples with its own seed; one already stored is not made
