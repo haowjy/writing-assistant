@@ -48,8 +48,9 @@ class DirectDriver:
 
     async def turn(self, session: Session, message: str) -> str:
         """Run the tool loop for one delivery (already logged by the Turn binding) until the
-        model replies without a tool call. Past `max_steps` calls, or when the model is cut off
-        at `max_tokens` before replying, the episode is truncated."""
+        model replies without a tool call. Past `max_steps` calls, when the model is cut off at
+        `max_tokens` before replying, or when the server could not parse its tool call, the
+        episode is truncated."""
         conv: _Conversation = session.handle
         ep, actor = conv.ep, session.actor
         turn_idx = ep.current_turn(actor)
@@ -72,6 +73,8 @@ class DirectDriver:
             if not rec.tool_calls:
                 if rec.finish_reason == "length":
                     _truncate(ep, f"{actor} was cut off at max_tokens={self.max_tokens}")
+                elif rec.finish_reason == "unparseable_tool_call":
+                    _truncate(ep, f"{actor} made a tool call whose arguments were not valid JSON")
                 return rec.response
             for call in rec.tool_calls:
                 result = await dispatch_tool(ep, actor, call["name"], call["arguments"], self.tools)

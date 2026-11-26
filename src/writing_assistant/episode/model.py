@@ -49,7 +49,8 @@ class CallRecord:
     tools_advertised: list[str] = field(default_factory=list)
     # input_tokens, output_tokens, cost_usd (when the host reports it); {} if unreported
     usage: dict[str, float] = field(default_factory=dict)
-    # Why the model stopped: "stop", "length", "tool_calls", "refusal", or the host's own word;
+    # Why the model stopped: "stop", "length", "tool_calls", "refusal", "unparseable_tool_call"
+    # (the server could not parse its tool call: llm.client.UnparseableToolCall), or the host's own word;
     # "" when the host did not say. A refusal or a length cut-off is not an empty reply.
     finish_reason: str = ""
     reasoning: str = ""  # thinking the host returned beside the reply; saved, never scored or replayed

@@ -55,6 +55,16 @@ _FINISH = {
     "content_filter": "refusal", "refusal": "refusal",
 }
 
+class UnparseableToolCall(RuntimeError):
+    """llama.cpp's server answers HTTP 500 when the model's tool-call arguments are not valid
+    JSON. That is the model's output, not a server fault, and the driver seeds sampling, so a
+    retry draws the same call: `_post` raises this at once and the chat adapter records the
+    call as ended with `unparseable_tool_call`."""
+
+
+UNPARSEABLE_TOOL_CALL = "Failed to parse tool call arguments"
+
+
 class AccountError(RuntimeError):
     """The host refused the account (401, 402, 403): every later call would fail the same
     way, so a run stops instead of playing its remaining tasks into the error."""
@@ -192,6 +202,8 @@ async def _post(http: httpx.AsyncClient, url: str, headers: dict, body: dict, ti
             log.warning("%s: %s; retry %d in %.0fs", url, type(e).__name__, attempt, wait)
             await asyncio.sleep(wait)
             continue
+        if resp.status_code == 500 and UNPARSEABLE_TOOL_CALL in resp.text:
+            raise UnparseableToolCall(f"HTTP 500 from {url}: {resp.text[:300]}")
         if resp.status_code == 429 or resp.status_code >= 500:
             if attempt == RETRIES:
                 resp.raise_for_status()
@@ -240,7 +252,10 @@ async def _openai_compat(http, ep, headers, messages, tools, temperature, max_to
     if tools:
         body["tools"] = [{"type": "function", "function": t} for t in tools]
     body |= ep.get("params", {})  # per-endpoint extras, e.g. chat_template_kwargs
-    data = await _post(http, ep["base_url"].rstrip("/") + "/chat/completions", headers, body, ep.get("timeout", TIMEOUT))
+    try:
+        data = await _post(http, ep["base_url"].rstrip("/") + "/chat/completions", headers, body, ep.get("timeout", TIMEOUT))
+    except UnparseableToolCall as e:
+        return CallRecord(response="", finish_reason="unparseable_tool_call", ext={"error": str(e)})
     choices = data.get("choices") or []
     if not choices or not isinstance(choices[0].get("message"), dict):
         raise ValueError(f"{ep['model']}: response has no message: {str(data)[:300]}")
