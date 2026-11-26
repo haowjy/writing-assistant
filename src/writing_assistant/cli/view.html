@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wa-bench view</title>
+<style>
+:root {
+  --bg: #f6f6f4; --surface: #fff; --line: #e1e0db; --line-strong: #c9c7c0;
+  --ink: #1b1b19; --muted: #5c5b55; --faint: #8a8881;
+  --accent: #2b5b88; --accent-soft: #e6eef6;
+  --warn: #8a4b00; --warn-soft: #fbf1e3;
+  --del: #f9e4e1; --del-ink: #7d2a1e; --add: #e3f1e4; --add-ink: #1f5a2a;
+  --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --prose: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font: 14px/1.45 var(--ui); color: var(--ink); background: var(--bg); }
+button { font: inherit; color: inherit; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* frame */
+header.top { position: sticky; top: 0; z-index: 10; height: 48px; display: flex; align-items: center; gap: 12px;
+  padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+header.top .brand { font-weight: 600; margin-right: 8px; white-space: nowrap; }
+select { font: inherit; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface); max-width: 340px; }
+.tabs { display: flex; gap: 2px; border: 1px solid var(--line-strong); border-radius: 5px; padding: 2px; }
+.tabs button { border: 0; background: none; padding: 3px 12px; border-radius: 3px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: #fff; }
+.grow { flex: 1; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.warn { color: var(--warn); }
+#app { height: calc(100% - 48px); }
+
+/* scores */
+.page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 80px; overflow: auto; height: 100%; }
+.runline { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 4px; }
+.runline h1 { font-size: 18px; margin: 0; font-weight: 600; }
+details.plain > summary { cursor: pointer; color: var(--muted); list-style: none; }
+details.plain > summary::before { content: "▸ "; font-size: 11px; }
+details.plain[open] > summary::before { content: "▾ "; }
+.header-lines { font: 12px/1.6 var(--mono); color: var(--muted); margin: 6px 0 0; white-space: pre-wrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px; padding: 2px 10px; cursor: pointer; font-size: 13px; }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+section.kind { margin-top: 28px; }
+section.kind h2 { font-size: 16px; margin: 0 0 8px; font-weight: 600; }
+section.kind h2 .muted { font-weight: 400; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+table.scores { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+table.scores th, table.scores td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.scores th:first-child, table.scores td:first-child { text-align: left; }
+table.scores thead th { font-weight: 500; color: var(--muted); font-size: 12px; }
+table.scores thead tr.arms th { color: var(--ink); font-size: 13px; font-weight: 600; border-bottom: 0; }
+table.scores .armstart { border-left: 1px solid var(--line); }
+table.scores tbody tr:hover td { background: #fafaf8; }
+table.scores td.v button { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; }
+table.scores td.v button:hover { text-decoration: underline; }
+table.scores td .n { color: var(--faint); font-size: 11px; margin-left: 4px; }
+table.scores td.absent { color: var(--faint); font-style: italic; }
+table.scores tr.prose td { color: var(--muted); }
+.mark { color: var(--warn); }
+ul.notes { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+ul.notes li { margin: 2px 0; }
+
+/* episodes */
+.split { display: grid; grid-template-columns: 300px 1fr; height: 100%; }
+aside.tasks { border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+aside.tasks .controls { padding: 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+aside.tasks label.field { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+aside.tasks input[type=search] { font: inherit; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 4px; }
+aside.tasks .count { font-size: 12px; color: var(--muted); padding: 8px 12px 4px; }
+aside.tasks ul { list-style: none; margin: 0; padding: 0 6px 20px; overflow-y: auto; flex: 1; }
+aside.tasks li button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 7px 8px; border-radius: 4px; cursor: pointer; }
+aside.tasks li button:hover { background: var(--bg); }
+aside.tasks li button[aria-current="true"] { background: var(--accent-soft); }
+.task-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-sub { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+.task-sub b { color: var(--ink); font-weight: 600; }
+main.task { overflow-y: auto; min-height: 0; }
+.task-head { padding: 16px 28px 0; }
+.task-head h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.task-head .row { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 10px; color: var(--muted); font-size: 13px; }
+.task-head .row span b { color: var(--ink); font-weight: 500; }
+.armtabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-top: 6px; }
+.armtabs button { border: 0; background: none; padding: 7px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.armtabs button[aria-selected="true"] { border-bottom-color: var(--ink); font-weight: 600; }
+.armtabs .v { color: var(--muted); font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.btn { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+.btn:hover { border-color: var(--ink); }
+.arm { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 28px; padding: 18px 28px 80px; align-items: start; }
+@media (max-width: 1150px) { .arm { grid-template-columns: minmax(0, 1fr); } .judge { position: static !important; max-height: none !important; } }
+.scoreline { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; font-variant-numeric: tabular-nums; margin-bottom: 14px; color: var(--muted); }
+.scoreline b { color: var(--ink); font-weight: 600; }
+.notice { background: var(--warn-soft); color: var(--warn); border-radius: 4px; padding: 8px 12px; margin: 0 0 14px; }
+.empty { border: 1px dashed var(--line-strong); border-radius: 6px; padding: 18px; color: var(--muted); }
+.prose { font: 18px/1.65 var(--prose); max-width: 68ch; white-space: pre-wrap; overflow-wrap: break-word; }
+.prose.small { font-size: 16px; }
+.label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 6px; }
+.label:first-child { margin-top: 0; }
+.delivered { font: 13px/1.5 var(--ui); color: var(--muted); white-space: pre-wrap; border-left: 2px solid var(--line-strong); padding: 2px 0 2px 10px; margin: 18px 0 10px; max-width: 80ch; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.pair .prose { font-size: 16px; }
+section.more { margin-top: 26px; max-width: 90ch; }
+section.more > details { border-top: 1px solid var(--line); padding: 8px 0; }
+section.more > details > summary { cursor: pointer; padding: 4px 0; font-weight: 500; }
+section.more > details > summary .muted { font-weight: 400; }
+section.more > details[open] > summary { margin-bottom: 8px; }
+pre, .mono { font: 12.5px/1.5 var(--mono); }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; }
+.scrollbox { max-height: 60vh; overflow: auto; }
+.diff div { padding: 0 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff .d { background: var(--del); color: var(--del-ink); text-decoration: line-through; }
+.diff .a { background: var(--add); color: var(--add-ink); }
+.diff .gap { color: var(--faint); }
+.legend { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.legend .d, .legend .a { padding: 0 4px; border-radius: 2px; }
+.legend .d { background: var(--del); color: var(--del-ink); text-decoration: line-through; }
+.legend .a { background: var(--add); color: var(--add-ink); }
+.call { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); margin: 8px 0; }
+.call > .head { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 10px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.call > .head b { color: var(--ink); font-weight: 600; }
+.call > .body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; }
+.call details > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.reasoning { font: 14px/1.55 var(--ui); white-space: pre-wrap; color: #33322e; max-height: 60vh; overflow: auto; margin-top: 6px; }
+.tool { border-left: 2px solid var(--line-strong); padding-left: 8px; }
+.turnhead { font-size: 13px; font-weight: 600; margin: 14px 0 2px; }
+table.kv { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.kv td { padding: 2px 16px 2px 0; }
+table.kv td:last-child { text-align: right; }
+
+/* judge panel */
+.judge { position: sticky; top: 12px; max-height: calc(100vh - 72px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.judge > .head { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.judge > .head h2 { font-size: 14px; margin: 0; }
+.judge .metric { padding: 8px 12px 4px; font-size: 12px; color: var(--muted); }
+.judge .metric b { color: var(--ink); font-weight: 600; }
+.judge details { padding: 0 12px; }
+.judge details > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.judge details > summary::-webkit-details-marker { display: none; }
+.judge details[open] > summary { border-bottom: 0; }
+.judge .q { font-size: 13px; }
+.judge .about { font-size: 12px; color: var(--muted); }
+.ans { font-size: 12px; font-weight: 600; border-radius: 3px; padding: 1px 6px; white-space: nowrap; border: 1px solid var(--ink); }
+.ans.yes { background: var(--ink); color: #fff; }
+.ans.no { background: var(--surface); }
+.ans.none { border-color: var(--line-strong); color: var(--muted); font-weight: 400; }
+.judge .detail { padding: 0 0 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.judge .detail .box { max-height: 40vh; overflow: auto; }
+.judge .none-yet { padding: 12px; color: var(--muted); }
+
+/* compare */
+.compare { padding: 16px 24px 80px; overflow: auto; height: 100%; }
+.compare .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 14px; }
+.compare .bar h1 { font-size: 18px; margin: 0; }
+.cols { display: grid; gap: 20px; grid-auto-flow: column; grid-auto-columns: minmax(340px, 1fr); }
+.col { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.col h2 { font-size: 15px; margin: 0 0 2px; }
+.col .prose { font-size: 16px; }
+.loading { padding: 24px; color: var(--muted); }
+label.switch { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+label.switch input { margin-top: 3px; }
+
+/* episode flow diagram */
+details.flow > summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
+.fbox { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; font-size: 13px; min-width: 0; }
+.froot { max-width: 360px; margin: 0 auto; text-align: center; }
+.ftwin { border-style: dashed; }
+.fscore { background: var(--bg); }
+.fname { font-weight: 600; }
+.fwho { color: var(--muted); font-size: 12px; }
+.fsteps { margin: 6px 0 0; padding-left: 18px; font-size: 12px; }
+.fsteps li { margin: 1px 0; overflow-wrap: anywhere; }
+.fcols { display: grid; gap: 18px; position: relative; padding-top: 10px; border-top: 1px solid var(--line-strong); }
+.fcol { display: flex; flex-direction: column; min-width: 0; }
+.fedge { position: relative; padding: 6px 0 6px 18px; margin-left: 14px; border-left: 1px solid var(--line-strong); font-size: 12px; color: var(--muted); min-height: 18px; }
+.fedge.dashed { border-left-style: dashed; }
+details.flow > .fedge { margin: 0 auto; width: 1px; padding: 0; min-height: 14px; }
+.error { padding: 24px; color: var(--del-ink); }
+</style>
+</head>
+<body>
+<header class="top">
+  <span class="brand">wa-bench view</span>
+  <select id="run" aria-label="Run"></select>
+  <select id="judges" aria-label="Judge profile"></select>
+  <div class="tabs" role="tablist" aria-label="View">
+    <button role="tab" data-view="scores">Scores</button>
+    <button role="tab" data-view="episodes">Episodes</button>
+    <button role="tab" data-view="tasks">Tasks</button>
+  </div>
+  <span class="grow"></span>
+  <span id="where" class="muted"></span>
+</header>
+<div id="app"><div class="loading">Loading runs…</div></div>
+<script>
+"use strict";
+// Every value from a run is put on the page as text (textContent), never as markup.
+const el = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  return add(e, ...kids);
+};
+// append, skipping null/false and flattening arrays (native append would print them)
+const add = (e, ...kids) => {
+  for (const k of kids.flat(Infinity)) if (k !== null && k !== undefined && k !== false) e.append(k instanceof Node ? k : String(k));
+  return e;
+};
+const cache = new Map();
+async function api(path) {
+  if (!cache.has(path)) cache.set(path, fetch(path).then(async r => {
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    return r.json();
+  }).catch(e => { cache.delete(path); throw e; }));
+  return cache.get(path);
+}
+const q = o => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== "")).toString();
+
+const fmt = x => {
+  if (x === null || x === undefined) return "–";
+  if (typeof x === "boolean") return x ? "yes" : "no";
+  const a = Math.abs(x);
+  if (a >= 100) return Math.round(x).toLocaleString("en");
+  if (a >= 10) return x.toFixed(1);
+  if (Number.isInteger(x)) return String(x);
+  return x.toFixed(3);
+};
+const isProse = m => (m.startsWith("readability_") || m.startsWith("overlap_")) && m !== "overlap_flagged";
+const words = s => (s.trim().match(/\S+/g) || []).length;
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const kindOfTask = id => id.split(":")[1] || "";
+
+// ---- state lives in the URL hash, so back/forward and links work ----
+const state = () => Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+const go = (patch, replace) => {
+  const s = Object.fromEntries(Object.entries({ ...state(), ...patch }).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+  const h = "#" + new URLSearchParams(s).toString();
+  if (replace) history.replaceState(null, "", h); else location.hash = h;
+  if (replace) render();
+};
+let RUNS = [];
+const runByName = n => RUNS.find(r => r.name === n);
+const shortName = r => {
+  const same = RUNS.filter(o => o.suite && o.endpoint === r.endpoint);
+  return same.length > 1 ? r.name : r.endpoint;
+};
+
+async function start() {
+  RUNS = await api("/api/runs");
+  const sel = document.getElementById("run");
+  for (const r of RUNS) sel.append(el("option", { value: r.name },
+    r.suite ? `${r.name} · ${r.endpoint} · suite ${r.suite} · ${r.split}` : `${r.name} · guardrails`));
+  sel.onchange = () => go({ run: sel.value, task: "", arm: "", kind: "", metric: "", filter: "", judges: "" });
+  document.getElementById("judges").onchange = e => go({ judges: e.target.value });
+  for (const b of document.querySelectorAll("[data-view]")) b.onclick = () => go({ view: b.dataset.view });
+  window.addEventListener("hashchange", render);
+  if (!RUNS.length) { sel.hidden = true; if (state().view !== "tasks") return go({ view: "tasks" }, true); }
+  if (RUNS.length && !state().run) go({ run: (RUNS.find(r => r.suite) || RUNS[0]).name, view: state().view || "scores" }, true);
+  else render();
+}
+
+let renderSeq = 0;
+async function render() {
+  const s = state(), seq = ++renderSeq;
+  const view = s.view || "scores";
+  const app = document.getElementById("app");
+  const show = node => { if (seq === renderSeq) app.replaceChildren(node); };
+  for (const b of document.querySelectorAll("[data-view]")) {
+    b.setAttribute("aria-selected", String(b.dataset.view === view || (view === "compare" && b.dataset.view === "episodes")));
+    b.hidden = !RUNS.length && b.dataset.view !== "tasks";
+  }
+  if (view === "tasks") {
+    document.getElementById("judges").hidden = true;
+    document.getElementById("where").textContent = "";
+    try { return show(await tasksView(s)); } catch (e) { return show(el("div", { class: "error" }, `Could not load: ${e.message}`)); }
+  }
+  const run = runByName(s.run) || RUNS[0];
+  document.getElementById("run").value = run.name;
+  const js = document.getElementById("judges");
+  js.replaceChildren(...(run.profiles || []).map(p => el("option", { value: p }, `judges: ${p}`)));
+  js.hidden = !run.profiles || run.profiles.length < 2;
+  const profile = (run.profiles || []).includes(s.judges) ? s.judges : (run.profiles || [])[0];
+  if (profile) js.value = profile;
+  document.getElementById("where").textContent = run.suite ? `${run.model}` : "";
+  try {
+    if (!run.suite) return show(el("div", { class: "page" }, el("h1", {}, run.name), el("p", {}, run.guardrails)));
+    if (view === "scores") return show(await scoresView(run, profile));
+    if (view === "compare") return show(await compareView(run, s));
+    return show(await episodesView(run, profile, s));
+  } catch (e) {
+    show(el("div", { class: "error" }, `Could not load: ${e.message}`));
+  }
+}
+
+// ================================ scores ================================
+async function scoresView(run, profile) {
+  const s = state();
+  const peers = RUNS.filter(r => r.suite === run.suite && r.split === run.split);
+  const off = new Set((s.hide || "").split(",").filter(Boolean));
+  const shown = peers.filter(r => r === run || !off.has(r.name));
+  const reports = await Promise.all(shown.map(r =>
+    api(`/api/report?${q({ run: r.name, judges: (r.profiles || []).includes(profile) ? profile : undefined })}`)));
+  const page = el("div", { class: "page" });
+  const rep = reports[0];
+  page.append(el("div", { class: "runline" },
+    el("h1", {}, `${run.endpoint}`),
+    el("span", { class: "muted" }, `${run.model} · suite ${run.suite} · ${run.split} split · ${plural(run.episodes - run.twins, "episode")} + ${run.twins} twins · judges ${rep.profile}`)));
+  page.append(el("details", { class: "plain" }, el("summary", {}, "Run details"),
+    el("div", { class: "header-lines" }, rep.header.join("\n"))));
+  if (peers.length > 1) {
+    page.append(el("div", { class: "chips", style: "margin-top:14px" },
+      el("span", { class: "muted" }, "Side by side with"),
+      peers.filter(r => r !== run).map(r => el("button", {
+        class: "chip", "aria-pressed": String(!off.has(r.name)),
+        onclick: () => { off.has(r.name) ? off.delete(r.name) : off.add(r.name); go({ hide: [...off].join(",") }); },
+      }, shortName(r)))));
+  }
+  // group key -> {kind, condition}; collect kinds and their conditions over every shown run
+  const kinds = new Map();
+  shown.forEach((r, i) => {
+    for (const g of reports[i].groups) {
+      const k = g.key.kind, c = g.key.condition;
+      if (!kinds.has(k)) kinds.set(k, new Map());
+      if (!kinds.get(k).has(c)) kinds.get(k).set(c, new Map());
+      kinds.get(k).get(c).set(r.name, g);
+    }
+  });
+  for (const [kind, conds] of [...kinds].sort()) page.append(kindSection(kind, conds, shown, profile));
+  return page;
+}
+
+function kindSection(kind, conds, shown, profile) {
+  const arms = [...conds.keys()];
+  const metrics = new Set();
+  for (const byRun of conds.values()) for (const g of byRun.values()) {
+    g.rows.forEach(r => metrics.add(r.metric)); g.absent.forEach(a => metrics.add(a.metric));
+  }
+  const outcome = [...metrics].filter(m => !isProse(m)).sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+  const prose = [...metrics].filter(isProse).sort();
+  const multi = shown.length > 1;
+  const nEp = g => g ? Object.entries(g.counts).filter(([k]) => k.startsWith("status:")).reduce((a, [, v]) => a + v, 0) : 0;
+  const thead = el("thead", {},
+    el("tr", { class: "arms" }, el("th", {}), arms.map(c => el("th", { colspan: shown.length, class: "armstart", style: "text-align:left" }, c))),
+    el("tr", {}, el("th", {}, "metric"), arms.flatMap(c => shown.map((r, i) =>
+      el("th", { class: i === 0 ? "armstart" : null }, multi ? `${shortName(r)} · ${nEp(conds.get(c).get(r.name))}` : `${nEp(conds.get(c).get(r.name))} episodes`)))));
+  const marks = new Set();
+  const row = (m, cls) => el("tr", { class: cls }, el("td", {}, m), arms.flatMap(c => shown.map((r, i) => {
+    const g = conds.get(c).get(r.name);
+    const td = el("td", { class: "v" + (i === 0 ? " armstart" : "") });
+    const hit = g && g.rows.find(x => x.metric === m);
+    const absent = g && g.absent.find(x => x.metric === m);
+    if (hit) {
+      if (hit.ungated) marks.add(`ungated: ${hit.notes[0].replace(/^ungated \((.*)\)$/, "$1")} judge not yet checked against human labels`);
+      td.append(...[el("button", {
+        title: `Episodes: ${kind}, ${c}, ${r.name}`,
+        onclick: () => go({ view: "episodes", run: r.name, kind, metric: isProse(m) ? "" : m, task: "", arm: "", filter: "" }),
+      }, fmt(hit.mean), hit.ungated ? el("span", { class: "mark" }, "*") : null),
+        hit.n < nEp(g) ? el("span", { class: "n" }, `of ${hit.n}`) : null].filter(Boolean));
+    } else if (absent) {
+      td.className += " absent"; td.append(`not scored (${absent.reason})`);
+    } else td.append(el("span", { class: "faint" }, "–"));
+    return td;
+  })));
+  const body = el("tbody", {}, outcome.map(m => row(m)));
+  const tbl = el("table", { class: "scores" }, thead, body);
+  const sec = el("section", { class: "kind" },
+    el("h2", {}, kind, " ", el("span", { class: "muted" }, `· ${arms.length > 1 ? plural(arms.length, "arm") : arms[0]}`)),
+    el("div", { class: "tablewrap" }, tbl));
+  if (prose.length) {
+    const pbody = el("tbody", {}, prose.map(m => row(m, "prose")));
+    const ptbl = el("table", { class: "scores" }, thead.cloneNode(true), pbody);
+    sec.append(el("details", { class: "plain", style: "margin-top:8px" },
+      el("summary", {}, `Prose profile: ${prose.length} readability and copy-overlap measures`),
+      el("div", { class: "tablewrap", style: "margin-top:6px" }, ptbl)));
+  }
+  // what the table cannot show: episodes without output, failures, unscored, the report's notes
+  const notes = [];
+  for (const c of arms) for (const r of shown) {
+    const g = conds.get(c).get(r.name); if (!g) continue;
+    const who = `${multi ? shortName(r) + ", " : ""}${c}`;
+    const status = Object.entries(g.counts).filter(([k]) => k.startsWith("status:") && k !== "status:completed");
+    const reasons = Object.entries(g.counts).filter(([k]) => k.startsWith("reason:") || k.startsWith("unscored:"));
+    for (const [what, m] of Object.entries(g.missing))
+      notes.push(`${who}: ${what}: ${Object.entries(m).map(([k, v]) => `${v} ${k}`).join(", ")}`);
+    if (status.length) notes.push(`${who}: ${status.map(([k, v]) => `${v} ${k.slice(7)}`).join(", ")}${reasons.length ? " (" + reasons.map(([k, v]) => `${k.replace(/^\w+:/, "")} ${v}`).join("; ") + ")" : ""}`);
+    else if (reasons.length) notes.push(`${who}: ${reasons.map(([k, v]) => `${k} ${v}`).join("; ")}`);
+    for (const r2 of g.rows) {
+      const extra = r2.notes.filter(n => !n.startsWith("ungated"));
+      if (r2.refused) extra.push(`refused ${fmt(r2.refused)}`);
+      if (r2.unflagged !== null && r2.unflagged !== r2.mean) extra.push(`${fmt(r2.unflagged)} without copy-flagged episodes`);
+      if (extra.length) notes.push(`${who}, ${r2.metric}: ${extra.join("; ")}`);
+    }
+    if (g.left_out.length) notes.push(`${who}: left out of the baseline comparison, judge not yet gated: ${g.left_out.join(", ")}`);
+  }
+  const all = [...[...marks].map(m => "* " + m), ...notes];
+  if (all.length) sec.append(el("ul", { class: "notes" }, all.map(n => el("li", {}, n))));
+  return sec;
+}
+// net_* first, then the judged metrics, then bookkeeping, as a reader scans for the result
+function order(m) {
+  if (m.startsWith("net_")) return 0;
+  if (m.startsWith("twin_")) return 2;
+  if (m === "output_words" || m === "overlap_flagged") return 4;
+  if (/_calls$|_rate$|_per_1k/.test(m) && !m.includes("leak")) return 3;
+  return 1;
+}
+
+// ================================ episodes ================================
+function taskLabel(t) {
+  const row = t.row || {};
+  const tail = t.task_id.split(":").slice(2).join(":");
+  const title = row.author || row.template || tail;
+  const sub = [];
+  if (row.author && row.mode) sub.push(row.mode);
+  if (row.k !== undefined) sub.push(`k ${row.k}`);
+  if (row.pov) sub.push(`POV ${row.pov}`);
+  if (row.template && tail.startsWith(row.template + ":")) sub.push(`#${tail.split(":")[1]}`);
+  if (row.familiarity !== undefined) sub.push(`familiarity ${row.familiarity}`);
+  return { title, sub: sub.join(" · ") };
+}
+
+async function episodesView(run, profile, s) {
+  const data = await api(`/api/episodes?${q({ run: run.name, judges: profile })}`);
+  // tasks: the arms of one task are one family
+  const tasks = new Map();
+  for (const e of data.episodes) {
+    if (!tasks.has(e.task_id)) tasks.set(e.task_id, { task_id: e.task_id, kind: e.kind, row: e.row, arms: [] });
+    tasks.get(e.task_id).arms.push(e);
+  }
+  const kinds = [...new Set([...tasks.values()].map(t => t.kind))].sort();
+  const kind = kinds.includes(s.kind) ? s.kind : kinds[0];
+  const ofKind = [...tasks.values()].filter(t => t.kind === kind);
+  const metricsHere = [...new Set(ofKind.flatMap(t => t.arms.flatMap(a => Object.keys(a.metrics))))].filter(m => !isProse(m));
+  const metric = metricsHere.includes(s.metric) ? s.metric
+    : (run.judged.find(m => metricsHere.includes(m)) || (metricsHere.includes("output_words") ? "output_words" : metricsHere[0]));
+  const filter = s.filter || "all";
+  const needle = (s.find || "").toLowerCase();
+  const test = a => {
+    const v = a.metrics[metric];
+    if (filter === "above") return typeof v === "number" && v > 0;
+    if (filter === "zero") return v === 0;
+    if (filter === "missing") return v === undefined;
+    return true;
+  };
+  const list = ofKind.filter(t => t.arms.some(test))
+    .filter(t => !needle || JSON.stringify([t.task_id, t.row]).toLowerCase().includes(needle));
+
+  const aside = el("aside", { class: "tasks" });
+  const controls = el("div", { class: "controls" },
+    el("div", { class: "chips" }, kinds.map(k => el("button", {
+      class: "chip", "aria-pressed": String(k === kind), onclick: () => go({ kind: k, metric: "", filter: "", task: "", arm: "" }),
+    }, k, " ", el("span", { class: "faint" }, String([...tasks.values()].filter(t => t.kind === k).length))))),
+    el("label", { class: "field" }, "Metric",
+      el("select", { onchange: e => go({ metric: e.target.value }) },
+        metricsHere.length ? metricsHere.map(m => el("option", { value: m, selected: m === metric }, m)) : el("option", {}, "no metrics scored"))),
+    el("div", { class: "chips", role: "group", "aria-label": "Show tasks where an arm's metric is" },
+      [["all", "All"], ["above", "Above 0"], ["zero", "0"], ["missing", "Not scored"]].map(([k, l]) =>
+        el("button", { class: "chip", "aria-pressed": String(filter === k), onclick: () => go({ filter: k }) }, l))),
+    el("input", { type: "search", placeholder: "Search tasks", "aria-label": "Search tasks", value: s.find || "",
+      onchange: e => go({ find: e.target.value }) }));
+  aside.append(controls, el("div", { class: "count" }, `${list.length} of ${plural(ofKind.length, "task")}`));
+  const ul = el("ul", {});
+  const current = tasks.get(s.task) && tasks.get(s.task).kind === kind ? s.task : list[0] && list[0].task_id;
+  for (const t of list) {
+    const lab = taskLabel(t);
+    ul.append(el("li", {}, el("button", {
+      "aria-current": String(t.task_id === current), onclick: () => go({ task: t.task_id, arm: "" }),
+    }, el("div", { class: "task-title" }, lab.title),
+      lab.sub ? el("div", { class: "task-sub" }, lab.sub) : null,
+      el("div", { class: "task-sub" }, t.arms.map(a => el("span", {},
+        t.arms.length > 1 ? `${a.condition} ` : "",
+        a.not_scored ? el("span", { class: "warn" }, a.status === "failed" ? "failed" : "not scored")
+          : a.no_output.length ? el("span", { class: "warn" }, `no output (${a.no_output.join(", ")})`)
+          : a.metrics[metric] === undefined ? el("span", { class: "faint" }, "–")
+          : a.metrics[metric] > 0 ? el("b", {}, fmt(a.metrics[metric])) : fmt(a.metrics[metric])))))));
+  }
+  if (!list.length) ul.append(el("li", { class: "empty", style: "margin:8px" },
+    ofKind.length ? `No ${kind} task has an arm with ${metric} ${filter === "above" ? "above 0" : filter === "zero" ? "at 0" : "unscored"}.` : "No tasks."));
+  aside.append(ul);
+
+  const main = el("main", { class: "task" });
+  if (current) main.append(await taskView(run, profile, tasks.get(current), metric, s));
+  else main.append(el("div", { class: "empty", style: "margin:28px" }, "Pick a task on the left."));
+  return el("div", { class: "split" }, aside, main);
+}
+
+async function taskView(run, profile, task, metric, s) {
+  const first = task.arms[0];
+  const fam = await api(`/api/episode?${q({ run: run.name, judges: profile, ep: first.ep_id })}`);
+  const arms = fam.episodes.filter(e => !e.twin_of);
+  const arm = arms.find(e => e.ep_id === s.arm) || arms[0];
+  const twin = fam.episodes.find(e => e.twin_of === arm.ep_id);
+  const lab = taskLabel(task);
+  const wrap = el("div", {});
+  const head = el("div", { class: "task-head" },
+    el("div", { style: "display:flex;gap:12px;align-items:baseline;flex-wrap:wrap" },
+      el("h1", {}, lab.title), el("span", { class: "muted" }, lab.sub), el("span", { class: "grow" }),
+      el("button", { class: "btn", onclick: () => go({ view: "tasks", suite: run.suite, tid: task.task_id }) }, "Task row"),
+      fam.elsewhere.length ? el("button", { class: "btn", onclick: () => go({ view: "compare", task: task.task_id, carm: arm.condition }) },
+        `Side by side with ${fam.elsewhere.map(n => shortName(runByName(n))).join(", ")}`) : null),
+    el("div", { class: "row" }, Object.entries(fam.row).map(([k, v]) => el("span", {}, `${k} `, el("b", {}, String(v)))),
+      el("span", { class: "faint" }, task.task_id)));
+  if (arms.length > 1) head.append(el("div", { class: "armtabs", role: "tablist" }, arms.map(a => el("button", {
+    role: "tab", "aria-selected": String(a === arm), onclick: () => go({ arm: a.ep_id }),
+  }, a.condition, el("span", { class: "v" }, (a.score.metrics || {})[metric] !== undefined ? `${metric} ${fmt(a.score.metrics[metric])}` : "")))));
+  wrap.append(head, armView(arm, twin, arms, fam));
+  return wrap;
+}
+
+function scoreLine(ep) {
+  const sc = ep.score || {};
+  const line = el("div", { class: "scoreline" });
+  const ms = Object.entries(sc.metrics || {}).sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b));
+  for (const [k, v] of ms) line.append(el("span", {}, `${k} `, el("b", {}, fmt(v))));
+  const out = [];
+  for (const [k, v] of Object.entries(sc.counts || {})) {
+    if (k.startsWith("n_no_output.")) out.push(el("span", { class: "warn" }, `no output: ${k.slice(12)}`));
+    else if (k.startsWith("n_twin_no_output.")) out.push(el("span", { class: "warn" }, `twin had no output: ${k.slice(17)}`));
+    else if (k.startsWith("n_unscored.")) { const [, m, why] = k.split("."); out.push(el("span", {}, `${m} `, el("span", { class: "faint" }, `not judged (${why})`))); }
+  }
+  line.append(...out);
+  return line;
+}
+
+function armView(ep, twin, arms, fam) {
+  const left = el("div", { style: "min-width:0" });
+  if (ep.status === "failed") left.append(el("div", { class: "notice" }, `This episode failed: ${ep.failure || "no reason recorded"}`));
+  else if (ep.score.not_scored) left.append(el("div", { class: "notice" }, ep.score.not_scored));
+  left.append(scoreLine(ep));
+  left.append(...writtenView(ep));
+  const more = el("section", { class: "more" });
+  if (ep.scene) more.append(...sceneExtras(ep.scene));
+  more.append(shownView(ep, fam));
+  if (twin) more.append(twinView(twin));
+  more.append(callsView(ep));
+  const prose = (ep.score && ep.score.prose) || {};
+  if (Object.keys(prose).length) more.append(el("details", {}, el("summary", {}, "Prose profile ", el("span", { class: "muted" }, `· ${Object.keys(prose).length} readability and copy-overlap measures`)),
+    el("table", { class: "kv" }, Object.entries(prose).map(([k, v]) => el("tr", {}, el("td", {}, k), el("td", {}, fmt(v)))))));
+  if (ep.files.length) more.append(el("details", {}, el("summary", {}, "Files ", el("span", { class: "muted" }, `· ${plural(ep.files.length, "file")} in the workspace`)),
+    ep.files.map(f => el("div", { style: "margin:6px 0" }, el("div", { class: "mono" }, `${f.path} · ${f.chars.toLocaleString("en")} chars${f.writers ? " · written by " + f.writers.join(", ") : " · not written"}`),
+      f.diff && f.diff.length ? el("details", {}, el("summary", {}, "What changed"), diffBox(f.diff)) : null))));
+  left.append(more);
+  return el("div", { class: "arm" }, left, judgeView(ep, fam));
+}
+
+function writtenView(ep) {
+  const nodes = [];
+  if (ep.edit) {
+    nodes.push(el("div", { class: "label" }, "The note it was given"), el("div", { class: "delivered", style: "margin-top:0" }, ep.edit.objection || "not recorded"),
+      el("div", { class: "label" }, `Its edit to ${ep.edit.path}`),
+      ep.edit.diff.length ? diffBox(ep.edit.diff, true) : el("div", { class: "empty" }, "No change: the file is as it was given."));
+    const w = ep.written.find(x => x.label === ep.edit.path);
+    if (w) nodes.push(el("details", { class: "plain", style: "margin-top:10px" }, el("summary", {}, "The passage after the edit"), el("div", { class: "prose small", style: "margin-top:8px" }, w.text)));
+    return nodes;
+  }
+  if (!ep.written.length) {
+    const last = ep.turns.flatMap(t => t.calls).at(-1);
+    const why = ep.failure ? `the episode failed (${ep.failure})` : last ? `the last call stopped with "${last.finish_reason || "not recorded"}" and no reply text` : "no model call was recorded";
+    nodes.push(el("div", { class: "empty" }, `No output: ${why}.`));
+    return nodes;
+  }
+  if (ep.scene && ep.scene.y_star) {
+    nodes.push(el("div", { class: "pair" },
+      el("div", {}, el("div", { class: "label" }, `What it wrote · ${words(ep.written[0].text)} words`), el("div", { class: "prose" }, ep.written[0].text)),
+      el("div", {}, el("div", { class: "label" }, `The real passage · ${words(ep.scene.y_star.text || "")} words`), el("div", { class: "prose" }, ep.scene.y_star.text || "not recorded"))));
+    return nodes;
+  }
+  const byTurn = ep.written.length > 1 && ep.written.every(w => /^turn \d+$/.test(w.label));
+  if (byTurn) {
+    // a multi-turn reply episode (a DM's session): each delivery, then what the model answered
+    for (const t of ep.turns.filter(t => t.message !== null)) {
+      const reply = [...t.calls].reverse().find(c => c.response.trim());
+      nodes.push(el("div", { class: "delivered" }, t.message),
+        reply ? el("div", { class: "prose" }, reply.response) : el("div", { class: "empty" }, "No reply this turn."));
+    }
+    return nodes;
+  }
+  for (const w of ep.written) {
+    nodes.push(el("div", { class: "label" }, `${w.label} · ${words(w.text)} words`), el("div", { class: "prose" }, w.text));
+  }
+  return nodes;
+}
+
+// the changed lines with `n` lines of context, a gap ("@") where lines are left out
+function around(lines, n) {
+  const body = lines.filter(([op]) => op !== "@");
+  const near = body.map((_, i) => body.slice(Math.max(0, i - n), i + n + 1).some(([op]) => op === "-" || op === "+"));
+  if (!near.some(Boolean)) return body;
+  const out = [];
+  body.forEach((l, i) => { if (near[i]) out.push(l); else if (out.length && out.at(-1)[0] !== "@") out.push(["@", ""]); });
+  if (!near[0]) out.unshift(["@", ""]);
+  return out;
+}
+
+function diffBox(lines, prose) {
+  return el("div", { class: "box diff scrollbox" + (prose ? "" : " mono"), style: prose ? "font:15px/1.6 var(--prose)" : null },
+    lines.map(([op, t]) => op === "@" ? el("div", { class: "gap" }, "⋯") : el("div", { class: op === "-" ? "d" : op === "+" ? "a" : null }, t || " ")));
+}
+
+function sceneExtras(scene) {
+  const out = [];
+  if (scene.exemplars && scene.exemplars.length) out.push(el("details", {},
+    el("summary", {}, `The ${scene.exemplars.length} exemplar${scene.exemplars.length > 1 ? "s" : ""} it studied `, el("span", { class: "muted" }, `· ${scene.mode || "mode not recorded"}`)),
+    scene.exemplars.map((x, i) => el("details", { class: "plain", style: "margin:4px 0" },
+      el("summary", {}, `Passage ${i + 1} · ${x.work_id || "?"}${x.chapter !== undefined ? ", chapter " + x.chapter : ""} · ${words(x.text || "")} words`),
+      el("div", { class: "prose small scrollbox", style: "margin:6px 0 10px" }, x.text || "")))));
+  if (scene.beat_sheet && scene.beat_sheet.length) out.push(el("details", {}, el("summary", {}, `Beat sheet `, el("span", { class: "muted" }, `· ${scene.beat_sheet.length} beats`)),
+    el("ol", {}, scene.beat_sheet.map(b => el("li", {}, typeof b === "string" ? b : JSON.stringify(b))))));
+  return out;
+}
+
+function shownView(ep, fam) {
+  const d = ep.shown;
+  const other = d.against && fam.episodes.find(e => e.ep_id === d.against);
+  const changed = d.lines.filter(([op]) => op === "-" || op === "+").length;
+  const sys = Object.entries(ep.system);
+  const summary = el("summary", {}, "What it was shown ", el("span", { class: "muted" },
+    `· ${plural(d.lines.filter(([op]) => op !== "-").length, "line")}` + (other ? `; ${changed ? plural(changed, "line") + " differ" : "no line differs"} from ${other.condition === ep.condition ? "its parent" : other.condition}` : "")));
+  const body = [];
+  if (other && changed) body.push(el("div", { class: "legend" }, el("span", { class: "d" }, "struck"), ` only in ${other.condition === ep.condition ? "the parent" : other.condition}, `, el("span", { class: "a" }, "marked"), " only here"));
+  if (!sys.length) body.push(el("div", { class: "legend" }, "No system prompt recorded."));
+  else body.push(el("div", { class: "legend" }, `The first ${sys.length > 1 ? sys.length + " blocks are system prompts" : "block is the system prompt"}, then each message delivered to the model.`));
+  body.push(diffBox(d.lines));
+  const meta = ep.meta || {};
+  body.push(el("div", { class: "legend", style: "margin-top:6px" }, `temperature ${meta.temperature ?? "not recorded"} · max tokens ${meta.max_tokens ?? "not recorded"} · played by ${meta.harness || meta.code || "not recorded"}`));
+  return el("details", { open: changed && ep.twin_of ? true : null }, summary, body);
+}
+
+function swapText(ep) {
+  const del = ep.shown.lines.filter(([op]) => op === "-").map(([, t]) => t);
+  const add = ep.shown.lines.filter(([op]) => op === "+").map(([, t]) => t);
+  const files = (ep.shown.files || []).map(f => f.path);
+  const parts = [];
+  if (del.length || add.length) parts.push(`"${del.join(" / ")}" became "${add.join(" / ")}"`);
+  if (files.length) parts.push(`${files.join(", ")} differ${files.length === 1 ? "s" : ""}`);
+  return parts.length ? parts.join("; ") : "no line of its prompt or files differs";
+}
+// the mounted files that differ from the episode it is compared with
+const fileDiffs = ep => (ep.shown.files || []).map(f => [el("div", { class: "label" }, `${f.path}: what differs`), diffBox(f.lines)]);
+
+function twinView(twin) {
+  const w = twin.written;
+  return el("details", {},
+    el("summary", {}, "Twin ", el("span", { class: "muted" }, `· ${swapText(twin)}`)),
+    el("p", { class: "legend" }, "Played the same way with that one difference: what it scores is the baseline inside this arm's net_ metrics. Its judge items are in the judge panel, marked as the twin's."),
+    fileDiffs(twin),
+    twin.status === "failed" ? el("div", { class: "notice" }, `The twin failed: ${twin.failure || "no reason recorded"}`) : null,
+    w.length ? w.map(x => [el("div", { class: "label" }, `${x.label} · ${words(x.text)} words`), el("div", { class: "prose small" }, x.text)])
+      : el("div", { class: "empty" }, "The twin wrote nothing."),
+    el("div", { style: "margin-top:10px" }, callsView(twin)));
+}
+
+function callsView(ep) {
+  const calls = ep.turns.flatMap(t => t.calls);
+  const reasoning = calls.reduce((a, c) => a + words(c.reasoning), 0);
+  const out = calls.reduce((a, c) => a + (c.usage.output_tokens || 0), 0);
+  const tools = calls.reduce((a, c) => a + c.tool_calls.length, 0);
+  const finish = [...new Set(calls.map(c => c.finish_reason || "not recorded"))];
+  const sum = [plural(calls.length, "call"), tools ? plural(tools, "tool call") : null,
+    out ? `${out.toLocaleString("en")} output tokens` : "tokens not reported",
+    reasoning ? `${reasoning.toLocaleString("en")} words of reasoning` : "no reasoning recorded",
+    `stopped: ${finish.join(", ")}`].filter(Boolean).join(" · ");
+  const body = [];
+  for (const t of ep.turns) {
+    if (ep.turns.length > 1) body.push(el("div", { class: "turnhead" }, t.turn_idx === null ? "Outside a delivery" : `Turn ${t.turn_idx + 1}`, t.actor && Object.keys(ep.actors).length > 1 ? ` · ${t.actor}` : ""));
+    if (!t.calls.length) body.push(el("div", { class: "empty" }, "No call recorded for this delivery."));
+    t.calls.forEach((c, i) => body.push(callView(c, i)));
+  }
+  return el("details", {}, el("summary", {}, ep.twin_of ? "How the twin was written " : "How it was written ", el("span", { class: "muted" }, `· ${sum}`)), body);
+}
+
+function callView(c, i) {
+  const u = c.usage || {};
+  const head = el("div", { class: "head" }, el("b", {}, `call ${i + 1}`),
+    el("span", {}, `stopped: ${c.finish_reason || "not recorded"}`),
+    el("span", {}, u.output_tokens !== undefined ? `${u.input_tokens ?? "?"} in · ${u.output_tokens} out tokens` : "tokens not reported"),
+    u.cost_usd ? el("span", {}, `$${u.cost_usd.toFixed(4)}`) : null,
+    el("span", { class: "faint" }, c.endpoint), c.served ? el("span", { class: "faint" }, c.served) : null);
+  const body = el("div", { class: "body" });
+  body.append(c.reasoning
+    ? el("details", {}, el("summary", {}, `Reasoning · ${words(c.reasoning).toLocaleString("en")} words`), el("div", { class: "reasoning" }, c.reasoning))
+    : el("div", { class: "faint", style: "font-size:13px" }, "No reasoning recorded."));
+  for (const t of c.tool_calls) {
+    const args = typeof t.arguments === "string" ? t.arguments : JSON.stringify(t.arguments, null, 1);
+    const big = args.length > 400;
+    body.append(el("div", { class: "tool" },
+      el("div", { class: "mono" }, el("b", {}, t.name), big ? "" : " " + args),
+      big ? el("details", {}, el("summary", {}, `Arguments · ${args.length.toLocaleString("en")} characters`), el("pre", { class: "box scrollbox" }, args)) : null,
+      t.result === null ? el("div", { class: "faint", style: "font-size:13px" }, "Result not recorded.")
+        : el("details", {}, el("summary", {}, `Result${t.result.summary ? ": " + t.result.summary.slice(0, 120) : ""}`),
+          t.result.text ? el("pre", { class: "box scrollbox" }, t.result.text) : el("pre", { class: "box scrollbox" }, t.result.summary))));
+  }
+  if (c.response.trim()) body.append(el("details", {}, el("summary", {}, `Reply · ${words(c.response)} words`), el("div", { class: "prose small", style: "margin-top:6px" }, c.response)));
+  else if (!c.tool_calls.length) body.append(el("div", { class: "faint", style: "font-size:13px" }, "Empty reply."));
+  return el("div", { class: "call" }, head, body);
+}
+
+// ---- the judge items behind this arm's scores ----
+function answer(j) {
+  if (j.model === null || j.model === undefined) return el("span", { class: "ans none" }, j.unscored ? `not judged: ${j.unscored}` : "no answer");
+  if (typeof j.model === "boolean") return el("span", { class: "ans " + (j.model ? "yes" : "no") }, j.model ? "Yes" : "No");
+  return el("span", { class: "ans no" }, `A ${Math.round(j.model * 100)}%`);
+}
+
+function judgeView(ep, fam) {
+  const panel = el("aside", { class: "judge", "aria-label": "Judge items" });
+  if (ep.twin_of) return panel;
+  const items = ep.judgments;
+  if (items === null) {
+    panel.append(el("div", { class: "none-yet" }, ep.score.not_scored ? "No judge items: the episode was not scored." :
+      `This run stored no judge items for judges "${fam.profile}" (runs scored before judgments were saved keep only the numbers).`));
+    return panel;
+  }
+  const judges = [...new Set(items.map(j => j.judge ? `${j.judge.endpoint}${j.judge.model ? " (" + j.judge.model + ")" : ""}` : "").filter(Boolean))];
+  panel.append(el("div", { class: "head" }, el("h2", {}, "Judge items"),
+    el("div", { class: "muted", style: "font-size:12px" }, items.length ? `${plural(items.length, "question")} · ${judges.join(", ") || `no judge served (scored with judges "${fam.profile}")`}` : "")));
+  if (!items.length) { panel.append(el("div", { class: "none-yet" }, "No judge question was asked for this episode.")); return panel; }
+  const byMetric = new Map();
+  for (const j of items) { if (!byMetric.has(j.metric)) byMetric.set(j.metric, []); byMetric.get(j.metric).push(j); }
+  for (const [m, js] of [...byMetric].sort(([a], [b]) => order(a) - order(b))) {
+    const v = (ep.score.metrics || {})[m];
+    panel.append(el("div", { class: "metric" }, el("b", {}, m), v !== undefined ? ` · ${fmt(v)}` : ""));
+    for (const j of js) {
+      const aboutTwin = j.about && j.about !== ep.ep_id;
+      const detail = el("div", { class: "detail" });
+      if ("a" in j) {
+        if (j.context && j.context.length) detail.append(el("details", { class: "plain" }, el("summary", {}, `Context · ${plural(j.context.length, "passage")}`),
+          j.context.map(c => el("div", { class: "box prose small", style: "margin-top:4px" }, c))));
+        for (const side of ["a", "b"]) detail.append(j[`${side}_is`]
+          ? el("div", {}, el("b", {}, side.toUpperCase()), `: ${j[side + "_is"]}`)
+          : el("details", { class: "plain" }, el("summary", {}, `${side.toUpperCase()}: a passage not shown elsewhere`), el("div", { class: "box prose small" }, j[side])));
+      } else if ("evidence" in j) {
+        detail.append(j.evidence_is ? el("div", { class: "muted" }, `Asked of ${j.evidence_is}.`)
+          : el("details", { class: "plain" }, el("summary", {}, "The text it was asked of"), el("div", { class: "box prose small" }, j.evidence)));
+      }
+      const replies = j.replies || [];
+      add(detail, replies.length ? replies.map((r, i) => el("div", {}, el("div", { class: "muted" }, replies.length > 1 ? `Raw reply ${i + 1}` : "Raw reply"), el("pre", { class: "box" }, r)))
+        : el("div", { class: "faint" }, "No raw reply recorded."));
+      if (j.judge) detail.append(el("div", { class: "faint" }, `${j.judge.use || "?"} · ${j.judge.endpoint || "?"} · prompt ${j.judge.prompt || "not recorded"}`));
+      panel.append(el("details", {}, el("summary", {},
+        el("div", {}, el("div", { class: "q" }, j.question), aboutTwin ? el("div", { class: "about" }, "asked of the twin's output") : null),
+        answer(j)), detail));
+    }
+  }
+  return panel;
+}
+
+// ================================ compare ================================
+async function compareView(run, s) {
+  const profiles = Object.fromEntries(RUNS.filter(r => r.profiles && r.profiles.includes(s.judges)).map(r => [r.name, s.judges]));
+  const data = await api(`/api/compare?${q({ task: s.task, profiles: JSON.stringify(profiles) })}`);
+  const conds = [...new Set(data.flatMap(r => r.episodes.filter(e => !e.twin_of).map(e => e.condition)))];
+  const cond = conds.includes(s.carm) ? s.carm : conds[0];
+  const lab = taskLabel({ task_id: s.task, row: {} });
+  const wrap = el("div", { class: "compare" });
+  wrap.append(el("div", { class: "bar" },
+    el("button", { class: "btn", onclick: () => go({ view: "episodes" }) }, "Back to the task"),
+    el("h1", {}, lab.title), el("span", { class: "muted" }, kindOfTask(s.task)),
+    conds.length > 1 ? el("div", { class: "tabs", role: "tablist" }, conds.map(c => el("button", {
+      role: "tab", "aria-selected": String(c === cond), onclick: () => go({ carm: c }),
+    }, c))) : null));
+  const cols = el("div", { class: "cols" });
+  for (const r of data) {
+    const ep = r.episodes.find(e => e.condition === cond && !e.twin_of);
+    const col = el("div", { class: "col" }, el("h2", {}, shortName(runByName(r.run)) || r.run), el("div", { class: "faint", style: "font-size:12px;margin-bottom:8px" }, r.model));
+    if (!ep) { col.append(el("div", { class: "empty" }, `This run has no ${cond} episode of the task.`)); cols.append(col); continue; }
+    if (ep.status === "failed") col.append(el("div", { class: "notice" }, `Failed: ${ep.failure || "no reason recorded"}`));
+    else if (ep.not_scored) col.append(el("div", { class: "notice" }, ep.not_scored));
+    col.append(el("div", { class: "scoreline" }, Object.entries(ep.metrics).sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))
+      .filter(([k]) => order(k) < 3 || k === "output_words").map(([k, v]) => el("span", {}, `${k} `, el("b", {}, fmt(v))))));
+    if (ep.judged.length) col.append(el("details", { class: "plain", style: "margin-bottom:10px" }, el("summary", {}, `Judge: ${plural(ep.judged.length, "question")}`),
+      el("div", { style: "display:flex;flex-direction:column;gap:4px;margin-top:6px" }, ep.judged.map(j => el("div", { style: "display:grid;grid-template-columns:1fr auto;gap:8px;font-size:13px" },
+        el("span", {}, j.question, j.about && j.about !== ep.ep_id ? el("span", { class: "faint" }, " (twin)") : ""), answer(j))))));
+    add(col, ep.written.length ? ep.written.map(w => [ep.written.length > 1 ? el("div", { class: "label" }, w.label) : null, el("div", { class: "prose" }, w.text)])
+      : el("div", { class: "empty" }, "No output."));
+    col.append(el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: () => go({ view: "episodes", run: r.run, kind: kindOfTask(s.task), task: s.task, arm: ep.ep_id, metric: "", filter: "" }) }, "Open in its run")));
+    cols.append(col);
+  }
+  wrap.append(cols);
+  return wrap;
+}
+
+// ================================ tasks ================================
+async function tasksView(s) {
+  const heldOut = s.test === "held-out";
+  const first = await api(`/api/tasks?${q({ suite: "1a", test: heldOut ? "held-out" : "" })}`);
+  const suite = first.suites.includes(s.suite) ? s.suite : first.suites[0];
+  const data = suite === "1a" ? first : await api(`/api/tasks?${q({ suite, test: heldOut ? "held-out" : "" })}`);
+  const kinds = [...new Set(data.tasks.map(t => t.kind))].sort();
+  const kind = kinds.includes(s.tkind) ? s.tkind : kinds[0];
+  const splits = ["train", "dev", ...(heldOut ? ["test"] : [])];
+  const off = new Set((s.tsplit || "").split(",").filter(Boolean));
+  const needle = (s.tfind || "").toLowerCase();
+  const ofKind = data.tasks.filter(t => t.kind === kind);
+  const list = ofKind.filter(t => !off.has(t.split))
+    .filter(t => !needle || JSON.stringify([t.task_id, t.row]).toLowerCase().includes(needle));
+  const aside = el("aside", { class: "tasks" });
+  aside.append(el("div", { class: "controls" },
+    el("div", { class: "chips", role: "group", "aria-label": "Suite" }, data.suites.map(x => el("button", {
+      class: "chip", "aria-pressed": String(x === suite), onclick: () => go({ suite: x, tkind: "", tid: "" }) }, `suite ${x}`))),
+    el("div", { class: "chips", role: "group", "aria-label": "Task kind" }, kinds.map(k => el("button", {
+      class: "chip", "aria-pressed": String(k === kind), onclick: () => go({ tkind: k, tid: "" }) },
+      k, " ", el("span", { class: "faint" }, String(data.tasks.filter(t => t.kind === k).length))))),
+    el("div", { class: "chips", role: "group", "aria-label": "Split" }, splits.map(x => el("button", {
+      class: "chip", "aria-pressed": String(!off.has(x)),
+      onclick: () => { off.has(x) ? off.delete(x) : off.add(x); go({ tsplit: [...off].join(",") }); } },
+      x, " ", el("span", { class: "faint" }, String(ofKind.filter(t => t.split === x).length))))),
+    el("label", { class: "switch" }, el("input", { type: "checkbox", checked: heldOut,
+      onchange: e => go({ test: e.target.checked ? "held-out" : "", tid: "" }) }),
+      el("span", {}, "Held-out test rows", el("br"), el("span", { class: "faint" }, "Reading them is a use of the test split, which is never used to choose anything."))),
+    el("input", { type: "search", placeholder: "Search tasks", "aria-label": "Search tasks", value: s.tfind || "",
+      onchange: e => go({ tfind: e.target.value }) })));
+  aside.append(el("div", { class: "count" }, `${list.length} of ${plural(ofKind.length, "task")}`));
+  const current = list.find(t => t.task_id === s.tid) ? s.tid : list[0] && list[0].task_id;
+  const lost = s.tid && s.tid !== current && !data.tasks.some(t => t.task_id === s.tid);
+  aside.append(el("ul", {}, list.map(t => {
+    const lab = taskLabel(t);
+    return el("li", {}, el("button", { "aria-current": String(t.task_id === current), onclick: () => go({ tid: t.task_id }) },
+      el("div", { class: "task-title" }, lab.title), el("div", { class: "task-sub" }, [t.split, lab.sub].filter(Boolean).join(" · "))));
+  }), list.length ? null : el("li", { class: "empty", style: "margin:8px" }, ofKind.length ? "No task matches." : `No ${suite} task rows found.`)));
+  const main = el("main", { class: "task" });
+  if (lost) main.append(el("div", { class: "notice", style: "margin:16px 28px 0" },
+    `${s.tid} is not among the ${suite} task rows${heldOut ? "" : " outside the held-out test split"}: the run played a row the task files no longer hold.`));
+  if (current) main.append(await taskRowView(suite, current, s, heldOut));
+  else main.append(el("div", { class: "empty", style: "margin:28px" }, "No task to show."));
+  return el("div", { class: "split" }, aside, main);
+}
+
+async function taskRowView(suite, id, s, heldOut) {
+  const fam = await api(`/api/task?${q({ suite, id, test: heldOut ? "held-out" : "" })}`);
+  const lab = taskLabel({ task_id: id, row: fam.row });
+  const wrap = el("div", {});
+  wrap.append(el("div", { class: "task-head" },
+    el("div", { style: "display:flex;gap:12px;align-items:baseline;flex-wrap:wrap" },
+      el("h1", {}, lab.title), el("span", { class: "muted" }, `${fam.kind} · ${fam.split}`)),
+    el("div", { class: "row" }, Object.entries(fam.row).filter(([, v]) => v !== "").map(([k, v]) => el("span", {}, `${k} `, el("b", {}, String(v)))),
+      el("span", { class: "faint" }, id))));
+  if (fam.error) { wrap.append(el("div", { class: "notice", style: "margin:18px 28px" }, `This build cannot set the task up: ${fam.error}`)); return wrap; }
+  const eps = fam.episodes;
+  const arms = eps.filter(e => !e.twin_of);
+  const arm = arms.find(e => e.ep_id === s.tarm) || arms[0];
+  const twin = eps.find(e => e.twin_of === arm.ep_id);
+  const body = el("div", { style: "padding:16px 28px 80px" });
+  body.append(flowDiagram(fam));
+  if (arms.length > 1) body.append(el("div", { class: "armtabs", role: "tablist", style: "margin-top:22px" }, arms.map(a => el("button", {
+    role: "tab", "aria-selected": String(a === arm), onclick: () => go({ tarm: a.ep_id }) }, a.condition))));
+  const grid = el("div", { class: "arm", style: "padding:16px 0 0" });
+  const left = el("div", { style: "min-width:0" });
+  const other = arm.shown.against && eps.find(e => e.ep_id === arm.shown.against);
+  const changed = arm.shown.lines.filter(([op]) => op !== " " && op !== "@").length;
+  add(left, el("div", { class: "label" }, arm.condition === "base" ? "What the model is given" : `What the model is given in ${arm.condition}`),
+    other && changed ? el("div", { class: "legend" }, el("span", { class: "d" }, "struck"), ` only in ${other.condition}, `, el("span", { class: "a" }, "marked"), " only here") : null,
+    diffBox(arm.shown.lines), fileDiffs(arm));
+  const more = el("section", { class: "more" });
+  if (twin) more.append(el("details", { open: true }, el("summary", {}, "Its twin ", el("span", { class: "muted" }, `· ${swapText(twin)}`)),
+    el("p", { class: "legend" }, `${twin.condition}: played the same way with that one difference; the arm's net_ metrics subtract what the twin scores.`),
+    twin.shown.lines.some(([op]) => op === "-" || op === "+") ? diffBox(around(twin.shown.lines, 2)) : null, fileDiffs(twin)));
+  const files = arm.files;
+  if (files.length) more.append(el("details", {}, el("summary", {}, "Files ", el("span", { class: "muted" }, `· ${plural(files.length, "file")} in its project folder`)),
+    files.map(f => el("details", { class: "plain", style: "margin:4px 0" }, el("summary", {}, `${f.path} · ${f.chars.toLocaleString("en")} characters${f.readable.length ? "" : " · the model cannot read it"}`),
+      el("div", { class: "prose small scrollbox box", style: "margin:6px 0" }, f.text)))));
+  left.append(more);
+  grid.append(left, keptPanel(fam, arm, twin));
+  body.append(grid);
+  wrap.append(body);
+  return wrap;
+}
+
+// which payload fields reach the model in this arm, and the judge questions runs asked
+function keptPanel(fam, arm, twin) {
+  const panel = el("aside", { class: "judge", "aria-label": "What reaches the model" });
+  panel.append(el("div", { class: "head" }, el("h2", {}, "The task row's text"),
+    el("div", { class: "muted", style: "font-size:12px" }, "Each field's share of its text that reaches the model.")));
+  const pct = v => v === 1 ? "all" : v === 0 ? "none" : `${Math.round(v * 100)}%`;
+  for (const f of fam.fields) {
+    const v = f.reaches[arm.ep_id], tv = twin ? f.reaches[twin.ep_id] : undefined;
+    panel.append(el("details", {}, el("summary", {},
+      el("div", {}, el("div", { class: "q mono" }, f.field), tv !== undefined && tv !== v ? el("div", { class: "about" }, `twin: ${pct(tv)}`) : null),
+      el("span", { class: "ans " + (v === 0 ? "yes" : "no") }, v === 0 ? "kept from it" : pct(v))),
+      el("div", { class: "detail" }, el("pre", { class: "box" }, typeof f.value === "string" ? f.value : JSON.stringify(f.value, null, 1)))));
+  }
+  const played = fam.runs.map(r => ({ r, ep: r.episodes.find(e => e.condition === arm.condition) })).filter(x => x.ep);
+  panel.append(el("div", { class: "head", style: "border-top:1px solid var(--line)" }, el("h2", {}, "How it is scored")));
+  if (!played.length) {
+    const ks = fam.kind_scored && fam.kind_scored.metrics[arm.condition];
+    if (ks) {
+      panel.append(el("div", { class: "metric" }, `No loaded run played this task; ${fam.kind_scored.run} scored ${fam.kind} ${arm.condition} episodes on:`));
+      for (const m of ks.filter(m => !isProse(m))) panel.append(el("div", { class: "metric" }, el("b", {}, m), fam.judged_by[m] ? ` · ${fam.judged_by[m]} judge` : " · no judge"));
+    } else panel.append(el("div", { class: "none-yet" }, `No loaded run played ${fam.kind} ${arm.condition} episodes: start the page with one (--run) to see how they are scored.`));
+    return panel;
+  }
+  const { r, ep } = played[0];
+  panel.append(el("div", { class: "metric" }, `As ${r.run} scored it${played.length > 1 ? ` (also played in ${plural(played.length - 1, "other run")})` : ""}`));
+  const byMetric = new Map(ep.metrics.map(m => [m, []]));
+  for (const a of ep.asked) { if (!byMetric.has(a.metric)) byMetric.set(a.metric, []); byMetric.get(a.metric).push(a); }
+  for (const [m, qs] of [...byMetric].sort(([a], [b]) => order(a) - order(b) || a.localeCompare(b))) {
+    if (isProse(m)) continue;
+    const use = fam.judged_by[m];
+    panel.append(el("div", { class: "metric" }, el("b", {}, m), use ? ` · ${use} judge` : " · no judge"));
+    for (const a of qs) panel.append(el("div", { style: "padding:2px 12px 4px;font-size:13px" }, a.question, a.of_twin ? el("span", { class: "faint" }, " (asked of the twin)") : ""));
+  }
+  panel.append(el("div", { style: "padding:10px 12px" }, played.map(({ r, ep }) => el("button", { class: "btn", style: "margin:0 6px 6px 0",
+    onclick: () => go({ view: "episodes", run: r.run, kind: fam.kind, task: fam.task_id, arm: ep.ep_id, metric: "", filter: "" }) }, `Open in ${shortName(runByName(r.run))}`))));
+  return panel;
+}
+
+// how an episode of this task runs, drawn from the episodes the suite's setup and play made
+function flowDiagram(fam) {
+  const eps = fam.episodes;
+  const arms = eps.filter(e => !e.twin_of);
+  const models = e => Object.entries(e.actors).filter(([, v]) => v !== "scripted").map(([a]) => a);
+  const scripted = e => Object.entries(e.actors).filter(([, v]) => v === "scripted").map(([a]) => a);
+  const steps = e => {
+    const out = []; let run = [];
+    const flush = () => {
+      if (!run.length) return;
+      const who = [...new Set(run.map(x => x.actor))];
+      const kinds = [...new Set(run.map(x => x.kind))];
+      out.push(el("li", { class: "faint" }, run.length === 1 ? `${run[0].actor}: ${run[0].kind} · ${run[0].text.slice(0, 70)}` : `${run.length} events (${kinds.join(", ")}) by ${who.join(", ")}`));
+      run = [];
+    };
+    for (const x of e.events) {
+      if (x.kind === "deliver") {
+        flush();
+        const lines = x.text.split("\n"), first = lines[0];
+        out.push(el("li", {}, el("b", {}, `→ ${x.actor} `), `“${first.slice(0, 64)}${first.length > 64 ? "…" : ""}”`,
+          lines.length > 1 ? el("span", { class: "faint" }, ` + ${plural(lines.length - 1, "line")}`) : ""));
+      }
+      else run.push(x);
+    }
+    flush();
+    return out.length > 14 ? [...out.slice(0, 12), el("li", { class: "faint" }, `… ${out.length - 12} more steps`)] : out;
+  };
+  const box = (e, cls) => el("div", { class: "fbox " + (cls || "") },
+    el("div", { class: "fname" }, e.condition),
+    el("div", { class: "fwho" }, `model: ${models(e).join(", ") || "none"}${scripted(e).length ? " · scripted: " + scripted(e).join(", ") : ""}`),
+    Object.values(e.tools).some(t => t.length) ? el("div", { class: "fwho" }, `tools: ${[...new Set(Object.values(e.tools).flat())].join(", ")}`) : null,
+    el("ol", { class: "fsteps" }, steps(e)));
+  const scoredFor = cond => {
+    const r = fam.runs.find(r => r.episodes.some(e => e.condition === cond));
+    const ks = fam.kind_scored && fam.kind_scored.metrics[cond];
+    if (!r && !ks) return null;
+    const ep = r ? r.episodes.find(e => e.condition === cond) : { metrics: ks, asked: [] };
+    const ms = ep.metrics.filter(m => !isProse(m) && m !== "overlap_flagged");
+    const judged = ms.filter(m => fam.judged_by[m]);
+    return el("div", { class: "fbox fscore" }, el("div", { class: "fname" }, "scored"),
+      el("div", { class: "fwho" }, judged.length ? `judged: ${judged.map(m => `${m} (${fam.judged_by[m]})`).join(", ")}` : "no judged metric"),
+      ms.length > judged.length ? el("div", { class: "fwho" }, `counted: ${ms.filter(m => !fam.judged_by[m]).join(", ")}`) : null,
+      ep.asked.length ? el("div", { class: "fwho" }, `${plural(ep.asked.length, "judge question")}${ep.asked.some(a => a.of_twin) ? ", some asked of the twin" : ""}`) : null);
+  };
+  const cols = arms.map(a => {
+    const twin = eps.find(e => e.twin_of === a.ep_id);
+    return el("div", { class: "fcol" }, box(a),
+      twin ? [el("div", { class: "fedge dashed" }, `forks ${twin.condition}: ${swapText(twin)}`), box(twin, "ftwin")] : null,
+      scoredFor(a.condition) ? [el("div", { class: "fedge" }, "scored on its output"), scoredFor(a.condition)] : null);
+  });
+  return el("details", { open: true, class: "flow" }, el("summary", {}, "How an episode of this task runs"),
+    el("div", { class: "fbox froot" }, el("div", { class: "fname" }, `${fam.kind} row`), el("div", { class: "fwho" },
+      arms.length > 1 ? `setup forks ${plural(arms.length, "arm")}${eps.length > arms.length ? `, each with a twin` : ""}` : `setup makes ${plural(eps.length, "episode")}`)),
+    el("div", { class: "fedge" }, ""),
+    el("div", { class: "fcols", style: `grid-template-columns: repeat(${arms.length}, minmax(260px, 1fr))` }, cols));
+}
+
+start().catch(e => { document.getElementById("app").replaceChildren(el("div", { class: "error" }, `Could not load runs: ${e.message}`)); });
+</script>
+</body>
+</html>

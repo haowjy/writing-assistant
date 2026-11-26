@@ -39,7 +39,18 @@ uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
+uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges
 ```
+
+`view` serves a page on loopback (`--host` binds another address, refused while a run holds
+`local_dev` episodes): a *Scores* tab (`report`'s own `build_report`, the loaded runs of one
+suite and split side by side), an *Episodes* tab (one task's arms and twins: the prose, the
+judge's questions, answers and raw replies, the prompt with what differs between arms,
+reasoning and tool calls) and a *Tasks* tab that needs no run. A task row is shown by running
+the suite's own `setup` and `play` with a turn that answers nothing, so its episodes, twin
+swaps, delivered messages and the payload fields kept from the model are what a run would
+make; held-out `test` rows appear only behind the page's switch, `local_dev` rows never.
+It writes nothing, fetches one task at a time and re-reads a run whose files change.
 
 `--judges none` names no judge: with no judge served, `run` plays, saves and scores only what
 needs no model judge (the judged metrics print as unscored "unavailable"), and `score
