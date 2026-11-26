@@ -40,11 +40,18 @@ uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, H
 the value, so `--where "author=Austen, Jane,mode=instruction"` works.
 `report` on a directory holding only `guardrails.json` prints those scores.
 
-`run` defaults to the `dev` split; `test` is held out and never used to choose anything. A
-run directory is resumable (same `--out`), and `episodes.jsonl` is never rewritten. Every
-metric that depends on a model judge reads "ungated" in `report` until that judge's
-human-label gate passes (`[gates] passed` in `models.toml`). Runs, task rows and model
-outputs are not committed.
+`run` defaults to the `dev` split; `test` is held out and never used to choose anything, so
+`--split test` also needs `--held-out-test` and every such run is logged in
+`tasks/test-split-uses.jsonl`. A run directory is resumable (same `--out`); a resume with
+another `--max-tokens` is refused, and an HTTP 401/402/403 from a host stops the run with
+exit 1. Scoring reads each task kind's artefact, never `Episode.status`: an episode with
+no reply or file to score gets no outcome metric, and `report` counts it under "no
+artefact". Twins are baselines inside their parent's `net_*`, and `report` never averages
+across conditions. Every metric that depends on a model judge reads "ungated" in `report`
+until that judge's human-label gate passes (`[gates] passed` in `models.toml`), and is left
+out of `report --baseline`. Each run stores the judge items behind its scores in
+`judgments-<profile>.jsonl`, in `label_ui.py`'s format. Runs, task rows and model outputs
+are not committed.
 
 Project knowledge lives in the Meridian KB, not in this repo: run `meridian context --name kb`
 and start at its `index.md` (goals, vocabulary, evaluation principles, training lessons). Work
