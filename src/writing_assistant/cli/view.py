@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from writing_assistant.cli import row_meta
+from writing_assistant.cli import ERRORS_FILE, row_meta
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
@@ -73,7 +73,7 @@ class Run:
     def _cached(self, key: Any, make: Any) -> Any:
         # The files the page reads, by name: these are only ever replaced whole or appended to.
         # A live run's journal and `.tmp` files come and go between a listing and a stat.
-        files = [self.path / name for name in (RUN_FILE, STORE_FILE, "guardrails.json")]
+        files = [self.path / name for name in (RUN_FILE, STORE_FILE, ERRORS_FILE, "guardrails.json")]
         files += sorted(p for pattern in ("scores-*.jsonl", "judgments-*.jsonl") for p in self.path.glob(pattern))
         sig = tuple((p.name, stat.st_mtime_ns, stat.st_size) for p in files if p.exists() for stat in [p.stat()])
         if sig != self._sig:
@@ -786,7 +786,8 @@ def cmd_view(args: argparse.Namespace) -> int:
                                                               or r.info().get("split") == LOCAL_DEV)]
     loopback = args.host in LOOPBACK
     if private and not loopback:
-        raise SystemExit(f"{', '.join(private)} hold local_dev text: serve them on loopback only")
+        raise SystemExit(f"{', '.join(private)} hold{'s' * (len(private) == 1)} local_dev text: "
+                         f"serve {'it' if len(private) == 1 else 'them'} on loopback only")
     server = HTTPServer((args.host, args.port), make_handler(runs, loopback))
     shown = "localhost" if loopback else args.host
     # The URL opens the first run's own suite and split (a `local_dev` run is on no other

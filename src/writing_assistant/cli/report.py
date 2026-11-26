@@ -176,7 +176,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     for g in report["groups"]:
         _print_group(g)
     if report["rollouts"]:
-        print("\nrollouts, by the checkpoint each was forked from; none of them is in the numbers above")
+        print("\nrollouts, by the checkpoint each was forked from; none of them is in the groups above")
         for g in report["rollouts"]:
             _print_group(g)
     return 0
