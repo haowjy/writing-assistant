@@ -1,7 +1,9 @@
 """Gate tests for corpus/ (plan/benchmark-code.md §4, Slice 1). No network, no GPU."""
 
 import json
+import sqlite3
 import zlib
+from contextlib import suppress
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -266,3 +268,35 @@ def test_sync_holds_back_an_episode_when_any_segment_of_its_chain_may_not_leave(
             assert [json.loads(line)["ep_id"] for line in (staged / run / file).read_text().splitlines()] == names
     text += b"".join(p.read_bytes() for p in (tmp_path / "stage").rglob("*") if p.is_file())
     assert b"FREE TEXT" in text and b"HELD" not in text
+
+
+def test_sync_stages_nothing_an_open_ancestor_gained_after_its_release_check(tmp_path, monkeypatch):
+    """A run may be writing while `sync` stages: a closed episode's parent can still be open,
+    and gain a checkpoint that draws on a held-back work between the release check and the
+    copy. What is staged is what was checked."""
+    corpus = Corpus(tmp_path / "cache")
+    add(corpus, 1, "A", book(1, 2))
+    add(corpus, 2, "B", book(2, 2), licence="copyrighted")
+    run = tmp_path / "runs" / "r"
+    run.mkdir(parents=True)
+    (run / "run.json").write_text("{}")
+    parent = Episode(ep_id="parent", task_id="t", suite="1a", split="dev", state={"work_ids": ["gutenberg:1"], "note": ""})
+    with Store(run / "store.db") as writer:
+        writer.append(parent)
+        writer.close(parent.fork("done"))
+        writer.db.execute("PRAGMA busy_timeout = 100")  # this writer gives up at once where a run would wait
+        parent.state = {"work_ids": ["gutenberg:1", "gutenberg:2"], "note": "HELD TEXT"}
+        copy_chain = Store.copy_chain
+
+        def a_run_writes_first(self, name, into, **kw):
+            with suppress(sqlite3.OperationalError):  # locked out: its write waits for the copy
+                writer.append(parent)
+            return copy_chain(self, name, into, **kw)
+
+        monkeypatch.setattr(Store, "copy_chain", a_run_writes_first)
+        counts = stage_sync(tmp_path / "stage", tmp_path / "runs", corpus, {})
+
+    assert dict(counts) == {"episodes": 1, "episodes_left_out": 0}
+    with Store(tmp_path / "stage" / "runs" / "r" / "store.db", readonly=True) as staged:
+        bodies = b"".join(zlib.decompress(body) for (body,) in staged.db.execute("SELECT body FROM checkpoints"))
+    assert b"HELD TEXT" not in bodies and b"gutenberg:2" not in bodies

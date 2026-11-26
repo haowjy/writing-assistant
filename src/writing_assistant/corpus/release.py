@@ -176,21 +176,21 @@ def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> 
         keep: set[str] = set()
         if (run_dir / STORE_FILE).exists():
             with Store(run_dir / STORE_FILE, readonly=True) as store, Store(dest / STORE_FILE) as staged:
-                leaves: dict[str, bool] = {}  # seg -> whether that segment may leave
-
                 def segment_leaves(seg: str) -> bool:
                     split, states = store.snapshots(seg)
                     return split != LOCAL_DEV and all(may_leave(corpus, works_in(state)) for state in states)
 
-                for ep_id in store.names():
-                    chain = store.chain(ep_id)
-                    for seg in chain:
-                        if seg not in leaves:
-                            leaves[seg] = segment_leaves(seg)
-                    if all(leaves[seg] for seg in chain):
-                        store.copy_chain(ep_id, staged, listed=True)
-                        keep.add(ep_id)
-                counts["episodes_left_out"] += len(store.names()) - len(keep)
+                names = store.names()
+                for ep_id in names:
+                    # A run may be writing: an open ancestor of a closed episode can gain a
+                    # checkpoint at any moment. What is copied is what was tested, so both read
+                    # one state of the file, and no answer about a segment is kept for the next
+                    # episode. One episode at a time, so a run's write waits for one chain.
+                    with store.reading():
+                        if all(segment_leaves(seg) for seg in store.chain(ep_id)):
+                            store.copy_chain(ep_id, staged, listed=True)
+                            keep.add(ep_id)
+                counts["episodes_left_out"] += len(names) - len(keep)
                 counts["episodes"] += len(keep)
         for path in [*run_dir.glob("scores-*.jsonl"), *run_dir.glob("judgments-*.jsonl")]:
             _write_jsonl(dest / path.name, [r for r in read_jsonl(path)

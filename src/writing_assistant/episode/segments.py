@@ -245,6 +245,17 @@ class Store:
 
     # -- reading ---------------------------------------------------------------------------
 
+    @contextmanager
+    def reading(self) -> Iterator[None]:
+        """One read transaction: everything read inside sees the file as it stood at the
+        first read, whatever another process appends meanwhile. In rollback mode a commit
+        waits for it to end (up to the writer's 60 s timeout), so it is kept short."""
+        self.db.execute("BEGIN")
+        try:
+            yield
+        finally:
+            self.db.execute("COMMIT")
+
     def names(self, closed: bool = True) -> list[str]:
         """`ep_id` of the store's closed episodes, or of its open ones, in the order they were
         first saved."""

@@ -128,7 +128,9 @@ other episode format and no reader for an older one.
 - A `test` or `local_dev` segment never shares a store with another split's. `sync` uploads
   no store file: it writes a new one holding the closed episodes that may leave, and holds
   an episode back when any segment in its chain is `local_dev` or draws, at any of its
-  checkpoints, on a work whose licence does not allow release.
+  checkpoints, on a work whose licence does not allow release. It may run while a `run` is
+  writing: each episode's chain is tested and copied inside one read transaction
+  (`Store.reading()`), so a checkpoint an open ancestor gains after the test is not copied.
 - A run directory written before the store (`episodes.jsonl`) cannot be read. The ten
   `base-*` runs were converted on 2026-11-26 into the `branch-store` worktree's `runs/`
   (git-ignored) by replaying their saved calls through the suites, so the copies hold real
