@@ -114,8 +114,8 @@ def gutenberg_work(book: dict[str, Any], *, url: str, content_hash: str, snapsho
 def collect_gutenberg(corpus: Corpus, fetch: _Polite, query: dict[str, Any]) -> list[Work]:
     """Import the books a Gutendex query returns (`ids`, `search`, `languages`, `topic`, ...;
     plus `limit`), following its pagination. A book already cached gets its metadata
-    refreshed without refetching the text; a book with no usable mirror file is skipped
-    and logged."""
+    refreshed without refetching the text; a book with no usable mirror file, or whose file
+    still fails after the retries, is skipped and logged."""
     query = dict(query)
     limit = query.pop("limit", None)
     works: list[Work] = []
@@ -144,7 +144,11 @@ def _import_book(corpus: Corpus, fetch: _Polite, book: dict[str, Any]) -> Work |
         work = gutenberg_work(book, url=old.url, content_hash=old.content_hash, snapshot_date=old.snapshot_date)
         return corpus.add(work)
     for url in mirror_urls(book["id"]):
-        resp = fetch.get(url)
+        try:
+            resp = fetch.get(url)
+        except httpx.HTTPError as e:  # retries spent: skip this book, not the batch
+            log.warning("gutenberg:%s: %s: %s after %d attempts; skipped", book["id"], url, type(e).__name__, RETRIES)
+            return None
         if resp is None:
             continue
         try:
