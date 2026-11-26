@@ -117,3 +117,11 @@ def test_a_parent_whose_twin_is_missing_says_so(bench, capsys):
     cli.main(["score", "--run", str(out)])
     cli.main(["report", "--run", str(out)])
     assert capsys.readouterr().out.count("twin had no artefact (no net_*): missing 1") == 2
+
+
+def test_score_where_matches_condition_as_report_does_and_keeps_the_twin(bench, capsys):
+    out = bench([POV_ROW], chapter("Mira turned the glove over."))
+    run_and_score(capsys, out, "--no-score")
+    cli.main(["score", "--run", str(out), "--where", "condition=full_view"])
+    [row] = score_rows(out)
+    assert row["condition"] == "full_view" and "net_pov_leak" in row["metrics"], row

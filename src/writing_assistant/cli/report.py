@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli import ERRORS_FILE, twins_of
+from writing_assistant.cli import ERRORS_FILE, episode_row, twins_of
 from writing_assistant.episode.store import RUN_FILE, load_episodes, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import SUITES, mean
@@ -37,7 +37,7 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) 
                                                               "familiarity": defaultdict(list), "counts": Counter()})
     codes: Counter = Counter()
     for ep in episodes.values():
-        row = ep.meta.get("row", {}) | {"condition": ep.condition}
+        row = episode_row(ep)
         if not matches(row, where):
             continue
         g = groups[tuple(str(row.get(k)) for k in keys)]

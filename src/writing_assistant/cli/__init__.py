@@ -127,6 +127,11 @@ def row_meta(task: Task) -> dict[str, Any]:
     return scalars | {"kind": task.kind, "split": task.split, "work_ids": ",".join(task.work_ids)}
 
 
+def episode_row(ep: Episode) -> dict[str, Any]:
+    """What `--where` and `--group-by` test of a saved episode: its row's fields and its condition."""
+    return ep.meta.get("row", {}) | {"condition": ep.condition}
+
+
 def _now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -332,11 +337,10 @@ async def cmd_score(args: argparse.Namespace) -> int:
     info = json.loads((run_dir / RUN_FILE).read_text())
     suite = SUITES[info["suite"]]
     episodes = load_episodes(run_dir)
-    if args.where:
-        episodes = [ep for ep in episodes if matches(ep.meta.get("row", {}), args.where)]
+    only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
     services = services_for(args.models, args.judges)
     try:
-        rows, judgments = await score_all(suite, episodes, services, args.concurrency)
+        rows, judgments = await score_all(suite, episodes, services, args.concurrency, only)
     except* AccountError as group:
         sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); no scores were written")
     finally:
@@ -428,7 +432,7 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired)")
     s.add_argument("--run", required=True)
     s.add_argument("--judges", default="eval", choices=["eval", "train"])
-    s.add_argument("--where")
+    s.add_argument("--where", help="key=value[,key=value]: the episode's row fields and its condition, as in report")
     s.add_argument("--concurrency", type=int, default=8)
 
     rp = sub.add_parser("report", help="metrics per group, with gates, refusals and baseline deltas")
