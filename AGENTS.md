@@ -15,8 +15,9 @@ The project restarted in November 2026. Work proceeds in this order:
 
 The benchmark is the `writing_assistant` package under `src/` (Python 3.12, `uv`). Its
 packages are layered and `tests/test_layering.py` enforces the direction; the layer table and
-the four protocols are in the work item's `plan/benchmark-code.md` §2, except that a suite no
-longer has a `play`: it keeps no state outside the episode, and its `next_delivery(ep,
+the four protocols are in `plan/benchmark-code.md` §2 of the work item
+`project-reorientation` (`meridian context --name work` gives its folder). Three of the four
+stand as written there; the suite protocol changed. A suite no longer has a `play`: it keeps no state outside the episode, and its `next_delivery(ep,
 last_reply)` is one step (do what the last reply calls for, name the next delivery) that
 `suites.play()`, the only loop, drives. A driver likewise rebuilds its conversation from the
 episode at `open()`, so an episode saved when a delivery returns continues as the original
@@ -41,7 +42,7 @@ uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (n
 uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in judge-cache.jsonl
 llmpick start gemma-4-26b-qat                        # serve the subject first
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
-uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' [--from-run runs/<id>] --rollouts N --out runs/<new>
+uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N --out runs/<new>   # N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
@@ -72,7 +73,9 @@ nothing, so its episodes, twin swaps, delivered messages and the payload fields 
 model are what a run would make; held-out `test` rows appear only behind the page's switch,
 `local_dev` rows never. Adding a shadcn component with `bunx shadcn add` imports `cn` from an
 npm package named `cn`; point it back at `@/lib/utils` and `bun remove cn`.
-It writes nothing, fetches one task at a time and re-reads a run whose files change.
+It writes nothing, fetches one task at a time and re-reads a run whose files change. An
+open page keeps what it fetched for 30 seconds and does not poll, and between a task's
+episodes closing and their scores being written its report shows them as unscored.
 
 `--judges none` names no judge: with no judge served, `run` plays, saves and scores only what
 needs no model judge (the judged metrics print as unscored "unavailable"), and `score
@@ -94,7 +97,7 @@ exit 1.
 ## How episodes are stored
 
 A run's episodes are in `store.db` (SQLite, standard library; `episode/segments.py` has the
-model and the rules, the work item's `design/branch-store.md` the reasons). There is no
+model and the rules, `design/branch-store.md` in the work item `project-reorientation` the reasons). There is no
 other episode format and no reader for an older one.
 
 - An episode is a **segment**: its own part of a log, stored after a parent segment or none.
@@ -107,7 +110,8 @@ other episode format and no reader for an older one.
   directory continues every open episode from its last turn checkpoint through the same
   loop, and sets up nothing twice. Runs that choose different tasks may share a directory
   at the same time; `run.lock` tells a starting run whether the open episodes are another
-  live run's.
+  live run's. It does not stop two runs choosing the same tasks: each task is still played
+  once, and the run that loses a task prints a setup error for it and exits 1.
 - Play continues, or is forked, from a turn checkpoint only. `--from '<ep_id>@<n>'` forks
   the named episode's turn checkpoint `n` `--rollouts` times; with `--from-run` the
   episode's chain is first copied into the new run's store, so every store is
@@ -121,12 +125,16 @@ other episode format and no reader for an older one.
   conversation, so subtracting it would not be a matched counterfactual). A twin can be
   rolled out too: its rollout carries its own metrics and is the baseline of nothing
   (pairing rollouts into a counterfactual is not built). `report`, `view` and `build_calibration.py` keep rollouts apart from
-  the run's task episodes: no headline number, list or sample includes one, and `report`
-  prints them after the run's groups, per checkpoint. A rollout stores no task, so a
+  the run's task episodes: no group, metric, episode list or sample includes one, and `report`
+  prints them after the run's groups, per checkpoint. The lines at the head of `report`
+  (spend, served, played by code, task errors) are per directory and do include them, and
+  the page has no screen for rollouts yet (its API lists them under `rollouts`). A rollout stores no task, so a
   directory holding only rollouts of a task has not played it.
 - Twins are paired by `Episode.baseline_of` (set by `fork(..., baseline=True)` in `setup`),
   never by who was forked from whom.
-- A `test` or `local_dev` segment never shares a store with another split's. `sync` uploads
+- A `test` or `local_dev` segment never shares a store with another split's. `sync --runs`
+  takes the folder that holds run directories, not one run directory (given one, it finds no
+  runs and stages nothing). It uploads
   no store file: it writes a new one holding the closed episodes that may leave, and holds
   an episode back when any segment in its chain is `local_dev` or draws, at any of its
   checkpoints, on a work whose licence does not allow release. It may run while a `run` is
@@ -134,11 +142,13 @@ other episode format and no reader for an older one.
   (`Store.reading()`), so a checkpoint an open ancestor gains after the test is not copied.
 - A run directory written before the store (`episodes.jsonl`) cannot be read: `run`,
   `score`, `report`, `view` and `sync` refuse it by name (`segments.has_store`) and write
-  nothing. A refusal the user should read as a sentence is raised as `segments.Unreadable`,
+  nothing; `scripts/build_calibration.py` fails on one with a traceback carrying the same
+  sentence. A refusal the user should read as a sentence is raised as `segments.Unreadable`,
   which `wa-bench` turns into its exit message. The ten
-  `base-*` runs were converted on 2026-11-26 into the `branch-store` worktree's `runs/`
-  (git-ignored) by replaying their saved calls through the suites, so the copies hold real
-  turn checkpoints and can be forked; the originals in the `bench-v0` worktree are untouched.
+  `base-*` baseline runs, converted by replaying their saved calls through the suites so
+  they hold real turn checkpoints and can be forked, are in
+  `/data/jimyao/research/writing-assistant/baseline-stores/` with the one-off converter;
+  no run directory is committed.
 
 ## Scoring
 
