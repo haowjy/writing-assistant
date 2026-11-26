@@ -46,9 +46,13 @@ Two steps run model-written code: HumanEval+ executes generated programs, and BF
 `eval()`s call strings built from the function names the model returned. Every step runs
 in a container as the invoking uid, with no capabilities, `no-new-privileges`, a read-only
 root, a 4 GB tmpfs `/tmp`, memory and pid limits, and only its own output directory
-writable. HumanEval+ execution also gets `--network none` and sees only a copy of the
-samples. BFCL needs the endpoint, so it keeps a network, but it has no host mounts beyond
-its output directory. For a loopback `base_url`, the endpoint steps use the host network.
+writable. The steps that run model-written code have no network and no key: HumanEval+
+execution sees only a copy of the samples, and BFCL is split into `bfcl_run.py generate`
+(endpoint, key, network) and `bfcl_run.py evaluate` (`--network none`, `OPENAI_API_KEY=unused`:
+bfcl-eval's OpenAI handler builds a client when constructed but evaluation never calls it).
+Checked 2026-11-26: evaluate alone, that way, over the saved generation of the 2026-11-25
+Gemma run reproduced its scores exactly. For a loopback `base_url`, the endpoint steps use
+the host network.
 
 ## Failure handling
 

@@ -133,9 +133,13 @@ timed humaneval_exec docker run "${sandbox[@]}" --network none -v "$work/humanev
   /opt/evalplus/bin/evalplus.evaluate --dataset humaneval --samples /work/samples.jsonl \
   --parallel 8 --i-just-wanna-run
 
-# --- BFCL multi-turn (bfcl-eval; eval()s model-named calls, so sandboxed too) -----------------
-timed bfcl docker run "${with_endpoint[@]}" -v "$work/bfcl:/work" "$image" \
-  /opt/bfcl/bin/python /opt/guardrails/bfcl_run.py "$model" /work "$concurrency"
+# --- BFCL multi-turn (bfcl-eval) -----------------------------------------------------------------
+# Generation needs the endpoint. Evaluation eval()s call strings with model-chosen function
+# names, so it runs with no network and without the key (the handler only needs some value).
+timed bfcl_gen docker run "${with_endpoint[@]}" -v "$work/bfcl:/work" "$image" \
+  /opt/bfcl/bin/python /opt/guardrails/bfcl_run.py generate "$model" /work "$concurrency"
+timed bfcl_eval docker run "${sandbox[@]}" --network none -e OPENAI_API_KEY=unused -v "$work/bfcl:/work" "$image" \
+  /opt/bfcl/bin/python /opt/guardrails/bfcl_run.py evaluate "$model" /work
 
 # --- guardrails.json -------------------------------------------------------------------------
 docker run "${sandbox[@]}" --network none -v "$work:/work:ro" "$image" \
@@ -144,6 +148,6 @@ docker run "${sandbox[@]}" --network none -v "$work:/work:ro" "$image" \
   --commit "$(git -C "$repo" rev-parse HEAD)$(git -C "$repo" diff --quiet HEAD -- scripts || echo -dirty)" \
   --seconds "ifeval=${seconds[ifeval]}" \
   --seconds "humaneval_plus=$((seconds[humaneval_gen] + seconds[humaneval_exec]))" \
-  --seconds "bfcl=${seconds[bfcl]}" > "$work/guardrails.json"
+  --seconds "bfcl=$((seconds[bfcl_gen] + seconds[bfcl_eval]))" > "$work/guardrails.json"
 mv "$work/guardrails.json" "$out/guardrails.json"
 cat "$out/guardrails.json"

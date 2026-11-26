@@ -1,16 +1,20 @@
-"""Run BFCL multi-turn against one OpenAI-compatible endpoint and print its scores as JSON.
+"""Run BFCL multi-turn against one OpenAI-compatible endpoint, in two steps.
 
-Runs inside the guardrails image (`/opt/bfcl/bin/python`), because BFCL `eval()`s call
-strings whose function names the model chose. bfcl-eval only evaluates models in its own
-registry, and that registry has no entry meaning "this model behind this URL", so this adds
-one: its OpenAI chat-completions handler in native function-calling (FC) mode, which reads
-OPENAI_BASE_URL and OPENAI_API_KEY.
+Runs inside the guardrails image (`/opt/bfcl/bin/python`). bfcl-eval only evaluates models
+in its own registry, and that registry has no entry meaning "this model behind this URL",
+so this adds one: its OpenAI chat-completions handler in native function-calling (FC) mode,
+which reads OPENAI_BASE_URL and OPENAI_API_KEY.
 
-    bfcl_run.py <model> <project-root> <threads> [<category> ...]
+    bfcl_run.py generate <model> <project-root> <threads> [<category> ...]
+    bfcl_run.py evaluate <model> <project-root> [<category> ...]
 
-Writes the scores to <project-root>/scores.json (BFCL prints its own trace to stdout); exits non-zero if any entry still failed on a
-transport error (HTTP 5xx, timeout, connection) after the retry rounds, because BFCL would
-otherwise score it as a wrong answer.
+`generate` calls the endpoint and writes the model's answers under <project-root>/result;
+it exits non-zero if any entry still failed on a transport error (HTTP 5xx, timeout,
+connection) after the retry rounds, because BFCL would otherwise score it as a wrong
+answer. `evaluate` `eval()`s the call strings whose function names the model chose, so
+guardrails.sh runs it with no network and no key: it never calls the endpoint, but the
+handler builds an OpenAI client on construction, so OPENAI_API_KEY must hold some value.
+It writes the scores to <project-root>/scores.json (BFCL prints its own trace to stdout).
 """
 
 import json
@@ -18,7 +22,8 @@ import os
 import sys
 from pathlib import Path
 
-model, root, threads, *categories = sys.argv[1:]
+step, model, root, *rest = sys.argv[1:]
+threads, categories = (rest[0], rest[1:]) if step == "generate" else (None, rest)
 categories = categories or ["multi_turn"]
 os.environ["BFCL_PROJECT_ROOT"] = root  # read at import time
 
@@ -85,18 +90,19 @@ def model_errors() -> int:
     )
 
 
-for round_ in range(RETRY_ROUNDS + 1):
-    run("generate", "--model", model, "--test-category", ",".join(categories),
-        "--num-threads", threads)
-    dropped = drop_transport_errors()
-    if not dropped:
-        break
-    print(f"bfcl: {dropped} transport failures, regenerating", file=sys.stderr)
-else:
+if step == "generate":
+    for round_ in range(RETRY_ROUNDS + 1):
+        run("generate", "--model", model, "--test-category", ",".join(categories),
+            "--num-threads", threads)
+        dropped = drop_transport_errors()
+        if not dropped:
+            sys.exit(0)
+        print(f"bfcl: {dropped} transport failures, regenerating", file=sys.stderr)
     sys.exit(f"bfcl: entries still failing on transport errors after {RETRY_ROUNDS} retries")
+if step != "evaluate":
+    sys.exit(f"bfcl_run.py: unknown step {step!r}; generate or evaluate")
 
 run("evaluate", "--model", model, "--test-category", ",".join(categories))
-
 
 
 def flat_sum(value) -> int:
