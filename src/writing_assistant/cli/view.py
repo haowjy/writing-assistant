@@ -31,6 +31,7 @@ import asyncio
 import difflib
 import json
 import mimetypes
+from dataclasses import asdict
 import sys
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -44,7 +45,7 @@ from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, load_episodes, read_jsonl, task_rows
 from writing_assistant.llm.client import LLMClient
-from writing_assistant.suites import SUITES, Services
+from writing_assistant.suites import PROSE_ABOUT, SUITES, Services
 
 # The built page; any path that is not an API call or a built file is the page's own route.
 DIST = Path(__file__).with_name("view_dist")
@@ -461,6 +462,24 @@ def task_list(tasks: Tasks, suite: str, splits: list[str]) -> list[dict[str, Any
     return out
 
 
+def kinds(tasks: Tasks, suite: str, runs: dict[str, Run]) -> dict[str, Any]:
+    """A suite's task kinds as a reader learns them: each kind's plain-words text and metric
+    sentences from the suite's code, its rows per public split (test rows are not read, so not
+    counted), and an example row with its episode diagram."""
+    s = SUITES[suite]
+    public = [split for split in SPLITS if split != "test"]
+    rows = {split: tasks.rows(suite, split) for split in public}
+    out = []
+    for kind, about in s.about.items():
+        mine = {split: [t for t in rows[split] if t.kind == kind] for split in public}
+        example = next((ts[0] for split in ("dev", "train") for ts in [mine.get(split, [])] if ts), None)
+        family = task_family(example, runs) if example else None
+        out.append({"kind": kind, **asdict(about), "rows": {split: len(ts) for split, ts in mine.items()},
+                    "example": example.task_id if example else None,
+                    "diagram": family.get("diagram") if family else None})
+    return {"suite": suite, "kinds": out, "metrics": s.metric_about, "prose": PROSE_ABOUT, "judged_by": s.judged_by}
+
+
 async def _no_model(ep: Episode, actor: str, message: str) -> str:
     """The Turn the page plays a task with: it records the delivery and answers nothing, so
     every message the benchmark itself sends is on the record as the model would get it."""
@@ -656,6 +675,11 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
                 return self._static(url.path)
             if url.path == "/api/runs":
                 return self._json([r.summary() for r in runs.values()])
+            if url.path == "/api/kinds":
+                suite = q.get("suite", "")
+                if suite not in SUITES:
+                    return self._send(404, b"no such suite", "text/plain")
+                return self._json(kinds(tasks, suite, runs))
             if url.path in ("/api/tasks", "/api/task"):
                 suite = q.get("suite", "")
                 if suite not in SUITES:

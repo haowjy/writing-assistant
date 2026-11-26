@@ -35,6 +35,32 @@ JUDGED_BY = dict.fromkeys(
      "net_canon_snapback", "contradicted_narrations_per_1k_words"],
     "fact",
 )
+# metric -> what a value means (Suite.metric_about).
+ABOUT = {
+    "pov_leak": "Share of the secret's questions answered yes of the chapter: a yes is a leak.",
+    "twin_pov_leak": "The same questions asked of the twin's chapter, whose secret was swapped: a yes is the judge "
+                     "or chance.",
+    "net_pov_leak": "pov_leak minus twin_pov_leak.",
+    "permitted_fact_recall": "Share of questions about things the character did see answered yes, so a chapter "
+                             "that leaves everything out does not score well.",
+    "residue_rate": "Share of questions about the scrapped direction A answered yes of the scene.",
+    "twin_residue_rate": "The same questions asked of the clean_b scene, where direction A was never given.",
+    "post_pivot_residue": "residue_rate minus twin_residue_rate.",
+    "canon_snapback": "Share of canon questions answered yes: the chapter followed the book over the rules file.",
+    "bent_rule_compliance": "Share of changed-rule questions answered yes: the chapter followed the rules file.",
+    "twin_bent_rule_intrusion": "The changed-rule questions asked of the twin's chapter, whose rules keep canon.",
+    "net_canon_snapback": "canon_snapback minus twin_bent_rule_intrusion; one question per side, so -1, 0 or 1 per task.",
+    "contradicted_narrations_per_1k_words": "Narrations the judge says contradict the world events recorded before "
+                                            "them, per 1,000 words of judged narration.",
+    "srd_calls": "Rules-tool calls the game master made.",
+    "srd_rejection_rate": "Share of its rules-tool calls the rules engine rejected.",
+    "visibility_error_rate": "Of its event and reveal calls, the share rejected for giving an event to a character "
+                             "who could not perceive it.",
+    "out_of_scope_edits": "Paragraphs outside a round's request that the model changed.",
+    "clobbered_author_edits": "Of those, paragraphs the author had written during the episode.",
+    "in_scope_rounds": "Rounds where a requested paragraph changed and nothing else did.",
+    "tokens_per_in_scope_round": "Output tokens spent per in-scope round.",
+}
 
 
 async def _rate(tally: Tally, services, metric: str, questions: list[str], text: str,

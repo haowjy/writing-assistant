@@ -42,6 +42,16 @@ uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, H
 uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges
 ```
 
+`view`'s page is a React app in `viewer/` (Bun, Vite, TypeScript, shadcn/ui on Tailwind).
+Build it once, and after changing it, before `wa-bench view`:
+
+```
+cd viewer && bun install && bun run build   # writes src/writing_assistant/cli/view_dist/ (not committed)
+cd viewer && bun run dev                    # live reload on :5173; API from `wa-bench view --port 8767`
+```
+
+The Python tests do not need the page built; `view` refuses to start without it.
+
 `view` serves a page on loopback (`--host` binds another address, refused while a run holds
 `local_dev` episodes): a *Scores* tab (`report`'s own `build_report`, the loaded runs of one
 suite and split side by side), an *Episodes* tab (one task's arms and twins: the prose, the

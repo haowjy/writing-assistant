@@ -18,6 +18,8 @@ class World1a:
     tools = srd.TOOLS
     twins = tasks_1a.TWINS
     judged_by = score_1a.JUDGED_BY
+    about = tasks_1a.ABOUT
+    metric_about = score_1a.ABOUT
     text_fields = tasks_1a.TEXT_FIELDS
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:

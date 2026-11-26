@@ -46,6 +46,19 @@ JUDGED_BY = {
     "style_margin": "embed_style",
     "edit_pair_win": "edit_pair",
 }
+# metric -> what a value means (Suite.metric_about).
+ABOUT = {
+    "discriminator_fool_rate": "The verifier's probability that the scene, not the author's real scene for the same "
+                               "beats, is the author's: 0.5 means it cannot tell them apart.",
+    "verifier_match": "The verifier's probability that the scene, rather than another author's passage, is by the "
+                      "author.",
+    "style_margin": "Style-embedding similarity of the scene to the author's passages minus its similarity to the "
+                    "impostor.",
+    "edited": "1 when the file changed at all.",
+    "edit_scope": "Share of paragraphs outside the note's scope left exactly as they were.",
+    "scope_changed": "Share of paragraphs in the note's scope that changed.",
+    "edit_pair_win": "The judge's probability that the edit answers the note better than the original.",
+}
 
 
 async def _scene(ep: Episode, text: str, services, out: dict[str, float], tally: Tally) -> str:

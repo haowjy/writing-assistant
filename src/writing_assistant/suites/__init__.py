@@ -58,10 +58,27 @@ class Services:
     corpus: Corpus
 
 
+@dataclass(frozen=True)
+class KindAbout:
+    """A task kind in plain words, for a reader learning the benchmark (`wa-bench view`). It
+    sits beside the kind's `setup` so a change to one is seen next to the other.
+    `arms` maps each condition setup forks to what that arm is shown; `twin` says what the
+    twin changes and what it controls for (None: no twin)."""
+
+    title: str
+    tests: str
+    given: str
+    kept: str | None
+    arms: dict[str, str]
+    twin: str | None = None
+
+
 class Suite(Protocol):
     tools: ToolTable  # the suite's static tool table; cli.py hands it to the driver
     twins: dict[str, str]  # scored condition -> the condition of its twin (a child episode)
     judged_by: dict[str, str]  # metric -> judge use it depends on
+    about: dict[str, KindAbout]  # task kind -> what it is, in plain words
+    metric_about: dict[str, str]  # metric -> what a value means, in a sentence
     # task kind -> the payload fields that carry work text ("passage.text", "exemplars[].text",
     # "files.*"): what corpus/release.py hashes when a work is not permissive
     text_fields: dict[str, list[str]]
@@ -149,6 +166,15 @@ def paragraphs(text: str) -> list[str]:
 def norm(text: str) -> str:
     """Whitespace collapsed: how paragraphs are compared, so reflowing changes nothing."""
     return " ".join(text.split())
+
+
+# What the metrics every prose output gets mean; `readability_*` and `overlap_*` are families.
+PROSE_ABOUT = {
+    "output_words": "Words in the output the kind scores.",
+    "readability_": "How hard the output is to read: sentences, dependency length, stacked nouns, object relatives, rare words.",
+    "overlap_": "Longest run, and share, of the output copied from what the model was shown (context) or read with tools.",
+    "overlap_flagged": "1 when that overlap crosses the pre-registered copying threshold.",
+}
 
 
 def prose_metrics(out: dict[str, float], text: str, ep: Episode, services: Services) -> None:

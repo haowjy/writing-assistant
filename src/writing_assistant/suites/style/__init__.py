@@ -15,6 +15,8 @@ class Style:
     tools: dict = {}  # workspace tools only
     twins: dict[str, str] = {}  # no twins: each episode is scored on its own
     judged_by = score.JUDGED_BY
+    about = tasks.ABOUT
+    metric_about = score.ABOUT
     text_fields = tasks.TEXT_FIELDS
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
