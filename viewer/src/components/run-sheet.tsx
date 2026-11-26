@@ -32,7 +32,7 @@ export function RunSheet() {
               <dd>{run.started ? new Date(run.started).toLocaleString() : "not recorded"}</dd>
               <dt className="text-muted-foreground">Episodes</dt>
               <dd className="tabular-nums">
-                {run.episodes} ({run.twins} twins)
+                {run.episodes} ({run.twins} twins){run.open ? `, ${run.open} open and not shown` : ""}
               </dd>
               <dt className="text-muted-foreground">Judges</dt>
               <dd>{report?.profile ?? "…"}</dd>

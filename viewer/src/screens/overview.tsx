@@ -53,6 +53,16 @@ export function Overview() {
     <>
       {header}
       <div className="mx-auto w-full max-w-6xl space-y-10 px-6 py-8">
+        {visible
+          .filter((r) => r.open)
+          .map((r) => (
+            <p key={r.name} className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{r.endpoint}</span>:{" "}
+              {r.open === 1 ? "1 episode is" : `${r.open} episodes are`} open and not shown here. A run is still playing, or was
+              killed; running the same <code className="font-mono">wa-bench run</code> command again continues each from its last
+              saved turn.
+            </p>
+          ))}
         {loading && <Skeleton className="h-64 w-full" />}
         {!loading && visible.length === 0 && (
           <p className="text-sm text-muted-foreground">Every run is hidden: tick one in the sidebar.</p>

@@ -12,6 +12,8 @@ export type RunSummary = {
   profiles?: string[]
   episodes?: number
   twins?: number
+  /** episodes a run is still playing, or a killed run left: shown nowhere, counted here */
+  open?: number
   judged?: string[]
   guardrails?: string
 }

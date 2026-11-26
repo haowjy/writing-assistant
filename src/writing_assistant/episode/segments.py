@@ -476,6 +476,15 @@ def has_store(run_dir: str | Path) -> bool:
     return (run_dir / STORE_FILE).exists()
 
 
+def open_episodes(run_dir: str | Path) -> list[str]:
+    """The names of a run directory's open episodes: a live run's, in play, or what a killed
+    run left for the next `run` to continue. Readers show none of them, and say so."""
+    if not has_store(run_dir):
+        return []
+    with Store(Path(run_dir) / STORE_FILE, readonly=True) as store:
+        return store.names(closed=False)
+
+
 def closed_episodes(run_dir: str | Path) -> list[Episode]:
     """The closed episodes of a run directory's store; none when the run has no store yet."""
     if not has_store(run_dir):

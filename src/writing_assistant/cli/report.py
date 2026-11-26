@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from writing_assistant.cli import ERRORS_FILE, episode_row
-from writing_assistant.episode.segments import closed_episodes
+from writing_assistant.episode.segments import closed_episodes, open_episodes
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import SUITES, mean
@@ -93,6 +93,10 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
     header = [f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
               f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
               f"split {info['split']}, played by code {', '.join(codes)}, judges {judges}"]
+    if still_open := len(open_episodes(run_dir)):
+        header.append(f"{'1 episode is' if still_open == 1 else f'{still_open} episodes are'} open and in no number below: "
+                      "a run is still playing, or was killed. Running the same `wa-bench run` command again continues "
+                      "each from its last saved turn")
     if stamped := sorted(c for c in scored_by if c):
         header.append(f"scored by code {', '.join(stamped)}")
     if old := scored_by[None]:
