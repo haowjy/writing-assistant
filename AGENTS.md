@@ -21,8 +21,12 @@ the four protocols are in the work item's `plan/benchmark-code.md` §2. Run test
 
 ## Running the benchmark
 
-`models.toml` names every endpoint and judge; keys come from `.env` in the working directory
-(`DEEPINFRA_API_KEY`), which `wa-bench` loads and never writes anywhere. Data lives outside
+`models.toml` names every endpoint and judge. The subjects (`inkling-2-mini`, `qwen3.5-9b`,
+`gemma-4-26b`) are served on this machine's GPU by `llmpick`, one at a time: start the
+subject's profile (named beside its entry; check `llmpick status` first, the card is shared)
+before `run`. DeepInfra entries (`*-deepinfra`, judges) are fallbacks; their key comes from
+`.env` in the working directory (`DEEPINFRA_API_KEY`), which `wa-bench` loads and never
+writes anywhere. Data lives outside
 the repo under `/data/jimyao/research/writing-assistant/` (`WA_DATA` overrides): the corpus
 text cache in `corpus-cache/`, task rows in `tasks/{1a,3}.jsonl`, personal manuscripts in
 `local_dev/` (never synced, exported or sent to an endpoint without `local = true`).
@@ -30,11 +34,19 @@ text cache in `corpus-cache/`, task rows in `tasks/{1a,3}.jsonl`, personal manus
 ```
 uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (network)
 uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in judge-cache.jsonl
-uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N]
+llmpick start gemma-4-26b-qat                        # serve the subject first
+uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
-uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker, ~36 min
+uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
 ```
+
+`--judges none` names no judge: with no judge served, `run` plays, saves and scores only what
+needs no model judge (the judged metrics print as unscored "unavailable"), and `score
+--judges eval` judges the saved run once a judge is up. run.json `served` records the weights
+file and engine build that answered, so a number names the build it holds for.
+`GUARDRAILS_LIMIT=N` runs N items per guardrail tool and writes no `guardrails.json`: check
+a new endpoint with it before a full run.
 
 `--where` takes `key=value` tests joined by commas; a comma not followed by `key=` belongs to
 the value, so `--where "author=Austen, Jane,mode=instruction"` works.

@@ -15,6 +15,10 @@
 #
 # GUARDRAILS_CONCURRENCY overrides the endpoint's concurrency (default 16): parallel requests
 # to the endpoint. It changes wall time, not scores.
+#
+# GUARDRAILS_LIMIT=N runs only the first N items of each tool (BFCL: of each multi-turn
+# category) and writes no guardrails.json: a check that every step reaches the endpoint and
+# parses its replies, with per-step wall times to extrapolate a full run from.
 set -euo pipefail
 
 if [[ $# -lt 2 || $# -gt 3 ]]; then
@@ -49,6 +53,8 @@ EOF
 )
 { read -r base_url; read -r model; read -r key_env; read -r endpoint_concurrency; } <<< "$fields"
 concurrency=${GUARDRAILS_CONCURRENCY:-$endpoint_concurrency}
+export GUARDRAILS_LIMIT=${GUARDRAILS_LIMIT:-}  # bfcl_run.py reads it in the container
+limit=$GUARDRAILS_LIMIT
 
 if [[ -z $key_env ]]; then
   api_key=EMPTY  # local servers ignore the key, but every client requires one
@@ -92,7 +98,7 @@ fi
 # Steps that call the endpoint need a network; a loopback endpoint means the host's network.
 sandbox=(--rm --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges
   --read-only --tmpfs /tmp:rw,size=4g --memory 8g --pids-limit 1024 -e HOME=/tmp
-  -v "$here:/opt/guardrails:ro")
+  -e GUARDRAILS_LIMIT -v "$here:/opt/guardrails:ro")
 case $base_url in
   http://localhost[:/]* | http://127.* | https://localhost[:/]* | https://127.*) net=(--network host) ;;
   *) net=(--network bridge) ;;
@@ -117,16 +123,16 @@ timed ifeval docker run "${with_endpoint[@]}" -v "$work/ifeval:/work" -e HF_HOME
   sh -c 'cp -r /opt/hf /tmp/hf && exec "$@"' sh \
   /opt/lm-eval/bin/lm_eval --model local-chat-completions \
   --model_args "model=$model,base_url=$base_url/chat/completions,num_concurrent=$concurrency,max_retries=10,tokenized_requests=False,timeout=600" \
-  --tasks ifeval --apply_chat_template --output_path /work --log_samples
+  --tasks ifeval --apply_chat_template --output_path /work --log_samples ${limit:+--limit "$limit"}
 
 # --- HumanEval+ (evalplus) -------------------------------------------------------------------
 # Generation needs the endpoint and only parses the code. evalplus retries a failing request
 # forever, so the step is bounded.
 timed humaneval_gen docker run "${with_endpoint[@]}" -v "$work/humaneval/gen:/work" "$image" \
   timeout 3600 /opt/evalplus/bin/evalplus.codegen --model "$model" --dataset humaneval \
-  --backend openai --base-url "$base_url" --greedy --root /work
+  --backend openai --base-url "$base_url" --greedy --root /work ${limit:+--id_range "[0,$limit]"}
 samples=$(find "$work/humaneval/gen" -name '*.jsonl' ! -name '*.raw.jsonl')
-[[ $(wc -l < "$samples") -eq 164 ]] || { echo "guardrails: HumanEval+ generation incomplete: $samples" >&2; exit 1; }
+[[ $(wc -l < "$samples") -eq ${limit:-164} ]] || { echo "guardrails: HumanEval+ generation incomplete: $samples" >&2; exit 1; }
 cp "$samples" "$work/humaneval/exec/samples.jsonl"
 # Execution: no network, and the only writable mount holds a copy of the samples.
 timed humaneval_exec docker run "${sandbox[@]}" --network none -v "$work/humaneval/exec:/work" "$image" \
@@ -140,6 +146,13 @@ timed bfcl_gen docker run "${with_endpoint[@]}" -v "$work/bfcl:/work" "$image" \
   /opt/bfcl/bin/python /opt/guardrails/bfcl_run.py generate "$model" /work "$concurrency"
 timed bfcl_eval docker run "${sandbox[@]}" --network none -e OPENAI_API_KEY=unused -v "$work/bfcl:/work" "$image" \
   /opt/bfcl/bin/python /opt/guardrails/bfcl_run.py evaluate "$model" /work
+
+if [[ -n $limit ]]; then
+  echo "guardrails: GUARDRAILS_LIMIT=$limit run done, no guardrails.json written; wall seconds:" >&2
+  for k in "${!seconds[@]}"; do echo "  $k ${seconds[$k]}s" >&2; done
+  cat "$work/bfcl/scores.json" >&2
+  exit 0
+fi
 
 # --- guardrails.json -------------------------------------------------------------------------
 docker run "${sandbox[@]}" --network none -v "$work:/work:ro" "$image" \

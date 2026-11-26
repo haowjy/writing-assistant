@@ -13,13 +13,15 @@
 # the file and engine build that answered. `concurrency` is the server's slot count: a request
 # queued behind a full server would spend its timeout waiting.
 
-[endpoints.inkling-2-mini]          # llmpick start inkling-5.4-x4 (4 slots, no drafter)
+[endpoints.inkling-2-mini]          # llmpick start inkling-5.4
 kind = "openai"
 base_url = "http://127.0.0.1:18080/v1"
 model = "Inkling-2-Mini-ATX-NVFP4Q8-5.4bpw.gguf"
 api_key_env = ""
 local = true
-concurrency = 4
+# One slot: llamAmpere's 24ink preset refuses more, and with its flags spelled out and four
+# slots, concurrent requests returned NaN logits (HTTP 500) within minutes (2026-11-26).
+concurrency = 1
 
 [endpoints."qwen3.5-9b"]            # llmpick start qwen3.5-9b-q8
 kind = "openai"

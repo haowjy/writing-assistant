@@ -62,6 +62,11 @@ the host network.
   `summarize.py` has checked that each suite was fully scored (541, 164, 4 x 200).
 - lm-eval re-raises after its retries.
 - evalplus retries forever, so codegen is bounded by `timeout`.
+- `GUARDRAILS_LIMIT=N` runs every step on the first N items (lm-eval `--limit`, evalplus
+  `--id_range`, BFCL's id file and `--partial-eval`) and stops before `summarize.py`, so a
+  partial score can never be stored as a result. It is the check for a loopback endpoint,
+  which has no preflight request, and its per-step seconds are what a full-run estimate
+  scales from.
 - BFCL records a failed request as a wrong answer. `bfcl_run.py` regenerates entries that
   failed on transport errors (up to 3 rounds) and fails if any remain. Entries that fail
   because of the model's own output (bad JSON arguments) stay scored as BFCL scores them,

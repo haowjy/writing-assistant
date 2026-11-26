@@ -11,7 +11,9 @@ which reads OPENAI_BASE_URL and OPENAI_API_KEY.
 `generate` calls the endpoint and writes the model's answers under <project-root>/result;
 it exits non-zero if any entry still failed on a transport error (HTTP 5xx, timeout,
 connection) after the retry rounds, because BFCL would otherwise score it as a wrong
-answer. `evaluate` `eval()`s the call strings whose function names the model chose, so
+answer. With GUARDRAILS_LIMIT=N set (guardrails.sh passes it through), both steps cover only the
+first N entries of each category, through BFCL's id file and partial evaluation.
+`evaluate` `eval()`s the call strings whose function names the model chose, so
 guardrails.sh runs it with no network and no key: it never calls the endpoint, but the
 handler builds an OpenAI client on construction, so OPENAI_API_KEY must hold some value.
 It writes the scores to <project-root>/scores.json (BFCL prints its own trace to stdout).
@@ -58,6 +60,7 @@ TRANSPORT_ERRORS = (
 RETRY_ROUNDS = 3
 
 result_dir = Path(root) / "result" / model.replace("/", "_")
+limit = int(os.environ.get("GUARDRAILS_LIMIT") or 0)
 
 
 def run(*args: str) -> None:
@@ -91,9 +94,15 @@ def model_errors() -> int:
 
 
 if step == "generate":
+    if limit:  # BFCL then generates exactly the ids in this file
+        from bfcl_eval.constants.eval_config import TEST_IDS_TO_GENERATE_PATH
+        from bfcl_eval.utils import load_dataset_entry, parse_test_category_argument
+
+        TEST_IDS_TO_GENERATE_PATH.write_text(json.dumps(
+            {c: [e["id"] for e in load_dataset_entry(c)[:limit]] for c in parse_test_category_argument(categories)}))
     for round_ in range(RETRY_ROUNDS + 1):
         run("generate", "--model", model, "--test-category", ",".join(categories),
-            "--num-threads", threads)
+            "--num-threads", threads, *(["--run-ids"] if limit else []))
         dropped = drop_transport_errors()
         if not dropped:
             sys.exit(0)
@@ -102,7 +111,7 @@ if step == "generate":
 if step != "evaluate":
     sys.exit(f"bfcl_run.py: unknown step {step!r}; generate or evaluate")
 
-run("evaluate", "--model", model, "--test-category", ",".join(categories))
+run("evaluate", "--model", model, "--test-category", ",".join(categories), *(["--partial-eval"] if limit else []))
 
 
 def flat_sum(value) -> int:
