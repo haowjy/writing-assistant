@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from writing_assistant.judges.reply import MAX_TOKENS, Prompt, Unscored, answer_text, why_unanswered
 
 if TYPE_CHECKING:
+    from writing_assistant.episode import CallRecord
     from writing_assistant.llm.client import LLMClient
 
 FORECAST = Prompt(
@@ -24,12 +25,12 @@ FORECAST = Prompt(
 TEMPERATURE = 0.8
 
 
-async def forecasts(client: LLMClient, endpoint: str, prefix: str, n: int) -> list[str]:
-    """The first n numbered forecasts. Raises `Unscored` when the reply has fewer than n."""
+async def forecasts(client: LLMClient, endpoint: str, prefix: str, n: int) -> tuple[list[str], list[CallRecord]]:
+    """(the first n numbered forecasts, [the call]). Raises `Unscored` when the reply has fewer than n."""
     rec = await client.chat(FORECAST.messages(prefix=prefix, n=n), endpoint=endpoint, temperature=TEMPERATURE, max_tokens=MAX_TOKENS)
     reply = answer_text(rec)
     items = [m.strip() for m in re.findall(r"^\s*\d+\s*[.)]\s*(.+?)\s*$", reply, re.MULTILINE)]
     items = [i for i in items if i]
     if len(items) < n:
         raise Unscored(why_unanswered(rec), [rec])
-    return items[:n]
+    return items[:n], [rec]

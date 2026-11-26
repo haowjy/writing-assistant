@@ -6,8 +6,10 @@ does not name is unavailable: its judge raises `Unscored("unavailable")` when ca
 
 A model judge that cannot score an item raises `Unscored` (`reason` "refusal",
 "unparseable", "truncated" or "unavailable"); catch it and leave the item unscored, never
-default it. Each field is a `Judge` whose `stamp` ({use, endpoint, model, prompt}) is what a
-stored judgment is traced to.
+default it. Each model field is a `Judge` whose `stamp` ({use, endpoint, model, prompt}) is
+what a stored judgment is traced to: `await judge(*args)` gives the value, and
+`await judge.judge(*args)` a `Judgment` with the replies behind it and, for the uses a
+human can label, the item in `label_ui.py`'s shape (question, evidence or a/b/context).
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from writing_assistant.judges import readability
 from writing_assistant.judges.embed import ReferenceIndex, cosine, embed
@@ -24,36 +28,66 @@ from writing_assistant.judges.pairwise import AUTHOR, CRAFT, EDIT, SECRET, ab
 from writing_assistant.judges.reply import Unscored
 
 if TYPE_CHECKING:
-    import numpy as np
-
+    from writing_assistant.episode import CallRecord
     from writing_assistant.llm.client import LLMClient
 
-__all__ = ["Judge", "Judges", "ReferenceIndex", "Unscored", "cosine", "judges_from"]
+__all__ = ["Judge", "Judges", "Judgment", "Measure", "ReferenceIndex", "Unscored", "cosine", "judges_from"]
 
 
 @dataclass(frozen=True)
 class Judges:
-    fact: Callable[[str, str], Awaitable[bool]]  # (question, evidence) -> yes/no  [200-label gate]
-    outline: Callable[[str], Awaitable[list[dict]]]  # text -> IdeaLens {role, paraphrase} items
-    craft_pair: Callable[[str, str, str], Awaitable[float]]  # (a, b, reference) -> P(a)  [80-pair gate]
-    edit_pair: Callable[[str, str, str], Awaitable[float]]  # (edited, original, objection) -> P(edited answers it)  [40-pair gate]
-    secret_2afc: Callable[[str, str, str], Awaitable[float]]  # (transcript, secret_a, secret_b) -> P(a)
-    author_verify: Callable[[str, str, list[str]], Awaitable[float]]  # (a, b, held-out passages) -> P(a is the author)  [60-pair gate]
-    embed_semantic: Callable[[list[str]], Awaitable[np.ndarray]]
-    embed_style: Callable[[list[str]], Awaitable[np.ndarray]]
-    forecast: Callable[[str, int], Awaitable[list[str]]]  # (prefix, n) -> n short ending forecasts
-    readability: Callable[[str], dict[str, float]]  # pure spaCy + wordfreq, no model
+    fact: Judge  # (question, evidence) -> yes/no  [200-label gate]
+    outline: Judge  # text -> IdeaLens {role, paraphrase} items
+    craft_pair: Judge  # (a, b, reference) -> P(a)  [80-pair gate]
+    edit_pair: Judge  # (edited, original, objection) -> P(edited answers it)  [40-pair gate]
+    secret_2afc: Judge  # (transcript, secret_a, secret_b) -> P(a)
+    author_verify: Judge  # (a, b, held-out passages) -> P(a is the author)  [60-pair gate]
+    embed_semantic: Judge  # texts -> unit-norm rows
+    embed_style: Judge
+    forecast: Judge  # (prefix, n) -> n short ending forecasts
+    readability: Measure  # pure spaCy + wordfreq, no model
+
+
+@dataclass(frozen=True)
+class Judgment:
+    """One judged item: the value (None when unscored), why it went unscored, the judge's
+    replies, and the item as `label_ui.py` reads it ({} for uses nobody labels)."""
+
+    value: Any
+    unscored: str | None
+    replies: list[str]
+    item: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class Judge:
-    """One calibrated use: calls `fn`, and names what produced its judgments."""
+    """One calibrated use. `fn(*args)` returns (value, the calls behind it) or raises
+    `Unscored`; `item(*args)` gives the labelling fields for a stored judgment."""
 
-    fn: Callable[..., Any]
+    fn: Callable[..., Awaitable[tuple[Any, list[CallRecord]]]]
     stamp: dict[str, str]  # use, endpoint, model, prompt (version)
+    item: Callable[..., dict[str, Any]] = lambda *args: {}
 
-    def __call__(self, *args: Any) -> Any:
-        return self.fn(*args)
+    async def __call__(self, *args: Any) -> Any:
+        return (await self.fn(*args))[0]
+
+    async def judge(self, *args: Any) -> Judgment:
+        try:
+            value, records = await self.fn(*args)
+        except Unscored as e:
+            return Judgment(None, e.reason, [r.response for r in e.records], self.item(*args))
+        return Judgment(value, None, [r.response for r in records], self.item(*args))
+
+
+@dataclass(frozen=True)
+class Measure:
+    """A deterministic measure (no model), stamped like a judge."""
+
+    fn: Callable[[str], dict[str, float]]
+    stamp: dict[str, str]
+
+    def __call__(self, text: str) -> dict[str, float]:
+        return self.fn(text)
 
 
 PASSAGE_BREAK = "\n\n* * *\n\n"
@@ -65,26 +99,37 @@ def judges_from(client: LLMClient, profile: str) -> Judges:
     if unknown := uses.keys() - model_uses:
         raise KeyError(f"[judges.{profile}] names unknown uses {sorted(unknown)}")
 
-    def judge(use: str, prompt: str, fn: Callable[..., Any]) -> Judge:
+    def judge(use: str, prompt: str, fn: Callable[..., Any], item: Callable[..., dict] = lambda *args: {}) -> Judge:
         ep = uses.get(use)
         if ep is None:
-            return Judge(_unavailable, {"use": use, "endpoint": "", "model": "", "prompt": prompt})
-        return Judge(lambda *args: fn(ep, *args), {"use": use, "endpoint": ep, "model": client.endpoints[ep]["model"], "prompt": prompt})
+            return Judge(_unavailable, {"use": use, "endpoint": "", "model": "", "prompt": prompt}, item)
+        return Judge(lambda *args: fn(ep, *args), {"use": use, "endpoint": ep, "model": client.endpoints[ep]["model"], "prompt": prompt}, item)
+
+    async def vectors(ep: str, texts: list[str]) -> tuple[np.ndarray, list]:
+        return await embed(client, ep, texts), []
+
+    def pair(question: str) -> Callable[[str, str, Any], dict[str, Any]]:
+        return lambda a, b, context: {"question": question, "context": context, "a": a, "b": b}
 
     return Judges(
-        fact=judge("fact", FACT.version, lambda ep, q, ev: yes_no(client, ep, q, ev)),
+        fact=judge("fact", FACT.version, lambda ep, q, ev: yes_no(client, ep, q, ev),
+                   lambda q, ev: {"question": q, "evidence": ev}),
         outline=judge("outline", OUTLINE.version, lambda ep, text: outline(client, ep, text)),
-        craft_pair=judge("craft_pair", CRAFT.version, lambda ep, a, b, ref: ab(client, ep, CRAFT, a, b, ref)),
-        edit_pair=judge("edit_pair", EDIT.version, lambda ep, ed, orig, obj: ab(client, ep, EDIT, ed, orig, obj)),
-        secret_2afc=judge("secret_2afc", SECRET.version, lambda ep, tr, sa, sb: ab(client, ep, SECRET, sa, sb, tr)),
+        craft_pair=judge("craft_pair", CRAFT.version, lambda ep, a, b, ref: ab(client, ep, CRAFT, a, b, ref),
+                         pair("Which passage is better fiction for this place in the story?")),
+        edit_pair=judge("edit_pair", EDIT.version, lambda ep, ed, orig, obj: ab(client, ep, EDIT, ed, orig, obj),
+                        pair("Which version better answers the objection, leaving the rest as it was?")),
+        secret_2afc=judge("secret_2afc", SECRET.version, lambda ep, tr, sa, sb: ab(client, ep, SECRET, sa, sb, tr),
+                          lambda tr, sa, sb: pair("Which statement is the secret the transcript points to?")(sa, sb, tr)),
         author_verify=judge(
             "author_verify", AUTHOR.version,
             lambda ep, a, b, passages: ab(client, ep, AUTHOR, a, b, PASSAGE_BREAK.join(passages)),
+            pair("Which candidate did the author of the context passages write?"),
         ),
-        embed_semantic=judge("embed_semantic", "", lambda ep, texts: embed(client, ep, texts)),
-        embed_style=judge("embed_style", "", lambda ep, texts: embed(client, ep, texts)),
+        embed_semantic=judge("embed_semantic", "", vectors),
+        embed_style=judge("embed_style", "", vectors),
         forecast=judge("forecast", FORECAST.version, lambda ep, prefix, n: forecasts(client, ep, prefix, n)),
-        readability=Judge(
+        readability=Measure(
             readability.profile,
             {"use": "readability", "endpoint": "", "model": readability.SPACY_MODEL, "prompt": readability.VERSION},
         ),

@@ -55,9 +55,9 @@ async def _scene(ep: Episode, text: str, services, out: dict[str, float], tally:
     candidate = truncate_tokens(text, min(budget, PASSAGE_TOKENS))
     refs = [r["text"] for r in s["verifier_refs"]]
     fool, match, vectors = await asyncio.gather(
-        tally.ask("discriminator_fool_rate", j.author_verify(candidate, s["y_star"]["text"], refs)),
-        tally.ask("verifier_match", j.author_verify(candidate, s["impostor"]["text"], refs)),
-        tally.ask("style_margin", j.embed_style([text, s["impostor"]["text"], *refs])),
+        tally.ask("discriminator_fool_rate", j.author_verify, candidate, s["y_star"]["text"], refs),
+        tally.ask("verifier_match", j.author_verify, candidate, s["impostor"]["text"], refs),
+        tally.ask("style_margin", j.embed_style, [text, s["impostor"]["text"], *refs]),
     )
     for name, value in (("discriminator_fool_rate", fool), ("verifier_match", match)):
         if value is not None:
@@ -87,7 +87,7 @@ async def _edit(ep: Episode, after: str, services, out: dict[str, float], tally:
         out["edit_scope"] = sum(p in kept for p in outside) / len(outside)
     out["scope_changed"] = sum(p not in kept for p in inside) / len(inside)
     if out["edited"]:
-        win = await tally.ask("edit_pair_win", services.judges.edit_pair(after, original, s["objection"]))
+        win = await tally.ask("edit_pair_win", services.judges.edit_pair, after, original, s["objection"])
         if win is not None:
             out["edit_pair_win"] = float(win)
     written = set(before_pars)
@@ -101,15 +101,13 @@ OUTPUT = {
 }
 
 
-async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str, float]:
+async def score(ep: Episode, services, tally: Tally, twin: Episode | None = None) -> dict[str, float]:
     kind = ep.state["kind"]
     try:
         artefact = OUTPUT[kind](ep)
     except NoOutput as e:
         return {f"n_no_output.{e.reason}": 1.0}
     out: dict[str, float] = {}
-    tally = Tally()
     prose = await SCORERS[kind](ep, artefact, services, out, tally)
-    tally.into(out)
     prose_metrics(out, prose, ep, services)
     return out

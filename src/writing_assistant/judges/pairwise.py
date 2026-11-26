@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from writing_assistant.judges.reply import MAX_TOKENS, TEMPERATURE, Prompt, Unscored, pick
 
 if TYPE_CHECKING:
+    from writing_assistant.episode import CallRecord
     from writing_assistant.llm.client import LLMClient
 
 _FINAL = (
@@ -72,8 +73,8 @@ SECRET = Prompt(
 _CHOICE = {"a": 1.0, "passage a": 1.0, "b": 0.0, "passage b": 0.0, "tie": 0.5, "neither": 0.5, "both": 0.5}
 
 
-async def ab(client: LLMClient, endpoint: str, prompt: Prompt, a: str, b: str, context: str) -> float:
-    """P(a), averaged over both orders. Both orders must parse: scoring the one that did
+async def ab(client: LLMClient, endpoint: str, prompt: Prompt, a: str, b: str, context: str) -> tuple[float, list[CallRecord]]:
+    """(P(a) averaged over both orders, [both calls]). Both orders must parse: scoring the one that did
     would let the position bias the swap exists to cancel back in, so either failing raises
     `Unscored` (refusal if either order refused) carrying both calls."""
 
@@ -94,4 +95,4 @@ async def ab(client: LLMClient, endpoint: str, prompt: Prompt, a: str, b: str, c
     if reasons:
         worst = next(r for r in ("refusal", "truncated", "unparseable") if r in reasons)
         raise Unscored(worst, [fwd, rev])
-    return sum(scores) / 2
+    return sum(scores) / 2, [fwd, rev]

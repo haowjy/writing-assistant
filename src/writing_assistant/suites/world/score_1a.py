@@ -9,7 +9,9 @@ log and is written whenever the episode ran.
 A metric that does not apply to a task is absent, never 0.0. Whether a text uses a fact is
 asked of the `fact` judge with the text in view; an item the judge leaves unscored
 (`judges.Unscored`) is left out and counted per metric by `Tally`, and a rate with no judged
-item is absent. A `net_*` metric needs the twin's artefact too and is absent without it.
+item is absent. The twin (`tasks_1a.TWINS`) is judged here, once, as the parent's baseline:
+its rate is written as `twin_<metric>` and a `net_*` metric is the parent's rate minus it,
+absent when either side has no artefact or no judged item.
 """
 
 from __future__ import annotations
@@ -25,25 +27,18 @@ CONTRADICTION_Q = "Does the narration state anything that contradicts the record
 
 # metric -> judge use (Suite.judged_by): everything the fact judge answers.
 JUDGED_BY = dict.fromkeys(
-    ["residue_rate", "post_pivot_residue", "pov_leak", "net_pov_leak", "permitted_fact_recall",
-     "canon_snapback", "bent_rule_compliance", "canon_rule_compliance", "bent_rule_intrusion",
+    ["residue_rate", "twin_residue_rate", "post_pivot_residue", "pov_leak", "twin_pov_leak", "net_pov_leak",
+     "permitted_fact_recall", "canon_snapback", "bent_rule_compliance", "twin_bent_rule_intrusion",
      "net_canon_snapback", "contradictions_per_1k"],
     "fact",
 )
 
 
-class _Judged:
-    """Rates from the `fact` judge; unscored items are counted in `tally` under the metric."""
-
-    def __init__(self, services) -> None:
-        self.fact = services.judges.fact
-        self.tally = Tally()
-
-    async def ask(self, metric: str, question: str, evidence: str) -> bool | None:
-        return await self.tally.ask(metric, self.fact(question, evidence))
-
-    async def rate(self, metric: str, questions: list[str], text: str) -> float | None:
-        return mean(await asyncio.gather(*(self.ask(metric, q, text) for q in questions)))
+async def _rate(tally: Tally, services, metric: str, questions: list[str], text: str,
+                about: str | None = None) -> float | None:
+    """Share of `questions` the fact judge answers yes about `text`; None if none was judged."""
+    fact = services.judges.fact
+    return mean(await asyncio.gather(*(tally.ask(metric, fact, q, text, about=about) for q in questions)))
 
 
 def _put(out: dict[str, float], name: str, value: float | None) -> None:
@@ -85,40 +80,34 @@ OUTPUT = {
 
 # -- outcome metrics per task kind: (metrics, the rate a net metric subtracts from) ----------
 
-async def _pivot(ep: Episode, scene: str, judge: _Judged) -> tuple[dict, float | None]:
-    residue = await judge.rate("residue_rate", ep.state["pivot"]["residue_probes"], scene)
+async def _pivot(ep: Episode, scene: str, services, tally: Tally) -> tuple[dict, float | None]:
+    residue = await _rate(tally, services, "residue_rate", ep.state["pivot"]["residue_probes"], scene)
     out: dict[str, float] = {}
     _put(out, "residue_rate", residue)
     return out, residue
 
 
-async def _pov(ep: Episode, chapter: str, judge: _Judged) -> tuple[dict, float | None]:
+async def _pov(ep: Episode, chapter: str, services, tally: Tally) -> tuple[dict, float | None]:
     s = ep.state["pov"]
     out: dict[str, float] = {}
-    leak = await judge.rate("pov_leak", s["hidden_probes"], chapter)
+    leak = await _rate(tally, services, "pov_leak", s["hidden_probes"], chapter)
     _put(out, "pov_leak", leak)
-    _put(out, "permitted_fact_recall", await judge.rate("permitted_fact_recall", s["permitted_probes"], chapter))
+    _put(out, "permitted_fact_recall", await _rate(tally, services, "permitted_fact_recall", s["permitted_probes"], chapter))
     return out, leak
 
 
-async def _rule_bend(ep: Episode, chapter: str, judge: _Judged) -> tuple[dict, float | None]:
+async def _rule_bend(ep: Episode, chapter: str, services, tally: Tally) -> tuple[dict, float | None]:
+    """The bent arm: canon_snapback (canon probes, yes = followed canon over the rules file)
+    and bent_rule_compliance (bent probes, yes = followed the rules file)."""
     s = ep.state["rule_bend"]
-    bent_arm = ep.condition == "bent"
-    canon = await judge.rate("canon_snapback" if bent_arm else "canon_rule_compliance", s["canon_probes"], chapter)
-    bent = await judge.rate("bent_rule_compliance" if bent_arm else "bent_rule_intrusion", s["bent_probes"], chapter)
     out: dict[str, float] = {}
-    if bent_arm:
-        _put(out, "canon_snapback", canon)
-        _put(out, "bent_rule_compliance", bent)
-        wrong = canon
-    else:  # the twin keeps canon: following the bent rule is the wrong-rule rate here
-        _put(out, "canon_rule_compliance", canon)
-        _put(out, "bent_rule_intrusion", bent)
-        wrong = bent
-    return out, wrong
+    canon = await _rate(tally, services, "canon_snapback", s["canon_probes"], chapter)
+    _put(out, "canon_snapback", canon)
+    _put(out, "bent_rule_compliance", await _rate(tally, services, "bent_rule_compliance", s["bent_probes"], chapter))
+    return out, canon
 
 
-async def _dm(ep: Episode, narration: str, judge: _Judged) -> tuple[dict, None]:
+async def _dm(ep: Episode, narration: str, services, tally: Tally) -> tuple[dict, None]:
     """Each narration is checked against the world events recorded before it."""
     out: dict[str, float] = {}
     contradictions, words, record = 0, 0, []
@@ -128,7 +117,7 @@ async def _dm(ep: Episode, narration: str, judge: _Judged) -> tuple[dict, None]:
         elif ev.kind == "say" and ev.actor == DM and ev.data["text"].strip():
             text = ev.data["text"]
             evidence = f"Recorded world events:\n{render_log(record, 'the party') or '(none)'}\n\nNarration:\n{text}"
-            answer = await judge.ask("contradictions_per_1k", CONTRADICTION_Q, evidence)
+            answer = await tally.ask("contradictions_per_1k", services.judges.fact, CONTRADICTION_Q, evidence)
             if answer is not None:
                 contradictions += answer
                 words += len(text.split())
@@ -204,13 +193,20 @@ def _collab(ep: Episode) -> dict[str, float]:
 
 
 SCORERS = {"pivot_unbinding": _pivot, "pov_write": _pov, "rule_bend": _rule_bend, "dm_play": _dm}
-NET = {"pivot_unbinding": "post_pivot_residue", "pov_write": "net_pov_leak", "rule_bend": "net_canon_snapback"}
+# kind -> (net metric, the twin's rate as written beside it, the probes the twin is judged on)
+NET = {
+    "pivot_unbinding": ("post_pivot_residue", "twin_residue_rate", lambda s: s["pivot"]["residue_probes"]),
+    "pov_write": ("net_pov_leak", "twin_pov_leak", lambda s: s["pov"]["hidden_probes"]),
+    "rule_bend": ("net_canon_snapback", "twin_bent_rule_intrusion", lambda s: s["rule_bend"]["bent_probes"]),
+}
 
 
-async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str, float]:
-    """Metrics for one episode. With its twin (`tasks_1a.TWINS`), also the net metric: the
-    episode's rate minus the twin's baseline (for rule_bend, canon use under the bent rule
-    minus bent-rule use under kept canon)."""
+async def score(ep: Episode, services, tally: Tally, twin: Episode | None = None) -> dict[str, float]:
+    """Metrics for one episode, and with its twin the net metric: the episode's rate minus
+    the twin's (residue minus clean_b residue; leak minus swapped-secret leak; for rule_bend,
+    canon use under the bent rule minus bent-rule use under kept canon). Each rule_bend row
+    has one canon and one bent probe, so net_canon_snapback is -1, 0 or 1 per row, and a
+    chapter that avoids the topic scores 0 on both sides."""
     kind = ep.state["kind"]
     out = _dm_log(ep) if kind == "dm_play" else {}
     try:
@@ -219,18 +215,18 @@ async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str,
         return out | {f"n_no_output.{e.reason}": 1.0}
     if kind == "collab_edit":
         return out | _collab(ep)
-    judge = _Judged(services)
-    metrics, own = await SCORERS[kind](ep, text, judge)
+    metrics, own = await SCORERS[kind](ep, text, services, tally)
     out |= metrics
     if twin is not None and kind in NET:
+        net, twin_metric, probes = NET[kind]
         try:
             twin_text = OUTPUT[kind](twin)
         except NoOutput as e:
             out[f"n_twin_no_output.{e.reason}"] = 1.0
         else:
-            _, base = await SCORERS[kind](twin, twin_text, _Judged(services))
+            base = await _rate(tally, services, twin_metric, probes(twin.state), twin_text, about=twin.ep_id)
+            _put(out, twin_metric, base)
             if own is not None and base is not None:
-                out[NET[kind]] = own - base
-    judge.tally.into(out)
+                out[net] = own - base
     prose_metrics(out, text, ep, services)
     return out

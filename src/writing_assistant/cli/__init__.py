@@ -6,8 +6,13 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
                         per judge profile the judges' stamps and the USD the hosts reported
     episodes.jsonl      every saved episode, appended one task at a time; never rewritten
     errors.jsonl        tasks that raised in setup or play (not saved; a resume reruns them)
-    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored; `wa-bench
-                        score` replaces the rows of the episodes it scored, never episodes.jsonl
+    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored; a twin's
+                        row says only whose baseline it is (`baseline_of`). `wa-bench score`
+                        replaces the rows of the episodes it scored, never episodes.jsonl
+    judgments-<profile>.jsonl  every labelable judge item behind the scores, one per line, in
+                        label_ui.py's shape (question, evidence or a/b/context, `model` the
+                        judge's answer or null) plus `scored` (the row it counts in), `ep_id`
+                        (whose text was judged), `metric`, `unscored`, `judge` and `replies`
     guardrails.json     from `wa-bench guardrails --run`
 
 `run` resumes a directory that already has a run.json for the same suite, driver, endpoint
@@ -40,7 +45,7 @@ from writing_assistant.episode import Episode
 from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, TASKS_DIR, Task, load_episodes, matches, save_episodes
 from writing_assistant.judges import Judges, judges_from
 from writing_assistant.llm.client import LLMClient, local_only
-from writing_assistant.suites import SUBJECT, SUITES, Services, Suite
+from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
 
 ROOT = Path(__file__).resolve().parents[3]
 RUN_FILE, ERRORS_FILE = "run.json", "errors.jsonl"
@@ -128,6 +133,12 @@ def _jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()] if path.exists() else []
 
 
+def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    tmp.replace(path)
+
+
 def _write_json(path: Path, data: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
@@ -136,35 +147,47 @@ def _write_json(path: Path, data: dict) -> None:
 
 # -- scoring -------------------------------------------------------------------------------
 
-def twins_of(episodes: list[Episode], suite: Suite) -> dict[str, Episode | None]:
-    """The twin of an episode is the saved episode whose parent_id is its ep_id and whose
-    condition is the one `suite.twins` names for its condition."""
-    children = {(ep.parent_id, ep.condition): ep for ep in episodes if ep.parent_id}
-    return {ep.ep_id: children.get((ep.ep_id, suite.twins[ep.condition])) if ep.condition in suite.twins else None
-            for ep in episodes}
+def twins_of(episodes: list[Episode], suite: Suite) -> dict[str, Episode]:
+    """Parent ep_id -> its twin: the saved episode whose parent_id is the parent's ep_id and
+    whose condition is the one `suite.twins` names for the parent's condition. A twin is a
+    baseline, judged only through its parent's `score()`."""
+    by_id = {ep.ep_id: ep for ep in episodes}
+    return {ep.parent_id: ep for ep in episodes
+            if ep.parent_id in by_id and suite.twins.get(by_id[ep.parent_id].condition) == ep.condition}
 
 
-async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, services: Services) -> dict:
+async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, services: Services) -> tuple[dict, list[dict]]:
+    """(scores row, the judgments behind it)."""
     row = {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
            "twin": twin.ep_id if twin else None}
     if ep.status == "failed":
-        return row | {"skipped": ep.failure_reason}
+        return row | {"skipped": ep.failure_reason}, []
+    tally = Tally()
     try:
         with local_only(ep.split == LOCAL_DEV):
-            return row | {"metrics": await suite.score(ep, services, twin)}
+            metrics = await suite.score(ep, services, tally, twin)
     except Exception as e:  # one episode's scorer failing must not stop the others
-        return row | {"error": f"{type(e).__name__}: {e}"}
+        return row | {"error": f"{type(e).__name__}: {e}"}, []
+    judgments = [{"id": f"{ep.ep_id}#{n}", "scored": ep.ep_id, "ep_id": ep.ep_id} | j
+                 for n, j in enumerate(tally.judgments)]
+    return row | {"metrics": tally.into(metrics)}, judgments
 
 
-async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int) -> list[dict]:
+async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int) -> tuple[list[dict], list[dict]]:
+    """Rows for every episode (a twin's says whose baseline it is) and all judgments."""
     twins = twins_of(episodes, suite)
+    baseline_of = {twin.ep_id: parent for parent, twin in twins.items()}
     sem = asyncio.Semaphore(concurrency)
 
-    async def one(ep: Episode) -> dict:
+    async def one(ep: Episode) -> tuple[dict, list[dict]]:
+        if ep.ep_id in baseline_of:
+            return {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
+                    "baseline_of": baseline_of[ep.ep_id]}, []
         async with sem:
-            return await score_episode(suite, ep, twins[ep.ep_id], services)
+            return await score_episode(suite, ep, twins.get(ep.ep_id), services)
 
-    return await asyncio.gather(*(one(ep) for ep in episodes))
+    scored = await asyncio.gather(*(one(ep) for ep in episodes))
+    return [row for row, _ in scored], [j for _, js in scored for j in js]
 
 
 def record(run_dir: Path, services: Services, profile: str | None) -> None:
@@ -236,7 +259,10 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 counts[ep.status] += 1
             save_episodes(eps, run_dir)
             if not args.no_score:
-                for row in await score_all(suite, eps, services, len(eps) or 1):
+                rows, judgments = await score_all(suite, eps, services, len(eps) or 1)
+                for j in judgments:
+                    _append(run_dir / f"judgments-{args.judges}.jsonl", j)
+                for row in rows:
                     _append(run_dir / f"scores-{args.judges}.jsonl", row)
                     counts["score_errors"] += "error" in row
             print(f"  {task.task_id}: " + ", ".join(f"{ep.condition}={ep.status}" for ep in eps), flush=True)
@@ -262,15 +288,15 @@ async def cmd_score(args: argparse.Namespace) -> int:
         episodes = [ep for ep in episodes if matches(ep.meta.get("row", {}), args.where)]
     services = services_for(args.models, args.judges)
     try:
-        rows = await score_all(suite, episodes, services, args.concurrency)
+        rows, judgments = await score_all(suite, episodes, services, args.concurrency)
     finally:
         await services.llm.aclose()
+    # Merged by ep_id: the rows and judgments of episodes `--where` did not select stay.
     path = run_dir / f"scores-{args.judges}.jsonl"
-    # Merged by ep_id: the rows of episodes `--where` did not select stay as they were.
-    merged = {r["ep_id"]: r for r in _jsonl(path)} | {r["ep_id"]: r for r in rows}
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in merged.values()), encoding="utf-8")
-    tmp.replace(path)
+    _write_jsonl(path, list(({r["ep_id"]: r for r in _jsonl(path)} | {r["ep_id"]: r for r in rows}).values()))
+    rescored = {r["ep_id"] for r in rows}
+    jpath = run_dir / f"judgments-{args.judges}.jsonl"
+    _write_jsonl(jpath, [j for j in _jsonl(jpath) if j["scored"] not in rescored] + judgments)
     record(run_dir, services, args.judges)
     errors = sum("error" in r for r in rows)
     print(f"{path}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, {errors} scorer errors; "
@@ -367,9 +393,9 @@ def stage_sync(stage: Path, runs: Path, corpus: Corpus) -> Counter[str]:
             lines.append(json.dumps(d, ensure_ascii=False) + "\n")
         (dest / EPISODES_FILE).write_text("".join(lines))
         counts["episodes"] += len(lines)
-        for path in run_dir.glob("scores-*.jsonl"):
-            rows = [r for r in _jsonl(path) if r["ep_id"] in keep]
-            (dest / path.name).write_text("".join(json.dumps(r) + "\n" for r in rows))
+        for path in [*run_dir.glob("scores-*.jsonl"), *run_dir.glob("judgments-*.jsonl")]:
+            rows = [r for r in _jsonl(path) if r["ep_id"] in keep and r.get("scored", r["ep_id"]) in keep]
+            (dest / path.name).write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
         for name in (RUN_FILE, "guardrails.json"):
             if (run_dir / name).exists():
                 shutil.copy(run_dir / name, dest / name)

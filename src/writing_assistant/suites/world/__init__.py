@@ -28,8 +28,8 @@ class World1a:
     async def play(self, eps: list[Episode], services, turn) -> list[Episode]:
         return await tasks_1a.play(eps, services, turn)
 
-    async def score(self, ep: Episode, services, twin: Episode | None = None) -> dict[str, float]:
-        return await score_1a.score(ep, services, twin)
+    async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
+        return await score_1a.score(ep, services, tally, twin)
 
 
 suite_1a = World1a()

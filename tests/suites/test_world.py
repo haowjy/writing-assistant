@@ -10,6 +10,8 @@ import pytest
 from writing_assistant.episode import Episode
 from writing_assistant.episode.store import Task
 from writing_assistant.episode.tools import dispatch_tool
+from writing_assistant.judges import Judge
+from writing_assistant.suites import Tally
 from writing_assistant.suites.world import srd, suite_1a
 
 SECRET = "Orin is the last heir of the drowned kings."
@@ -135,14 +137,14 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
 
     # Scored with a scripted fact judge: the leak nets out against the twin, recall is the floor.
     async def fact(question, evidence):
-        return ("heir" in question and "heir" in evidence) or ("glove" in question and "glove" in evidence)
+        return ("heir" in question and "heir" in evidence) or ("glove" in question and "glove" in evidence), []
 
-    services = SimpleNamespace(judges=SimpleNamespace(fact=fact, readability=lambda text: {}),
+    services = SimpleNamespace(judges=SimpleNamespace(fact=Judge(fact, {"use": "fact"}), readability=lambda text: {}),
                                corpus=SimpleNamespace(overlap=lambda text, ep: {}, flag=lambda o: False))
     for ep in eps:
         ep.complete()
-    scores = await suite_1a.score(full, services, full_twin)
-    assert (scores["pov_leak"], scores["net_pov_leak"], scores["permitted_fact_recall"]) == (1.0, 1.0, 1.0)
+    scores = await suite_1a.score(full, services, Tally(), full_twin)
+    assert (scores["pov_leak"], scores["twin_pov_leak"], scores["net_pov_leak"], scores["permitted_fact_recall"]) == (1.0, 0.0, 1.0, 1.0)
 
 
 @pytest.mark.parametrize("secret", ["Orin burned the café.", 'Orin said "I did it".'])

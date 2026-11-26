@@ -8,7 +8,9 @@ never import drivers. A suite package never imports another suite package.
   placeholder.
 - Twins: the twin of an episode is the saved episode whose `parent_id` is that episode's
   `ep_id` and whose `condition` is `suite.twins[episode.condition]`. A condition missing
-  from `twins` is scored without a twin.
+  from `twins` is scored without a twin. A twin is a baseline, never scored on its own: its
+  parent's `score()` judges it once, writes its rate as `twin_<metric>` and subtracts it in
+  the `net_*` metric.
 - `judged_by` maps each metric to the judge use it depends on; `wa-bench report` marks a
   metric ungated until that use's human-label gate has passed. Metrics not listed are
   deterministic.
@@ -24,17 +26,16 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol
 
 from writing_assistant.episode import Episode
-from writing_assistant.judges import Unscored
 from writing_assistant.judges.reply import REFUSAL
 
 if TYPE_CHECKING:
     from writing_assistant.corpus import Corpus
     from writing_assistant.episode.store import Task
     from writing_assistant.episode.tools import ToolTable
-    from writing_assistant.judges import Judges
+    from writing_assistant.judges import Judge, Judges
     from writing_assistant.judges.embed import ReferenceIndex
     from writing_assistant.llm.client import LLMClient
     from writing_assistant.search.gateway import SearchGateway
@@ -74,33 +75,38 @@ class Suite(Protocol):
         ...
 
     async def score(
-        self, ep: Episode, services: Services, twin: Episode | None = None
+        self, ep: Episode, services: Services, tally: Tally, twin: Episode | None = None
     ) -> dict[str, float]:
-        """Pure over a frozen episode; a failed episode is never scored."""
+        """Pure over a frozen episode; a failed episode is never scored. Every judge call
+        goes through `tally.ask`, which the caller turns into counts and stored judgments."""
         ...
-
-
-T = TypeVar("T")
 
 
 @dataclass
 class Tally:
-    """Judged items per metric. `ask` returns the judge's value, or None when the judge
-    raised `Unscored`, counting why; `into(out)` writes `n_judged.<metric>` and
-    `n_unscored.<metric>.<reason>` beside the metrics, so a report can give the refused rate
-    beside each metric. A metric with no judged item is absent, never 0.0."""
+    """Judged items per metric, and the judgments behind them. `ask(metric, judge, *args)`
+    returns the judge's value, or None when the judge left the item unscored, counting why;
+    `into(out)` writes `n_judged.<metric>` and `n_unscored.<metric>.<reason>` beside the
+    metrics, so a report can give the refused rate beside each metric. A metric with no
+    judged item is absent, never 0.0. `judgments` holds every labelable item (question,
+    evidence or a/b/context, the judge's stamp, answer or unscored reason, and replies);
+    `about` names the episode whose text was judged when it is not the one being scored."""
 
     judged: Counter[str] = field(default_factory=Counter)
     unscored: Counter[tuple[str, str]] = field(default_factory=Counter)
+    judgments: list[dict[str, Any]] = field(default_factory=list)
 
-    async def ask(self, metric: str, judgment: Awaitable[T]) -> T | None:
-        try:
-            value = await judgment
-        except Unscored as e:
-            self.unscored[(metric, e.reason)] += 1
+    async def ask(self, metric: str, judge: Judge, *args: Any, about: str | None = None) -> Any:
+        j = await judge.judge(*args)
+        if j.item:
+            self.judgments.append({"metric": metric, **({"ep_id": about} if about else {}), **j.item,
+                                   "model": j.value, "unscored": j.unscored, "judge": judge.stamp,
+                                   "replies": j.replies})
+        if j.unscored:
+            self.unscored[(metric, j.unscored)] += 1
             return None
         self.judged[metric] += 1
-        return value
+        return j.value
 
     def into(self, out: dict[str, float]) -> dict[str, float]:
         out |= {f"n_judged.{m}": float(n) for m, n in self.judged.items()}

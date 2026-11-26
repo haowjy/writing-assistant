@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from writing_assistant.judges.reply import MAX_TOKENS, TEMPERATURE, Prompt, Unscored, answer_text, pick, why_unanswered
 
 if TYPE_CHECKING:
+    from writing_assistant.episode import CallRecord
     from writing_assistant.llm.client import LLMClient
 
 FACT = Prompt(
@@ -44,17 +45,17 @@ OUTLINE = Prompt(
 )
 
 
-async def yes_no(client: LLMClient, endpoint: str, question: str, evidence: str) -> bool:
-    """Raises `Unscored` on a refusal or a reply with no YES/NO answer."""
+async def yes_no(client: LLMClient, endpoint: str, question: str, evidence: str) -> tuple[bool, list[CallRecord]]:
+    """(answer, [the call]). Raises `Unscored` on a refusal or a reply with no YES/NO answer."""
     rec = await client.chat(
         FACT.messages(question=question, evidence=evidence),
         endpoint=endpoint, temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
     )
-    return pick(rec, {"yes": True, "no": False})
+    return pick(rec, {"yes": True, "no": False}), [rec]
 
 
-async def outline(client: LLMClient, endpoint: str, text: str) -> list[dict]:
-    """IdeaLens items `{role, paraphrase}`, in text order. Raises `Unscored` unless the reply
+async def outline(client: LLMClient, endpoint: str, text: str) -> tuple[list[dict], list[CallRecord]]:
+    """(IdeaLens items `{role, paraphrase}` in text order, [the call]). Raises `Unscored` unless the reply
     holds a non-empty JSON array of such items."""
     rec = await client.chat(
         OUTLINE.messages(text=text), endpoint=endpoint, temperature=TEMPERATURE, max_tokens=MAX_TOKENS,
@@ -74,4 +75,4 @@ async def outline(client: LLMClient, endpoint: str, text: str) -> list[dict]:
     )
     if not ok:
         raise Unscored(why_unanswered(rec), [rec])
-    return [{"role": it["role"].strip(), "paraphrase": it["paraphrase"].strip()} for it in items]
+    return [{"role": it["role"].strip(), "paraphrase": it["paraphrase"].strip()} for it in items], [rec]
