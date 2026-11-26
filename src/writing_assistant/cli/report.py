@@ -1,4 +1,9 @@
-"""`wa-bench report`: a run's metrics per group, with gates, refusals and baseline deltas."""
+"""`wa-bench report`: a run's metrics per group, with gates, refusals and baseline deltas.
+
+A metric whose judge has not passed its human-label gate (`[gates] passed` in models.toml,
+`Suite.judged_by`) prints marked "ungated" in a run's own report and is left out of a
+`--baseline` comparison (DECISIONS #12): looking at it calibrates the gate, comparing
+models on it would not be a result."""
 
 from __future__ import annotations
 
@@ -106,16 +111,19 @@ def cmd_report(args: argparse.Namespace) -> int:
             if missing := {k.removeprefix(prefix): int(v) for k, v in sorted(g["counts"].items()) if k.startswith(prefix)}:
                 print(f"  {what}: " + ", ".join(f"{reason} {n}" for reason, n in missing.items()))
         print(f"  {'metric':40} {'mean':>8} {'n':>4} {'w/o flag':>8} {'refused':>8}  notes")
+        left_out = []
         for name in sorted(g["values"]):
+            use = suite.judged_by.get(name)
+            ungated = bool(use) and f"{args.judges}.{use}" not in passed
+            if ungated and base is not None:  # an ungated number never enters a comparison
+                left_out.append(name)
+                continue
             vals = g["values"][name]
             judged = g["counts"].get(f"n_judged.{name}", 0)
             unscored = {k.rsplit(".", 1)[1]: v for k, v in g["counts"].items() if k.startswith(f"n_unscored.{name}.")}
             total = judged + sum(unscored.values())
             refused = unscored.get("refusal", 0) / total if total else None
-            notes = []
-            use = suite.judged_by.get(name)
-            if use and f"{args.judges}.{use}" not in passed:
-                notes.append(f"ungated ({use})")
+            notes = [f"ungated ({use})"] if ungated else []
             if other := {k: int(v) for k, v in unscored.items() if k != "refusal"}:
                 notes.append(f"unscored {other}")
             if base is not None:
@@ -128,6 +136,8 @@ def cmd_report(args: argparse.Namespace) -> int:
                 notes.append(f"low-fam {_fmt(low)}, gap {_fmt(high - low)}")
             print(f"  {name:40} {_fmt(mean(vals)):>8} {len(vals):>4} {_fmt(mean(g['unflagged'].get(name, []))):>8} "
                   f"{_fmt(refused) if total else '':>8}  {'; '.join(notes)}")
+        if left_out:
+            print(f"  left out of the comparison, judge not yet gated: {', '.join(left_out)}")
         # metrics every item of which went unscored: absent above, never 0.0
         for k in sorted(g["counts"]):
             if k.startswith("n_unscored.") and k.split(".")[1] not in g["values"]:
