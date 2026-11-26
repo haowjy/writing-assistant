@@ -2,8 +2,11 @@
 
 A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one):
 
-    run.json            what was run: suite, driver, endpoint, split, where, code version, and
-                        per judge profile the judges' stamps and the USD the hosts reported
+    run.json            what was run: suite, driver, endpoint, model, split, max_tokens; one
+                        entry per invocation (time, code version, where, limit); per judge
+                        profile the judges' stamps and the code that scored; the USD the hosts
+                        reported. Each episode's meta has its own temperature, max_tokens and
+                        code version, so a run resumed after a code change says which is which
     episodes.jsonl      every saved episode, appended one task at a time; never rewritten
     errors.jsonl        tasks that raised in setup or play (not saved; a resume reruns them)
     scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored; a twin's
@@ -15,8 +18,9 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
                         (whose text was judged), `metric`, `unscored`, `judge` and `replies`
     guardrails.json     from `wa-bench guardrails --run`
 
-`run` resumes a directory that already has a run.json for the same suite, driver, endpoint
-and split: tasks with saved episodes are skipped (`--where` may differ between invocations). One task that raises, or one episode whose
+`run` resumes a directory that already has a run.json for the same suite, driver, endpoint,
+model, split and max_tokens (anything else is refused): tasks with saved episodes are
+skipped (`--where` may differ between invocations). One task that raises, or one episode whose
 scoring raises, is recorded and the run goes on. `local_dev` rows are set up, played and
 scored inside `llm.client.local_only()`.
 """
@@ -198,7 +202,7 @@ def record(run_dir: Path, services: Services, profile: str | None) -> None:
     for endpoint, usd in services.llm.spent.items():
         spent[endpoint] = round(spent.get(endpoint, 0.0) + usd, 6)
     if profile:
-        info.setdefault("scoring", {})[profile] = {"judges": judge_stamps(services.judges), "at": _now()}
+        info.setdefault("scoring", {})[profile] = {"judges": judge_stamps(services.judges), "code": code_version(), "at": _now()}
     _write_json(run_dir / RUN_FILE, info)
 
 
@@ -212,24 +216,25 @@ async def cmd_run(args: argparse.Namespace) -> int:
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
     run_dir.mkdir(parents=True, exist_ok=True)
     identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
-                "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split}
+                "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split,
+                "max_tokens": args.max_tokens}
+    code = code_version()
     if (run_dir / RUN_FILE).exists():
         info = json.loads((run_dir / RUN_FILE).read_text())
         if {k: info.get(k) for k in identity} != identity:
-            sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}")
+            sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}; this one is {identity}")
     else:
-        info = identity | {"where": args.where, "temperature": args.temperature,
-                           "max_tokens": args.max_tokens, "code": code_version(), "started": _now(),
-                           "reported_apart": args.driver == "direct"}
-        _write_json(run_dir / RUN_FILE, info)
+        info = identity | {"started": _now(), "reported_apart": args.driver == "direct"}
+    info.setdefault("invocations", []).append({"at": _now(), "code": code, "where": args.where, "limit": args.limit})
+    _write_json(run_dir / RUN_FILE, info)
 
     done = {ep.task_id for ep in load_episodes(run_dir)} if (run_dir / EPISODES_FILE).exists() else set()
     tasks = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit]
     print(f"{run_dir}: {len(tasks)} tasks to run ({len(done)} already saved)", flush=True)
-    driver = DRIVERS[args.driver](services.llm, suite.tools, temperature=args.temperature, max_tokens=args.max_tokens)
+    driver = DRIVERS[args.driver](services.llm, suite.tools, max_tokens=args.max_tokens)
     turn = Binding(driver)
-    meta = {"driver": args.driver, "harness": f"{args.driver}@{info['code']}", "endpoint": args.endpoint,
-            "run": run_dir.name}
+    meta = {"driver": args.driver, "harness": f"{args.driver}@{code}", "code": code, "endpoint": args.endpoint,
+            "max_tokens": args.max_tokens, "run": run_dir.name}
     sem = asyncio.Semaphore(args.concurrency)
     counts: Counter[str] = Counter()
 
@@ -436,7 +441,6 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--judges", default="eval", choices=["eval", "train"])
     r.add_argument("--no-score", action="store_true", help="play and save only; score later")
     r.add_argument("--concurrency", type=int, default=8, help="tasks in flight")
-    r.add_argument("--temperature", type=float, default=0.7)
     r.add_argument("--max-tokens", type=int, default=16384, help="per model call, thinking included")
 
     s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired)")

@@ -80,9 +80,14 @@ def cmd_report(args: argparse.Namespace) -> int:
     suite = SUITES[info["suite"]]
     base = _summarise(Path(args.baseline), args.judges, keys, args.where)[1] if args.baseline else None
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
+    codes = sorted({i["code"] for i in info.get("invocations", [])} or {info.get("code", "unknown")})
     print(f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
           f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
-          f"split {info['split']}, code {info['code']}, judges {args.judges}")
+          f"split {info['split']}, played by code {', '.join(codes)}, judges {args.judges}")
+    scoring = info.get("scoring", {}).get(args.judges, {})
+    if "code" not in scoring:
+        print("scores written before the scoring code was stamped (before the artefact and twin rules): "
+              f"re-score with `wa-bench score --run {run_dir} --judges {args.judges}`")
     if spent := info.get("spent_usd"):
         print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())})")
     if (run_dir / "guardrails.json").exists():

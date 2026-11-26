@@ -1,5 +1,7 @@
 """In-process tool loop over `LLMClient.chat`: the driver for 1-2 turn tasks, scripted actors
-and tests. The conversation lives in the session, so a fork opens a new session."""
+and tests. The conversation lives in the session, so a fork opens a new session. The
+sampling temperature is the episode's (`ep.meta["temperature"]`, set by the suite's
+`setup()`); `max_tokens` and `max_steps` are the run's."""
 
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ class _Conversation:
     ep: Episode
     endpoint: str
     seed: int
+    temperature: float
     messages: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -28,17 +31,16 @@ class DirectDriver:
         client: LLMClient,
         tools: ToolTable,
         *,
-        temperature: float = 0.7,
         max_tokens: int = 4096,
         max_steps: int = 16,
     ) -> None:
         self.client, self.tools = client, tools
-        self.temperature, self.max_tokens, self.max_steps = temperature, max_tokens, max_steps
+        self.max_tokens, self.max_steps = max_tokens, max_steps
 
     async def open(self, ep: Episode, actor: str, endpoint: str) -> Session:
         # Seeded by the episode and actor, so a rerun of the same episode samples the same way.
         seed = int.from_bytes(hashlib.sha256(f"{ep.ep_id}\0{actor}".encode()).digest()[:4], "big") >> 1
-        conv = _Conversation(ep, endpoint, seed)
+        conv = _Conversation(ep, endpoint, seed, ep.meta["temperature"])
         system = ep.state.get("system_prompts", {}).get(actor)
         if system:
             conv.messages.append({"role": "system", "content": system})
@@ -60,7 +62,7 @@ class DirectDriver:
                 conv.messages,
                 schemas or None,
                 endpoint=conv.endpoint,
-                temperature=self.temperature,
+                temperature=conv.temperature,
                 max_tokens=self.max_tokens,
                 seed=conv.seed,
             )

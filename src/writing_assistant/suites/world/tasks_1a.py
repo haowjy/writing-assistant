@@ -52,12 +52,14 @@ from writing_assistant.suites.world import author, srd
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
 WORKSPACE = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_list"]
 TWINS = {"pivot": "clean_b", "full_view": "twin_swap", "pov_view": "twin_swap", "bent": "twin_swap"}
+# Sampling temperature per task kind, stamped on each episode (`ep.meta`) and read by drivers.
+TEMPERATURE = {"pivot_unbinding": 0.7, "dm_play": 0.7, "pov_write": 0.7, "rule_bend": 0.7, "collab_edit": 0.7}
 PUBLIC = {"*": "full"}
 
 
 def _episode(task, condition: str) -> Episode:
     return Episode(ep_id=task.task_id, task_id=task.task_id, suite="1a", split=task.split, condition=condition,
-                   state={"kind": task.kind, "work_ids": list(task.work_ids)})
+                   meta={"temperature": TEMPERATURE[task.kind]}, state={"kind": task.kind, "work_ids": list(task.work_ids)})
 
 
 def _mount(ep: Episode, files: dict[str, str]) -> None:

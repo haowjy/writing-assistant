@@ -2,7 +2,8 @@
 
 A driver is constructed by cli.py with the model client and the suite's tool table; `open`
 gets the episode, so everything per-episode (actor tools, the actor's system prompt in
-`ep.state["system_prompts"][actor]`) is read from it.
+`ep.state["system_prompts"][actor]`, the sampling temperature in `ep.meta["temperature"]`)
+is read from it.
 """
 
 from __future__ import annotations

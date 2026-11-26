@@ -66,8 +66,9 @@ class Suite(Protocol):
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]: ...
 
     def setup(self, task: Task, services: Services) -> list[Episode]:
-        """Resolve task.work_ids through services.corpus, stamp ep.state["work_ids"]; files,
-        state, actors, actor_tools; fork twins here when they share no play."""
+        """Resolve task.work_ids through services.corpus, stamp ep.state["work_ids"] and the
+        task kind's sampling temperature in ep.meta["temperature"]; files, state, actors,
+        actor_tools; fork twins here when they share no play."""
         ...
 
     async def play(self, eps: list[Episode], services: Services, turn: Turn) -> list[Episode]:

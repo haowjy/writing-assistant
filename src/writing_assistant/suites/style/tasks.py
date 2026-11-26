@@ -35,10 +35,13 @@ WRITER = "writer"
 EDIT_TOOLS = ["episode_read", "episode_edit", "episode_write"]
 MODES = ("instruction", "continuation", "style_retrieved")
 _RUN = 12  # words: a shared run this long between an exemplar and a hidden passage is a leak
+# Sampling temperature per task kind, stamped on each episode (`ep.meta`) and read by drivers.
+TEMPERATURE = {"k_exemplar_scene": 0.7, "critique_edit": 0.7}
 
 
 def _episode(task, state: dict[str, Any], system: str) -> Episode:
     ep = Episode(ep_id=task.task_id, task_id=task.task_id, suite="3", split=task.split,
+                 meta={"temperature": TEMPERATURE[task.kind]},
                  state={"kind": task.kind, "work_ids": list(task.work_ids), **state})
     ep.actors[WRITER] = SUBJECT
     ep.actor_tools[WRITER] = []
