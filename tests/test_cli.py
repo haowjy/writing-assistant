@@ -84,6 +84,8 @@ def test_the_report_never_averages_the_two_arms_or_their_twins(bench, capsys):
     report = capsys.readouterr().out
     leak_means = [line.split()[1] for line in report.splitlines() if line.split()[:1] in (["pov_leak"], ["net_pov_leak"])]
     assert "1.000" in leak_means and set(leak_means) <= {"1.000", "0.000"}, report
+    groups = [line for line in report.splitlines() if line.startswith("== ")]
+    assert [g.split(":")[0] for g in groups] == ["== condition=full_view", "== condition=pov_view"], report
 
 
 def test_score_where_keeps_the_scores_of_episodes_it_did_not_select(bench, capsys):
