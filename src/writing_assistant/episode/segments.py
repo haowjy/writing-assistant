@@ -65,6 +65,12 @@ STORE_FILE = "store.db"  # in a run directory, beside run.json
 # there is no reader for any format but this one.
 FORMAT = 1
 HELD_APART = (LOCAL_DEV, "test")  # splits whose segments share a store with no other split's
+JSONL_FILE = "episodes.jsonl"  # what a run directory held before the store; read by nothing
+
+
+class Unreadable(Exception):
+    """A run directory or store file this build will not read or write. The message is for
+    the person at the command line: `wa-bench` exits with it and no traceback."""
 
 _SCHEMA = (
     """CREATE TABLE segments (
@@ -459,10 +465,20 @@ def _patch(into: dict[str, Any], diff: dict[str, Any]) -> None:
         _patch(into[key], inner)
 
 
+def has_store(run_dir: str | Path) -> bool:
+    """Whether a run directory has a store yet. One written before the store is refused: it
+    is not an empty run, and a store made beside its file would be a second run in it."""
+    run_dir = Path(run_dir)
+    if (run_dir / JSONL_FILE).exists():
+        raise Unreadable(f"{run_dir}: holds {JSONL_FILE}: this run directory predates the episode store ({STORE_FILE}), "
+                         "and this build has no reader for it. It is not resumed, scored, reported, viewed or synced; "
+                         "play its tasks again into a new directory.")
+    return (run_dir / STORE_FILE).exists()
+
+
 def closed_episodes(run_dir: str | Path) -> list[Episode]:
     """The closed episodes of a run directory's store; none when the run has no store yet."""
-    path = Path(run_dir) / STORE_FILE
-    if not path.exists():
+    if not has_store(run_dir):
         return []
-    with Store(path, readonly=True) as store:
+    with Store(Path(run_dir) / STORE_FILE, readonly=True) as store:
         return list(store.episodes())

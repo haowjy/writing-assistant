@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 from writing_assistant.corpus.text import norm_words
 from writing_assistant.episode.model import strings
-from writing_assistant.episode.segments import STORE_FILE, Store
+from writing_assistant.episode.segments import STORE_FILE, Store, has_store
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TASKS_DIR, load_rows, local_only, read_jsonl
 
 if TYPE_CHECKING:
@@ -166,15 +166,19 @@ def export_public(corpus: Corpus, out: Path, suites: SuiteFields, tasks_dir: Pat
 def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> Counter[str]:
     """What `wa-bench sync` uploads, staged under `stage`: the public export under `corpus/`
     and `tasks/`, and each run's files with episodes, scores and judgments filtered. The
-    staged `store.db` is written here, never copied."""
+    staged `store.db` is written here, never copied. Whatever `stage` held is replaced; a run
+    directory this build does not read (`has_store`) stops the sync before that."""
     counts: Counter[str] = Counter()
+    stored = {p: has_store(p) for p in sorted(runs.glob("*")) if (p / RUN_FILE).exists()}
+    if stage.exists():
+        shutil.rmtree(stage)
     export_public(corpus, stage / "corpus", suites)
     shutil.move(stage / "corpus" / "tasks", stage / "tasks")
-    for run_dir in sorted(p for p in runs.glob("*") if (p / RUN_FILE).exists()):
+    for run_dir in stored:
         dest = stage / "runs" / run_dir.name
         dest.mkdir(parents=True)
         keep: set[str] = set()
-        if (run_dir / STORE_FILE).exists():
+        if stored[run_dir]:
             with Store(run_dir / STORE_FILE, readonly=True) as store, Store(dest / STORE_FILE) as staged:
                 def segment_leaves(seg: str) -> bool:
                     split, states = store.snapshots(seg)

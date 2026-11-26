@@ -778,12 +778,13 @@ def cmd_view(args: argparse.Namespace) -> int:
         raise SystemExit(f"the page is not built: {BUILD}")
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
     runs = load_runs([Path(p) for p in args.run], passed)
+    # Every run is read once before the page is served: one this build does not read is
+    # refused here, not on the first click. (The first screen lists them all anyway.)
+    private = [r.name for r in runs.values() if r.info() and (any(e.split == LOCAL_DEV for e in r.closed())
+                                                              or r.info().get("split") == LOCAL_DEV)]
     loopback = args.host in LOOPBACK
-    if not loopback:
-        private = [r.name for r in runs.values() if r.info() and (r.info().get("split") == LOCAL_DEV or
-                                                                  any(e.split == LOCAL_DEV for e in r.closed()))]
-        if private:
-            raise SystemExit(f"{', '.join(private)} hold local_dev text: serve them on loopback only")
+    if private and not loopback:
+        raise SystemExit(f"{', '.join(private)} hold local_dev text: serve them on loopback only")
     server = HTTPServer((args.host, args.port), make_handler(runs, loopback))
     shown = "localhost" if loopback else args.host
     print(f"viewing {len(runs)} run{'s' * (len(runs) > 1)} at http://{shown}:{server.server_address[1]}/", flush=True)

@@ -132,7 +132,10 @@ other episode format and no reader for an older one.
   checkpoints, on a work whose licence does not allow release. It may run while a `run` is
   writing: each episode's chain is tested and copied inside one read transaction
   (`Store.reading()`), so a checkpoint an open ancestor gains after the test is not copied.
-- A run directory written before the store (`episodes.jsonl`) cannot be read. The ten
+- A run directory written before the store (`episodes.jsonl`) cannot be read: `run`,
+  `score`, `report`, `view` and `sync` refuse it by name (`segments.has_store`) and write
+  nothing. A refusal the user should read as a sentence is raised as `segments.Unreadable`,
+  which `wa-bench` turns into its exit message. The ten
   `base-*` runs were converted on 2026-11-26 into the `branch-store` worktree's `runs/`
   (git-ignored) by replaying their saved calls through the suites, so the copies hold real
   turn checkpoints and can be forked; the originals in the `bench-v0` worktree are untouched.

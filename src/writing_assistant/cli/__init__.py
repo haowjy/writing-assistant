@@ -79,7 +79,7 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
-from writing_assistant.episode.segments import STORE_FILE, Store, closed_episodes
+from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, closed_episodes, has_store
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, Task, append_jsonl, local_only, matches, read_jsonl
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
@@ -279,6 +279,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
     if not args.source and (args.from_run or args.rollouts != 1):
         sys.exit("--from-run and --rollouts go with --from <ep_id>@<n>")
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
+    has_store(run_dir)  # a directory written before the store is refused, not given a store
     run_dir.mkdir(parents=True, exist_ok=True)
     identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
                 "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split,
@@ -509,8 +510,6 @@ def cmd_export(args: argparse.Namespace) -> int:
 def cmd_sync(args: argparse.Namespace) -> int:
     bucket = LLMClient(args.models).config.get("storage", {}).get("bucket", "")
     stage = Path(args.stage)
-    if stage.exists():
-        shutil.rmtree(stage)
     counts = stage_sync(stage, Path(args.runs), Corpus(), TEXT_FIELDS)
     print(f"staged {stage}: {dict(counts)}")
     if args.dry_run:
@@ -597,8 +596,11 @@ COMMANDS = {"run": cmd_run, "score": cmd_score, "report": cmd_report, "guardrail
 def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path(".env"))
     args = parser().parse_args(argv)
-    result = COMMANDS[args.cmd](args)
-    return asyncio.run(result) if asyncio.iscoroutine(result) else result
+    try:
+        result = COMMANDS[args.cmd](args)
+        return asyncio.run(result) if asyncio.iscoroutine(result) else result
+    except Unreadable as e:
+        sys.exit(str(e))
 
 
 if __name__ == "__main__":
