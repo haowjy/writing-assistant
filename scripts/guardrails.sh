@@ -17,7 +17,7 @@
 # to the endpoint. It changes wall time, not scores.
 #
 # GUARDRAILS_LIMIT=N runs only the first N items of each tool (BFCL: of each multi-turn
-# category) and writes no guardrails.json: a check that every step reaches the endpoint and
+# category; HumanEval+ generates N and executes none) and writes no guardrails.json: a check that every step reaches the endpoint and
 # parses its replies, with per-step wall times to extrapolate a full run from.
 set -euo pipefail
 
@@ -134,8 +134,9 @@ timed humaneval_gen docker run "${with_endpoint[@]}" -v "$work/humaneval/gen:/wo
 samples=$(find "$work/humaneval/gen" -name '*.jsonl' ! -name '*.raw.jsonl')
 [[ $(wc -l < "$samples") -eq ${limit:-164} ]] || { echo "guardrails: HumanEval+ generation incomplete: $samples" >&2; exit 1; }
 cp "$samples" "$work/humaneval/exec/samples.jsonl"
-# Execution: no network, and the only writable mount holds a copy of the samples.
-timed humaneval_exec docker run "${sandbox[@]}" --network none -v "$work/humaneval/exec:/work" "$image" \
+# Execution: no network, and the only writable mount holds a copy of the samples. evalplus
+# refuses a partial sample set, and this step never calls the endpoint, so a limited run skips it.
+[[ -n $limit ]] || timed humaneval_exec docker run "${sandbox[@]}" --network none -v "$work/humaneval/exec:/work" "$image" \
   /opt/evalplus/bin/evalplus.evaluate --dataset humaneval --samples /work/samples.jsonl \
   --parallel 8 --i-just-wanna-run
 

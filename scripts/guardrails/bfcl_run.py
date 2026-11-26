@@ -36,7 +36,10 @@ from bfcl_eval.model_handler.api_inference.openai_completion import (  # noqa: E
     OpenAICompletionsHandler,
 )
 
-MODEL_CONFIG_MAPPING[model] = ModelConfig(
+# BFCL names result directories model.replace("/", "_") and, when evaluating, maps a directory
+# back with "_" -> "/", so a name holding "_" (gemma-4-26B_q4_0-it.gguf) comes back changed:
+# the config is registered under that name too.
+MODEL_CONFIG_MAPPING[model] = MODEL_CONFIG_MAPPING[model.replace("/", "_").replace("_", "/")] = ModelConfig(
     model_name=model,
     display_name=f"{model} (FC)",
     url="",

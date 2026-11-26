@@ -20,13 +20,23 @@ the tool versions, data and scoring mode are identical, so all of them are pinne
   endpoint's model using BFCL's OpenAI chat-completions handler in FC mode. Prompt mode
   would measure our parsing of text, not the model's tool calling.
 - The full multi-turn set is affordable: about 150k input tokens per entry, so roughly
-  120M tokens per run. No subset.
+  120M tokens per run. No subset. Locally that is hours: a `GUARDRAILS_LIMIT=3` run on
+  Gemma 4 26B QAT Q4_0 (llamAmpere, 4 slots, thinking on) took 349 s for 12 BFCL entries
+  (1.9M input tokens, about 5.4k prefill tokens/s), so the 800 entries take about 6.5 h;
+  IFEval about 30 min and HumanEval+ generation about 10 min (evalplus sends one request at
+  a time). About 7 h in all on Gemma; Inkling on one slot is several times slower.
 - The image `ganler/evalplus:v0.3.1` actually contains evalplus 0.4.0.dev2, so it is not
   used; the image here installs 0.3.1.
 - Dependencies are resolved as of `RESOLVED_BEFORE` (uv `--exclude-newer`), so a rebuild
   resolves the same transitive versions.
 - Scores reflect the endpoint's default mode. On DeepInfra, Gemma 4 has thinking off by
   default. Published numbers measured with thinking on are not comparable.
+- Local llama.cpp servers think by default for Gemma 4, Qwen3.5 and Inkling (reasoning comes
+  back in `reasoning_content`). The tools' output caps (evalplus 768 tokens, IFEval 1280)
+  count that thinking: in a `GUARDRAILS_LIMIT=3` run on local Gemma (2026-11-26) one of
+  three HumanEval+ replies was cut off mid-thought and the thought was taken as the code.
+  Until the thinking mode for guardrails is decided, a full run on a thinking-on server
+  measures the caps. The hosted Gemma numbers were thinking off.
 - None of the three tools can add request-body fields, so an endpoint with `params` in
   `models.toml` (Hy4's thinking switch) is refused rather than measured in a different
   mode from the one the benchmark runs it in.
@@ -63,7 +73,8 @@ the host network.
 - lm-eval re-raises after its retries.
 - evalplus retries forever, so codegen is bounded by `timeout`.
 - `GUARDRAILS_LIMIT=N` runs every step on the first N items (lm-eval `--limit`, evalplus
-  `--id_range`, BFCL's id file and `--partial-eval`) and stops before `summarize.py`, so a
+  `--id_range`, BFCL's id file and `--partial-eval`; HumanEval+ execution is skipped, as
+  evalplus refuses a partial sample set and that step never calls the endpoint) and stops before `summarize.py`, so a
   partial score can never be stored as a result. It is the check for a loopback endpoint,
   which has no preflight request, and its per-step seconds are what a full-run estimate
   scales from.
