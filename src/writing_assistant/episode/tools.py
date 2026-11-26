@@ -110,11 +110,6 @@ def _list(ep: Episode, actor: str, args: dict) -> dict:
     return {"ok": True, "files": files}
 
 
-def _submit(ep: Episode, actor: str, args: dict) -> dict:
-    # The submission is the tool event dispatch_tool logs; scorers read the last one.
-    return {"ok": True}
-
-
 def schema(name: str, description: str, properties: dict, required: list[str]) -> dict:
     return {
         "name": name,
@@ -174,15 +169,6 @@ WORKSPACE_TOOLS: ToolTable = {
             [],
         ),
         _list,
-    ),
-    "episode_submit": (
-        schema(
-            "episode_submit",
-            "Submit your final answer for this task. A later submission replaces an earlier one.",
-            {"text": {"type": "string", "minLength": 1, "description": "The answer."}},
-            ["text"],
-        ),
-        _submit,
     ),
 }
 

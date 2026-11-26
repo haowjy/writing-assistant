@@ -1,4 +1,4 @@
-"""Task rows and episodes on disk, split assignment, and dated Parquet shards.
+"""Task rows and episodes on disk, and split assignment.
 
 Task rows and saved episodes are files another process (or an older build) wrote, so
 loading validates them; everything after loading trusts the types.
@@ -15,7 +15,6 @@ Where task rows live (they hold book text, so never in git):
 
 from __future__ import annotations
 
-import datetime as dt
 import hashlib
 import json
 import os
@@ -24,9 +23,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
-
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 from writing_assistant.episode.model import Episode
 
@@ -109,15 +105,10 @@ def load_local_dev(suite: str, where: str | None = None, root: Path | None = Non
 
 
 def load_rows(path: str | Path, suite: str | None = None, split: str | None = None, where: str | None = None) -> list[Task]:
-    """Public task rows from a JSONL or Parquet file, filtered by suite, split and `where`.
-    A `local_dev` row here is refused: those come only from the local_dev loader."""
+    """Public task rows from a JSONL file, filtered by suite, split and `where`. A
+    `local_dev` row here is refused: those come only from the local_dev loader."""
     path = Path(path)
-    if path.suffix == ".parquet":
-        # Parquet fills keys a row lacks with null (columns and struct fields are unions).
-        raw = [_drop_nulls(r) for r in pq.read_table(path).to_pylist()]
-    else:
-        raw = read_jsonl(path)
-    return _tasks(raw, path, suite, split, where, allowed=SPLITS)
+    return _tasks(read_jsonl(path), path, suite, split, where, allowed=SPLITS)
 
 
 def _tasks(raw: list[dict], path: Path, suite: str | None, split: str | None, where: str | None,
@@ -131,12 +122,6 @@ def _tasks(raw: list[dict], path: Path, suite: str | None, split: str | None, wh
         if (suite is None or row["suite"] == suite) and (split is None or row["split"] == split) and matches(row, where):
             tasks.append(Task(**{k: v for k, v in row.items() if k in names}))
     return tasks
-
-
-def _drop_nulls(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {k: _drop_nulls(v) for k, v in value.items() if v is not None}
-    return value
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -169,22 +154,3 @@ def load_episodes(run_dir: str | Path) -> list[Episode]:
             raise ValueError(f"{path}: episode {ep.ep_id} saved twice")
         seen.add(ep.ep_id)
     return episodes
-
-
-def write_shard(rows: list[dict[str, Any]], dir: str | Path) -> Path:
-    """Write rows as `<dir>/YYYY-MM-DD-NNN.parquet` (UTC date, next free NNN). Never overwrites."""
-    dir = Path(dir)
-    dir.mkdir(parents=True, exist_ok=True)
-    # from_pylist would take the columns from the first row and drop keys later rows add.
-    keys = list(dict.fromkeys(k for r in rows for k in r))
-    table = pa.Table.from_pydict({k: [r.get(k) for r in rows] for k in keys})
-    day = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d")
-    for n in range(1000):
-        path = dir / f"{day}-{n:03d}.parquet"
-        try:
-            with path.open("xb") as f:
-                pq.write_table(table, f)
-            return path
-        except FileExistsError:
-            continue
-    raise RuntimeError(f"{dir}: 1000 shards already written on {day}")

@@ -3,7 +3,7 @@ import pytest
 from writing_assistant.episode import Episode
 from writing_assistant.episode.tools import dispatch_tool
 
-TOOLS = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_submit"]
+TOOLS = ["episode_read", "episode_write", "episode_edit", "episode_grep"]
 
 
 @pytest.mark.parametrize(("name", "args", "error"), [
@@ -24,7 +24,6 @@ TOOLS = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episo
     ("episode_edit", {"path": "a.md", "old": "o", "new": "1", "rev": 2}, "occurs 2 times"),
     ("episode_edit", {"path": "a.md", "old": "", "new": "1", "rev": 2}, "at least 1 characters"),
     ("episode_grep", {"pattern": "("}, "bad pattern"),
-    ("episode_submit", {"text": ""}, "at least 1 characters"),
 ])
 async def test_refusals_return_errors_and_log_the_call(name, args, error):
     ep = Episode(ep_id="e", task_id="t", suite="1a", split="dev", files={"a.md": "one two"},
