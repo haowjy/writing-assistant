@@ -426,7 +426,7 @@ def compare(runs: dict[str, Run], task_id: str, asked: dict[str, str]) -> list[d
             eps.append({"ep_id": ep.ep_id, "condition": ep.condition, "twin_of": twin_of.get(ep.ep_id),
                         "status": ep.status, "failure": ep.failure_reason, "written": written(ep),
                         "metrics": sc.get("metrics", {}), "not_scored": sc.get("not_scored"),
-                        "judged": [{"metric": j["metric"], "question": j["question"], "model": j.get("model"),
+                        "judged": [{"id": j["id"], "metric": j["metric"], "question": j["question"], "model": j.get("model"),
                                     "unscored": j.get("unscored"), "about": j.get("ep_id")}
                                    for j in judgments.get(ep.ep_id, [])]})
         info = run.info()
@@ -673,6 +673,8 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
             if not url.path.startswith("/api/"):
                 return self._static(url.path)
+            if url.path == "/api/suites":
+                return self._json(sorted(SUITES))
             if url.path == "/api/runs":
                 return self._json([r.summary() for r in runs.values()])
             if url.path == "/api/kinds":

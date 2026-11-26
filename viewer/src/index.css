@@ -2,12 +2,22 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+@import "@fontsource-variable/source-serif-4";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
+    --font-serif: 'Source Serif 4 Variable', Georgia, serif;
+    --color-run-1: var(--run-1);
+    --color-run-2: var(--run-2);
+    --color-run-3: var(--run-3);
+    --color-run-4: var(--run-4);
+    --color-run-5: var(--run-5);
+    --color-run-6: var(--run-6);
+    --color-run-7: var(--run-7);
+    --color-run-8: var(--run-8);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,6 +59,8 @@
 }
 
 :root {
+    --run-1: #257de0; --run-2: #f47230; --run-3: #00b894; --run-4: #f2a600;
+    --run-5: #ee7fac; --run-6: #008a17; --run-7: #6a4ce2; --run-8: #ec4647;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -84,6 +96,8 @@
 }
 
 .dark {
+    --run-1: #338ced; --run-2: #e76624; --run-3: #00a888; --run-4: #d28e05;
+    --run-5: #e24d8b; --run-6: #0aac23; --run-7: #9887ef; --run-8: #eb6263;
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);

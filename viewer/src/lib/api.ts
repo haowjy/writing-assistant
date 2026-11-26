@@ -71,9 +71,10 @@ export type Judgment = {
   id: string
   metric: string
   question: string
-  model: string | null
+  /** the judge's answer: yes/no, or a probability for A/B items; null when unscored */
+  model: boolean | number | null
   unscored: string | null
-  judge: boolean | null
+  judge: { use: string; endpoint: string; model: string } | null
   replies: string[] | null
   about: string
   evidence?: string | null
@@ -214,3 +215,50 @@ export const taskQuery = (suite: string, id: string, heldOut: boolean) =>
     queryKey: ["task", suite, id, heldOut],
     queryFn: () => get<TaskRow>("task", { suite, id, test: heldOut ? "held-out" : undefined }),
   })
+
+export const suitesQuery = queryOptions({ queryKey: ["suites"], queryFn: () => get<string[]>("suites", {}) })
+
+export type KindInfo = {
+  kind: string
+  title: string
+  tests: string
+  given: string
+  kept: string | null
+  arms: Record<string, string>
+  twin: string | null
+  rows: Record<string, number>
+  example: string | null
+  diagram: string | null
+}
+
+export type Kinds = {
+  suite: string
+  kinds: KindInfo[]
+  metrics: Record<string, string>
+  prose: Record<string, string>
+  judged_by: Record<string, string>
+}
+
+export const kindsQuery = (suite: string) =>
+  queryOptions({ queryKey: ["kinds", suite], queryFn: () => get<Kinds>("kinds", { suite }), staleTime: Infinity })
+
+export type CompareRun = {
+  run: string
+  endpoint: string
+  model: string
+  profile: string
+  episodes: {
+    ep_id: string
+    condition: string
+    twin_of: string | null
+    status: string
+    failure: string | null
+    written: { label: string; text: string }[]
+    metrics: Record<string, number>
+    not_scored: string | null
+    judged: { id: string; metric: string; question: string; model: boolean | number | null; unscored: string | null; about: string }[]
+  }[]
+}
+
+export const compareQuery = (task: string) =>
+  queryOptions({ queryKey: ["compare", task], queryFn: () => get<CompareRun[]>("compare", { task }) })

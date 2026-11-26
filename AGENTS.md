@@ -53,13 +53,19 @@ cd viewer && bun run dev                    # live reload on :5173; API from `wa
 The Python tests do not need the page built; `view` refuses to start without it.
 
 `view` serves a page on loopback (`--host` binds another address, refused while a run holds
-`local_dev` episodes): a *Scores* tab (`report`'s own `build_report`, the loaded runs of one
-suite and split side by side), an *Episodes* tab (one task's arms and twins: the prose, the
-judge's questions, answers and raw replies, the prompt with what differs between arms,
-reasoning and tool calls) and a *Tasks* tab that needs no run. A task row is shown by running
-the suite's own `setup` and `play` with a turn that answers nothing, so its episodes, twin
-swaps, delivered messages and the payload fields kept from the model are what a run would
-make; held-out `test` rows appear only behind the page's switch, `local_dev` rows never.
+`local_dev` episodes) with a JSON API under `/api/`. Every screen has its own URL under
+`/<suite>/<split>/`, filters and the metric included: the Overview (`report`'s own
+`build_report` per task kind, the loaded runs side by side), a kind's Tasks
+(`kind/<kind>/tasks`: one row per task, one column per run), and what one model wrote
+(`task/<task>/<arm>?run=`: the prose, the judge's questions and replies, the twin, what
+differs in its prompt from the other arm, reasoning and tool calls; `&compare=1` puts the runs
+side by side). The words that say what a task kind tests and what a metric measures live in
+the suite (`ABOUT` beside its tasks and its scorer) and reach the page through `/api/kinds`.
+A task row is shown by running the suite's own `setup` and `play` with a turn that answers
+nothing, so its episodes, twin swaps, delivered messages and the payload fields kept from the
+model are what a run would make; held-out `test` rows appear only behind the page's switch,
+`local_dev` rows never. Adding a shadcn component with `bunx shadcn add` imports `cn` from an
+npm package named `cn`; point it back at `@/lib/utils` and `bun remove cn`.
 It writes nothing, fetches one task at a time and re-reads a run whose files change.
 
 `--judges none` names no judge: with no judge served, `run` plays, saves and scores only what
