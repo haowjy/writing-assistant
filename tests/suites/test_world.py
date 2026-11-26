@@ -4,7 +4,6 @@ designated event and its state), the SRD worlds' split by secret template, and a
 continued from a copy taken mid-play."""
 
 import copy
-import json
 import shutil
 from collections import Counter
 from types import SimpleNamespace
