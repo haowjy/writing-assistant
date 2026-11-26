@@ -93,7 +93,7 @@ async def test_fork_tool_calls_never_reach_parent():
     await dispatch_tool(child, "w", "episode_write", {"path": "ch0.md", "text": "new", "rev": 1}, HURT)
     child.deliver("w", "go on")
     child.calls.append(CallRecord(actor="w", turn_idx=0))
-    child.actor_tools["w"].append("episode_submit")
+    child.actor_tools["w"].append("episode_grep")
     child.actors["x"] = "m"
     child.meta["k"] = 1
     assert child.state["world"]["hp"]["orc"] == 6 and child.files["ch0.md"] == "new"
@@ -118,14 +118,14 @@ def test_fork_swap_replaces_one_leaf_and_refuses_perceived_events():
 
 def test_complete_requires_an_attesting_call_per_delivery():
     def run(calls_for):
-        ep = _ep(actors={"w": "m"}, actor_tools={"w": ["episode_read", "episode_submit"]})
+        ep = _ep(actors={"w": "m"}, actor_tools={"w": ["episode_read", "episode_grep"]})
         for t in range(2):
             idx = ep.deliver("w", f"turn {t}")
             ep.calls += calls_for(idx)
         ep.complete()
         return ep.status, ep.failure_reason
 
-    full = ["episode_read", "episode_submit"]
+    full = ["episode_read", "episode_grep"]
     assert run(lambda t: [CallRecord(actor="w", turn_idx=t, tools_advertised=[]),
                           CallRecord(actor="w", turn_idx=t, tools_advertised=full + ["x"])]) == ("completed", None)
     assert run(lambda t: [] if t == 1 else [CallRecord(actor="w", turn_idx=t, tools_advertised=full)]) == ("failed", "mcp_unattested")
