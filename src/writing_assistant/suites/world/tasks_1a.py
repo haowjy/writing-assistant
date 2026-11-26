@@ -241,7 +241,8 @@ def setup_pov(task, services) -> list[Episode]:
         ep = base.fork(arm)
         ep.state["pov"]["arm"] = arm
         twin = ep.fork("twin_swap", swap=swap)
-        left = [s for s in secret if s in _reachable_text(twin)]
+        reachable = _reachable_strings(twin)
+        left = [s for s in secret if any(s in text for text in reachable)]
         if left:
             raise ValueError(f"{task.task_id}: the swap twin still contains hidden-event text {left[0]!r}")
         eps += [ep, twin]
@@ -258,11 +259,11 @@ def _strings(value: Any) -> list[str]:
     return []
 
 
-def _reachable_text(ep: Episode) -> str:
-    """Everything a prompt could be built from: events, files, world state, system prompts."""
-    parts = [json.dumps(e.data) for e in ep.events] + list(ep.files.values())
-    parts += [json.dumps(ep.state.get("world", {})), json.dumps(ep.state.get("system_prompts", {}))]
-    return "\n".join(parts)
+def _reachable_strings(ep: Episode) -> list[str]:
+    """Every string a prompt could be built from: events, files, world state, system prompts.
+    Compared as strings, never as JSON text, whose escapes would hide a quote or an accent."""
+    return [*_strings([e.data for e in ep.events]), *ep.files.values(),
+            *_strings(ep.state.get("world", {})), *_strings(ep.state.get("system_prompts", {}))]
 
 
 def render_log(events: list[Event], pov_name: str) -> str:

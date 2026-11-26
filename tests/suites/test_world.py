@@ -143,3 +143,13 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
         ep.complete()
     scores = await suite_1a.score(full, services, full_twin)
     assert (scores["pov_leak"], scores["net_pov_leak"], scores["permitted_fact_recall"]) == (1.0, 1.0, 1.0)
+
+
+@pytest.mark.parametrize("secret", ["Orin burned the café.", 'Orin said "I did it".'])
+def test_a_secret_quoted_in_a_later_visible_event_is_refused_whatever_its_characters(secret):
+    log = [{"actor": "dm", "kind": "world", "data": {"text": secret}, "visible_to": {"dm": "full"}},
+           {"actor": "dm", "kind": "say", "data": {"text": secret}, "visible_to": {"dm": "full", "mira": "full"}}]
+    task = Task("pov-2", "1a", "pov_write", "dev", [], POV_TASK.payload | {
+        "log": log, "hidden_event_idx": 0, "swap": {"data": {"text": "Orin is innocent."}}})
+    with pytest.raises(ValueError, match="still contains"):
+        suite_1a.setup(task, None)
