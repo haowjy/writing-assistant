@@ -63,7 +63,7 @@ def run_items(run: Path, use: str, profile: str) -> list[dict]:
     episodes = closed_episodes(run)
     rows = {ep.ep_id: ep.meta.get("row", {}) for ep in episodes}
     # Rollouts are many plays of one checkpoint: sampled with a run's task episodes they would
-    # fill the file with one task, and each asks its source's twin the same questions again.
+    # fill the file with one task.
     rollouts = {ep.ep_id for ep in episodes if ep.rollout_of}
     out = []
     for j in read_jsonl(run / f"judgments-{profile}.jsonl"):

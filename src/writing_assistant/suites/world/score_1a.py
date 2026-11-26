@@ -272,7 +272,7 @@ async def score(ep: Episode, services, tally: Tally, twin: Episode | None = None
         return out | {f"n_no_output.{e.reason}": 1.0}
     metrics, own = await SCORERS[kind](ep, text, services, tally)
     out |= metrics
-    if kind in NET:
+    if kind in NET and ep.rollout_of is None:  # a rollout has no twin: nothing is net, nothing is missing
         net, twin_metric, probes = NET[kind]
         try:
             if twin is None:  # not saved: a run cut off between a task's episodes

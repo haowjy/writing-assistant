@@ -72,7 +72,6 @@ _SCHEMA = (
         ep_id TEXT NOT NULL, task_id TEXT NOT NULL, suite TEXT NOT NULL, split TEXT NOT NULL,
         condition TEXT NOT NULL, baseline_of TEXT, rollout_of TEXT, rollout_at INTEGER, meta TEXT NOT NULL)""",
     "CREATE INDEX segments_split ON segments (split)",
-    "CREATE INDEX segments_parent ON segments (parent)",
     # events, calls: how many the episode holds after this checkpoint, inherited ones included
     """CREATE TABLE checkpoints (
         seg TEXT NOT NULL, n INTEGER NOT NULL, kind TEXT NOT NULL, events INTEGER NOT NULL,
@@ -287,19 +286,6 @@ class Store:
             listed = bool(self.db.execute("SELECT 1 FROM episodes WHERE seg = ?", (seg,)).fetchone())
             self._tips[seg] = _Tip(n, len(events), len(calls), tip, listed, weakref.ref(ep))
         return ep
-
-    def baseline(self, name: str) -> Episode | None:
-        """The twin the episode's `net_*` metrics subtract, when it is stored here and closed:
-        the fork of the episode that names it in `baseline_of`. A rollout has the twin of the
-        episode it replays, which is the segment it is stored after."""
-        seg, ep_id, parent, rollout_of = self.db.execute(
-            "SELECT seg, ep_id, parent, rollout_of FROM segments WHERE seg = ?", (self._seg(name),)).fetchone()
-        while rollout_of is not None:
-            seg, ep_id, parent, rollout_of = self.db.execute(
-                "SELECT seg, ep_id, parent, rollout_of FROM segments WHERE seg = ?", (parent,)).fetchone()
-        twin = self.db.execute(f"SELECT e.seg FROM segments e WHERE e.parent = ? AND e.baseline_of = ? AND {_CLOSED}",
-                               (seg, ep_id)).fetchone()
-        return self.load(twin[0]) if twin else None
 
     def chain(self, name: str) -> list[str]:
         """The episode's segment and its ancestors', root first."""

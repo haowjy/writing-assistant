@@ -49,9 +49,9 @@ for an episode `run` set up it is the number of deliveries that had returned. Th
 `--from-run`'s, whose chain is first copied into this run's store so the store stays
 self-contained. Rollout `i` is named `<ep_id>@<n>.<i>` and records what it is a rollout of
 (`Episode.rollout_of`), so each samples with its own seed; one already stored is not made
-again. A rollout is scored against its source's stored twin (copied in with the chain), so
-its `net_*` subtract the baseline its source's do; a twin has no rollouts. `report`, `view`
-and calibration sampling keep rollouts out of the run's own numbers.
+again. A rollout has no twin: it is scored on its own metrics and gets no `net_*`, and a
+twin has no rollouts. `report`, `view` and calibration sampling keep rollouts out of the
+run's own numbers.
 """
 
 from __future__ import annotations
@@ -78,7 +78,7 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
-from writing_assistant.episode.segments import STORE_FILE, Store
+from writing_assistant.episode.segments import STORE_FILE, Store, closed_episodes
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, Task, append_jsonl, local_only, matches, read_jsonl
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
@@ -203,12 +203,13 @@ async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, service
     return row | {"metrics": tally.into(metrics)}, judgments
 
 
-async def score_all(suite: Suite, store: Store, episodes: list[Episode], services: Services, concurrency: int,
+async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int,
                     only: set[str] | None = None) -> tuple[list[dict], list[dict]]:
-    """Rows for every one of these closed episodes of `store`, or for the ep_ids in `only`,
-    each stamped with the scoring code, and all their judgments. A twin is a baseline, judged
-    only through the `score()` of the episode it names: its row says whose it is. Every other
-    episode is scored against `store.baseline()` of it, a rollout against its source's twin."""
+    """Rows for every episode, or for the ep_ids in `only`, each stamped with the scoring
+    code, and all their judgments. A twin is a baseline, judged only through the `score()` of
+    the episode it names: its row says whose it is. Twins are paired over all of `episodes`;
+    a rollout is the baseline of nothing and has none."""
+    twins = {ep.baseline_of: ep for ep in episodes if ep.baseline_of is not None}
     sem = asyncio.Semaphore(concurrency)
 
     async def one(ep: Episode) -> tuple[dict, list[dict]]:
@@ -216,7 +217,7 @@ async def score_all(suite: Suite, store: Store, episodes: list[Episode], service
             return {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
                     "baseline_of": ep.baseline_of}, []
         async with sem:
-            return await score_episode(suite, ep, store.baseline(ep.ep_id), services)
+            return await score_episode(suite, ep, twins.get(ep.ep_id), services)
 
     scored = await asyncio.gather(*(one(ep) for ep in episodes if only is None or ep.ep_id in only))
     code = code_version()
@@ -332,7 +333,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
             store.append(ep)
 
         async def score(eps: list[Episode], only: set[str] | None = None) -> None:
-            rows, judgments = await score_all(suite, store, eps, services, len(eps) or 1, only)
+            rows, judgments = await score_all(suite, eps, services, len(eps) or 1, only)
             append_jsonl(judgments_path, judgments)
             append_jsonl(scores_path, rows)
             counts["score_errors"] += sum("error" in row for row in rows)
@@ -403,7 +404,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
 def _rollouts(args: argparse.Namespace, store: Store, meta: dict[str, Any]) -> list[Episode]:
     """`--from <ep_id>@<n> --rollouts N`: the rollouts of that turn checkpoint not yet in the
     run's store, bound to this run's endpoint. The episode comes from this store or, with
-    `--from-run`, from another, its chain and its twin's copied in first."""
+    `--from-run`, from another, its chain copied in first."""
     name, _, at = args.source.rpartition("@")
     if not name or not at.isdigit():
         sys.exit(f"--from takes <ep_id>@<n>, the episode and its turn checkpoint; got {args.source!r}")
@@ -414,23 +415,19 @@ def _rollouts(args: argparse.Namespace, store: Store, meta: dict[str, Any]) -> l
                 sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
                          f"this run is suite {args.suite}, split {args.split}")
             rollouts = [source.rollout(int(at), i) for i in range(args.rollouts)]
+            stored = set(store.names()) | set(store.names(closed=False))
+            for ep in rollouts:  # two runs' episodes may share a name, never a segment
+                if ep.ep_id in stored and store.chain(ep.ep_id)[-2:-1] != [source.seg]:
+                    sys.exit(f"--from {args.source}: {store.path} already holds {ep.ep_id}, a rollout of another episode "
+                             f"named {name} (another run's); give this run's rollouts their own --out")
             if home is not store:
                 home.copy_chain(name, store)
-                if (twin := home.baseline(name)) is not None:
-                    home.copy_chain(twin.seg, store)
     except (LookupError, ValueError, sqlite3.Error) as e:
         sys.exit(f"--from {args.source}: {e}")
-    stored = set(store.names()) | set(store.names(closed=False))
-    out = []
-    for ep in rollouts:
-        if ep.ep_id in stored:
-            if store.chain(ep.ep_id)[-2:-1] != [source.seg]:  # two runs' episodes share a name, never a segment
-                sys.exit(f"--from {args.source}: {store.path} already holds {ep.ep_id}, a rollout of another episode "
-                         f"named {name} (another run's); give this run's rollouts their own --out")
-            continue
+    out = [ep for ep in rollouts if ep.ep_id not in stored]
+    for ep in out:
         ep.actors = {a: e if e == "scripted" else args.endpoint for a, e in ep.actors.items()}
         ep.meta |= meta
-        out.append(ep)
     return out
 
 
@@ -440,18 +437,15 @@ async def cmd_score(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
     info = json.loads((run_dir / RUN_FILE).read_text())
     suite = SUITES[info["suite"]]
-    if not (run_dir / STORE_FILE).exists():
-        sys.exit(f"{run_dir}: no episodes are stored here")
+    episodes = closed_episodes(run_dir)
+    only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
     services = services_for(args.models, args.judges)
-    with Store(run_dir / STORE_FILE, readonly=True) as store:
-        episodes = list(store.episodes())
-        only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
-        try:
-            rows, judgments = await score_all(suite, store, episodes, services, args.concurrency, only)
-        except* AccountError as group:
-            sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); no scores were written")
-        finally:
-            await close(services)
+    try:
+        rows, judgments = await score_all(suite, episodes, services, args.concurrency, only)
+    except* AccountError as group:
+        sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); no scores were written")
+    finally:
+        await close(services)
     # Merged by ep_id: the rows and judgments of episodes `--where` did not select stay.
     path = run_dir / f"scores-{args.judges}.jsonl"
     _write_jsonl(path, list(({r["ep_id"]: r for r in read_jsonl(path)} | {r["ep_id"]: r for r in rows}).values()))
