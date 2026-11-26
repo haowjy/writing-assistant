@@ -94,3 +94,13 @@ def test_score_where_keeps_the_scores_of_episodes_it_did_not_select(bench, capsy
     before = {r["ep_id"] for r in score_rows(out)}
     cli.main(["score", "--run", str(out), "--where", "task_id=pov-2"])
     assert {r["ep_id"] for r in score_rows(out)} == before
+
+
+def test_report_warns_about_any_scores_row_without_the_scoring_code(bench, capsys):
+    out = bench([POV_ROW], chapter("Mira turned the glove over."))
+    run_and_score(capsys, out)
+    rows = score_rows(out)
+    rows[0].pop("code", None)
+    (out / "scores-eval.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    cli.main(["report", "--run", str(out)])
+    assert "1 scores row written before the scoring code was stamped" in capsys.readouterr().out

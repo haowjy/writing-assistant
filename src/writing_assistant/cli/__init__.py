@@ -3,15 +3,15 @@
 A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one):
 
     run.json            what was run: suite, driver, endpoint, model, split, max_tokens; one
-                        entry per invocation (time, code version, where, limit); per judge
-                        profile the judges' stamps and the code that scored; the USD the hosts
-                        reported. Each episode's meta has its own temperature, max_tokens and
-                        code version, so a run resumed after a code change says which is which
+                        entry per invocation (time, code version, where, limit); the USD the
+                        hosts reported. Each episode's meta has its own temperature, max_tokens
+                        and code version, so a run resumed after a code change says which is which
     episodes.jsonl      every saved episode, appended one task at a time; never rewritten
     errors.jsonl        tasks that raised in setup or play (not saved; a resume reruns them)
-    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored; a twin's
-                        row says only whose baseline it is (`baseline_of`). `wa-bench score`
-                        replaces the rows of the episodes it scored, never episodes.jsonl
+    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored, and the
+                        `code` version that scored it; a twin's row says only whose baseline it
+                        is (`baseline_of`). `wa-bench score` replaces the rows of the episodes it
+                        scored, never episodes.jsonl
     judgments-<profile>.jsonl  every labelable judge item behind the scores, one per line, in
                         label_ui.py's shape (question, evidence or a/b/context, `model` the
                         judge's answer or null) plus `scored` (the row it counts in), `ep_id`
@@ -50,7 +50,7 @@ from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
 from writing_assistant.episode.store import (LOCAL_DEV, RUN_FILE, TEST_USES, Task, append_jsonl, load_episodes, local_only, matches,
                                              read_jsonl, save_episodes)
-from writing_assistant.judges import Judges, judges_from
+from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
 from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
 
@@ -108,10 +108,6 @@ def services_for(models: Path, profile: str) -> Services:
     client = LLMClient(models)
     judges = judges_from(client, profile)
     return Services(llm=client, judges=judges, search=None, refs=None, corpus=Corpus(judges=judges))
-
-
-def judge_stamps(judges: Judges) -> dict[str, dict]:
-    return {name: getattr(judges, name).stamp for name in judges.__dataclass_fields__}
 
 
 def code_version() -> str:
@@ -180,7 +176,8 @@ async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, service
 async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int,
                     only: set[str] | None = None) -> tuple[list[dict], list[dict]]:
     """Rows for every episode, or for the ep_ids in `only` (a twin's row says whose baseline
-    it is), and all their judgments. Twins are paired over all of `episodes`."""
+    it is), each stamped with the scoring code, and all their judgments. Twins are paired
+    over all of `episodes`."""
     twins = twins_of(episodes, suite)
     baseline_of = {twin.ep_id: parent for parent, twin in twins.items()}
     sem = asyncio.Semaphore(concurrency)
@@ -193,18 +190,16 @@ async def score_all(suite: Suite, episodes: list[Episode], services: Services, c
             return await score_episode(suite, ep, twins.get(ep.ep_id), services)
 
     scored = await asyncio.gather(*(one(ep) for ep in episodes if only is None or ep.ep_id in only))
-    return [row for row, _ in scored], [j for _, js in scored for j in js]
+    code = code_version()
+    return [row | {"code": code} for row, _ in scored], [j for _, js in scored for j in js]
 
 
-def record(run_dir: Path, services: Services, profile: str | None) -> None:
-    """Add the USD the hosts reported to run.json and, when episodes were scored, which
-    judges scored them."""
+def record_spent(run_dir: Path, services: Services) -> None:
+    """Add the USD the hosts reported to run.json."""
     info = json.loads((run_dir / RUN_FILE).read_text())
     spent = info.setdefault("spent_usd", {})
     for endpoint, usd in services.llm.spent.items():
         spent[endpoint] = round(spent.get(endpoint, 0.0) + usd, 6)
-    if profile:
-        info.setdefault("scoring", {})[profile] = {"judges": judge_stamps(services.judges), "code": code_version(), "at": _now()}
     _write_json(run_dir / RUN_FILE, info)
 
 
@@ -318,7 +313,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
     except* AccountError as group:
         stopped = group.exceptions[0]
     finally:
-        record(run_dir, services, None if args.no_score else args.judges)
+        record_spent(run_dir, services)
         await close(services)
     print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
@@ -352,7 +347,7 @@ async def cmd_score(args: argparse.Namespace) -> int:
     rescored = {r["ep_id"] for r in rows}
     jpath = run_dir / f"judgments-{args.judges}.jsonl"
     _write_jsonl(jpath, [j for j in read_jsonl(jpath) if j["scored"] not in rescored] + judgments)
-    record(run_dir, services, args.judges)
+    record_spent(run_dir, services)
     errors = sum("error" in r for r in rows)
     print(f"{path}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, {errors} scorer errors; "
           f"spent ${sum(services.llm.spent.values()):.4f}")

@@ -23,10 +23,11 @@ from writing_assistant.suites import SUITES, mean
 FAMILIARITY_GAP = ("discriminator_fool_rate", "verifier_match", "pairwise_craft_win", "score_100_endings", "restraint_score")
 
 
-def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) -> tuple[dict, dict]:
-    """(run.json, groups): groups maps a key (the episode's values for `keys`) to
-    {metric: [values]} plus counts. Twins are baselines inside their parent's net_* and are
-    left out; `condition` is matched and grouped on like a row field."""
+def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) -> tuple[dict, dict, Counter]:
+    """(run.json, groups, scoring codes): groups maps a key (the episode's values for `keys`)
+    to {metric: [values]} plus counts; the codes count the scores rows read per scoring code
+    (None: a row written before rows were stamped). Twins are baselines inside their parent's
+    net_* and are left out; `condition` is matched and grouped on like a row field."""
     info = json.loads((run_dir / RUN_FILE).read_text())
     loaded = load_episodes(run_dir)
     twins = {t.ep_id for t in twins_of(loaded, SUITES[info["suite"]]).values()}
@@ -34,6 +35,7 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) 
     scores = {r["ep_id"]: r for r in read_jsonl(run_dir / f"scores-{profile}.jsonl")}
     groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "unflagged": defaultdict(list),
                                                               "familiarity": defaultdict(list), "counts": Counter()})
+    codes: Counter = Counter()
     for ep in episodes.values():
         row = ep.meta.get("row", {}) | {"condition": ep.condition}
         if not matches(row, where):
@@ -46,6 +48,7 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) 
         if sc is None:
             g["counts"]["unscored:missing"] += 1
             continue
+        codes[sc.get("code")] += 1
         if "error" in sc:
             g["counts"]["unscored:scorer_error"] += 1
             continue
@@ -60,7 +63,7 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None) 
                     g["unflagged"][name].append(value)
                 if name in FAMILIARITY_GAP and row.get("familiarity") is not None:
                     g["familiarity"][name].append((float(row["familiarity"]), value))
-    return info, groups
+    return info, groups, codes
 
 
 def _fmt(x: float | None) -> str:
@@ -81,7 +84,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     group_by = [g for g in (args.group_by or "").split(",") if g]
     # Conditions are arms (full_view and pov_view measure different things): never averaged.
     keys = group_by + ([] if "condition" in group_by else ["condition"])
-    info, groups = _summarise(run_dir, args.judges, keys, args.where)
+    info, groups, scored_by = _summarise(run_dir, args.judges, keys, args.where)
     suite = SUITES[info["suite"]]
     base = _summarise(Path(args.baseline), args.judges, keys, args.where)[1] if args.baseline else None
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
@@ -89,10 +92,11 @@ def cmd_report(args: argparse.Namespace) -> int:
     print(f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
           f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
           f"split {info['split']}, played by code {', '.join(codes)}, judges {args.judges}")
-    scoring = info.get("scoring", {}).get(args.judges, {})
-    if "code" not in scoring:
-        print("scores written before the scoring code was stamped (before the artefact and twin rules): "
-              f"re-score with `wa-bench score --run {run_dir} --judges {args.judges}`")
+    if stamped := sorted(c for c in scored_by if c):
+        print(f"scored by code {', '.join(stamped)}")
+    if old := scored_by[None]:
+        print(f"{old} scores row{'s' if old > 1 else ''} written before the scoring code was stamped (before the "
+              f"artefact and twin rules): re-score with `wa-bench score --run {run_dir} --judges {args.judges}`")
     if spent := info.get("spent_usd"):
         print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())}); "
               "counts only the chat-call cost a host reports (DeepInfra's estimated_cost): embedding calls "
