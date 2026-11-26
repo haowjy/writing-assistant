@@ -49,7 +49,7 @@ import json
 
 from writing_assistant.episode import Episode, Event, norm_path, strings
 from writing_assistant.episode.tools import dispatch_tool
-from writing_assistant.suites import SUBJECT, paragraphs
+from writing_assistant.suites import SUBJECT, KindAbout, paragraphs
 from writing_assistant.suites.world import author, srd
 
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
@@ -309,3 +309,51 @@ async def play(eps: list[Episode], services, turn) -> list[Episode]:
     start in list order, so a scripted Turn that never suspends still answers them in order."""
     await asyncio.gather(*(PLAY[ep.state["kind"]](ep, turn) for ep in eps))
     return eps
+ABOUT = {
+    "pov_write": KindAbout(
+        title="POV writing",
+        tests="Does the model keep a character from knowing what they never witnessed?",
+        given=f"The log of a tabletop session already played (speech and world events), and a request for the next "
+              f"chapter, about {POV_WORDS} words, in close third person from one character's point of view. One event "
+              "is a secret that character never saw.",
+        kept="In pov_view, every event the character did not see is left out of the log, the secret among them.",
+        arms={"full_view": "The whole log, the secret included: a good writer still keeps it out of the chapter.",
+              "pov_view": "Only what the character saw. It cannot leak what it was never shown, so it is the floor."},
+        twin="Each arm is played again with the secret swapped for another one the character also never sees. The "
+             "judge is asked the original secret's questions of that chapter: a yes there is the judge or chance, "
+             "not a leak, and net_pov_leak subtracts it."),
+    "dm_play": KindAbout(
+        title="Running the game",
+        tests="Can the model run a consistent world as the game master?",
+        given="A world (party, places, characters, items, secrets) and the rules tools (srd_*); scripted players "
+              "speak one line at a time and the model replies with narration. Every change to the world must go "
+              "through the tools, and each event goes only to the characters who could perceive it.",
+        kept=None,
+        arms={"base": "One episode per task. (With no model, a scripted game master plays the same task to make "
+                      "the fixed logs pov_write reads.)"}),
+    "pivot_unbinding": KindAbout(
+        title="Changing direction",
+        tests="When the author changes their mind, does the model drop the old idea?",
+        given="A shared project folder. The author gives direction A over a few messages, then scraps it for "
+              "direction B, then asks for the scene in a file.",
+        kept=None,
+        arms={"pivot": "Direction A, the change to B, then the request."},
+        twin="clean_b: the author only ever gives direction B, then the same request. Questions about direction A "
+             "asked of that scene measure what shows up anyway; post_pivot_residue subtracts it."),
+    "rule_bend": KindAbout(
+        title="Bending canon",
+        tests="Can the model write in an existing book's world with one rule deliberately changed?",
+        given="The first chapters of a real book under canon/, a rules file saying how this story departs from it "
+              "(and that it overrides the book), and a request for a chapter in a file.",
+        kept=None,
+        arms={"bent": "The rules file changes one of the book's rules."},
+        twin="The rules file keeps the book's rule. How often that chapter uses the changed rule anyway is "
+             "subtracted in net_canon_snapback."),
+    "collab_edit": KindAbout(
+        title="Editing together",
+        tests="Can the model edit a shared document without trampling the author's work?",
+        given="A document in a shared folder and an author who, over several rounds, edits a paragraph themselves "
+              "and then asks the model to change specific paragraphs.",
+        kept=None,
+        arms={"base": "One episode per task; each round is scored on its own, with no judge."}),
+}

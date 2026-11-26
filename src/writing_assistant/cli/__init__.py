@@ -1,4 +1,4 @@
-"""`wa-bench`: run, score, report, guardrails, collect, export, sync.
+"""`wa-bench`: run, score, report, view, guardrails, collect, export, sync.
 
 A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one):
 
@@ -466,6 +466,11 @@ def parser() -> argparse.ArgumentParser:
     e = sub.add_parser("export", help="public release: permissive text inline, the rest hashed")
     e.add_argument("--public", required=True)
 
+    v = sub.add_parser("view", help="a local read-only page: task rows, and runs' scores, episodes and judges")
+    v.add_argument("--run", nargs="+", action="extend", default=[], help="run directories (several to compare)")
+    v.add_argument("--port", type=int, default=8766)
+    v.add_argument("--host", default="127.0.0.1", help="address to bind; not loopback refuses runs with local_dev text")
+
     y = sub.add_parser("sync", help="stage and rsync to the private gs:// bucket")
     y.add_argument("--runs", default="runs")
     y.add_argument("--stage", default="runs/.sync-stage")
@@ -474,9 +479,10 @@ def parser() -> argparse.ArgumentParser:
 
 
 from writing_assistant.cli.report import cmd_report  # noqa: E402  (needs the helpers above)
+from writing_assistant.cli.view import cmd_view  # noqa: E402
 
 COMMANDS = {"run": cmd_run, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
-            "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync}
+            "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view}
 
 
 def main(argv: list[str] | None = None) -> int:

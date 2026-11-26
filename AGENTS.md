@@ -39,7 +39,34 @@ uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
+uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges
 ```
+
+`view`'s page is a React app in `viewer/` (Bun, Vite, TypeScript, shadcn/ui on Tailwind).
+Build it once, and after changing it, before `wa-bench view`:
+
+```
+cd viewer && bun install && bun run build   # writes src/writing_assistant/cli/view_dist/ (not committed)
+cd viewer && bun run dev                    # live reload on :5173; API from `wa-bench view --port 8767`
+```
+
+The Python tests do not need the page built; `view` refuses to start without it.
+
+`view` serves a page on loopback (`--host` binds another address, refused while a run holds
+`local_dev` episodes) with a JSON API under `/api/`. Every screen has its own URL under
+`/<suite>/<split>/`, filters and the metric included: the Overview (`report`'s own
+`build_report` per task kind, the loaded runs side by side), a kind's Tasks
+(`kind/<kind>/tasks`: one row per task, one column per run), and what one model wrote
+(`task/<task>/<arm>?run=`: the prose, the judge's questions and replies, the twin, what
+differs in its prompt from the other arm, reasoning and tool calls; `&compare=1` puts the runs
+side by side). The words that say what a task kind tests and what a metric measures live in
+the suite (`ABOUT` beside its tasks and its scorer) and reach the page through `/api/kinds`.
+A task row is shown by running the suite's own `setup` and `play` with a turn that answers
+nothing, so its episodes, twin swaps, delivered messages and the payload fields kept from the
+model are what a run would make; held-out `test` rows appear only behind the page's switch,
+`local_dev` rows never. Adding a shadcn component with `bunx shadcn add` imports `cn` from an
+npm package named `cn`; point it back at `@/lib/utils` and `bun remove cn`.
+It writes nothing, fetches one task at a time and re-reads a run whose files change.
 
 `--judges none` names no judge: with no judge served, `run` plays, saves and scores only what
 needs no model judge (the judged metrics print as unscored "unavailable"), and `score
