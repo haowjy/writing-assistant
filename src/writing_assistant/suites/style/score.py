@@ -1,6 +1,9 @@
 """Suite 3 scorers: pure over a frozen episode, reaching models only through `services`.
 
-k_exemplar_scene (the scene is the writer's last reply):
+Each kind's outcome metrics read one artefact (`OUTPUT`, by the rule in `suites/__init__.py`);
+without it they are absent and `n_no_output.<reason>` is written instead.
+
+k_exemplar_scene (the scene is the writer's reply to the one delivery):
 - `discriminator_fool_rate`: `author_verify` between the scene and the author's true passage
   y* for the same beats, with the held-out references in view: P(the scene is the
   author's). 0.5 means the verifier cannot tell them apart.
@@ -12,7 +15,7 @@ k_exemplar_scene (the scene is the writer's last reply):
 Both A/B comparisons cut the scene to the passage budget y* was cut to, so neither side
 is judged on length; nothing here rewards or penalises length.
 
-critique_edit (the scorer reads the edited file):
+critique_edit (the file the writer wrote after the note was delivered):
 - `edited`: 1.0 when the file changed at all.
 - `edit_scope`: share of the paragraphs outside the objection's scope left exactly as they
   were (whitespace collapsed); 1.0 is a perfectly scoped edit.
@@ -34,7 +37,7 @@ import numpy as np
 from writing_assistant.corpus.authors import PASSAGE_TOKENS
 from writing_assistant.corpus.text import count_tokens, truncate_tokens
 from writing_assistant.episode import Episode
-from writing_assistant.suites import Tally, last_reply, norm, paragraphs, prose_metrics
+from writing_assistant.suites import NoOutput, Tally, file_output, norm, paragraphs, prose_metrics, reply_output
 from writing_assistant.suites.style.tasks import WRITER
 
 JUDGED_BY = {
@@ -45,11 +48,8 @@ JUDGED_BY = {
 }
 
 
-async def _scene(ep: Episode, services, out: dict[str, float], tally: Tally) -> str:
+async def _scene(ep: Episode, text: str, services, out: dict[str, float], tally: Tally) -> str:
     s = ep.state["scene"]
-    text = last_reply(ep, WRITER)
-    if not text:
-        return text
     j = services.judges
     budget = max(count_tokens(s["y_star"]["text"]), 1)
     candidate = truncate_tokens(text, min(budget, PASSAGE_TOKENS))
@@ -73,9 +73,9 @@ def _cos(a: np.ndarray, b: np.ndarray) -> float:
     return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-async def _edit(ep: Episode, services, out: dict[str, float], tally: Tally) -> str:
+async def _edit(ep: Episode, after: str, services, out: dict[str, float], tally: Tally) -> str:
     s = ep.state["edit"]
-    original, after = s["original"], ep.files.get(s["path"], "")
+    original = s["original"]
     before_pars = [norm(p) for p in paragraphs(original)]
     after_pars = [norm(p) for p in paragraphs(after)]
     kept = set(after_pars)
@@ -95,14 +95,21 @@ async def _edit(ep: Episode, services, out: dict[str, float], tally: Tally) -> s
 
 
 SCORERS = {"k_exemplar_scene": _scene, "critique_edit": _edit}
+OUTPUT = {
+    "k_exemplar_scene": lambda ep: reply_output(ep, WRITER),
+    "critique_edit": lambda ep: file_output(ep, WRITER, ep.state["edit"]["path"]),
+}
 
 
 async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str, float]:
-    if ep.status not in ("completed", "truncated"):
-        raise ValueError(f"{ep.ep_id} is {ep.status}; only finished episodes are scored")
+    kind = ep.state["kind"]
+    try:
+        artefact = OUTPUT[kind](ep)
+    except NoOutput as e:
+        return {f"n_no_output.{e.reason}": 1.0}
     out: dict[str, float] = {}
     tally = Tally()
-    prose = await SCORERS[ep.state["kind"]](ep, services, out, tally)
+    prose = await SCORERS[kind](ep, artefact, services, out, tally)
     tally.into(out)
     prose_metrics(out, prose, ep, services)
     return out

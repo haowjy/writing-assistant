@@ -52,7 +52,7 @@ class Unscored(Exception):
         super().__init__(f"{reason}: {tail!r}")
 
 
-_REFUSAL = re.compile(
+REFUSAL = re.compile(
     r"\b(I\s+can(?:no|['’])?t|I\s+(?:am|['’]m)\s+(?:not\s+able|unable)|I\s+won['’]t|I\s+will\s+not"
     r"|I\s+(?:must|have\s+to)\s+decline|I['’]m\s+sorry|I\s+apologi[sz]e|not\s+(?:comfortable|appropriate)"
     r"|against\s+(?:my|the)\s+(?:guidelines|polic(?:y|ies))|content\s+polic(?:y|ies)|sexually\s+explicit)",
@@ -88,4 +88,4 @@ def why_unanswered(rec: CallRecord) -> Reason:
         return "refusal"
     if rec.finish_reason == "length":
         return "truncated"
-    return "refusal" if _REFUSAL.search(rec.response) else "unparseable"
+    return "refusal" if REFUSAL.search(rec.response) else "unparseable"

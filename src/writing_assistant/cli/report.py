@@ -88,6 +88,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         g = groups[key]
         label = ", ".join(f"{k}={v}" for k, v in zip(group_by, key, strict=True)) or "all"
         print(f"\n== {label}: " + ", ".join(f"{k} {int(v)}" for k, v in sorted(g["counts"].items()) if not k.startswith("n_")))
+        # Episodes whose outcome metrics are absent because the artefact they read is missing.
+        for prefix, what in (("n_no_output.", "no artefact"), ("n_twin_no_output.", "twin had no artefact (no net_*)")):
+            if missing := {k.removeprefix(prefix): int(v) for k, v in sorted(g["counts"].items()) if k.startswith(prefix)}:
+                print(f"  {what}: " + ", ".join(f"{reason} {n}" for reason, n in missing.items()))
         print(f"  {'metric':40} {'mean':>8} {'n':>4} {'w/o flag':>8} {'refused':>8}  notes")
         for name in sorted(g["values"]):
             vals = g["values"][name]

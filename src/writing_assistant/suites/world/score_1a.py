@@ -1,9 +1,15 @@
 """Suite 1a scorers: pure over a frozen episode, reaching models only through `services`.
 
+Outcome metrics read the one artefact their task kind names in `OUTPUT` (the rule is in
+`suites/__init__.py`): the scene file, the chapter reply, the rule-bend chapter file, the
+collaborative document, the DM's narration over its recorded world events. Without it they
+are absent and `n_no_output.<reason>` is written instead. The DM's tool bookkeeping reads the
+log and is written whenever the episode ran.
+
 A metric that does not apply to a task is absent, never 0.0. Whether a text uses a fact is
 asked of the `fact` judge with the text in view; an item the judge leaves unscored
 (`judges.Unscored`) is left out and counted per metric by `Tally`, and a rate with no judged
-item is absent. A `net_*` metric needs the twin's value too and is absent without it.
+item is absent. A `net_*` metric needs the twin's artefact too and is absent without it.
 """
 
 from __future__ import annotations
@@ -11,8 +17,8 @@ from __future__ import annotations
 import asyncio
 
 from writing_assistant.episode import Episode
-from writing_assistant.suites import Tally, last_reply, mean, norm, paragraphs, prose_metrics
-from writing_assistant.suites.world import srd
+from writing_assistant.suites import NoOutput, Tally, file_output, mean, norm, paragraphs, prose_metrics, reply_output
+from writing_assistant.suites.world import author, srd
 from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, WRITER, render_log
 
 CONTRADICTION_Q = "Does the narration state anything that contradicts the recorded world events?"
@@ -45,30 +51,58 @@ def _put(out: dict[str, float], name: str, value: float | None) -> None:
         out[name] = float(value)
 
 
-# -- per task ------------------------------------------------------------------------------
+# -- the artefact each task kind's outcome metrics read --------------------------------------
 
-async def _pivot(ep: Episode, judge: _Judged) -> tuple[dict, float | None, str]:
-    s = ep.state["pivot"]
-    scene = ep.files.get(s["scene_path"], "")
+def _script_done(ep: Episode) -> None:
+    if author.remaining(ep.state):
+        raise NoOutput("truncated")
+
+
+def _written(ep: Episode, path: str) -> str:
+    _script_done(ep)
+    return file_output(ep, WRITER, path)
+
+
+def _narration(ep: Episode) -> str:
+    """The DM's narration, once the script has run to its end, the model DM's last reply
+    ended normally, and the DM has recorded at least one world event to check it against."""
+    _script_done(ep)
+    if ep.actors[DM] != "scripted":
+        reply_output(ep, DM)
+    if not any(e.kind == "world" for e in ep.events):
+        raise NoOutput("empty_output")
+    return "\n\n".join(e.data["text"] for e in ep.events if e.kind == "say" and e.actor == DM)
+
+
+OUTPUT = {
+    "pivot_unbinding": lambda ep: _written(ep, ep.state["pivot"]["scene_path"]),
+    "pov_write": lambda ep: reply_output(ep, WRITER),
+    "rule_bend": lambda ep: _written(ep, ep.state["rule_bend"]["out_path"]),
+    "collab_edit": lambda ep: _written(ep, ep.state["collab"]["path"]),
+    "dm_play": _narration,
+}
+
+
+# -- outcome metrics per task kind: (metrics, the rate a net metric subtracts from) ----------
+
+async def _pivot(ep: Episode, scene: str, judge: _Judged) -> tuple[dict, float | None]:
+    residue = await judge.rate("residue_rate", ep.state["pivot"]["residue_probes"], scene)
     out: dict[str, float] = {}
-    residue = await judge.rate("residue_rate", s["residue_probes"], scene)
     _put(out, "residue_rate", residue)
-    return out, residue, scene
+    return out, residue
 
 
-async def _pov(ep: Episode, judge: _Judged) -> tuple[dict, float | None, str]:
+async def _pov(ep: Episode, chapter: str, judge: _Judged) -> tuple[dict, float | None]:
     s = ep.state["pov"]
-    chapter = last_reply(ep, WRITER)
     out: dict[str, float] = {}
     leak = await judge.rate("pov_leak", s["hidden_probes"], chapter)
     _put(out, "pov_leak", leak)
     _put(out, "permitted_fact_recall", await judge.rate("permitted_fact_recall", s["permitted_probes"], chapter))
-    return out, leak, chapter
+    return out, leak
 
 
-async def _rule_bend(ep: Episode, judge: _Judged) -> tuple[dict, float | None, str]:
+async def _rule_bend(ep: Episode, chapter: str, judge: _Judged) -> tuple[dict, float | None]:
     s = ep.state["rule_bend"]
-    chapter = ep.files.get(s["out_path"], "")
     bent_arm = ep.condition == "bent"
     canon = await judge.rate("canon_snapback" if bent_arm else "canon_rule_compliance", s["canon_probes"], chapter)
     bent = await judge.rate("bent_rule_compliance" if bent_arm else "bent_rule_intrusion", s["bent_probes"], chapter)
@@ -81,10 +115,30 @@ async def _rule_bend(ep: Episode, judge: _Judged) -> tuple[dict, float | None, s
         _put(out, "canon_rule_compliance", canon)
         _put(out, "bent_rule_intrusion", bent)
         wrong = bent
-    return out, wrong, chapter
+    return out, wrong
 
 
-async def _dm(ep: Episode, judge: _Judged) -> tuple[dict, None, str]:
+async def _dm(ep: Episode, narration: str, judge: _Judged) -> tuple[dict, None]:
+    """Each narration is checked against the world events recorded before it."""
+    out: dict[str, float] = {}
+    contradictions, words, record = 0, 0, []
+    for ev in ep.events:
+        if ev.kind == "world":
+            record.append(ev)
+        elif ev.kind == "say" and ev.actor == DM and ev.data["text"].strip():
+            text = ev.data["text"]
+            evidence = f"Recorded world events:\n{render_log(record, 'the party') or '(none)'}\n\nNarration:\n{text}"
+            answer = await judge.ask("contradictions_per_1k", CONTRADICTION_Q, evidence)
+            if answer is not None:
+                contradictions += answer
+                words += len(text.split())
+    if words:
+        out["contradictions_per_1k"] = 1000 * contradictions / words
+    return out, None
+
+
+def _dm_log(ep: Episode) -> dict[str, float]:
+    """Bookkeeping over the DM's SRD tool calls: present whenever the episode ran."""
     world = ep.state["world"]
     out: dict[str, float] = {}
     calls = [e for e in ep.events if e.kind == "tool" and e.actor == DM and e.data["name"] in srd.TOOLS]
@@ -96,22 +150,7 @@ async def _dm(ep: Episode, judge: _Judged) -> tuple[dict, None, str]:
               and (e.data["result"]["ok"] or "rule" in e.data["result"])]
     if placed:
         out["visibility_error_rate"] = sum(e.data["result"].get("rule") == "visibility" for e in placed) / len(placed)
-
-    # Narration is checked against the world events recorded before it.
-    contradictions, words, record = 0, 0, []
-    for ev in ep.events:
-        if ev.kind == "world":
-            record.append(ev)
-        elif ev.kind == "say" and ev.actor == DM and ev.data["text"].strip():
-            narration = ev.data["text"]
-            evidence = f"Recorded world events:\n{render_log(record, 'the party') or '(none)'}\n\nNarration:\n{narration}"
-            answer = await judge.ask("contradictions_per_1k", CONTRADICTION_Q, evidence)
-            if answer is not None:
-                contradictions += answer
-                words += len(narration.split())
-    if words:
-        out["contradictions_per_1k"] = 1000 * contradictions / words
-    return out, None, "\n\n".join(e.data["text"] for e in ep.events if e.kind == "say" and e.actor == DM)
+    return out
 
 
 def _collab(ep: Episode) -> dict[str, float]:
@@ -172,22 +211,26 @@ async def score(ep: Episode, services, twin: Episode | None = None) -> dict[str,
     """Metrics for one episode. With its twin (`tasks_1a.TWINS`), also the net metric: the
     episode's rate minus the twin's baseline (for rule_bend, canon use under the bent rule
     minus bent-rule use under kept canon)."""
-    if not _finished(ep):
-        raise ValueError(f"{ep.ep_id} is {ep.status}; only finished episodes are scored")
     kind = ep.state["kind"]
+    out = _dm_log(ep) if kind == "dm_play" else {}
+    try:
+        text = OUTPUT[kind](ep)
+    except NoOutput as e:
+        return out | {f"n_no_output.{e.reason}": 1.0}
     if kind == "collab_edit":
-        return _collab(ep)
+        return out | _collab(ep)
     judge = _Judged(services)
-    out, own, text = await SCORERS[kind](ep, judge)
+    metrics, own = await SCORERS[kind](ep, text, judge)
+    out |= metrics
+    if twin is not None and kind in NET:
+        try:
+            twin_text = OUTPUT[kind](twin)
+        except NoOutput as e:
+            out[f"n_twin_no_output.{e.reason}"] = 1.0
+        else:
+            _, base = await SCORERS[kind](twin, twin_text, _Judged(services))
+            if own is not None and base is not None:
+                out[NET[kind]] = own - base
     judge.tally.into(out)
     prose_metrics(out, text, ep, services)
-    if twin is not None and _finished(twin) and kind in NET:
-        _, base, _ = await SCORERS[kind](twin, _Judged(services))
-        if own is not None and base is not None:
-            out[NET[kind]] = own - base
     return out
-
-
-def _finished(ep: Episode) -> bool:
-    """Completed or truncated; a failed episode is never scored."""
-    return ep.status in ("completed", "truncated")
