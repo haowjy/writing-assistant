@@ -26,6 +26,8 @@ pov_write: {world, pov: character id, log: [{actor, kind, data, visible_to}],
     hidden_probes: [question], permitted_probes: [question]}
     `log` is the world/say events of a scripted dm_play run; the secret must appear only
     in the hidden event (and in the world state `swap.state` replaces).
+    Rows built from SRD worlds (worlds.py) also carry `template`, the secret template whose
+    split they inherit, and `world_seed`; nothing here reads them.
 rule_bend: {chapters: int (default 3), rules_path, bent_rules: str, kept_rules: str,
     request: str, out_path, canon_probes: [question], bent_probes: [question]}
     Mounts the first `chapters` chapters of each work in `task.work_ids` as

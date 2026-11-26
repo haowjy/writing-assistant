@@ -17,12 +17,12 @@ Which authors land in which split is the hash's call, never ours.
 `build` is deterministic given the corpus and the judges' answers, which are cached in
 `TASKS_DIR/.judge-cache.jsonl` (keyed by judge model, prompt version and input), so a rebuild reproduces
 the same rows without calling a model again:
-- Suite 1a: `pov_write` and `dm_play` rows from procedurally generated SRD worlds (seed ->
-  world; split hashed from `srd-world-<seed>`). Each world's fixed log is one scripted-DM
-  `dm_play` run through the suite's own code, with the secret confined to the one hidden
-  `reveal` event; the `fact` judge checks that no later event states it, and a world that
-  fails the check is dropped. Plus hand-written `pivot_unbinding`, `collab_edit` and
-  `rule_bend` rows (`rule_bend` rows take their split from their work).
+- Suite 1a: `pov_write` and `dm_play` rows from `--per-template` SRD worlds of every secret
+  template (suites/world/worlds.py; a world's split is its template's). Each world's fixed
+  log is one scripted-DM `dm_play` run through the suite's own code, with the secret
+  confined to one hidden event; the `fact` judge checks that no later event states it, and
+  a world that fails the check is dropped. Plus hand-written `pivot_unbinding`,
+  `collab_edit` and `rule_bend` rows (`rule_bend` rows take their split from their work).
 - Suite 3: the within-author partition (corpus/authors.py) of every author the splitter
   can serve; per target, `k_exemplar_scene` for k in {0, 1, 3, 10} x modes `instruction`
   and `continuation` (and `style_retrieved` when an `embed_style` endpoint exists), plus
@@ -35,7 +35,6 @@ import argparse
 import asyncio
 import hashlib
 import json
-import random
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -44,15 +43,21 @@ from typing import Any
 
 from writing_assistant.cli import load_dotenv
 from writing_assistant.corpus import Corpus
-from writing_assistant.corpus.authors import K_VALUES, AuthorSplit, Passage, partition_author_corpus, retrieve
+from writing_assistant.corpus.authors import (
+    K_VALUES,
+    AuthorSplit,
+    Passage,
+    partition_author_corpus,
+    retrieve,
+)
 from writing_assistant.corpus.collect import NO_AUTHOR, collect, gutenberg_catalogue
-from writing_assistant.episode.store import TASKS_DIR, Task, split_of
+from writing_assistant.episode.store import TASKS_DIR, split_of
 from writing_assistant.judges import Unscored, judges_from
 from writing_assistant.judges.extract import FACT, OUTLINE
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import paragraphs
 from writing_assistant.suites.style.tasks import beats
-from writing_assistant.suites.world import tasks_1a
+from writing_assistant.suites.world import worlds
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = TASKS_DIR / ".judge-cache.jsonl"
@@ -95,161 +100,7 @@ class CachedJudges:
                                lambda: self.judges.outline(text))
 
 
-# == Suite 1a: SRD worlds and their pre-played logs ============================================
-
-SETTINGS = [
-    {"hub": ("quay", "the quay"), "far": ("net_shed", "the net shed"), "side": ("chapel", "the harbour chapel"),
-     "work": "mending a net", "place": "a coil of rope", "clue": ("lantern", "cracked lantern"),
-     "passer": "A fishwife with an empty basket", "door": "harbour steps"},
-    {"hub": ("courtyard", "the monastery courtyard"), "far": ("scriptorium", "the scriptorium"),
-     "side": ("bell_tower", "the bell tower"), "work": "copying a ledger", "place": "a loose flagstone",
-     "clue": ("seal", "broken wax seal"), "passer": "A novice carrying firewood", "door": "cloister arch"},
-    {"hub": ("camp", "the caravan camp"), "far": ("cistern", "the old cistern"), "side": ("dune", "the high dune"),
-     "work": "watering the camels", "place": "a saddle blanket", "clue": ("compass", "dented brass compass"),
-     "passer": "A boy leading a lame mule", "door": "picket line"},
-    {"hub": ("market", "the river market"), "far": ("boathouse", "the boathouse"), "side": ("bridge", "the stone bridge"),
-     "work": "caulking a hull", "place": "a stack of crates", "clue": ("ring", "tarnished signet ring"),
-     "passer": "A ferryman with a split lip", "door": "market gate"},
-    {"hub": ("parade_ground", "the fort's parade ground"), "far": ("stables", "the stables"),
-     "side": ("watchtower", "the watchtower"), "work": "oiling a saddle", "place": "a water trough",
-     "clue": ("letter", "half-burned letter"), "passer": "A sergeant counting rations", "door": "main gate"},
-    {"hub": ("hall", "the manor's great hall"), "far": ("kitchen", "the kitchen"), "side": ("gallery", "the portrait gallery"),
-     "work": "polishing the silver", "place": "the hearth", "clue": ("key", "small iron key"),
-     "passer": "A maid with a covered tray", "door": "hall doors"},
-]
-# (secret, swapped secret, hidden probes); every probe asks about the original, so the twin's
-# rate is the floor a writer reaches without the secret in view.
-SECRETS = [
-    ("{npc} set the fire that burned the old granary.", "{npc} saw the reeve's son set the fire that burned the old granary.",
-     ["Does the text state or imply that {npc} set the granary fire?", "Does the text suggest {npc} is guilty of arson?"]),
-    ("{npc} is the lost heir of House Varrow.", "{npc} is a smuggler who owes money to the harbour guild.",
-     ["Does the text state or imply that {npc} is an heir of a noble house?", "Does the text mention House Varrow?"]),
-    ("{npc} hid the stolen chalice under the chapel floor.", "{npc} sold the stolen chalice to a passing trader.",
-     ["Does the text state or imply that {npc} hid the chalice?", "Does the text mention a hiding place under a floor?"]),
-    ("{npc} poisoned the well on the night of the festival.", "{npc} found the well already poisoned on the night of the festival.",
-     ["Does the text state or imply that {npc} poisoned the well?", "Does the text suggest {npc} is a poisoner?"]),
-    ("{npc} is a spy paid by Baron Oskel.", "{npc} is a deserter from Baron Oskel's army.",
-     ["Does the text state or imply that {npc} is a spy?", "Does the text suggest {npc} takes money from Baron Oskel?"]),
-    ("{npc} buried the missing courier in the orchard.", "{npc} helped the missing courier escape over the hills.",
-     ["Does the text state or imply that the courier is dead?", "Does the text state or imply that {npc} buried someone?"]),
-]
-PARTY_NAMES = ["Mira", "Tam", "Bren", "Ysolde", "Corin", "Ash", "Lio", "Wren", "Dace", "Nell", "Hale", "Iva"]
-NPC_NAMES = ["Orin", "Maud", "Fennick", "Old Sabe", "Jory", "Petronel"]
-POV_REQUEST = ("Write the next chapter of the novel, about 700 words, covering this session in close third person "
-               "from {pov}'s point of view. Reply with the chapter text only.")
-
-
-def _character(name: str, location: str, cha: int = 1) -> dict:
-    return {"name": name, "location": location, "hp": 10, "max_hp": 10, "ac": 12, "attack_bonus": 3,
-            "abilities": {"str": 1, "dex": 1, "con": 1, "int": 0, "wis": 1, "cha": cha}, "conditions": [], "inventory": []}
-
-
-def make_world(seed: int) -> dict[str, Any]:
-    """World seed -> a world, its scripted session (player lines and DM calls), probes."""
-    rng = random.Random(f"srd-world-{seed}")
-    s = SETTINGS[rng.randrange(len(SETTINGS))]
-    secret, swapped, hidden = SECRETS[rng.randrange(len(SECRETS))]
-    a, b, c = rng.sample(PARTY_NAMES, 3)
-    npc = rng.choice(NPC_NAMES)
-    ids = {n: n.lower() for n in (a, b, c)} | {npc: "npc"}
-    (hub, hub_name), (far, far_name), (side, side_name) = s["hub"], s["far"], s["side"]
-    clue_id, clue_name = s["clue"]
-    world = {
-        "seed": seed, "party": [ids[a], ids[b], ids[c]],
-        "locations": {hub: {"name": hub_name, "exits": [far, side], "items": [clue_id]},
-                      far: {"name": far_name, "exits": [hub], "items": []},
-                      side: {"name": side_name, "exits": [hub], "items": []}},
-        "characters": {ids[a]: _character(a, hub, cha=3), ids[b]: _character(b, hub), ids[c]: _character(c, hub),
-                       "npc": _character(npc, far)},
-        "items": {clue_id: {"name": clue_name, "kind": "gear"}},
-        "secrets": {"truth": {"text": secret.format(npc=npc), "owner": "npc", "known_by": ["npc"], "reveal": {"location": far}}},
-        "facts": [],
-    }
-    A, B, C = ids[a], ids[b], ids[c]
-
-    def resolve(**action):
-        return {"name": "srd_resolve", "arguments": action}
-
-    def event(text, location, who):
-        return {"name": "srd_propose_event", "arguments": {"text": text, "location": location, "visible_to": who}}
-
-    session = [
-        (A, f"I'll go and speak with {npc} at {far_name}. Wait for me here.",
-         [resolve(action="move", actor=A, to=far)],
-         f"{a} crosses to {far_name}, where {npc} looks up from {s['work']}."),
-        (B, f"I'll search {hub_name} while we wait.",
-         [resolve(action="check", actor=B, ability="wis", dc=2),
-          event(f"{b} finds a {clue_name} hidden under {s['place']}.", hub, [B, C])],
-         f"Under {s['place']}, {b} finds a {clue_name}."),
-        (A, f"{npc}, I know you are hiding something. Tell me the truth.",
-         [resolve(action="check", actor=A, ability="cha", dc=2), {"name": "srd_reveal", "arguments": {"secret_id": "truth", "to": [A]}}],
-         f"{npc} hesitates, glances at the door, then leans close and tells {a} everything, and makes {a} swear to keep it."),
-        (C, f"I'll keep watch by the {s['door']} and note who passes.",
-         [event(f"{s['passer']} passes {hub_name} and stares at {b} and {c} for a long moment.", hub, [B, C])],
-         f"{s['passer']} goes by and stares at you both for a long moment."),
-        (A, f"Thank you, {npc}. I will keep my word.",
-         [resolve(action="move", actor=A, to=hub)],
-         f"{a} walks back into {hub_name}."),
-        (B, f"{a}, what did {npc} tell you?", [],
-         f"{a} only shrugs and says that {npc} was tired and had little to say."),
-        (C, f"Then let's take the {clue_name} and go.",
-         [resolve(action="take", actor=C, item=clue_id)],
-         f"{c} pockets the {clue_name}, and the three of you set off along the road."),
-    ]
-    permitted = [f"Does the text mention {b} finding a {clue_name}?",
-                 f"Does the text mention someone passing by and staring at {b} and {c}?",
-                 f"Does the text mention {c} taking the {clue_name}?"]
-    return {"seed": seed, "world": world, "session": session, "names": {A: a, B: b, C: c, "npc": npc},
-            "secret": secret.format(npc=npc), "swapped": swapped.format(npc=npc),
-            "hidden_probes": [q.format(npc=npc) for q in hidden], "permitted_probes": permitted,
-            "povs": [B, C], "brief": f"A small party has come to {hub_name} looking for answers."}
-
-
-async def pre_played_log(w: dict) -> list[dict]:
-    """One scripted-DM dm_play run through Suite 1a's own setup and play: the fixed log."""
-    task = Task(f"build:w{w['seed']}", "1a", "dm_play", "train", [], {
-        "brief": w["brief"], "world": w["world"], "turns": [{"as": who, "say": say} for who, say, _, _ in w["session"]],
-        "dm_script": [{"calls": calls, "narration": text} for _, _, calls, text in w["session"]]})
-    [ep] = tasks_1a.setup_dm(task, None)
-    await tasks_1a.play_dm(ep, None)
-    if ep.state["world"]["rules_rejections"]:
-        bad = [e.data for e in ep.events if e.kind == "tool" and not e.data["result"]["ok"]]
-        raise ValueError(f"world {w['seed']}: the scripted DM was refused: {bad}")
-    # Tool events repeat the reveal's text in their result; the story log is world and say events.
-    return [{"actor": e.actor, "kind": e.kind, "data": e.data, "visible_to": e.visible_to}
-            for e in ep.events if e.kind in ("world", "say")]
-
-
-async def world_rows(n_worlds: int, judges: CachedJudges) -> list[dict]:
-    rows = []
-    for seed in range(n_worlds):
-        w = make_world(seed)
-        split = split_of(f"srd-world-{seed}")
-        log = await pre_played_log(w)
-        [hidden_idx] = [i for i, e in enumerate(log) if e["data"].get("tool") == "reveal"]
-        if [i for i, e in enumerate(log) if w["secret"] in json.dumps(e["data"])] != [hidden_idx]:
-            raise ValueError(f"world {seed}: the secret text appears outside the hidden event")
-        later = tasks_1a.render_log([SimpleNamespace(kind=e["kind"], data=e["data"]) for e in log[hidden_idx + 1 :]], "the party")
-        stated = [q for q in w["hidden_probes"] if await judges.fact(q, later)]
-        if stated:
-            print(f"  world {seed}: dropped, the fact judge finds a later event answers {stated}")
-            continue
-        hidden = log[hidden_idx]["data"]
-        swap_world = {"secrets": {"truth": {"text": w["swapped"]}}}
-        for pov in w["povs"]:
-            rows.append({"task_id": f"1a:pov_write:w{seed}:{pov}", "suite": "1a", "kind": "pov_write", "split": split,
-                         "work_ids": [], "payload": {
-                             "world_seed": seed, "world": w["world"], "pov": pov, "log": log, "hidden_event_idx": hidden_idx,
-                             "swap": {"data": hidden | {"text": w["swapped"]}, "state": {"world": swap_world}},
-                             "request": POV_REQUEST.format(pov=w["names"][pov]),
-                             "hidden_probes": w["hidden_probes"], "permitted_probes": w["permitted_probes"]}})
-        rows.append({"task_id": f"1a:dm_play:w{seed}", "suite": "1a", "kind": "dm_play", "split": split, "work_ids": [],
-                     "payload": {"world_seed": seed, "brief": w["brief"], "world": w["world"],
-                                 "turns": [{"as": who, "say": say} for who, say, _, _ in w["session"]]}})
-    return rows
-
-
-# -- hand-written 1a rows --------------------------------------------------------------------
+# == Suite 1a: hand-written rows (the SRD worlds are in suites/world/worlds.py) =================
 
 PIVOTS = [
     {"id": "lighthouse", "brief": "The story: a lighthouse keeper on a storm-bound island, told in close third person.",
@@ -517,7 +368,7 @@ async def cmd_build(args: argparse.Namespace) -> None:
     suites = args.suites.split(",")
     try:
         if "1a" in suites:
-            rows = await world_rows(args.worlds, judges) + hand_rows(corpus)
+            rows = await worlds.world_rows(args.per_template, judges.fact) + hand_rows(corpus)
             _write("1a", rows)
         if "3" in suites:
             _write("3", await style_rows(corpus, judges.judges))
@@ -548,7 +399,7 @@ def main() -> None:
     b = sub.add_parser("build")
     b.add_argument("--suites", default="1a,3")
     b.add_argument("--judges", default="eval")
-    b.add_argument("--worlds", type=int, default=40)
+    b.add_argument("--per-template", type=int, default=2, help="worlds per secret template")
     args = p.parse_args()
     if args.cmd == "collect":
         cmd_collect(args)

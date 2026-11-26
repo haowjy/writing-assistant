@@ -1,8 +1,9 @@
-"""Suite 1a: the SRD engine's determinism, legality and visibility, and the POV write task's
+"""Suite 1a: the SRD engine's determinism, legality and visibility, the POV write task's
 two guarantees (the projected prompt holds no hidden text; the swap twin differs only in the
-designated event and its state)."""
+designated event and its state), and the SRD worlds' split by secret template."""
 
 import copy
+from collections import Counter
 from types import SimpleNamespace
 
 import pytest
@@ -12,7 +13,7 @@ from writing_assistant.episode.store import Task
 from writing_assistant.episode.tools import dispatch_tool
 from writing_assistant.judges import Judge
 from writing_assistant.suites import Tally
-from writing_assistant.suites.world import srd, suite_1a
+from writing_assistant.suites.world import srd, suite_1a, worlds
 
 SECRET = "Orin is the last heir of the drowned kings."
 SWAPPED = "Orin is a smuggler who owes the harbour guild."
@@ -155,3 +156,19 @@ def test_a_secret_quoted_in_a_later_visible_event_is_refused_whatever_its_charac
         "log": log, "hidden_event_idx": 0, "swap": {"data": {"text": "Orin is innocent."}}})
     with pytest.raises(ValueError, match="still contains"):
         suite_1a.setup(task, None)
+
+
+async def test_no_secret_template_spans_two_splits_and_dev_and_test_hold_three_each():
+    """The Slice 1 gate (DECISIONS #12). Building the rows also plays every template's
+    scripted session and checks its swap twin, so a broken new template fails here."""
+    async def never_stated(question, evidence):
+        return False
+
+    rows = await worlds.world_rows(1, never_stated)
+    splits: dict[str, set[str]] = {}
+    for row in rows:
+        splits.setdefault(row["payload"]["template"], set()).add(row["split"])
+    assert len(splits) == len(worlds.TEMPLATES) >= worlds.MIN_TEMPLATES
+    assert [t for t, s in splits.items() if len(s) > 1] == []
+    held_out = Counter(s for [s] in map(list, splits.values()))
+    assert held_out["dev"] >= worlds.MIN_HELD_OUT and held_out["test"] >= worlds.MIN_HELD_OUT
