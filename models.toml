@@ -83,3 +83,9 @@ s2 = [1.0, 3]
 exa = "EXA_API_KEY"
 tavily = "TAVILY_API_KEY"
 serper = "SERPER_API_KEY"
+
+[endpoints.gemma4-26b-a4b-deepinfra]   # TEMPORARY (guardrails run); not committed
+kind = "openai"
+base_url = "https://api.deepinfra.com/v1/openai"
+model = "google/gemma-4-26B-A4B-it"
+api_key_env = "DEEPINFRA_API_KEY"
