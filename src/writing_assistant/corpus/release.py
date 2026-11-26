@@ -170,6 +170,8 @@ def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> 
     directory this build does not read (`has_store`) stops the sync before that."""
     counts: Counter[str] = Counter()
     stored = {p: has_store(p) for p in sorted(runs.glob("*")) if (p / RUN_FILE).exists()}
+    for run_dir in (p for p, has in stored.items() if has):
+        Store(run_dir / STORE_FILE, readonly=True).db.close()  # opening it is the format check
     if stage.exists():
         shutil.rmtree(stage)
     export_public(corpus, stage / "corpus", suites)

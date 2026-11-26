@@ -126,10 +126,10 @@ class Store:
                 if not readonly or "readonly" not in str(e):
                     raise
                 # SQLite must roll the dead writer's journal back before anything can be read.
-                raise RuntimeError(f"{self.path}: a writer died in the middle of a checkpoint, and a reader may not "
+                raise Unreadable(f"{self.path}: a writer died in the middle of a checkpoint, and a reader may not "
                                    "repair the file; the next writer does (`wa-bench run` on this directory)") from e
             if version != FORMAT:
-                raise ValueError(f"{self.path}: store format {version}; this build reads and writes format {FORMAT} only")
+                raise Unreadable(f"{self.path}: store format {version}; this build reads and writes format {FORMAT} only")
         except BaseException:
             self.db.close()
             raise

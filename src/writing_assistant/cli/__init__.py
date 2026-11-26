@@ -180,7 +180,8 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 @contextmanager
 def run_info(run_dir: Path) -> Iterator[dict[str, Any]]:
     """run.json to read and change, every other process kept out until it is written back:
-    {} when the directory has none yet, and nothing is written when the block raises. This is
+    {} when the directory has none yet, and nothing is written when the block raises or
+    changes nothing. This is
     how a run's identity is claimed by one process, and how two runs sharing a directory
     do not lose each other's entries. The lock is on the directory: run.json is replaced
     whole, so a lock on the file would be on one no longer there."""
@@ -188,11 +189,14 @@ def run_info(run_dir: Path) -> Iterator[dict[str, Any]]:
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         path = run_dir / RUN_FILE
-        info = json.loads(path.read_text()) if path.exists() else {}
+        was = path.read_text() if path.exists() else "{}"
+        info = json.loads(was)
         yield info
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(info, indent=1, ensure_ascii=False) + "\n")
-        tmp.replace(path)
+        now = json.dumps(info, indent=1, ensure_ascii=False) + "\n"
+        if now != was:
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(now)
+            tmp.replace(path)
     finally:
         os.close(fd)
 
@@ -279,7 +283,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
     if not args.source and (args.from_run or args.rollouts != 1):
         sys.exit("--from-run and --rollouts go with --from <ep_id>@<n>")
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
-    has_store(run_dir)  # a directory written before the store is refused, not given a store
+    stored = has_store(run_dir)  # a directory written before the store is refused, not given a store
+    # What --from names is looked at before the directory is made or its run.json touched.
+    source: tuple[str, int] | None = None
+    home: Store | None = None  # the store --from's episode is read from when it is not this run's
+    if args.source:
+        name, _, at = args.source.rpartition("@")
+        if not name or not at.isdigit():
+            sys.exit(f"--from takes <ep_id>@<n>, the episode and its turn checkpoint; got {args.source!r}")
+        source = (name, int(at))
+        if args.from_run:
+            if not has_store(args.from_run):
+                sys.exit(f"--from-run {args.from_run}: no run directory with a {STORE_FILE} there")
+            home = Store(Path(args.from_run) / STORE_FILE, readonly=True)
+        elif not stored:
+            sys.exit(f"--from {args.source}: {run_dir} has no {STORE_FILE} to take the episode from; "
+                     "--from-run names the run that holds it")
     run_dir.mkdir(parents=True, exist_ok=True)
     identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
                 "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split,
@@ -292,9 +311,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
             info |= identity | {"started": _now(), "reported_apart": args.driver == "direct"}
         elif {k: info.get(k) for k in identity} != identity:
             sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}; this one is {identity}")
-        info.setdefault("invocations", []).append({"at": _now(), "code": code, "where": args.where, "limit": args.limit}
-                                                  | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts}
-                                                     if args.source else {}))
+        store = Store(run_dir / STORE_FILE)  # one this build does not write is refused here, run.json unchanged
     if args.split == "test":
         append_jsonl(TEST_USES, [identity | {"at": _now(), "run": str(run_dir.resolve()), "code": code,
                                              "where": args.where, "limit": args.limit}])
@@ -318,7 +335,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
         alone = False
     fcntl.flock(lock, fcntl.LOCK_SH)
 
-    with Store(run_dir / STORE_FILE) as store:
+    with store:
         closed = list(store.episodes())
         with local_only(args.split == LOCAL_DEV):
             # Open episodes, grouped as they were played: a task's episodes close together, a
@@ -332,10 +349,14 @@ async def cmd_run(args: argparse.Namespace) -> int:
             if not alone:
                 print(f"{run_dir}: another run is alive here; its {sum(map(len, unfinished.values()))} open episodes are left to it")
                 unfinished = {}
-            if args.source:
-                tasks, rollouts = [], _rollouts(args, store, meta)
+            if source:
+                tasks, rollouts = [], _rollouts(args, store, home, *source, meta)
             else:
                 tasks, rollouts = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit], []
+        with run_info(run_dir) as info:  # every refusal is behind: this invocation plays
+            info.setdefault("invocations", []).append(
+                {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
+                | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts} if args.source else {}))
         unscored = ({ep.ep_id for ep in closed} - {r["ep_id"] for r in read_jsonl(scores_path)}
                     if alone and not args.no_score else set())
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
@@ -416,20 +437,18 @@ async def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rollouts(args: argparse.Namespace, store: Store, meta: dict[str, Any]) -> list[Episode]:
-    """`--from <ep_id>@<n> --rollouts N`: the rollouts of that turn checkpoint not yet in the
+def _rollouts(args: argparse.Namespace, store: Store, home: Store | None, name: str, at: int,
+              meta: dict[str, Any]) -> list[Episode]:
+    """`--from <name>@<at> --rollouts N`: the rollouts of that turn checkpoint not yet in the
     run's store, bound to this run's endpoint. The episode comes from this store or, with
-    `--from-run`, from another, its chain copied in first."""
-    name, _, at = args.source.rpartition("@")
-    if not name or not at.isdigit():
-        sys.exit(f"--from takes <ep_id>@<n>, the episode and its turn checkpoint; got {args.source!r}")
+    `--from-run`, from `home`, its chain copied in first."""
     try:
-        with Store(Path(args.from_run) / STORE_FILE, readonly=True) if args.from_run else nullcontext(store) as home:
-            source = home.load(name, at=int(at))
+        with home or nullcontext(store) as home:
+            source = home.load(name, at=at)
             if (source.suite, source.split) != (args.suite, args.split):
                 sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
                          f"this run is suite {args.suite}, split {args.split}")
-            rollouts = [source.rollout(int(at), i) for i in range(args.rollouts)]
+            rollouts = [source.rollout(at, i) for i in range(args.rollouts)]
             stored = set(store.names()) | set(store.names(closed=False))
             for ep in rollouts:  # two runs' episodes may share a name, never a segment
                 if ep.ep_id in stored and store.chain(ep.ep_id)[-2:-1] != [source.seg]:
