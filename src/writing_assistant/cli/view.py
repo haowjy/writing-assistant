@@ -2,7 +2,8 @@
 
     uv run wa-bench view [--run runs/base-1a-qwen3.5-9b runs/base-1a-gemma-4-26b ...] [--port 8766] [--host 127.0.0.1]
 
-Serves `view.html` and a small JSON API. The page asks for one thing at a time (a run's
+Serves the page built from `viewer/` (React; `bun run build` there writes `view_dist/` beside
+this file) and a JSON API under `/api/`. The page asks for one thing at a time (a run's
 report, its episode list, one task's episodes, one task across runs, one task row): an
 episode's call records hold whole message histories, so a run is never shipped to the
 browser at once, and the histories never are (each call contributes its reply, reasoning,
@@ -20,7 +21,7 @@ Read-only: only GET is served and nothing is written. Bound to loopback by defau
 then only Host headers naming loopback are answered (a page elsewhere cannot rebind a name
 onto this server and read book text); `--host` binds another address (the tailnet one),
 which is refused while any run holds `local_dev` episodes. The page makes no external
-requests (its CSP forbids them).
+requests (its CSP forbids them): fonts and libraries are bundled by the build.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ import argparse
 import asyncio
 import difflib
 import json
+import mimetypes
 import sys
 from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -44,7 +46,9 @@ from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, l
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites import SUITES, Services
 
-PAGE = Path(__file__).with_name("view.html")
+# The built page; any path that is not an API call or a built file is the page's own route.
+DIST = Path(__file__).with_name("view_dist")
+BUILD = "cd viewer && bun install && bun run build"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 # Metrics the page folds into a "prose profile" (length, readability and copy overlap of every
 # prose output): the same for every task kind, so they would bury the outcome metrics.
@@ -275,7 +279,9 @@ def _shown(ep: Episode, against: Episode | None) -> dict[str, Any]:
         files = [{"path": p, "lines": diff_lines(theirs.get(p, ""), mine.get(p, ""), 2)}
                  for p in sorted(set(mine) | set(theirs)) if mine.get(p) != theirs.get(p)]
     return {"against": against.ep_id if against else None,
-            "lines": lines or [[" ", line] for line in prompt.splitlines()], "files": files}
+            "lines": lines or [[" ", line] for line in prompt.splitlines()], "files": files,
+            # what this episode lacks and adds against `against`: a pov arm's hidden event, a twin's swap
+            "removed": [t for op, t in lines if op == "-"], "added": [t for op, t in lines if op == "+"]}
 
 
 def _judgments(items: list[dict], about: dict[str, tuple[Episode, str]], scene: dict[str, Any]) -> list[dict]:
@@ -514,8 +520,86 @@ def task_family(task: Task, runs: dict[str, Run]) -> dict[str, Any]:
                                "readable": sorted(a for a in model_actors(ep) if ep.readable(a, p))} for p, t in ep.files.items()],
                     "events": [{"idx": e.idx, "actor": e.actor, "kind": e.kind, "text": _event_text(e),
                                 "seen_by": sorted(e.visible_to)} for e in ep.events]})
-    return head | {"episodes": out, "fields": fields, "judged_by": suite.judged_by, "runs": _scored_in(task, runs),
-                   "kind_scored": _kind_scored(task, runs)}
+    played, kind_scored = _scored_in(task, runs), _kind_scored(task, runs)
+    scored = ({ep["condition"]: ep["metrics"] for ep in played[0]["episodes"]} if played
+              else kind_scored["metrics"] if kind_scored else {})
+    return head | {"episodes": out, "fields": fields, "judged_by": suite.judged_by, "runs": played,
+                   "kind_scored": kind_scored, "diagram": diagram(task.kind, out, suite.judged_by, scored)}
+
+
+def _mm(text: str, limit: int = 70) -> str:
+    """Text for inside a quoted Mermaid label."""
+    text = text if len(text) <= limit else text[:limit - 1] + "…"
+    return text.replace("&", "&amp;").replace('"', "#quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _steps(ep: dict[str, Any]) -> list[str]:
+    """An episode's events as diagram steps: each delivery to a model, and the runs of events
+    between deliveries folded into one step."""
+    models = {a for a, e in ep["actors"].items() if e != "scripted"}
+    out: list[str] = []
+    run: list[dict[str, Any]] = []
+
+    def flush() -> None:
+        if run:
+            who = ", ".join(dict.fromkeys(e["actor"] for e in run))
+            kinds = ", ".join(dict.fromkeys(e["kind"] for e in run))
+            out.append(f"{len(run)} event{'s' * (len(run) > 1)} ({kinds}) by {who}" if len(run) > 1
+                       else f"{run[0]['actor']}: {run[0]['text']}")
+            run.clear()
+    for e in ep["events"]:
+        if e["kind"] == "deliver":
+            flush()
+            first = e["text"].strip().splitlines()[0] if e["text"].strip() else ""
+            out.append(f"to {e['actor']}{' (model)' if e['actor'] in models else ''}: {first}")
+        else:
+            run.append(e)
+    flush()
+    return out if len(out) <= 8 else [*out[:7], f"… {len(out) - 7} more steps"]
+
+
+def difference(shown: dict[str, Any]) -> str:
+    """One line for how an episode's prompt differs from the one it is compared with."""
+    gone, new, files = shown["removed"], shown["added"], [f["path"] for f in shown["files"]]
+    if len(gone) == 1 and len(new) == 1:
+        text = f"{gone[0]} → {new[0]}"
+    elif gone or new:
+        text = ", ".join(x for x in (f"drops {len(gone)} line{'s' * (len(gone) > 1)}" if gone else "",
+                                     f"adds {len(new)}" if new else "") if x)
+    else:
+        text = ""
+    if files:
+        text += f"{'; ' if text else ''}{', '.join(files)} differ{'s' * (len(files) == 1)}"
+    return text or "no line of its prompt or files differs"
+
+
+def diagram(kind: str, eps: list[dict[str, Any]], judged_by: dict[str, str], scored: dict[str, list[str]]) -> str:
+    """Mermaid source for how an episode of the task runs, from the episodes the suite's own
+    `setup` and `play` made: the arms setup forks, each one's steps, each twin's swap and what
+    each arm is scored on (as a loaded run scored it)."""
+    arms = [e for e in eps if not e["twin_of"]]
+    lines = ["flowchart TD", f'  row["{_mm(kind)} row"]']
+    for i, arm in enumerate(arms):
+        steps = _steps(arm)
+        lines.append(f'  subgraph a{i}["{_mm(arm["condition"])}"]')
+        lines.append("    direction TB")
+        for j, step in enumerate(steps):
+            lines.append(f'    a{i}s{j}["{_mm(step)}"]')
+        lines += [f"    a{i}s{j} --> a{i}s{j + 1}" for j in range(len(steps) - 1)]
+        lines.append("  end")
+        lines.append(f"  row -->|setup| a{i}")
+        metrics = [m for m in scored.get(arm["condition"], []) if not is_prose(m) and m != "overlap_flagged"]
+        if metrics:
+            judged = [f"{m} ({judged_by[m]})" for m in metrics if m in judged_by]
+            counted = [m for m in metrics if m not in judged_by]
+            label = "<br/>".join(x for x in (f"judged: {_mm(', '.join(judged), 200)}" if judged else "",
+                                             f"counted: {_mm(', '.join(counted), 200)}" if counted else "") if x)
+            lines += [f'  sc{i}["{label}"]', f"  a{i} -->|scored| sc{i}"]
+        for twin in (e for e in eps if e["twin_of"] == arm["ep_id"]):
+            lines += [f'  t{i}["{_mm(twin["condition"])}"]', f'  a{i} -. "{_mm(difference(twin["shown"]), 90)}" .-> t{i}']
+            if metrics and any(m.startswith("net_") or m.startswith("twin_") for m in metrics):
+                lines.append(f"  t{i} -.->|baseline| sc{i}")
+    return "\n".join(lines) + "\n"
 
 
 def _kind_scored(task: Task, runs: dict[str, Run]) -> dict[str, Any] | None:
@@ -568,8 +652,8 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
                 return self._send(403, b"this server answers only to a loopback host name", "text/plain")
             url = urlsplit(self.path)
             q = {k: v[0] for k, v in parse_qs(url.query).items()}
-            if url.path == "/":
-                return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+            if not url.path.startswith("/api/"):
+                return self._static(url.path)
             if url.path == "/api/runs":
                 return self._json([r.summary() for r in runs.values()])
             if url.path in ("/api/tasks", "/api/task"):
@@ -599,6 +683,16 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
                 return self._json(fam) if fam else self._send(404, b"no such episode", "text/plain")
             self._send(404, b"not found", "text/plain")
 
+        def _static(self, path: str) -> None:
+            """A built file, else the page itself: the page routes its own paths."""
+            file = (DIST / path.lstrip("/")).resolve()
+            if file.is_file() and file.is_relative_to(DIST.resolve()):
+                ctype = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+                return self._send(200, file.read_bytes(), ctype)
+            if path.startswith("/assets/"):  # a stale build's file: not the page
+                return self._send(404, b"not built", "text/plain")
+            self._send(200, (DIST / "index.html").read_bytes(), "text/html; charset=utf-8")
+
         def _json(self, data: Any) -> None:
             self._send(200, json.dumps(data, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
@@ -607,8 +701,10 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; "
-                             "style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'")
+            # Inline styles: the component library and Mermaid set them on elements.
+            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' "
+                             "'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; "
+                             "base-uri 'none'; form-action 'none'")
             self.end_headers()
             self.wfile.write(data)
 
@@ -633,6 +729,8 @@ def load_runs(paths: list[Path], passed: set[str]) -> dict[str, Run]:
 
 
 def cmd_view(args: argparse.Namespace) -> int:
+    if not (DIST / "index.html").exists():
+        raise SystemExit(f"the page is not built: {BUILD}")
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
     runs = load_runs([Path(p) for p in args.run], passed)
     loopback = args.host in LOOPBACK
