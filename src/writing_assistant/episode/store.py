@@ -19,6 +19,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -69,12 +70,16 @@ def _get(row: Any, key: str) -> Any:
     return row.get(key) if isinstance(row, dict) else getattr(row, key, None)
 
 
+_CLAUSE_SEP = re.compile(r",(?=\s*\w+=)")
+
+
 def matches(row: dict[str, Any], where: str | None) -> bool:
     """`where` is comma-separated `key=value` equality tests (`kind=pov_write,source=gutenberg`);
-    a key is looked up in the row, then in its `payload`. Values compare as strings."""
+    a key is looked up in the row, then in its `payload`. Values compare as strings. A comma
+    starts a new test only when `key=` follows it, so `author=Austen, Jane` is one test."""
     if not where:
         return True
-    for clause in where.split(","):
+    for clause in _CLAUSE_SEP.split(where):
         key, sep, value = clause.partition("=")
         if not sep:
             raise ValueError(f"bad where clause {clause!r}: expected key=value")

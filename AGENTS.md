@@ -33,7 +33,12 @@ uv run python scripts/build_seed_tasks.py build      # task rows; judge answers 
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N]
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
+uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker, ~36 min
 ```
+
+`--where` takes `key=value` tests joined by commas; a comma not followed by `key=` belongs to
+the value, so `--where "author=Austen, Jane,mode=instruction"` works.
+`report` on a directory holding only `guardrails.json` prints those scores.
 
 `run` defaults to the `dev` split; `test` is held out and never used to choose anything. A
 run directory is resumable (same `--out`), and `episodes.jsonl` is never rewritten. Every

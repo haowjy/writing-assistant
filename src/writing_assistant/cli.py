@@ -325,8 +325,17 @@ def _fmt(x: float | None) -> str:
     return "-" if x is None else f"{x:.3f}"
 
 
+def _guardrails_line(path: Path) -> str:
+    g = json.loads(path.read_text())
+    scores = ", ".join(f"{k} {g[k]}" for k in ("ifeval", "humaneval_plus", "bfcl"))
+    return f"guardrails: {scores} ({g['endpoint']}, {g['model']}, {g['date'][:10]}, {g['image']})"
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
+    if not (run_dir / RUN_FILE).exists() and (run_dir / "guardrails.json").exists():
+        print(_guardrails_line(run_dir / "guardrails.json"))  # a `wa-bench guardrails` directory
+        return 0
     group_by = [g for g in (args.group_by or "").split(",") if g]
     info, groups = _summarise(run_dir, args.judges, group_by, args.where)
     suite = SUITES[info["suite"]]
@@ -338,8 +347,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     if spent := info.get("spent_usd"):
         print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())})")
     if (run_dir / "guardrails.json").exists():
-        g = json.loads((run_dir / "guardrails.json").read_text())
-        print("guardrails: " + ", ".join(f"{k} {g[k]}" for k in ("ifeval", "humaneval_plus", "bfcl") if k in g))
+        print(_guardrails_line(run_dir / "guardrails.json"))
     errors = _jsonl(run_dir / ERRORS_FILE)
     if errors:
         print(f"task errors: {len(errors)} (see {ERRORS_FILE})")
@@ -380,15 +388,12 @@ def cmd_report(args: argparse.Namespace) -> int:
 # -- guardrails, collect, export, sync -----------------------------------------------------
 
 def cmd_guardrails(args: argparse.Namespace) -> int:
+    """The script reads the endpoint from `--models` and, as `.env` is already loaded here, the
+    key from the environment; it creates nothing when the endpoint refuses a test request."""
     out = Path(args.run) if args.run else Path(f"runs/guardrails-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
-    out.mkdir(parents=True, exist_ok=True)
-    script = ROOT / "scripts" / "guardrails.sh"
-    if not script.exists():
-        sys.exit(f"{script} is missing (it lands with the bench-v0-guardrails branch)")
-    done = subprocess.run([str(script), args.endpoint, str(out)], cwd=ROOT)
-    if done.returncode != 0 or not (out / "guardrails.json").exists():
+    done = subprocess.run([str(ROOT / "scripts" / "guardrails.sh"), args.endpoint, str(out), str(args.models.resolve())])
+    if done.returncode != 0:
         sys.exit(f"guardrails.sh exited {done.returncode}; no guardrails.json stored")
-    print(f"{out / 'guardrails.json'}: {(out / 'guardrails.json').read_text()}")
     return 0
 
 
@@ -506,7 +511,7 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--endpoint", required=True, help="models.toml endpoint name of the subject")
     r.add_argument("--driver", default="direct", choices=sorted(DRIVERS))
     r.add_argument("--split", default="dev", choices=["train", "dev", "test", LOCAL_DEV])
-    r.add_argument("--where", help="key=value[,key=value]: task row fields, then payload fields")
+    r.add_argument("--where", help="key=value[,key=value]: task row fields, then payload fields; a comma not followed by key= stays in the value")
     r.add_argument("--limit", type=int, help="run at most this many tasks")
     r.add_argument("--out", help="run directory (resumed when it exists)")
     r.add_argument("--judges", default="eval", choices=["eval", "train"])

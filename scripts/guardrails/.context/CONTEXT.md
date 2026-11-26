@@ -27,6 +27,9 @@ the tool versions, data and scoring mode are identical, so all of them are pinne
   resolves the same transitive versions.
 - Scores reflect the endpoint's default mode. On DeepInfra, Gemma 4 has thinking off by
   default. Published numbers measured with thinking on are not comparable.
+- None of the three tools can add request-body fields, so an endpoint with `params` in
+  `models.toml` (Hy4's thinking switch) is refused rather than measured in a different
+  mode from the one the benchmark runs it in.
 
 ## Run-to-run noise
 
@@ -50,7 +53,7 @@ its output directory. For a loopback `base_url`, the endpoint steps use the host
 ## Failure handling
 
 - A one-token request goes out first, so an unfunded account, a bad key or a wrong model
-  name fails in seconds.
+  name fails in seconds, before the output directory is created.
 - A run removes any earlier `guardrails.json` first and writes the new one only after
   `summarize.py` has checked that each suite was fully scored (541, 164, 4 x 200).
 - lm-eval re-raises after its retries.

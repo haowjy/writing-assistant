@@ -1,39 +1,38 @@
 #!/usr/bin/env bash
 # IFEval, HumanEval+ and multi-turn BFCL against one OpenAI-compatible endpoint.
 #
-#   scripts/guardrails.sh <endpoint-name> <out-dir>
+#   scripts/guardrails.sh <endpoint-name> <out-dir> [<models.toml>]
 #
-# Reads the endpoint's base_url, model and api_key_env from models.toml at the repository
-# root (the key from the environment, else the root .env), runs the three evaluations in the
-# pinned image built from scripts/guardrails/Dockerfile, and writes
+# Reads the endpoint's base_url, model, api_key_env and concurrency from models.toml (default:
+# the one at the repository root; the key from the environment, else the root .env), runs the
+# three evaluations in the pinned image built from scripts/guardrails/Dockerfile, and writes
 # <out-dir>/guardrails.json. Each tool's raw output stays under <out-dir>/guardrails/.
-# Exits non-zero, leaving no guardrails.json, when any evaluation fails.
+# Exits non-zero, leaving no guardrails.json, when any evaluation fails; a bad endpoint or a
+# refused test request creates nothing at all.
 #
 # Needs docker and python3 >= 3.11 on the host; nothing here uses the GPU. Model-written code
 # runs only inside the container (scripts/guardrails/.context/CONTEXT.md has the sandbox and the pins).
 #
-# GUARDRAILS_CONCURRENCY (default 16) sets parallel requests to the endpoint. It changes
-# wall time, not scores.
+# GUARDRAILS_CONCURRENCY overrides the endpoint's concurrency (default 16): parallel requests
+# to the endpoint. It changes wall time, not scores.
 set -euo pipefail
 
-if [[ $# -ne 2 ]]; then
-  echo "usage: $0 <endpoint-name> <out-dir>" >&2
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+  echo "usage: $0 <endpoint-name> <out-dir> [<models.toml>]" >&2
   exit 2
 fi
 endpoint=$1
-out=$(mkdir -p "$2" && cd "$2" && pwd)
+out=$(realpath -m "$2")
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+models=${3:-$repo/models.toml}
 here=$repo/scripts/guardrails
-concurrency=${GUARDRAILS_CONCURRENCY:-16}
 
 # A stale result must not survive a failed rerun looking complete.
 rm -f "$out/guardrails.json"
-work=$out/guardrails
-rm -rf "$work"
-mkdir -p "$work"/{ifeval,humaneval/gen,humaneval/exec,bfcl}
 
 # --- endpoint ------------------------------------------------------------------------------
-{ read -r base_url; read -r model; read -r key_env; } < <(python3 - "$repo/models.toml" "$endpoint" <<'EOF'
+# An assignment, not `< <(...)`, so a parser exit fails the script under `set -e`.
+fields=$(python3 - "$models" "$endpoint" <<'EOF'
 import sys, tomllib
 endpoints = tomllib.load(open(sys.argv[1], "rb")).get("endpoints", {})
 e = endpoints.get(sys.argv[2])
@@ -41,9 +40,15 @@ if e is None:
     sys.exit(f"guardrails: no [endpoints.{sys.argv[2]}] in {sys.argv[1]}")
 if e.get("kind") != "openai" or not e.get("base_url"):
     sys.exit(f"guardrails: {sys.argv[2]} is not an OpenAI-compatible chat endpoint with a base_url")
-print(e["base_url"].rstrip("/"), e["model"], e.get("api_key_env", ""), sep="\n")
+# None of the three tools can add request-body fields (a thinking switch, say), so the scores
+# would measure a different mode from the one the benchmark runs the endpoint in.
+if e.get("params"):
+    sys.exit(f"guardrails: {sys.argv[2]} sets params {e['params']}, which the guardrail tools cannot send")
+print(e["base_url"].rstrip("/"), e["model"], e.get("api_key_env", ""), e.get("concurrency", 16), sep="\n")
 EOF
 )
+{ read -r base_url; read -r model; read -r key_env; read -r endpoint_concurrency; } <<< "$fields"
+concurrency=${GUARDRAILS_CONCURRENCY:-$endpoint_concurrency}
 
 if [[ -z $key_env ]]; then
   api_key=EMPTY  # local servers ignore the key, but every client requires one
@@ -71,6 +76,10 @@ case $base_url in
       exit 1
     fi ;;
 esac
+
+work=$out/guardrails
+rm -rf "$work"
+mkdir -p "$work"/{ifeval,humaneval/gen,humaneval/exec,bfcl}
 
 # --- image ---------------------------------------------------------------------------------
 image=wa-guardrails:$(sha256sum "$here/Dockerfile" | cut -c1-12)
