@@ -61,3 +61,22 @@ def test_a_fork_made_past_what_its_parent_has_stored_is_refused(tmp_path):
         store.append(parent)
         store.append(ahead)
         assert store.load("p~ahead") == ahead
+
+
+@pytest.mark.parametrize("held_apart", ["local_dev", "test"])
+def test_a_local_dev_or_test_segment_shares_a_store_with_no_other_splits(tmp_path, held_apart):
+    """What leaves the machine and what a reader may see are decided per store as well as per
+    segment, so personal text and the held-out split never sit in a file with anything else:
+    not by being saved there, and not by being copied in as an ancestor."""
+    def ep(ep_id, split):
+        return Episode(ep_id=ep_id, task_id="t", suite="1a", split=split)
+
+    with Store(tmp_path / "apart.db") as apart, Store(tmp_path / "dev.db") as dev:
+        apart.append(ep("mine", held_apart))
+        dev.append(ep("d", "dev"), ep("tr", "train"))
+        for mixing in (lambda: apart.append(ep("other", "dev")), lambda: dev.append(ep("other", held_apart)),
+                       lambda: apart.copy_chain("mine", dev), lambda: dev.copy_chain("d", apart)):
+            with pytest.raises(ValueError, match="share a store with no other split's"):
+                mixing()
+        splits = "SELECT DISTINCT split FROM segments ORDER BY split"
+        assert apart.db.execute(splits).fetchall() == [(held_apart,)] and dev.db.execute(splits).fetchall() == [("dev",), ("train",)]

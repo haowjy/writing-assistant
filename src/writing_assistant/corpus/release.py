@@ -158,6 +158,7 @@ def export_public(corpus: Corpus, out: Path, suites: SuiteFields, tasks_dir: Pat
             row["text"] = corpus.text(work)
         works.append(row)
     _write_jsonl(Path(out) / WORKS_FILE, works)
+    (Path(out) / "tasks").mkdir(exist_ok=True)  # there with no task file too: `stage_sync` moves it
     for suite, rows in public_task_rows(corpus, suites, tasks_dir).items():
         _write_jsonl(Path(out) / "tasks" / f"{suite}.jsonl", rows)
 
