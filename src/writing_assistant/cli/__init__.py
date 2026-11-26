@@ -1,4 +1,4 @@
-"""`wa-bench`: run, score, report, view, guardrails, collect, export, sync.
+"""`wa-bench`: run, situate, score, report, view, guardrails, collect, export, sync.
 
 The commands parse arguments, open a run directory and choose what is played; the play
 itself (bind, deliver, save, close, score) is `run.Runner`, which other callers use too.
@@ -72,6 +72,17 @@ subject's actors (`meta["subject_actors"]`) are rebound to `--endpoint`. `report
 `view` and calibration sampling keep rollouts out of the run's own numbers; `report` lists
 them per group and says which groups are settled (`Store.groups`).
 
+`situate --run DIR --at <ep_id> --row task.json` sets a new task up on the files a closed
+episode ended with and stores it in DIR's store as a **situation** (`run.situate`,
+`Episode.begin`): the task takes the files and their revisions, not the transcript, and a
+file some seats could not read stays closed to every new seat until the task's `setup`
+grants it. The row file is one JSON object, `suite`, `kind` and `payload` (and `task_id` to
+name the situation; otherwise `<root episode's name>/<12 random hex>`); the split and works
+are the position's. `--from-run` names the run whose store holds the position when DIR's
+does not. A situation is stored closed and is never played in place, scored or reported:
+`run --from '<situation>@0' --rollouts N` plays a group of it, in a directory whose run is
+of the situation's suite and split.
+
 `score` re-scores a run's closed episodes into its store, row by row: one killed part-way
 has added the rows it finished and left the other episodes with the rows they had.
 `score --pending` re-scores only the episodes with no row but ones saying the scorer raised
@@ -104,7 +115,7 @@ from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, ha
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.run import ROOT, Runner, code_version, run_info, score_into
+from writing_assistant.run import ROOT, Runner, code_version, run_info, score_into, situate
 from writing_assistant.run import now as _now
 from writing_assistant.suites import SUITES, Services
 
@@ -300,6 +311,31 @@ def _rollouts(args: argparse.Namespace, runner: Runner, home: Store | None, name
     return rollouts
 
 
+# -- situate -------------------------------------------------------------------------------
+
+def cmd_situate(args: argparse.Namespace) -> int:
+    row = json.loads(Path(args.row).read_text())
+    if not isinstance(row, dict) or row.get("suite") not in SUITES or not isinstance(row.get("kind"), str):
+        sys.exit(f"--row {args.row}: one JSON object with `suite` (one of {sorted(SUITES)}), `kind` and `payload`")
+    run_dir = Path(args.run)
+    if args.from_run and not has_store(args.from_run):
+        sys.exit(f"--from-run {args.from_run}: no run directory with a {STORE_FILE} there")
+    if not args.from_run and not has_store(run_dir):
+        sys.exit(f"--at {args.at}: {run_dir} has no {STORE_FILE} to take the episode from; --from-run names the run that holds it")
+    services = services_for(args.models, args.judges)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with Store(run_dir / STORE_FILE) as store, \
+            (Store(Path(args.from_run) / STORE_FILE, readonly=True) if args.from_run else nullcontext()) as home:
+        try:
+            eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at,
+                          name=row.get("task_id"), home=home)
+        except (LookupError, ValueError, sqlite3.Error) as e:
+            sys.exit(f"--at {args.at}: {e}")
+    for ep in eps:
+        print(ep.ep_id)
+    return 0
+
+
 # -- score ---------------------------------------------------------------------------------
 
 async def cmd_score(args: argparse.Namespace) -> int:
@@ -406,6 +442,13 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--concurrency", type=int, default=8, help="tasks in flight")
     r.add_argument("--max-tokens", type=int, default=16384, help="per model call, thinking included")
 
+    st = sub.add_parser("situate", help="set a new task up on the files a closed episode ended with, and store it")
+    st.add_argument("--run", required=True, help="the run directory whose store the situation goes into")
+    st.add_argument("--at", required=True, metavar="EP_ID", help="the position: a closed episode's name")
+    st.add_argument("--row", required=True, help="a JSON file: the task's suite, kind and payload")
+    st.add_argument("--from-run", help="the run directory whose store holds --at's episode (default: --run's own)")
+    st.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml, for what the suite's setup asks of the corpus")
+
     s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired)")
     s.add_argument("--run", required=True)
     s.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
@@ -450,7 +493,7 @@ def parser() -> argparse.ArgumentParser:
 from writing_assistant.cli.report import cmd_report  # noqa: E402  (needs the helpers above)
 from writing_assistant.cli.view import cmd_view  # noqa: E402
 
-COMMANDS = {"run": cmd_run, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
+COMMANDS = {"run": cmd_run, "situate": cmd_situate, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
             "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view}
 
 

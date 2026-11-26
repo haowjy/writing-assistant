@@ -157,8 +157,8 @@ def test_a_format_1_store_is_brought_up_to_date_by_a_writer_and_refused_by_a_rea
         base.log("dm", "say", {"text": "hello"}, {"*": "full"})
         store.close(base, base.fork("twin", baseline=True))
         before = list(store.episodes())
-        for undo in ("DROP TABLE judgments", "DROP TABLE scores", "DROP INDEX segments_rollout",
-                     "ALTER TABLE segments DROP COLUMN grp", "PRAGMA user_version = 1"):  # format 1, as it was written
+        for undo in ("ALTER TABLE episodes DROP COLUMN start", "DROP TABLE judgments", "DROP TABLE scores",
+                     "DROP INDEX segments_rollout", "ALTER TABLE segments DROP COLUMN grp", "PRAGMA user_version = 1"):  # format 1, as it was written
             store.db.execute(undo)
     with pytest.raises(Unreadable, match="store format 1.*Opening it once for writing"):
         Store(path, readonly=True)
@@ -179,5 +179,5 @@ def test_a_format_1_store_is_brought_up_to_date_by_a_writer_and_refused_by_a_rea
         t.join()
     assert failed == []
     with Store(path, readonly=True) as store:
-        assert store.db.execute("PRAGMA user_version").fetchone()[0] == FORMAT == 2
+        assert store.db.execute("PRAGMA user_version").fetchone()[0] == FORMAT == 3
         assert list(store.episodes()) == before and store.scores("eval") == {}

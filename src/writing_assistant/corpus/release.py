@@ -191,7 +191,7 @@ def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> 
                             return False
                     return True
 
-                names, kept = store.names(), 0
+                names, kept = [*store.names(), *store.starts()], 0  # starts leave as any episode does
                 for ep_id in names:
                     # A run may be writing: an open ancestor of a closed episode can gain a
                     # checkpoint at any moment, and the episode a row. What is copied is

@@ -64,6 +64,7 @@ uv run python scripts/build_seed_tasks.py build      # task rows; judge answers 
 llmpick start gemma-4-26b-qat                        # serve the subject first
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N [--round R] --out runs/<new>   # a group of N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
+uv run wa-bench situate --run runs/<id> --at '<closed ep_id>' --row task.json [--from-run runs/<other>]   # store a new task (suite, kind, payload) on that episode's final files; play it with run --from '<name>@0'
 uv run wa-bench score --run runs/<id> --judges eval|train [--pending]   # re-score saved episodes; --pending: only those whose scorer raised
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
@@ -122,7 +123,7 @@ and their score rows are in `store.db` (SQLite, standard library; `episode/segme
 the model and the rules, `design/branch-store.md` and `design/buildout.md` in the work item
 `project-reorientation` the reasons).
 
-- The store's format is a count of steps that only add (`PRAGMA user_version`, now 2). A
+- The store's format is a count of steps that only add (`PRAGMA user_version`, now 3). A
   writer that opens an older store brings it up to date in place, inside one transaction; a
   reader changes no file, so `report`, `view`, `sync` and `build_calibration.py` refuse an
   older store with a sentence that says to `score` or `run` it once. A change that cannot be
@@ -170,6 +171,21 @@ the model and the rules, `design/branch-store.md` and `design/buildout.md` in th
   (spend, served, played by code, task errors) are per directory and do include them, and
   the page has no screen for rollouts yet (its API lists them under `rollouts`, each with its `group`). A rollout stores no task, so a
   directory holding only rollouts of a task has not played it.
+- A **start** is an episode stored once and never played in place (`Store.add_starts`: saved,
+  closed and marked `episodes.start` in one transaction). A **situation** is a start with a
+  parent: a new task set up at a **position**, which is a closed episode (`wa-bench
+  situate`, `run.situate`, `Suite.setup(task, services, at)`). The task takes the
+  position's files and revisions and nothing of its session (`Episode.begin`: empty log,
+  actors, meta and state), so its seats start new conversations and its first step is
+  given `""`; the earlier conversation is one link away, in the parent segment. `begin`
+  keeps `state["file_acl"]` with every restricted path readable by nobody, and `setup`
+  must grant the new seats what they may read: a path the list does not cover is open to
+  everyone. Play of a situation is always `run --from '<situation>@0'`. `Store.names` and
+  `episodes` leave starts out, so no reader of played episodes (a run's resume and its
+  scoring of what has no row, `score`, `report`, `view`, calibration sampling) meets one;
+  `Store.starts()` and `situations()` list them, `Store.copy` carries the mark, and `sync`
+  stages them like any closed episode. A situation's name is `<its root episode's
+  name>/<12 hex>` unless the row gives `task_id`; its row is in `state["task"]`.
 - Twins are paired by `Episode.baseline_of` (set by `fork(..., baseline=True)` in `setup`),
   never by who was forked from whom.
 - A `test` or `local_dev` segment never shares a store with another split's. `sync --runs`

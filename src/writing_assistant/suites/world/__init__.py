@@ -21,7 +21,7 @@ class World1a:
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("1a", split, where)
 
-    def setup(self, task: Task, services) -> list[Episode]:
+    def setup(self, task: Task, services, at: Episode | None = None) -> list[Episode]:
         return tasks_1a.setup(task, services)
 
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:

@@ -21,7 +21,7 @@ class Style:
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("3", split, where)
 
-    def setup(self, task: Task, services) -> list[Episode]:
+    def setup(self, task: Task, services, at: Episode | None = None) -> list[Episode]:
         return tasks.setup(task, services)
 
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:

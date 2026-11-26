@@ -47,6 +47,13 @@ arrived in. The row read may therefore be older than the last attempt; it says w
 scored it and when. A row's id is worked out from its content, so the same row arriving
 twice is one row.
 
+A **start** is an episode stored once and never played in place (`add_starts`): saved,
+closed and marked in one transaction. A world's root is one, and so is every **situation**,
+a task set up on the files a closed episode ended with (`Episode.begin`), which is a start
+that has a parent. Play of a start is always a rollout of its checkpoint 0. The listing
+functions readers use (`names`, `episodes`) leave starts out; `starts` and `situations` list
+them.
+
 A **rollout** is a fork of a stored turn checkpoint that says so (`rollout_of`), and the
 rollouts one run made of one checkpoint in one round are a **group** (`grp`; the id is the
 caller's, `run.group_id`). `groups` says which are settled.
@@ -110,6 +117,8 @@ _STEPS = ((
     # The judge items that count in one score row (`score` is its id), in the order asked,
     # packed together as a checkpoint's body is: one row's items repeat each other's evidence.
     "CREATE TABLE judgments (score TEXT PRIMARY KEY, body BLOB NOT NULL)",
+), (  # 3: episodes stored as a start and never played (`add_starts`): 1 on those, NULL otherwise
+    "ALTER TABLE episodes ADD COLUMN start INTEGER",
 ))
 FORMAT = len(_STEPS)
 _SEGMENT = ("seg, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, "
@@ -125,6 +134,7 @@ def _current(s: str) -> str:
 
 
 _CLOSED = "EXISTS (SELECT 1 FROM checkpoints c WHERE c.seg = e.seg AND c.kind = 'closing')"
+_PLAYED = "e.start IS NULL"  # of the listing `e`: not a start, so an episode some run plays or played
 
 
 @dataclass
@@ -166,8 +176,7 @@ class Store:
                     raise Unreadable(
                         f"{self.path}: store format {version}; this build reads format {FORMAT}, and a reader changes no "
                         "file. Opening it once for writing brings it up to date in place: `wa-bench score --run` on its "
-                        "directory (score rows are kept in the store from format 2 on, and that puts them there), or "
-                        "`wa-bench run` on it")
+                        "directory, or `wa-bench run` on it")
             else:
                 # The version is read inside the write transaction: of two writers opening an
                 # old file together, the second waits and then finds nothing left to add.
@@ -226,6 +235,20 @@ class Store:
                 self._tips.pop(seg, None)
             else:
                 self._tips[seg] = tip
+
+    def add_starts(self, *eps: Episode) -> None:
+        """Store each episode as a **start**: saved as it stands, closed at once and marked,
+        all in one transaction. Nothing plays a start in place (`append` refuses a closed
+        episode); play is a rollout of its checkpoint 0, which is why it is saved before it
+        is closed: a closing checkpoint cannot be forked. A start is no played episode, so
+        `names` and `episodes` leave it out and no reader scores, reports or resumes it;
+        `starts` lists them."""
+        tips: dict[str, _Tip | None] = {}
+        with self._write():
+            for ep in eps:
+                self._save(ep, "turn", True, tips)
+                self._save(ep, "closing", True, tips)
+                self.db.execute("UPDATE episodes SET start = 1 WHERE seg = ?", (ep.seg,))
 
     def _save(self, ep: Episode, kind: str, listed: bool, tips: dict[str, _Tip | None]) -> None:
         last = tips[ep.seg] if ep.seg in tips else self._tips.get(ep.seg)
@@ -320,8 +343,20 @@ class Store:
 
     def names(self, closed: bool = True) -> list[str]:
         """`ep_id` of the store's closed episodes, or of its open ones, in the order they were
-        first saved."""
-        rows = self.db.execute(f"SELECT e.ep_id FROM episodes e WHERE {'' if closed else 'NOT '}{_CLOSED} ORDER BY e.rowid")
+        first saved. Starts are not among them."""
+        rows = self.db.execute(
+            f"SELECT e.ep_id FROM episodes e WHERE {_PLAYED} AND {'' if closed else 'NOT '}{_CLOSED} ORDER BY e.rowid")
+        return [r[0] for r in rows.fetchall()]
+
+    def starts(self) -> list[str]:
+        """`ep_id` of the episodes stored as starts (`add_starts`), in the order stored."""
+        return [r[0] for r in self.db.execute("SELECT ep_id FROM episodes WHERE start ORDER BY rowid").fetchall()]
+
+    def situations(self) -> list[str]:
+        """The starts that have a parent: each a task set up at a position (`run.situate`).
+        A start with none is a root, the material a world begins from."""
+        rows = self.db.execute("SELECT e.ep_id FROM episodes e JOIN segments s ON s.seg = e.seg "
+                               "WHERE e.start AND s.parent IS NOT NULL ORDER BY e.rowid")
         return [r[0] for r in rows.fetchall()]
 
     def episodes(self, closed: bool = True) -> Iterator[Episode]:
@@ -379,16 +414,17 @@ class Store:
             states.append(copy.deepcopy(tip["state"]))
         return split, states
 
-    def copy_chain(self, name: str, into: Store, listed: bool = False) -> str:
+    def copy_chain(self, name: str, into: Store) -> str:
         """Copy the episode's segment and every ancestor into another store, whole, skipping
-        what is already there, and return its `seg`. `listed` also lists it there as one of
-        that store's episodes; otherwise it arrives as an unlisted ancestor to fork from. A
-        checkpoint the other store holds with a different body is refused, and nothing is
-        copied: both stores continued one open segment."""
+        what is already there, and return its `seg`. It arrives as an unlisted ancestor to
+        fork from (`copy` lists it too). A checkpoint the other store holds with a different
+        body is refused, and nothing is copied: both stores continued one open segment."""
         with into._write():
-            return self._copy_chain(name, into, listed)
+            return self._copy_chain(name, into, None)
 
-    def _copy_chain(self, name: str, into: Store, listed: bool) -> str:
+    def _copy_chain(self, name: str, into: Store, listing: tuple[str, int | None] | None) -> str:
+        """`listing`: the episode's (`ep_id`, `start`) in this store's `episodes`, to list
+        it the same way there; None leaves it unlisted."""
         chain = self.chain(name)
         for seg in chain:
             row = self.db.execute(f"SELECT {_SEGMENT} FROM segments WHERE seg = ?", (seg,)).fetchone()
@@ -403,30 +439,30 @@ class Store:
                 elif have[n] != body and _unpack(have[n]) != _unpack(body):  # two zlib builds pack one body differently
                     raise ValueError(f"{into.path}: checkpoint {n} of {row[4]} is stored there with another body: "
                                      f"it and {self.path} each continued this episode, and only one of them can be kept")
-        if listed:
-            ep_id = row[4]
+        if listing:
+            ep_id, start = listing
             have = into.db.execute("SELECT seg FROM episodes WHERE ep_id = ?", (ep_id,)).fetchone()
             if have is None:
-                into.db.execute("INSERT INTO episodes (ep_id, seg) VALUES (?, ?)", (ep_id, chain[-1]))
+                into.db.execute("INSERT INTO episodes (ep_id, seg, start) VALUES (?, ?, ?)", (ep_id, chain[-1], start))
             elif have[0] != chain[-1]:
                 raise ValueError(f"{into.path}: another episode named {ep_id!r} is already stored there")
         return chain[-1]
 
     def copy(self, names: list[str], into: Store) -> None:
         """Copy each named episode into another store as it is here: its segment and every
-        ancestor (`copy_chain`), its listing, and every score row of it with its judge
-        items, skipping the rows already there. A name that is an unlisted segment's `seg`
+        ancestor (`copy_chain`), its listing (a start stays one), and every score row of it
+        with its judge items, skipping the rows already there. A name that is an unlisted segment's `seg`
         arrives unlisted and brings no rows. This store is read in one read transaction, so
         what is copied is one state of a file another process may be writing, and the other
         is written in one transaction: an episode is there with its rows or not at all."""
         with self.reading(), into._write():
             for name in names:
-                listed = self.db.execute("SELECT ep_id FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
-                self._copy_chain(name, into, bool(listed))
+                listed = self.db.execute("SELECT ep_id, start FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
+                self._copy_chain(name, into, listed)
                 if listed:
                     for profile, row, items in self.db.execute(
                             "SELECT s.profile, s.row, j.body FROM scores s LEFT JOIN judgments j ON j.score = s.id "
-                            "WHERE s.ep_id = ? ORDER BY s.rowid", listed).fetchall():
+                            "WHERE s.ep_id = ? ORDER BY s.rowid", listed[:1]).fetchall():
                         into._add_score(profile, row, items)
 
     def rollouts(self, source: str, at: int | None = None, group: str | None = None) -> list[str]:

@@ -18,6 +18,8 @@ builds one `Runner` and hands it groups of episodes.
 - A **group** is the rollouts one run made of one turn checkpoint in one round
   (`group_id`, `Runner.rollouts`). Its id is derived, so a resumed run finds it again with
   nothing saved, and it is in each member's name, so two runs never make the same name.
+- `situate` sets a task up at a position (a closed episode) and stores what the suite's
+  `setup` returns as situations: starts, played only as rollouts (`Runner.rollouts`).
 - Score rows go into the store beside the episodes, each as soon as it is made
   (`score_into`), so a scoring cut short keeps the rows it finished.
 """
@@ -33,12 +35,15 @@ import json
 import os
 import subprocess
 import traceback
+import uuid
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from writing_assistant.corpus.release import works_in
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.drivers.direct import DirectDriver
 from writing_assistant.episode import Episode
@@ -208,6 +213,40 @@ def row_meta(task: Task) -> dict[str, Any]:
     text = {f.split(".")[0].removesuffix("[]") for f in SUITES[task.suite].text_fields.get(task.kind, [])}
     scalars = {k: v for k, v in task.payload.items() if isinstance(v, str | int | float | bool) and k not in text}
     return scalars | {"kind": task.kind, "split": task.split, "work_ids": ",".join(task.work_ids)}
+
+
+def situate(store: Store, services: Services, suite: str, kind: str, payload: dict[str, Any], at: str, *,
+            name: str | None = None, home: Store | None = None) -> list[Episode]:
+    """Set a task of `suite` up at the position `at` and store its episodes in `store` as
+    situations; they are returned. A position is a closed episode (a rollout's end, a
+    root, another situation), looked up by name as every reader finds one, so an open
+    episode is not found: its files are mid-step. It is read from `home` when another store
+    holds it, and its chain is then copied into `store` unlisted.
+
+    The task row is made here: `name` (default `<root's name>/<12 random hex>`) is its
+    `task_id` and the first situation's name, and its split and works are the position's.
+    It is kept in each situation (`state["task"]`), and its scalar fields in `meta["row"]`
+    as a played task's are."""
+    held = home or store
+    with held.reading():
+        if at not in held.names() and at not in held.starts():
+            raise LookupError(f"{held.path}: no closed episode named {at!r} to set a task up at")
+        position = held.load(at)
+        world = held.load(held.chain(at)[0]).ep_id
+    task = Task(task_id=name or f"{world}/{uuid.uuid4().hex[:12]}", suite=suite, kind=kind, split=position.split,
+                work_ids=sorted(works_in(position.state)), payload=payload)
+    with local_only(position.split == LOCAL_DEV):
+        eps = SUITES[suite].setup(task, services, position)
+    if not eps or eps[0].parent != (position.seg, 0, 0):
+        raise ValueError(f"suite {suite} set {kind!r} up from its row alone, not on the position's files "
+                         "(`Suite.setup(..., at)` begins with `at.begin`)")
+    for ep in eps:
+        ep.state["task"] = asdict(task)
+        ep.meta["row"] = row_meta(task)
+    if home:
+        home.copy_chain(at, store)
+    store.add_starts(*eps)
+    return eps
 
 
 class Runner:

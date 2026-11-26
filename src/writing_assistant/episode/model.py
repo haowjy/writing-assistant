@@ -235,6 +235,22 @@ class Episode:
             _deep_merge(child.state, copy.deepcopy(swap.get("state", {})))
         return child
 
+    def begin(self, ep_id: str, task_id: str, suite: str) -> Episode:
+        """A new episode on this one's files: what a new task set up at this position (a
+        closed, stored episode) starts as. It takes the files, their revisions and the
+        split, and nothing of the session: no events, calls, actors or meta, so its seats
+        start new conversations whatever they are named. It is stored after this episode's
+        start (`parent`), so its own start holds only the files this episode's play changed.
+
+        Its state is empty but for the file access list, kept with every restricted path
+        readable by nobody: the list names the old task's seats, and a path it does not
+        cover is open to everyone, so dropping it would open every restricted file to every
+        new seat. The new task's `setup` grants its seats what they may read."""
+        closed = {path: [] for path in self.state.get("file_acl", {})}
+        return Episode(ep_id=ep_id, task_id=task_id, suite=suite, split=self.split, parent=(self.seg, 0, 0),
+                       files=dict(self.files), file_revs=dict(self.file_revs),
+                       state={"file_acl": closed} if closed else {})
+
     def rollout(self, at: int, i: int, group: str) -> Episode:
         """Member `i` of the group `group` of rollouts of this episode as the store loaded it
         at its turn checkpoint `at`: a fork under the same condition to play on from there,

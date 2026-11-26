@@ -94,10 +94,17 @@ class Suite(Protocol):
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]: ...
 
-    def setup(self, task: Task, services: Services) -> list[Episode]:
+    def setup(self, task: Task, services: Services, at: Episode | None = None) -> list[Episode]:
         """Resolve task.work_ids through services.corpus, stamp ep.state["work_ids"] and the
         task kind's sampling temperature in ep.meta["temperature"]; files, state, actors,
-        actor_tools; fork every twin here: each episode is then played on its own."""
+        actor_tools; fork every twin here: each episode is then played on its own.
+
+        With `at` (a position: a closed episode as last saved) the task is set up on that
+        episode's files: the first episode is `at.begin(...)`, and `setup` writes the task
+        into it, grants the new seats the restricted files they may read (`begin` leaves
+        each readable by nobody) and copies from `at.state` what the kind carries across.
+        `run.situate` stores what is returned; play is then a rollout of it. A suite whose
+        tasks stand on their row alone (1a, 3) is never given one."""
         ...
 
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
