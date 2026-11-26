@@ -71,7 +71,8 @@ class Corpus:
         self.cache_dir = Path(cache_dir)
         self.local_dev_dir = Path(local_dev_dir) if local_dev_dir else LOCAL_DEV_DIR / "corpus"
         self.judges = judges
-        self._works: dict[str, Work] | None = None
+        self._index: dict[str, Work] | None = None  # rows as stored (no familiarity)
+        self._works: dict[str, Work] | None = None  # with familiarity, recomputed after an add
         self._texts: dict[str, str] = {}
         self._shingles: dict[str, frozenset[int]] = {}
 
@@ -80,12 +81,18 @@ class Corpus:
     @property
     def works(self) -> dict[str, Work]:
         if self._works is None:
+            self._works = _with_familiarity(self.indexed())
+        return self._works
+
+    def indexed(self) -> dict[str, Work]:
+        """The rows as stored, read from disk once; `familiarity` is not filled in."""
+        if self._index is None:
             local = {i: replace(w, split=LOCAL_DEV) for i, w in _load_index(self.local_dev_dir / INDEX_FILE).items()}
             public = _load_index(self.cache_dir / INDEX_FILE)
             if clash := local.keys() & public.keys():
                 raise ValueError(f"work ids in both the public and the local_dev corpus: {sorted(clash)[:5]}")
-            self._works = _with_familiarity(public | local)
-        return self._works
+            self._index = public | local
+        return self._index
 
     def get(self, work_id: str) -> Work:
         return self.works[work_id]
@@ -112,17 +119,19 @@ class Corpus:
 
     def add(self, work: Work) -> Work:
         """Record `work`, whose text must already be cached (`store_text`), unless an identical
-        row is indexed. Never deletes: an older row for the same work_id stays on disk,
-        shadowed by the new one, and its bytes stay in the cache."""
+        row is indexed, and return it as stored (familiarity is filled in by `works`). Never
+        deletes: an older row for the same work_id stays on disk, shadowed by the new one,
+        and its bytes stay in the cache."""
         if not self.has_text(work):
             raise ValueError(f"{work.work_id}: no cached text for {work.content_hash}")
-        old = self.works.get(work.work_id)
+        old = self.indexed().get(work.work_id)
         if old is None or old.to_row() != work.to_row():
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             with (self.cache_dir / INDEX_FILE).open("a", encoding="utf-8") as f:
                 f.write(json.dumps(work.to_row(), ensure_ascii=False) + "\n")
+            self._index[work.work_id] = replace(work, familiarity=None)
             self._works = None  # familiarity percentiles move with every addition
-        return self.works[work.work_id]
+        return self._index[work.work_id]
 
     def has_text(self, work: Work) -> bool:
         return self._text_path(work.content_hash).exists()

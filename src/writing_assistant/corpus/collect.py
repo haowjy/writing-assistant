@@ -139,7 +139,7 @@ def collect_gutenberg(corpus: Corpus, fetch: _Polite, query: dict[str, Any]) -> 
 
 
 def _import_book(corpus: Corpus, fetch: _Polite, book: dict[str, Any]) -> Work | None:
-    old = corpus.works.get(f"gutenberg:{book['id']}")
+    old = corpus.indexed().get(f"gutenberg:{book['id']}")
     if old is not None and corpus.has_text(old):
         work = gutenberg_work(book, url=old.url, content_hash=old.content_hash, snapshot_date=old.snapshot_date)
         return corpus.add(work)
