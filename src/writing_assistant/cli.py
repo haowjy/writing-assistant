@@ -10,8 +10,8 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
                         whole by `wa-bench score`, which never touches episodes.jsonl
     guardrails.json     from `wa-bench guardrails --run`
 
-`run` resumes a directory that already has a run.json for the same suite, driver and
-endpoint: tasks with saved episodes are skipped. One task that raises, or one episode whose
+`run` resumes a directory that already has a run.json for the same suite, driver, endpoint
+and split: tasks with saved episodes are skipped (`--where` may differ between invocations). One task that raises, or one episode whose
 scoring raises, is recorded and the run goes on. `local_dev` rows are set up, played and
 scored inside `llm.client.local_only()`.
 """
@@ -192,13 +192,13 @@ async def cmd_run(args: argparse.Namespace) -> int:
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
     run_dir.mkdir(parents=True, exist_ok=True)
     identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
-                "model": services.llm.endpoints[args.endpoint]["model"]}
+                "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split}
     if (run_dir / RUN_FILE).exists():
         info = json.loads((run_dir / RUN_FILE).read_text())
         if {k: info.get(k) for k in identity} != identity:
             sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}")
     else:
-        info = identity | {"split": args.split, "where": args.where, "temperature": args.temperature,
+        info = identity | {"where": args.where, "temperature": args.temperature,
                            "max_tokens": args.max_tokens, "code": code_version(), "started": _now(),
                            "reported_apart": args.driver == "direct"}
         _write_json(run_dir / RUN_FILE, info)

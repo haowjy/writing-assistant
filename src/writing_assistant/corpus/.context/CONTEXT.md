@@ -33,3 +33,13 @@ by the 50-word minimum body. Front matter before the first heading is dropped to
   fix belongs in `episode/`: record the author on the `deliver` event.
 - A suite tool that echoes the subject's words back in its result, other than as an exact
   argument string, leaks those words into `context_copy`.
+
+## Gutendex endpoints that fail (2026-11-25)
+
+Gutendex's `topic=` and `search=` filters and its deep ranking pages (`page=90` and beyond)
+time out or return 503 server-side after about 100 s; the plain `languages=en` listing of the
+first pages and `ids=` lookups answer (`ids=` also timed out for stretches that evening).
+So author → books comes from the mirror's `pg_catalog.csv` (`collect.gutenberg_catalogue`,
+about 20 MB at roughly 70 KB/s, so allow minutes), and Gutendex is used only for `ids=`
+metadata, which carries `download_count` for familiarity. `scripts/build_seed_tasks.py
+collect` follows that path.

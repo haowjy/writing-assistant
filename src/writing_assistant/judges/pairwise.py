@@ -45,12 +45,14 @@ EDIT = Prompt(
 )
 
 AUTHOR = Prompt(
-    version="author-v1",
+    version="author-v2",
     system=(
-        "You see several passages by one author, then two candidate passages A and B. "
-        "Exactly one candidate was written by that author. Judge by voice, not topic: "
-        "sentence length and rhythm, diction, punctuation habits, how dialogue is tagged, "
-        "how much is described and how. Which candidate appears first means nothing. " + _FINAL
+        "You see several passages by one author, then two candidate passages A and B. Pick the "
+        "candidate more likely written by that author. One, both or neither may be; when you "
+        "cannot be sure, pick the one closer to the author's voice. Do not try to identify the "
+        "works or authors involved. Judge by voice, not topic: sentence length and rhythm, "
+        "diction, punctuation habits, how dialogue is tagged, how much is described and how. "
+        "Which candidate appears first means nothing. " + _FINAL
     ),
     user="Passages by the author:\n<<<\n{context}\n>>>\n\nCandidate A:\n<<<\n{a}\n>>>\n\nCandidate B:\n<<<\n{b}\n>>>",
 )
@@ -90,5 +92,6 @@ async def ab(client: LLMClient, endpoint: str, prompt: Prompt, a: str, b: str, c
         except Unscored as e:
             reasons.append(e.reason)
     if reasons:
-        raise Unscored("refusal" if "refusal" in reasons else "unparseable", [fwd, rev])
+        worst = next(r for r in ("refusal", "truncated", "unparseable") if r in reasons)
+        raise Unscored(worst, [fwd, rev])
     return sum(scores) / 2

@@ -24,6 +24,7 @@ critique_edit: {author, source, familiarity?, passage: passage, objection: str,
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from writing_assistant.corpus.text import norm_words
@@ -147,6 +148,5 @@ def setup(task, services) -> list[Episode]:
 
 
 async def play(eps: list[Episode], services, turn) -> list[Episode]:
-    for ep in eps:
-        await turn(ep, WRITER, MESSAGE[ep.state["kind"]](ep))
+    await asyncio.gather(*(turn(ep, WRITER, MESSAGE[ep.state["kind"]](ep)) for ep in eps))
     return eps

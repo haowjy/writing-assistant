@@ -17,7 +17,29 @@ The benchmark is the `writing_assistant` package under `src/` (Python 3.12, `uv`
 packages are layered and `tests/test_layering.py` enforces the direction; the layer table and
 the four protocols are in the work item's `plan/benchmark-code.md` §2. Run tests with
 `CUDA_VISIBLE_DEVICES= uv run pytest` (no test may touch the network or a GPU); the fakes in
-`tests/conftest.py` stand in for models, search providers and the `Turn` binding.
+`tests/conftest.py` stand in for models, search providers and the model client.
+
+## Running the benchmark
+
+`models.toml` names every endpoint and judge; keys come from `.env` in the working directory
+(`DEEPINFRA_API_KEY`), which `wa-bench` loads and never writes anywhere. Data lives outside
+the repo under `/data/jimyao/research/writing-assistant/` (`WA_DATA` overrides): the corpus
+text cache in `corpus-cache/`, task rows in `tasks/{1a,3}.jsonl`, personal manuscripts in
+`local_dev/` (never synced, exported or sent to an endpoint without `local = true`).
+
+```
+uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (network)
+uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in tasks/
+uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N]
+uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
+uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
+```
+
+`run` defaults to the `dev` split; `test` is held out and never used to choose anything. A
+run directory is resumable (same `--out`), and `episodes.jsonl` is never rewritten. Every
+metric that depends on a model judge reads "ungated" in `report` until that judge's
+human-label gate passes (`[gates] passed` in `models.toml`). Runs, task rows and model
+outputs are not committed.
 
 Project knowledge lives in the Meridian KB, not in this repo: run `meridian context --name kb`
 and start at its `index.md` (goals, vocabulary, evaluation principles, training lessons). Work

@@ -40,6 +40,7 @@ collab_edit: {brief, path, text, files?: {path: text}, rounds: [{request: str,
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 from typing import Any
@@ -315,8 +316,7 @@ def setup(task, services) -> list[Episode]:
 
 
 async def play(eps: list[Episode], services, turn) -> list[Episode]:
-    """Episodes play one after another: twins share no play, and a fixed order keeps a
-    scripted Turn's replies matched to the episode they were written for."""
-    for ep in eps:
-        await PLAY[ep.state["kind"]](ep, turn)
+    """Episodes play concurrently: twins share no play and each has its own session. They
+    start in list order, so a scripted Turn that never suspends still answers them in order."""
+    await asyncio.gather(*(PLAY[ep.state["kind"]](ep, turn) for ep in eps))
     return eps

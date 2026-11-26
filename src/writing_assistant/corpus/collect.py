@@ -8,8 +8,11 @@ policy forbids automated access.
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
+import io
 import logging
+import re
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -27,6 +30,7 @@ log = logging.getLogger(__name__)
 
 GUTENDEX = "https://gutendex.com/books/"  # the trailing slash matters: without it, a redirect
 MIRROR = "http://aleph.gutenberg.org"
+CATALOGUE = f"{MIRROR}/cache/epub/feeds/pg_catalog.csv"
 DELAY = 1.0  # seconds between requests, to every host
 RETRIES = 3  # for 429, 5xx and transport errors, backing off 10, 20 delays (or Retry-After)
 # Gutendex's stand-ins for "no single author": each such work is its own source_group.
@@ -155,25 +159,32 @@ def _import_book(corpus: Corpus, fetch: _Polite, book: dict[str, Any]) -> Work |
     return None
 
 
-def list_gutenberg(query: dict[str, Any], pages: list[int], *, http: httpx.Client | None = None,
-                   delay: float = DELAY) -> list[dict[str, Any]]:
-    """Gutendex records (metadata only, no text) for the given 1-based result pages of a
-    query (`languages`, `topic`, `search`, `sort`, ...). Pages past the end are skipped. For
-    choosing what to import: `collect` with `ids` then fetches the text."""
+def gutenberg_catalogue(*, http: httpx.Client | None = None) -> list[dict[str, Any]]:
+    """Every catalogue record from the mirror's `pg_catalog.csv` (metadata only):
+    `{id, type, language, title, authors: [name], translated: bool, subjects, bookshelves}`.
+    Names drop the dates and roles the catalogue appends ("Wells, H. G. (Herbert George),
+    1866-1946" -> "Wells, H. G. (Herbert George)", as Gutendex writes it); `authors` lists
+    only authors, and `translated` says whether a translator is credited."""
     own = http is None
-    http = http or httpx.Client(timeout=120, follow_redirects=False, headers={"User-Agent": "writing-assistant-bench/0"})
+    http = http or httpx.Client(timeout=900, headers={"User-Agent": "writing-assistant-bench/0"})
     try:
-        fetch = _Polite(http, delay)
-        books = []
-        for page in pages:
-            resp = fetch.get(GUTENDEX, {**query, "page": page})
-            if resp is None:
-                continue
-            books += [b for b in resp.json()["results"] if b.get("media_type") == "Text"]
-        return books
+        resp = http.get(CATALOGUE)
+        resp.raise_for_status()
     finally:
         if own:
             http.close()
+    out = []
+    for row in csv.DictReader(io.StringIO(resp.text)):
+        people = [p.strip() for p in row["Authors"].split(";") if p.strip()]
+        roles = [re.search(r"\[([^\]]+)\]\s*$", p) for p in people]
+        names = [re.sub(r"(,\s*(\d{3,4}\??|-|BCE|BC| )+(-\d{0,4}\??)?)?\s*(\[[^\]]+\])?\s*$", "", p) for p in people]
+        out.append({
+            "id": int(row["Text#"]), "type": row["Type"], "language": row["Language"], "title": row["Title"],
+            "authors": [n for n, r in zip(names, roles, strict=True) if r is None],
+            "translated": any(r and "translator" in r.group(1).casefold() for r in roles),
+            "subjects": row["Subjects"], "bookshelves": row["Bookshelves"],
+        })
+    return out
 
 
 COLLECTORS: dict[str, Callable[[Corpus, _Polite, dict[str, Any]], list[Work]]] = {"gutenberg": collect_gutenberg}

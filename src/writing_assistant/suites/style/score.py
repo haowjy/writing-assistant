@@ -27,6 +27,8 @@ Unscored judge items are counted per metric by `Tally`; a metric with none judge
 
 from __future__ import annotations
 
+import asyncio
+
 import numpy as np
 
 from writing_assistant.corpus.authors import PASSAGE_TOKENS
@@ -68,9 +70,11 @@ async def _scene(ep: Episode, services, out: dict[str, float], tally: Tally) -> 
     budget = max(count_tokens(s["y_star"]["text"]), 1)
     candidate = truncate_tokens(text, min(budget, PASSAGE_TOKENS))
     refs = [r["text"] for r in s["verifier_refs"]]
-    fool = await tally.ask("discriminator_fool_rate", j.author_verify(candidate, s["y_star"]["text"], refs))
-    match = await tally.ask("verifier_match", j.author_verify(candidate, s["impostor"]["text"], refs))
-    vectors = await tally.ask("style_margin", j.embed_style([text, s["impostor"]["text"], *refs]))
+    fool, match, vectors = await asyncio.gather(
+        tally.ask("discriminator_fool_rate", j.author_verify(candidate, s["y_star"]["text"], refs)),
+        tally.ask("verifier_match", j.author_verify(candidate, s["impostor"]["text"], refs)),
+        tally.ask("style_margin", j.embed_style([text, s["impostor"]["text"], *refs])),
+    )
     for name, value in (("discriminator_fool_rate", fool), ("verifier_match", match)):
         if value is not None:
             out[name] = float(value)

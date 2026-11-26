@@ -39,6 +39,10 @@ kind = "openai"
 base_url = "https://api.deepinfra.com/v1/openai"
 model = "tencent/Hy4"
 api_key_env = "DEEPINFRA_API_KEY"
+# Thinking off: with it on, Hy4 reasoned past 8192 tokens without answering on most
+# author_verify pairs (2026-11-25, 7 of 8 calls at temperature 0 and 0.6); off, it answers
+# in ~100 tokens. A judge's calibration holds for this setting only.
+params = { chat_template_kwargs = { enable_thinking = false } }
 
 [endpoints.deepseek-v4-pro]
 kind = "openai"

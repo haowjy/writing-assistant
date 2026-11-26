@@ -5,12 +5,14 @@ never go into git).
     uv run python scripts/build_seed_tasks.py collect          # Gutenberg authors for Suite 3 (network, minutes)
     uv run python scripts/build_seed_tasks.py build [--suites 1a,3] [--judges eval]
 
-`collect` imports enough further Gutenberg authors that `dev` and `test` each hold several:
-it samples Gutendex's English ranking by downloads from the top to the long tail (so
-low-download authors come in, not only famous ones), keeps fiction (by the record's subjects
-and bookshelves: Gutendex's own `topic` filter times out server-side), keeps authors whose
-`split_of` is `dev` or `test` and who wrote their books in English, and imports up to four
-books each.
+`collect` imports enough further Gutenberg authors that `dev` and `test` each hold several.
+It reads the mirror's catalogue (metadata only), keeps English fiction authors with at least
+three untranslated fiction books whose `split_of` is `dev` or `test`, walks them in a fixed
+order (sha256 of the name, so famous and never-downloaded authors are equally likely; the
+catalogue is not ranked by popularity) and imports up to four books each through the
+Gutendex `ids` query, which brings their download counts. Gutendex's `topic` and `search`
+filters and its deep ranking pages time out server-side, so nothing here depends on them.
+Which authors land in which split is the hash's call, never ours.
 Which authors land in which split is the hash's call, never ours.
 
 `build` is deterministic given the corpus and the judges' answers, which are cached in
@@ -45,7 +47,7 @@ from typing import Any
 from writing_assistant.cli import load_dotenv
 from writing_assistant.corpus import Corpus
 from writing_assistant.corpus.authors import K_VALUES, AuthorSplit, Passage, partition_author_corpus, retrieve
-from writing_assistant.corpus.collect import NO_AUTHOR, collect, list_gutenberg
+from writing_assistant.corpus.collect import NO_AUTHOR, collect, gutenberg_catalogue
 from writing_assistant.episode.store import TASKS_DIR, Task, split_of
 from writing_assistant.judges import Unscored, judges_from
 from writing_assistant.judges.extract import FACT, OUTLINE
@@ -450,7 +452,6 @@ async def style_rows(corpus: Corpus, judges) -> list[dict]:
 
 # == collect ====================================================================================
 
-PAGES = [1, 2, 3, 5, 8, 12, 17, 23, 30, 40, 55, 70, 90, 120, 160, 220, 300]
 EXTRA = [35, 155]  # works the hand-written rule_bend rows mount (The Time Machine, The Moonstone)
 
 
@@ -458,36 +459,42 @@ def cmd_collect(args: argparse.Namespace) -> None:
     corpus = Corpus()
     collect(corpus, {"gutenberg": {"ids": EXTRA}})
     have = Counter(works[0].split for works in by_author(corpus).values())
-    print(f"authors already in the corpus by split: {dict(have)}")
-    books = [b for b in list_gutenberg({"languages": "en"}, PAGES) if _fiction(b)]
-    seen, picked = set(), Counter()
-    for book in books:
-        names = [a["name"] for a in book.get("authors") or []]
-        if not names or names[0].casefold() in NO_AUTHOR or book.get("translators"):
-            continue
-        author = names[0]
+    print(f"authors already in the corpus by split: {dict(have)}", flush=True)
+    catalogue = defaultdict(list)
+    for rec in gutenberg_catalogue():
+        if rec["type"] == "Text" and rec["language"] == "en" and rec["authors"] and not rec["translated"] and _fiction(rec):
+            catalogue[rec["authors"][0]].append(rec["id"])
+    candidates = sorted((a for a, ids in catalogue.items() if len(ids) >= 3 and a.casefold() not in NO_AUTHOR
+                         and split_of(a) != "train" and a not in by_author(corpus)), key=_h)
+    print(f"{len(candidates)} dev/test fiction authors with 3+ books in the catalogue", flush=True)
+    picked: Counter[str] = Counter()
+    for author in candidates:
         split = split_of(author)
-        if author in seen or split == "train" or picked[split] + have[split] >= args.per_split:
+        if picked[split] + have[split] >= args.per_split:
+            if all(picked[s] + have[s] >= args.per_split for s in ("dev", "test")):
+                break
             continue
-        seen.add(author)
-        results = list_gutenberg({"search": author.replace(",", "").split("(")[0], "languages": "en"}, [1])
-        ids = [b["id"] for b in results if (b.get("authors") or [{}])[0].get("name") == author and not b.get("translators")][:4]
-        if len(ids) < 2:
+        try:
+            works = collect(corpus, {"gutenberg": {"ids": sorted(catalogue[author])[:4]}})
+        except Exception as e:  # a flaky Gutendex call loses this author, not the run
+            print(f"  {author}: import failed ({type(e).__name__}: {e})", flush=True)
             continue
-        works = collect(corpus, {"gutenberg": {"ids": ids}})
         probe = Corpus(judges=SimpleNamespace(outline=_no_outline))
         try:
             asyncio.run(partition_author_corpus(probe, by_author(probe)[author], n_targets=N_TARGETS, n_refs=N_REFS))
-        except ValueError as e:
-            print(f"  {author} ({split}): imported {len(works)} books, not enough chapters ({e})")
+        except (ValueError, KeyError) as e:
+            print(f"  {author} ({split}): imported {len(works)} books, not usable ({e})", flush=True)
             continue
         picked[split] += 1
-        print(f"  {author} ({split}, {book.get('download_count')} downloads): {len(works)} books", flush=True)
+        downloads = [w.familiarity_parts.get("downloads") for w in works]
+        print(f"  {author} ({split}): {len(works)} books, downloads {downloads}", flush=True)
     print(f"added authors by split: {dict(picked)}")
 
 
 def _fiction(book: dict) -> bool:
-    labels = " ".join(book.get("subjects", []) + book.get("bookshelves", [])).casefold()
+    """Fiction by the record's subjects and bookshelves (lists from Gutendex, text from the catalogue)."""
+    labels = " ".join(str(book.get(k, "")) if isinstance(book.get(k), str) else " ".join(book.get(k) or [])
+                      for k in ("subjects", "bookshelves")).casefold()
     return "fiction" in labels and "poetry" not in labels and "drama" not in labels
 
 
