@@ -834,6 +834,7 @@ dependencies = [
     { name = "en-core-web-sm" },
     { name = "httpx" },
     { name = "numpy" },
+    { name = "regex" },
     { name = "spacy" },
     { name = "wordfreq" },
 ]
@@ -849,6 +850,7 @@ requires-dist = [
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "numpy", specifier = ">=2.0" },
+    { name = "regex", specifier = ">=2024.11" },
     { name = "spacy", specifier = ">=3.8,<3.9" },
     { name = "wordfreq", specifier = ">=3.1" },
 ]
