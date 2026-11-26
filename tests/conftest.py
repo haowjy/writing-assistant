@@ -50,6 +50,10 @@ class FakeLLM:
         self.config = tomllib.loads(MODELS_TOML.read_text())
         self.endpoints = self.config["endpoints"]
         self.requests: list[dict[str, Any]] = []  # every chat() call, for prompt assertions
+        self.spent: dict[str, float] = {}
+
+    async def aclose(self) -> None:
+        pass
 
     def _next(self, endpoint: str) -> Reply:
         queue = self.replies[endpoint] if isinstance(self.replies, dict) else self.replies

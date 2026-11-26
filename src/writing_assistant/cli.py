@@ -6,8 +6,8 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
                         per judge profile the judges' stamps and the USD the hosts reported
     episodes.jsonl      every saved episode, appended one task at a time; never rewritten
     errors.jsonl        tasks that raised in setup or play (not saved; a resume reruns them)
-    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored; rewritten
-                        whole by `wa-bench score`, which never touches episodes.jsonl
+    scores-<profile>.jsonl  one row per episode: metrics, or why it was not scored; `wa-bench
+                        score` replaces the rows of the episodes it scored, never episodes.jsonl
     guardrails.json     from `wa-bench guardrails --run`
 
 `run` resumes a directory that already has a run.json for the same suite, driver, endpoint
@@ -269,8 +269,10 @@ async def cmd_score(args: argparse.Namespace) -> int:
     finally:
         await services.llm.aclose()
     path = run_dir / f"scores-{args.judges}.jsonl"
+    # Merged by ep_id: the rows of episodes `--where` did not select stay as they were.
+    merged = {r["ep_id"]: r for r in _jsonl(path)} | {r["ep_id"]: r for r in rows}
     tmp = path.with_suffix(".tmp")
-    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in merged.values()), encoding="utf-8")
     tmp.replace(path)
     record(run_dir, services, args.judges)
     errors = sum("error" in r for r in rows)
