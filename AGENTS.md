@@ -19,7 +19,7 @@ the four protocols are in the work item's `plan/benchmark-code.md` §2, except t
 longer has a `play`: it keeps no state outside the episode, and its `next_delivery(ep,
 last_reply)` is one step (do what the last reply calls for, name the next delivery) that
 `suites.play()`, the only loop, drives. A driver likewise rebuilds its conversation from the
-episode at `open()`, so an episode copied when a delivery returns continues as the original
+episode at `open()`, so an episode saved when a delivery returns continues as the original
 would have (`suites/__init__.py`). Run tests with
 `CUDA_VISIBLE_DEVICES= uv run pytest` (no test may touch the network or a GPU); the fakes in
 `tests/conftest.py` stand in for models, search providers and the model client.
@@ -41,6 +41,7 @@ uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (n
 uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in judge-cache.jsonl
 llmpick start gemma-4-26b-qat                        # serve the subject first
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
+uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' [--from-run runs/<id>] --rollouts N --out runs/<new>
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
@@ -88,7 +89,44 @@ the value, so `--where "author=Austen, Jane,mode=instruction"` works.
 `--split test` also needs `--held-out-test` and every such run is logged in
 `test-split-uses.jsonl` (in the data directory, beside `tasks/`). A run directory is resumable (same `--out`); a resume with
 another `--max-tokens` is refused, and an HTTP 401/402/403 from a host stops the run with
-exit 1. Scoring reads each task kind's artefact, never `Episode.status`: an episode with
+exit 1.
+
+## How episodes are stored
+
+A run's episodes are in `store.db` (SQLite, standard library; `episode/segments.py` has the
+model and the rules, the work item's `design/branch-store.md` the reasons). There is no
+other episode format and no reader for an older one.
+
+- An episode is a **segment**: its own part of a log, stored after a parent segment or none.
+  `Episode.parent` means only that; `Episode` itself keeps no history.
+- `run` saves each episode before play and again every time a delivery returns (**turn
+  checkpoints**), and closes a task's episodes together when its play ends (the **closing
+  checkpoint**). `score`, `report`, `view`, `sync` and `build_calibration.py` read closed
+  episodes only.
+- A killed run loses the deliveries in flight and nothing else: the next `run` on the
+  directory continues every open episode from its last turn checkpoint through the same
+  loop, and sets up nothing twice. Runs that choose different tasks may share a directory
+  at the same time; `run.lock` tells a starting run whether the open episodes are another
+  live run's.
+- Play continues, or is forked, from a turn checkpoint only. `--from '<ep_id>@<n>'` forks
+  the checkpoint taken when the episode's n-th delivery returned (0: before the first)
+  `--rollouts` times; with `--from-run` the episode's chain is first copied into the new
+  run's store, so every store is self-contained. Rollouts are named
+  `<ep_id>~<condition>.<i>`, sample with their own seeds, and are scored without a twin.
+- Twins are paired by `Episode.baseline_of` (set by `fork(..., baseline=True)` in `setup`),
+  never by who was forked from whom.
+- A `test` or `local_dev` segment never shares a store with another split's. `sync` uploads
+  no store file: it writes a new one holding the closed episodes that may leave, and holds
+  an episode back when any segment in its chain is `local_dev` or draws, at any of its
+  checkpoints, on a work whose licence does not allow release.
+- A run directory written before the store (`episodes.jsonl`) cannot be read. The ten
+  `base-*` runs were converted on 2026-11-26 into the `branch-store` worktree's `runs/`
+  (git-ignored) by replaying their saved calls through the suites, so the copies hold real
+  turn checkpoints and can be forked; the originals in the `bench-v0` worktree are untouched.
+
+## Scoring
+
+Scoring reads each task kind's artefact, never `Episode.status`: an episode with
 no reply or file to score gets no outcome metric, and `report` counts it under "no
 artefact". A refusal is the host's stop reason only; a reply under half the length its task
 asked for is `too_short`, not scored. `collab_edit` has one artefact per round: a round the

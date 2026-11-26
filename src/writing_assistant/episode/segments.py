@@ -3,7 +3,8 @@
 A **segment** is one episode's own part of its log. It has a parent (the segment it was
 forked from, and how many of that segment's events and calls it took) or none, and a row of
 **checkpoints** appended in order. A checkpoint holds the events and calls added since the
-one before and what changed in the tip (state, actors, actor_tools, status, failure_reason).
+one before and what changed in the tip (state, actors, actor_tools, status, failure_reason);
+a call's messages are stored as what follows those of the same actor's call before it.
 Checkpoint 0 is the segment's **start**: it also holds what the segment changed at birth
 against its parent at the fork position, namely the files it set and the events it replaced
 (a twin's rules file, a swapped event), and its tip whole. Loading walks the parent chain:
@@ -43,10 +44,11 @@ from __future__ import annotations
 import copy
 import json
 import sqlite3
+import weakref
 import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -85,7 +87,7 @@ class _Tip:
     calls: int
     tip: dict[str, Any]  # the tip as saved there: what the next checkpoint's change is against
     listed: bool
-    closed: bool = False
+    ep: weakref.ref[Episode]  # the object those counts are of: another one of the same segment is not its sequel
 
 
 class Store:
@@ -96,7 +98,7 @@ class Store:
         self.path = Path(path)
         target = f"file:{quote(str(self.path))}?mode=ro" if readonly else f"file:{quote(str(self.path))}"
         self.db = sqlite3.connect(target, uri=True, isolation_level=None, timeout=60)
-        self._tips: dict[str, _Tip] = {}
+        self._tips: dict[str, _Tip] = {}  # the open segments this process saved or loaded at their last checkpoint
         # (seg, events, calls) -> what a fork made there inherits. A segment's log only grows,
         # so a prefix of it never changes.
         self._prefixes: dict[tuple[str, int, int], tuple[list[Event], list[CallRecord], dict[str, list]]] = {}
@@ -107,7 +109,14 @@ class Store:
                         for statement in _SCHEMA:
                             self.db.execute(statement)
                         self.db.execute(f"PRAGMA user_version = {FORMAT}")
-            version = self.db.execute("PRAGMA user_version").fetchone()[0]
+            try:
+                version = self.db.execute("PRAGMA user_version").fetchone()[0]
+            except sqlite3.OperationalError as e:
+                if not readonly or "readonly" not in str(e):
+                    raise
+                # SQLite must roll the dead writer's journal back before anything can be read.
+                raise RuntimeError(f"{self.path}: a writer died in the middle of a checkpoint, and a reader may not "
+                                   "repair the file; the next writer does (`wa-bench run` on this directory)") from e
             if version != FORMAT:
                 raise ValueError(f"{self.path}: store format {version}; this build reads and writes format {FORMAT} only")
         except BaseException:
@@ -144,55 +153,60 @@ class Store:
         self._checkpoint(eps, "closing")
 
     def _checkpoint(self, eps: tuple[Episode, ...], kind: str) -> None:
-        tips: dict[str, _Tip] = {}
+        tips: dict[str, _Tip | None] = {}  # None: closed in this transaction
         with self._write():
             for ep in eps:
                 self._save(ep, kind, True, tips)
-        self._tips |= tips
+        for seg, tip in tips.items():
+            if tip is None:
+                self._tips.pop(seg, None)
+            else:
+                self._tips[seg] = tip
 
-    def _save(self, ep: Episode, kind: str, listed: bool, tips: dict[str, _Tip]) -> None:
-        last = tips.get(ep.seg) or self._tips.get(ep.seg)
+    def _save(self, ep: Episode, kind: str, listed: bool, tips: dict[str, _Tip | None]) -> None:
+        last = tips[ep.seg] if ep.seg in tips else self._tips.get(ep.seg)
         body: dict[str, Any] = {}
         if last is None:
-            last = _Tip(-1, ep.parent[1] if ep.parent else 0, ep.parent[2] if ep.parent else 0, {}, False)
+            last = _Tip(-1, ep.parent[1] if ep.parent else 0, ep.parent[2] if ep.parent else 0, {}, False, weakref.ref(ep))
             body = self._start(ep, tips)
-        elif last.closed:
-            raise ValueError(f"{self.path}: {ep.ep_id} is closed; nothing is appended to a closed episode")
+        elif last.ep() is not ep:
+            raise ValueError(f"{self.path}: {ep.ep_id} is being continued here by another Episode object; one loaded at "
+                             "an earlier checkpoint is played on by forking it")
         if listed and not last.listed:
             try:
                 self.db.execute("INSERT INTO episodes (ep_id, seg) VALUES (?, ?)", (ep.ep_id, ep.seg))
             except sqlite3.IntegrityError:
-                raise ValueError(f"{self.path}: an episode named {ep.ep_id!r} is already stored here; "
-                                 "a second fork of one position takes a rollout number") from None
+                raise ValueError(f"{self.path}: another episode named {ep.ep_id!r} is already stored here (the same task "
+                                 "set up twice, or a fork repeated with no rollout number)") from None
         tip = json.loads(json.dumps({"state": ep.state, "actors": ep.actors, "actor_tools": ep.actor_tools,
                                      "status": ep.status, "failure_reason": ep.failure_reason}))
-        now = _Tip(last.n, len(ep.events), len(ep.calls), tip, last.listed or listed, kind == "closing")
+        now = _Tip(last.n, len(ep.events), len(ep.calls), tip, last.listed or listed, last.ep)
         if kind == "closing" or last.n < 0 or (now.events, now.calls, tip) != (last.events, last.calls, last.tip):
             now.n += 1
             body |= {"events": [_event_out(e) for e in ep.events[last.events:]],
-                     "calls": [asdict(c) for c in ep.calls[last.calls:]], "tip": _diff(last.tip, tip)}
+                     "calls": _calls_out(ep.calls, last.calls), "tip": _diff(last.tip, tip)}
             try:
                 self.db.execute("INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, ?, ?, ?, ?)",
                                 (ep.seg, now.n, kind, now.events, now.calls, _pack(body)))
             except sqlite3.IntegrityError:
                 raise ValueError(f"{self.path}: checkpoint {now.n} of {ep.ep_id} is already stored: "
-                                 "another writer continued this episode, or it was loaded at an earlier "
-                                 "checkpoint (fork it to play on from there)") from None
-        tips[ep.seg] = now
+                                 "another writer continued this episode") from None
+        tips[ep.seg] = None if kind == "closing" else now
 
-    def _start(self, ep: Episode, tips: dict[str, _Tip]) -> dict[str, Any]:
+    def _start(self, ep: Episode, tips: dict[str, _Tip | None]) -> dict[str, Any]:
         """Create `ep`'s segment, its unsaved ancestors first, and return what its start
         holds beside a checkpoint's own parts: the files it set and the events it replaced,
         against its parent at the fork position."""
         if self.db.execute("SELECT 1 FROM segments WHERE seg = ?", (ep.seg,)).fetchone():
-            raise ValueError(f"{self.path}: {ep.ep_id} (segment {ep.seg}) is stored here but was not loaded from "
-                             "this store by this process, or was loaded closed: it cannot be appended to")
+            if self.db.execute("SELECT 1 FROM checkpoints WHERE seg = ? AND kind = 'closing'", (ep.seg,)).fetchone():
+                raise ValueError(f"{self.path}: {ep.ep_id} is closed; nothing is appended to a closed episode")
+            raise ValueError(f"{self.path}: {ep.ep_id} is stored here, and this is not the Episode this process loaded "
+                             "at its last checkpoint: it cannot be appended to (fork it to play on from an earlier one)")
         files = _files_at(ep, ep.parent[1] if ep.parent else 0)
         replaced: dict[str, list] = {}
         if ep.parent:
             seg, n_events, n_calls = ep.parent
-            if seg not in tips and seg not in self._tips and \
-                    not self.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone():
+            if seg not in tips and not self.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone():
                 if ep.forked_from is None:
                     raise ValueError(f"{self.path}: {ep.ep_id} was forked from segment {seg}, which is not stored here")
                 self._save(ep.forked_from, "turn", False, tips)
@@ -237,20 +251,24 @@ class Store:
         and each time a delivery returned has turn checkpoint n after its n-th delivery."""
         seg = self._seg(name)
         events, calls, files, tip, n, kind, head = self._rebuild(seg, at=at)
-        if at is not None and n != at:
-            raise LookupError(f"{self.path}: {name} has no checkpoint {at} (its last is {n})")
-        if at is not None and kind == "closing":
-            raise ValueError(f"{self.path}: checkpoint {at} of {name} is its closing checkpoint; play cannot "
-                             f"continue from the end of an episode (its turn checkpoints are 0 to {at - 1})")
         _, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, meta = head
+        if at is not None and n != at:
+            raise LookupError(f"{self.path}: {ep_id} has no checkpoint {at} (its last is {n})")
+        if at is not None and kind == "closing":
+            raise ValueError(f"{self.path}: checkpoint {at} of {ep_id} is its closing checkpoint; play cannot "
+                             f"continue from the end of an episode (its turn checkpoints are 0 to {at - 1})")
         ep = Episode(ep_id=ep_id, task_id=task_id, suite=suite, split=split, seg=seg,
                      parent=(parent, parent_events, parent_calls) if parent else None, baseline_of=baseline_of,
                      condition=condition, meta=json.loads(meta), events=events, calls=calls,
                      files={p: text for p, (text, _) in files.items()}, file_revs={p: rev for p, (_, rev) in files.items()},
                      **copy.deepcopy(tip))
-        if kind == "turn" and n == self.db.execute("SELECT MAX(n) FROM checkpoints WHERE seg = ?", (seg,)).fetchone()[0]:
+        # The episode can be appended to when it is at its last checkpoint, open, and no Episode
+        # this process loaded or saved earlier is still continuing the segment.
+        held = self._tips.get(seg)
+        if kind == "turn" and (held is None or held.ep() is None) and \
+                n == self.db.execute("SELECT MAX(n) FROM checkpoints WHERE seg = ?", (seg,)).fetchone()[0]:
             listed = bool(self.db.execute("SELECT 1 FROM episodes WHERE seg = ?", (seg,)).fetchone())
-            self._tips[seg] = _Tip(n, len(events), len(calls), tip, listed)
+            self._tips[seg] = _Tip(n, len(events), len(calls), tip, listed, weakref.ref(ep))
         return ep
 
     def chain(self, name: str) -> list[str]:
@@ -324,7 +342,9 @@ class Store:
                 for path, file in part["files"].items():
                     files.pop(path, None) if file is None else files.update({path: file})
             events += [Event(len(events) + i, *e) for i, e in enumerate(part["events"])]
-            calls += [CallRecord(**c) for c in part["calls"]]
+            for call in part["calls"]:
+                keep, then = call["messages"]
+                calls.append(CallRecord(**call | {"messages": _messages_before(calls, len(calls), call["actor"])[:keep] + then}))
             _patch(tip, part["tip"])
         if cut:
             del events[cut[0]:], calls[cut[1]:]
@@ -349,6 +369,23 @@ def _unpack(blob: bytes) -> dict[str, Any]:
 
 def _event_out(event: Event) -> list:
     return [event.actor, event.kind, event.data, event.visible_to]  # its idx is its place in the log
+
+
+def _calls_out(calls: list[CallRecord], start: int) -> list[dict[str, Any]]:
+    """`calls[start:]` as stored. A conversation only grows, so a call's messages are kept as
+    [how many of the same actor's previous call's messages they begin with, the rest]: a
+    checkpoint then costs what the turn added, not the whole history again."""
+    out = []
+    for i in range(start, len(calls)):
+        call, before = calls[i], _messages_before(calls, i, calls[i].actor)
+        keep = next((k for k, (a, b) in enumerate(zip(before, call.messages)) if a != b), min(len(before), len(call.messages)))
+        out.append(asdict(replace(call, messages=[])) | {"messages": [keep, call.messages[keep:]]})
+    return out
+
+
+def _messages_before(calls: list[CallRecord], i: int, actor: str) -> list[dict[str, Any]]:
+    """The messages of `actor`'s last call before `calls[i]`; [] when it has none."""
+    return next((calls[j].messages for j in range(i - 1, -1, -1) if calls[j].actor == actor), [])
 
 
 def _files_at(ep: Episode, n_events: int) -> dict[str, list]:

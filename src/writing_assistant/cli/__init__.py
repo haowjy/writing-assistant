@@ -13,6 +13,8 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
                         Readers (`score`, `report`, `view`, `sync`) see closed episodes only
     errors.jsonl        tasks that raised in setup (a resume sets them up again) or in play
                         (their episodes stay open, and a resume continues them)
+    run.lock            empty; every live `run` holds a lock on it, which is how one starting
+                        up tells episodes a dead run left open from those another is playing
     scores-<profile>.jsonl  `<profile>` is `--judges`, a `[judges.<profile>]` table in
                         models.toml; `none` names no judge, so a run with no judge served
                         plays and scores what needs no model now and is re-scored later with
@@ -32,7 +34,9 @@ skipped (`--where` may differ between invocations), closed episodes with no scor
 scored first, and every open episode (a run killed mid-task, a task whose play raised) is
 continued from its last turn checkpoint through the same loop as a fresh one, so a killed
 run loses at most the deliveries in flight. A continued episode keeps the `meta` it started
-with. One task that raises, or one episode whose scoring raises, is recorded and the
+with. Several `run`s may share a directory when they choose different tasks (`--where`,
+`--from`): each appends to the one store, and only a `run` that finds no other alive there
+continues the open episodes. One task that raises, or one episode whose scoring raises, is recorded and the
 run goes on, but the command then exits 1. An account-level refusal from a host (HTTP 401,
 402, 403: `llm.client.AccountError`) stops the run at once, exit 1; what was saved stays
 resumable. `local_dev` rows are set up, played and
@@ -52,6 +56,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime as dt
+import fcntl
 import json
 import os
 import shutil
@@ -61,6 +66,7 @@ import sys
 import traceback
 from collections import Counter
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +82,7 @@ from writing_assistant.llm.client import AccountError, LLMClient
 from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally, play
 
 ROOT = Path(__file__).resolve().parents[3]
-ERRORS_FILE = "errors.jsonl"
+ERRORS_FILE, LOCK_FILE = "errors.jsonl", "run.lock"
 # task kind -> payload fields that carry work text (the licence rule in corpus/release.py)
 TEXT_FIELDS = {name: suite.text_fields for name, suite in SUITES.items()}  # what export and sync may release
 
@@ -289,19 +295,35 @@ async def cmd_run(args: argparse.Namespace) -> int:
     counts: Counter[str] = Counter()
     stopped: AccountError | None = None
 
+    # Held shared for as long as this run lives (the kernel drops it when the process dies).
+    # Getting it exclusively first means no other run is alive in this directory.
+    lock = (run_dir / LOCK_FILE).open("a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        alone = True
+    except BlockingIOError:
+        alone = False
+    fcntl.flock(lock, fcntl.LOCK_SH)
+
     with Store(run_dir / STORE_FILE) as store:
         closed = list(store.episodes())
         with local_only(args.split == LOCAL_DEV):
             # Open episodes, grouped as they were played: a task's episodes close together.
+            # With another run alive here they are that run's, in play, and are left to it,
+            # as are the closed ones it has yet to score.
             unfinished: dict[str, list[Episode]] = {}
             for ep in store.episodes(closed=False):
                 unfinished.setdefault(ep.task_id, []).append(ep)
             done = {ep.task_id for ep in closed} | set(unfinished)
+            if not alone:
+                print(f"{run_dir}: another run is alive here; its {sum(map(len, unfinished.values()))} open episodes are left to it")
+                unfinished = {}
             if args.source:
                 tasks, rollouts = [], _rollouts(args, store, meta)
             else:
                 tasks, rollouts = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit], []
-        unscored = set() if args.no_score else {ep.ep_id for ep in closed} - {r["ep_id"] for r in read_jsonl(scores_path)}
+        unscored = ({ep.ep_id for ep in closed} - {r["ep_id"] for r in read_jsonl(scores_path)}
+                    if alone and not args.no_score else set())
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
               + ", ".join([f"{len(done)} tasks already stored"]
                           + [f"{sum(map(len, unfinished.values()))} open episodes to continue"] * bool(unfinished)
@@ -388,15 +410,15 @@ def _rollouts(args: argparse.Namespace, store: Store, meta: dict[str, Any]) -> l
     if not name or not at.isdigit():
         sys.exit(f"--from takes <ep_id>@<n>, the episode and its turn checkpoint; got {args.source!r}")
     try:
-        if args.from_run:
-            with Store(Path(args.from_run) / STORE_FILE, readonly=True) as other:
-                name = other.copy_chain(name, store)
-        source = store.load(name, at=int(at))
-    except (LookupError, ValueError, sqlite3.OperationalError) as e:
+        with Store(Path(args.from_run) / STORE_FILE, readonly=True) if args.from_run else nullcontext(store) as home:
+            source = home.load(name, at=int(at))
+            if (source.suite, source.split) != (args.suite, args.split):
+                sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
+                         f"this run is suite {args.suite}, split {args.split}")
+            if home is not store:
+                home.copy_chain(name, store)
+    except (LookupError, ValueError, sqlite3.Error) as e:
         sys.exit(f"--from {args.source}: {e}")
-    if (source.suite, source.split) != (args.suite, args.split):
-        sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
-                 f"this run is suite {args.suite}, split {args.split}")
     stored = set(store.names()) | set(store.names(closed=False))
     out = []
     for i in range(args.rollouts):
