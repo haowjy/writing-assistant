@@ -23,13 +23,12 @@ import asyncio
 import datetime as dt
 import hashlib
 import json
-import math
 import os
 import shutil
 import subprocess
 import sys
 import traceback
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -41,12 +40,10 @@ from writing_assistant.episode import Episode
 from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, TASKS_DIR, Task, load_episodes, matches, save_episodes
 from writing_assistant.judges import Judges, judges_from
 from writing_assistant.llm.client import LLMClient, local_only
-from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, mean
+from writing_assistant.suites import SUBJECT, SUITES, Services, Suite
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 RUN_FILE, ERRORS_FILE = "run.json", "errors.jsonl"
-# The five metrics that get a familiarity gap column (benchmark.md, "The Corpus").
-FAMILIARITY_GAP = ("discriminator_fool_rate", "verifier_match", "pairwise_craft_win", "score_100_endings", "restraint_score")
 
 
 # -- the Turn binding ----------------------------------------------------------------------
@@ -281,108 +278,6 @@ async def cmd_score(args: argparse.Namespace) -> int:
     return 0
 
 
-# -- report --------------------------------------------------------------------------------
-
-def _summarise(run_dir: Path, profile: str, group_by: list[str], where: str | None) -> tuple[dict, dict]:
-    """(groups, totals): groups maps a group key to {metric: [values]} plus counts."""
-    info = json.loads((run_dir / RUN_FILE).read_text())
-    episodes = {ep.ep_id: ep for ep in load_episodes(run_dir)}
-    scores = {r["ep_id"]: r for r in _jsonl(run_dir / f"scores-{profile}.jsonl")}
-    groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "flagged": defaultdict(list),
-                                                              "familiarity": defaultdict(list), "counts": Counter()})
-    for ep in episodes.values():
-        row = ep.meta.get("row", {})
-        if not matches(row, where):
-            continue
-        g = groups[tuple(str(row.get(k, ep.condition if k == "condition" else None)) for k in group_by)]
-        g["counts"][f"status:{ep.status}"] += 1
-        if ep.failure_reason:
-            g["counts"][f"reason:{ep.failure_reason[:60]}"] += 1
-        sc = scores.get(ep.ep_id)
-        if sc is None:
-            g["counts"]["unscored:missing"] += 1
-            continue
-        if "error" in sc:
-            g["counts"]["unscored:scorer_error"] += 1
-            continue
-        metrics = sc.get("metrics", {})
-        flagged = metrics.get("overlap_flagged", 0.0) > 0
-        for name, value in metrics.items():
-            if name.startswith("n_"):
-                g["counts"][name] += value
-            elif not (isinstance(value, float) and math.isnan(value)):
-                g["values"][name].append(value)
-                if not flagged:
-                    g["flagged"][name].append(value)
-                if name in FAMILIARITY_GAP and row.get("familiarity") is not None:
-                    g["familiarity"][name].append((float(row["familiarity"]), value))
-    return info, groups
-
-
-def _fmt(x: float | None) -> str:
-    return "-" if x is None else f"{x:.3f}"
-
-
-def _guardrails_line(path: Path) -> str:
-    g = json.loads(path.read_text())
-    scores = ", ".join(f"{k} {g[k]}" for k in ("ifeval", "humaneval_plus", "bfcl"))
-    return f"guardrails: {scores} ({g['endpoint']}, {g['model']}, {g['date'][:10]}, {g['image']})"
-
-
-def cmd_report(args: argparse.Namespace) -> int:
-    run_dir = Path(args.run)
-    if not (run_dir / RUN_FILE).exists() and (run_dir / "guardrails.json").exists():
-        print(_guardrails_line(run_dir / "guardrails.json"))  # a `wa-bench guardrails` directory
-        return 0
-    group_by = [g for g in (args.group_by or "").split(",") if g]
-    info, groups = _summarise(run_dir, args.judges, group_by, args.where)
-    suite = SUITES[info["suite"]]
-    base = _summarise(Path(args.baseline), args.judges, group_by, args.where)[1] if args.baseline else None
-    passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
-    print(f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
-          f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
-          f"split {info['split']}, code {info['code']}, judges {args.judges}")
-    if spent := info.get("spent_usd"):
-        print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())})")
-    if (run_dir / "guardrails.json").exists():
-        print(_guardrails_line(run_dir / "guardrails.json"))
-    errors = _jsonl(run_dir / ERRORS_FILE)
-    if errors:
-        print(f"task errors: {len(errors)} (see {ERRORS_FILE})")
-    for key in sorted(groups):
-        g = groups[key]
-        label = ", ".join(f"{k}={v}" for k, v in zip(group_by, key, strict=True)) or "all"
-        print(f"\n== {label}: " + ", ".join(f"{k} {int(v)}" for k, v in sorted(g["counts"].items()) if not k.startswith("n_")))
-        print(f"  {'metric':40} {'mean':>8} {'n':>4} {'w/o flag':>8} {'refused':>8}  notes")
-        for name in sorted(g["values"]):
-            vals = g["values"][name]
-            judged = g["counts"].get(f"n_judged.{name}", 0)
-            unscored = {k.rsplit(".", 1)[1]: v for k, v in g["counts"].items() if k.startswith(f"n_unscored.{name}.")}
-            total = judged + sum(unscored.values())
-            refused = unscored.get("refusal", 0) / total if total else None
-            notes = []
-            use = suite.judged_by.get(name)
-            if use and f"{args.judges}.{use}" not in passed:
-                notes.append(f"ungated ({use})")
-            if other := {k: int(v) for k, v in unscored.items() if k != "refusal"}:
-                notes.append(f"unscored {other}")
-            if base is not None:
-                b = mean(base.get(key, {}).get("values", {}).get(name, []))
-                notes.append(f"Δ {_fmt(mean(vals) - b) if b is not None else '-'} vs baseline")
-            fam = sorted(g["familiarity"].get(name, []))
-            if len(fam) >= 3:
-                third = len(fam) // 3
-                low, high = mean([v for _, v in fam[:third]]), mean([v for _, v in fam[-third:]])
-                notes.append(f"low-fam {_fmt(low)}, gap {_fmt(high - low)}")
-            print(f"  {name:40} {_fmt(mean(vals)):>8} {len(vals):>4} {_fmt(mean(g['flagged'].get(name, []))):>8} "
-                  f"{_fmt(refused) if total else '':>8}  {'; '.join(notes)}")
-        # metrics every item of which went unscored: absent above, never 0.0
-        for k in sorted(g["counts"]):
-            if k.startswith("n_unscored.") and k.split(".")[1] not in g["values"]:
-                print(f"  {k.split('.')[1]:40} {'absent':>8}    0 {'':>8} {'':>8}  unscored: {k.split('.')[2]} x{int(g['counts'][k])}")
-    return 0
-
-
 # -- guardrails, collect, export, sync -----------------------------------------------------
 
 def cmd_guardrails(args: argparse.Namespace) -> int:
@@ -551,6 +446,8 @@ def parser() -> argparse.ArgumentParser:
     y.add_argument("--dry-run", action="store_true")
     return p
 
+
+from writing_assistant.cli.report import cmd_report  # noqa: E402  (needs the helpers above)
 
 COMMANDS = {"run": cmd_run, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
             "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync}
