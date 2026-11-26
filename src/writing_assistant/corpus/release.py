@@ -7,13 +7,14 @@ work the corpus does not know included, leaves as `url` + `content_hash` (a work
 leave.
 
 - Works: `works.jsonl` with the text inline only for permissive works.
-- Task rows: the payload fields that carry work text are marked per task kind
+- Task rows: only `<tasks dir>/<suite>.jsonl` for the suites named, each line validated as
+  a task row of that suite and of one of its kinds (anything else in the directory, a log or
+  a cache, never leaves). The payload fields that carry work text are marked per task kind
   (`Suite.text_fields`, paths such as `passage.text`, `exemplars[].text`, `files.*`). A
   marked field leaves as text only when every work the row draws on is permissive; the
   unmarked fields are the benchmark's own text and leave whole. A row draws on the works in
   `work_ids` and every `work_id` a payload passage names (a Suite 3 impostor is by another
-  author and is not in `work_ids`). A row whose kind has no marks may leave only if all its
-  works are permissive; otherwise export refuses it rather than guess which fields are text.
+  author and is not in `work_ids`).
 - Episodes, and the scores and judgments rows about them, leave whole or not at all: only
   when every work the episode draws on is permissive (DECISIONS #12: left out, not hashed).
 """
@@ -28,7 +29,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, RUN_FILE, TASKS_DIR, read_jsonl
+from writing_assistant.episode.store import EPISODES_FILE, LOCAL_DEV, RUN_FILE, TASKS_DIR, load_rows, read_jsonl
 
 if TYPE_CHECKING:
     from writing_assistant.corpus.rows import Corpus
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
 PERMISSIVE = frozenset({"public-domain", "cc-by", "cc-by-sa", "author-granted"})
 WORKS_FILE = "works.jsonl"
 TextFields = dict[str, list[str]]  # task kind -> marked payload paths
+SuiteFields = dict[str, TextFields]  # suite name -> its kinds' marks (every kind it has)
 
 
 def works_in(value: Any) -> set[str]:
@@ -82,20 +84,29 @@ def public_row(corpus: Corpus, row: dict, text_fields: TextFields) -> dict:
     """The task row as it may leave: marked fields hashed unless every work is permissive."""
     if may_leave(corpus, works_in(row)):
         return row
-    if row["kind"] not in text_fields:
-        raise ValueError(f"{row['task_id']}: kind {row['kind']!r} marks no text fields and draws on "
-                         f"non-permissive works; mark them in its suite's text_fields")
     payload = row.get("payload", {})
     for field in text_fields[row["kind"]]:
         payload = _hashed(payload, field.split("."))
     return row | {"payload": payload}
 
 
-def public_task_rows(corpus: Corpus, text_fields: TextFields, tasks_dir: Path = TASKS_DIR) -> dict[str, list[dict]]:
-    """Every public task row (`<tasks_dir>/<suite>.jsonl`; local_dev rows live elsewhere and
-    a stray one is dropped), as it may leave."""
-    return {path.stem: [public_row(corpus, row, text_fields) for row in read_jsonl(path) if row.get("split") != LOCAL_DEV]
-            for path in sorted(tasks_dir.glob("*.jsonl"))}
+def public_task_rows(corpus: Corpus, suites: SuiteFields, tasks_dir: Path = TASKS_DIR) -> dict[str, list[dict]]:
+    """Suite name -> its public task rows (`<tasks_dir>/<suite>.jsonl`), as they may leave.
+    Refuses a line that is not a task row of that suite (a local_dev row included: those
+    live elsewhere)."""
+    out = {}
+    for suite, text_fields in suites.items():
+        path = tasks_dir / f"{suite}.jsonl"
+        if not path.exists():
+            continue
+        rows = []
+        for task in load_rows(path):
+            if task.suite != suite or task.kind not in text_fields:
+                raise ValueError(f"{path}: {task.task_id} is not a task row of suite {suite} "
+                                 f"(suite {task.suite!r}, kind {task.kind!r}; kinds {sorted(text_fields)})")
+            rows.append(public_row(corpus, asdict(task), text_fields))
+        out[suite] = rows
+    return out
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -103,7 +114,7 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
 
 
-def export_public(corpus: Corpus, out: Path, text_fields: TextFields, tasks_dir: Path = TASKS_DIR) -> None:
+def export_public(corpus: Corpus, out: Path, suites: SuiteFields, tasks_dir: Path = TASKS_DIR) -> None:
     """`wa-bench export --public <out>`: `<out>/works.jsonl` (every non-local_dev work, text
     inline only when permissive; the rest carry `url` and `content_hash` for the reader to
     fetch and check) and `<out>/tasks/<suite>.jsonl`."""
@@ -114,15 +125,15 @@ def export_public(corpus: Corpus, out: Path, text_fields: TextFields, tasks_dir:
             row["text"] = corpus.text(work)
         works.append(row)
     _write_jsonl(Path(out) / WORKS_FILE, works)
-    for suite, rows in public_task_rows(corpus, text_fields, tasks_dir).items():
+    for suite, rows in public_task_rows(corpus, suites, tasks_dir).items():
         _write_jsonl(Path(out) / "tasks" / f"{suite}.jsonl", rows)
 
 
-def stage_sync(stage: Path, runs: Path, corpus: Corpus, text_fields: TextFields) -> Counter[str]:
+def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> Counter[str]:
     """What `wa-bench sync` uploads, staged under `stage`: the public export under `corpus/`
     and `tasks/`, and each run's files with episodes, scores and judgments filtered."""
     counts: Counter[str] = Counter()
-    export_public(corpus, stage / "corpus", text_fields)
+    export_public(corpus, stage / "corpus", suites)
     shutil.move(stage / "corpus" / "tasks", stage / "tasks")
     for run_dir in sorted(p for p in runs.glob("*") if (p / RUN_FILE).exists()):
         dest = stage / "runs" / run_dir.name

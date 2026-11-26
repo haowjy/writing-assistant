@@ -41,9 +41,9 @@ SPLITS = ("train", "dev", "test")
 # Changing these moves rows between splits; the held-out test split must never move.
 SPLIT_EDGES = (70, 85)
 EPISODES_FILE, RUN_FILE = "episodes.jsonl", "run.json"  # in a run directory (cli.py)
-# Every run on the held-out `test` split, one line each, beside the task rows: the record
-# that "never used for selection" can be checked against.
-TEST_USES = TASKS_DIR / "test-split-uses.jsonl"
+# Every run on the held-out `test` split, one line each: the record that "never used for
+# selection" can be checked against. Not in TASKS_DIR: it names local paths and is no task.
+TEST_USES = DATA / "test-split-uses.jsonl"
 
 
 _LOCAL_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar("local_only", default=False)

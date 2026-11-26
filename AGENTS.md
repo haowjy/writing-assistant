@@ -29,7 +29,7 @@ text cache in `corpus-cache/`, task rows in `tasks/{1a,3}.jsonl`, personal manus
 
 ```
 uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (network)
-uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in tasks/
+uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in judge-cache.jsonl
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N]
 uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
@@ -42,7 +42,7 @@ the value, so `--where "author=Austen, Jane,mode=instruction"` works.
 
 `run` defaults to the `dev` split; `test` is held out and never used to choose anything, so
 `--split test` also needs `--held-out-test` and every such run is logged in
-`tasks/test-split-uses.jsonl`. A run directory is resumable (same `--out`); a resume with
+`test-split-uses.jsonl` (in the data directory, beside `tasks/`). A run directory is resumable (same `--out`); a resume with
 another `--max-tokens` is refused, and an HTTP 401/402/403 from a host stops the run with
 exit 1. Scoring reads each task kind's artefact, never `Episode.status`: an episode with
 no reply or file to score gets no outcome metric, and `report` counts it under "no

@@ -57,7 +57,7 @@ from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
 ROOT = Path(__file__).resolve().parents[3]
 ERRORS_FILE = "errors.jsonl"
 # task kind -> payload fields that carry work text (the licence rule in corpus/release.py)
-TEXT_FIELDS = {kind: fields for suite in SUITES.values() for kind, fields in suite.text_fields.items()}
+TEXT_FIELDS = {name: suite.text_fields for name, suite in SUITES.items()}  # what export and sync may release
 
 
 # -- the Turn binding ----------------------------------------------------------------------
@@ -122,7 +122,7 @@ def code_version() -> str:
 def row_meta(task: Task) -> dict[str, Any]:
     """The row's scalar fields, stamped on each episode for `--where` and `--group-by`; a
     field marked as work text is not one of them."""
-    text = {f.split(".")[0].removesuffix("[]") for f in TEXT_FIELDS.get(task.kind, [])}
+    text = {f.split(".")[0].removesuffix("[]") for f in SUITES[task.suite].text_fields.get(task.kind, [])}
     scalars = {k: v for k, v in task.payload.items() if isinstance(v, str | int | float | bool) and k not in text}
     return scalars | {"kind": task.kind, "split": task.split, "work_ids": ",".join(task.work_ids)}
 
@@ -416,7 +416,7 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--driver", default="direct", choices=sorted(DRIVERS))
     r.add_argument("--split", default="dev", choices=["train", "dev", "test", LOCAL_DEV])
     r.add_argument("--held-out-test", action="store_true",
-                   help="required with --split test; each such run is appended to tasks/test-split-uses.jsonl")
+                   help="required with --split test; each such run is appended to $WA_DATA/test-split-uses.jsonl")
     r.add_argument("--where", help="key=value[,key=value]: task row fields, then payload fields; a comma not followed by key= stays in the value")
     r.add_argument("--limit", type=int, help="run at most this many tasks")
     r.add_argument("--out", help="run directory (resumed when it exists)")

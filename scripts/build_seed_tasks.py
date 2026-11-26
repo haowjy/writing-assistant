@@ -15,7 +15,7 @@ filters and its deep ranking pages time out server-side, so nothing here depends
 Which authors land in which split is the hash's call, never ours.
 
 `build` is deterministic given the corpus and the judges' answers, which are cached in
-`TASKS_DIR/.judge-cache.jsonl` (keyed by judge model, prompt version and input), so a rebuild reproduces
+`DATA/judge-cache.jsonl` (keyed by judge model, prompt version and input), so a rebuild reproduces
 the same rows without calling a model again:
 - Suite 1a: `pov_write` and `dm_play` rows from `--per-template` SRD worlds of every secret
   template (suites/world/worlds.py; a world's split is its template's). Each world's fixed
@@ -51,7 +51,7 @@ from writing_assistant.corpus.authors import (
     retrieve,
 )
 from writing_assistant.corpus.collect import NO_AUTHOR, collect, gutenberg_catalogue
-from writing_assistant.episode.store import TASKS_DIR, split_of
+from writing_assistant.episode.store import DATA, TASKS_DIR, split_of
 from writing_assistant.judges import Unscored, judges_from
 from writing_assistant.judges.extract import FACT, OUTLINE
 from writing_assistant.llm.client import LLMClient
@@ -60,7 +60,7 @@ from writing_assistant.suites.style.tasks import beats
 from writing_assistant.suites.world import worlds
 
 ROOT = Path(__file__).resolve().parents[1]
-CACHE = TASKS_DIR / ".judge-cache.jsonl"
+CACHE = DATA / "judge-cache.jsonl"
 
 
 def _h(*parts: Any) -> str:

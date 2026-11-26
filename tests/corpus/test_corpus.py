@@ -189,7 +189,13 @@ async def test_export_never_writes_restricted_text(tmp_path):
     add(Corpus(tmp_path / "local"), 4, "D", texts[4])  # under local_dev/: stamped local_dev on load
     corpus = Corpus(tmp_path / "cache", local_dev_dir=tmp_path / "local")
     assert corpus.get("gutenberg:4").split == "local_dev" and corpus.select(include_local_dev=True)[-1].work_id == "gutenberg:4"
-    export_public(corpus, tmp_path / "out", {}, tasks_dir=tmp_path / "no-tasks")
+    tasks = tmp_path / "tasks"
+    tasks.mkdir()
+    (tasks / "1a.jsonl").write_text(json.dumps({"task_id": "t", "suite": "1a", "kind": "dm_play", "split": "dev",
+                                                "work_ids": [], "payload": {}}) + "\n")
+    (tasks / "test-split-uses.jsonl").write_text(json.dumps({"run": "/home/someone/runs/x"}) + "\n")  # not a task file
+    export_public(corpus, tmp_path / "out", {"1a": {"dm_play": []}}, tasks_dir=tasks)
+    assert sorted(p.name for p in (tmp_path / "out" / "tasks").iterdir()) == ["1a.jsonl"]
     out = (tmp_path / "out" / "works.jsonl").read_text()
     rows = {r["work_id"]: r for r in map(json.loads, out.splitlines())}
     assert sorted(rows) == ["gutenberg:1", "gutenberg:2", "gutenberg:3"]
