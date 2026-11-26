@@ -28,8 +28,8 @@ class World1a:
     def setup(self, task: Task, services) -> list[Episode]:
         return tasks_1a.setup(task, services)
 
-    async def play(self, eps: list[Episode], services, turn) -> list[Episode]:
-        return await tasks_1a.play(eps, services, turn)
+    async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
+        return await tasks_1a.next_delivery(ep, last_reply)
 
     async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
         return await score_1a.score(ep, services, tally, twin)

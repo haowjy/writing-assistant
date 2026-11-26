@@ -57,7 +57,7 @@ from writing_assistant.episode.store import (LOCAL_DEV, RUN_FILE, TEST_USES, Tas
                                              read_jsonl, save_episodes)
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
+from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally, play
 
 ROOT = Path(__file__).resolve().parents[3]
 ERRORS_FILE = "errors.jsonl"
@@ -68,16 +68,16 @@ TEXT_FIELDS = {name: suite.text_fields for name, suite in SUITES.items()}  # wha
 # -- the Turn binding ----------------------------------------------------------------------
 
 class Binding:
-    """The `Turn` a suite's `play()` calls: (episode, actor, message) -> reply. Logs the
-    delivery with `Episode.deliver`, then runs the driver in the actor's session, opening one
-    on first use of each (episode, actor); a fork has its own ep_id, so its own session.
-    Refuses an actor still mapped to the `SUBJECT` placeholder or to `scripted`."""
+    """The `Turn` that `suites.play()` makes each delivery through: (episode, actor, message).
+    Logs the delivery with `Episode.deliver`, then runs the driver in the actor's session,
+    opening one on first use of each (episode, actor); a fork has its own ep_id, so its own
+    session. Refuses an actor still mapped to the `SUBJECT` placeholder or to `scripted`."""
 
     def __init__(self, driver: Driver) -> None:
         self.driver = driver
         self.sessions: dict[tuple[str, str], Session] = {}
 
-    async def __call__(self, ep: Episode, actor: str, message: str) -> str:
+    async def __call__(self, ep: Episode, actor: str, message: str) -> None:
         endpoint = ep.actors[actor]
         if endpoint in (SUBJECT, "scripted"):
             raise RuntimeError(f"{ep.ep_id}: actor {actor!r} is {endpoint!r}, not bound to an endpoint")
@@ -85,7 +85,7 @@ class Binding:
         if key not in self.sessions:
             self.sessions[key] = await self.driver.open(ep, actor, endpoint)
         ep.deliver(actor, message)
-        return await self.driver.turn(self.sessions[key], message)
+        await self.driver.turn(self.sessions[key], message)
 
     async def close(self, ep_ids: set[str]) -> None:
         for key in [k for k in self.sessions if k[0] in ep_ids]:
@@ -298,7 +298,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     for ep in eps:
                         ep.meta |= meta | {"row": row_meta(task)}
                     phase = "play"
-                    eps = await suite.play(eps, services, turn)
+                    await play(suite, eps, turn)
             except Exception as e:  # one task failing must not stop the run; resume reruns it
                 counts["task_errors"] += 1
                 append_jsonl(run_dir / ERRORS_FILE, [{"task_id": task.task_id, "phase": phase, "at": _now(),

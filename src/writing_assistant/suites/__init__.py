@@ -1,7 +1,12 @@
-"""Suites: the `Suite` protocol, `Turn`, `Services`, `Tally` and the `SUITES` registry.
+"""Suites: the `Suite` protocol, `Turn`, `play`, `Services`, `Tally` and the `SUITES` registry.
 
-`play()` owns the turn schedule and calls `Turn`; cli.py binds a `Driver` to it, so suites
-never import drivers. A suite package never imports another suite package.
+A suite keeps no state outside the episode. Its `next_delivery()` is one step of the turn
+schedule: given the reply to the last delivery, it does what that reply calls for and names
+the next delivery. `play()` here is the only loop over it, and makes each delivery through
+`Turn`; cli.py binds a `Driver` to that, so suites never import drivers. Because the step
+reads its place from the episode (`ep.state`, the log), an episode copied when a delivery
+returns continues, through the same `play()`, exactly as the original would have. A suite
+package never imports another suite package.
 
 - `setup()` maps every model-driven actor to the placeholder `SUBJECT`; cli.py replaces it
   with the endpoint under test before `play()`, and its Turn binding refuses to call a
@@ -24,6 +29,7 @@ never import drivers. A suite package never imports another suite package.
 
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
@@ -40,9 +46,10 @@ if TYPE_CHECKING:
     from writing_assistant.llm.client import LLMClient
     from writing_assistant.search.gateway import SearchGateway
 
-# (episode, actor, message) -> reply. The binding in cli.py appends the `deliver` event
-# (`Episode.deliver`) before the driver runs, so every delivery is on the record.
-Turn = Callable[[Episode, str, str], Awaitable[str]]
+# (episode, actor, message): one delivery, made and answered. The binding in cli.py appends
+# the `deliver` event (`Episode.deliver`) before the driver runs, so every delivery is on the
+# record; the reply is read back from the episode (`Episode.last_reply`), never returned.
+Turn = Callable[[Episode, str, str], Awaitable[None]]
 
 SUBJECT = "subject"  # endpoint placeholder for the model under test; cli.py replaces it
 
@@ -88,11 +95,18 @@ class Suite(Protocol):
     def setup(self, task: Task, services: Services) -> list[Episode]:
         """Resolve task.work_ids through services.corpus, stamp ep.state["work_ids"] and the
         task kind's sampling temperature in ep.meta["temperature"]; files, state, actors,
-        actor_tools; fork twins here when they share no play."""
+        actor_tools; fork every twin here: each episode is then played on its own."""
         ...
 
-    async def play(self, eps: list[Episode], services: Services, turn: Turn) -> list[Episode]:
-        """Own the schedule; may fork mid-play; return every episode to save."""
+    async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
+        """One step of the schedule: do what `last_reply` (the reply to the latest delivery,
+        "" before the first) calls for, then return the next `(actor, message)` to deliver,
+        or None when the episode's play is over. `play()` calls it once before the first
+        delivery and once after each delivery returns, never twice for one reply.
+
+        Whatever tells the suite where it is lives in the episode, so the step may keep
+        nothing between calls. What a scripted actor does (its line, an edit, a scripted game
+        master's tool calls) happens inside the step; only a model actor is delivered to."""
         ...
 
     async def score(
@@ -101,6 +115,25 @@ class Suite(Protocol):
         """Pure over a frozen episode; a failed episode is never scored. Every judge call
         goes through `tally.ask`, which the caller turns into counts and stored judgments."""
         ...
+
+
+async def play(suite: Suite, eps: list[Episode], turn: Turn) -> None:
+    """The one loop over `Suite.next_delivery`: a fresh episode and one reopened after a
+    delivery returned are played the same way, because the reply each step is given comes
+    from the episode. Episodes play concurrently, each with its own sessions; they start in
+    list order, so a scripted Turn that never suspends still answers them in order."""
+
+    async def one(ep: Episode) -> None:
+        while (step := await suite.next_delivery(ep, ep.last_reply())) is not None:
+            await turn(ep, *step)
+
+    await asyncio.gather(*(one(ep) for ep in eps))
+
+
+def one_message(ep: Episode, actor: str, message: Callable[[Episode], str]) -> tuple[str, str] | None:
+    """The step of a task kind that is one message and its reply: deliver `message(ep)`
+    unless the episode already holds a delivery."""
+    return None if any(e.kind == "deliver" for e in ep.events) else (actor, message(ep))
 
 
 @dataclass
@@ -248,7 +281,7 @@ def file_output(ep: Episode, actor: str, path: str) -> str:
     return text
 
 
-# Last, so suite packages can import SUBJECT, Tally and Turn from here.
+# Last, so suite packages can import SUBJECT, Tally and one_message from here.
 from writing_assistant.suites import style  # noqa: E402
 from writing_assistant.suites.world import suite_1a  # noqa: E402
 

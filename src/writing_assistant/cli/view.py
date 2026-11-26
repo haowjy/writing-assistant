@@ -45,7 +45,7 @@ from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, load_episodes, read_jsonl, task_rows
 from writing_assistant.llm.client import LLMClient
-from writing_assistant.suites import PROSE_ABOUT, SUITES, Services
+from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, play
 
 # The built page; any path that is not an API call or a built file is the page's own route.
 DIST = Path(__file__).with_name("view_dist")
@@ -480,11 +480,10 @@ def kinds(tasks: Tasks, suite: str, runs: dict[str, Run]) -> dict[str, Any]:
     return {"suite": suite, "kinds": out, "metrics": s.metric_about, "prose": PROSE_ABOUT, "judged_by": s.judged_by}
 
 
-async def _no_model(ep: Episode, actor: str, message: str) -> str:
+async def _no_model(ep: Episode, actor: str, message: str) -> None:
     """The Turn the page plays a task with: it records the delivery and answers nothing, so
     every message the benchmark itself sends is on the record as the model would get it."""
     ep.deliver(actor, message)
-    return ""
 
 
 def _leaves(value: Any) -> list[str]:
@@ -514,7 +513,7 @@ def task_family(task: Task, runs: dict[str, Run]) -> dict[str, Any]:
             "row": {k: v for k, v in row_meta(task).items() if k not in ("kind", "split")}}
     try:
         eps = suite.setup(task, services)
-        asyncio.run(suite.play(eps, services, _no_model))
+        asyncio.run(play(suite, eps, _no_model))
     except Exception as e:  # a row this build cannot set up: show why instead of failing the page
         return head | {"error": f"{type(e).__name__}: {e}"}
     by_id = {ep.ep_id: ep for ep in eps}

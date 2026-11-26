@@ -15,7 +15,12 @@ The project restarted in November 2026. Work proceeds in this order:
 
 The benchmark is the `writing_assistant` package under `src/` (Python 3.12, `uv`). Its
 packages are layered and `tests/test_layering.py` enforces the direction; the layer table and
-the four protocols are in the work item's `plan/benchmark-code.md` §2. Run tests with
+the four protocols are in the work item's `plan/benchmark-code.md` §2, except that a suite no
+longer has a `play`: it keeps no state outside the episode, and its `next_delivery(ep,
+last_reply)` is one step (do what the last reply calls for, name the next delivery) that
+`suites.play()`, the only loop, drives. A driver likewise rebuilds its conversation from the
+episode at `open()`, so an episode copied when a delivery returns continues as the original
+would have (`suites/__init__.py`). Run tests with
 `CUDA_VISIBLE_DEVICES= uv run pytest` (no test may touch the network or a GPU); the fakes in
 `tests/conftest.py` stand in for models, search providers and the model client.
 
@@ -61,7 +66,7 @@ The Python tests do not need the page built; `view` refuses to start without it.
 differs in its prompt from the other arm, reasoning and tool calls; `&compare=1` puts the runs
 side by side). The words that say what a task kind tests and what a metric measures live in
 the suite (`ABOUT` beside its tasks and its scorer) and reach the page through `/api/kinds`.
-A task row is shown by running the suite's own `setup` and `play` with a turn that answers
+A task row is shown by running the suite's own `setup` and `suites.play()` with a turn that answers
 nothing, so its episodes, twin swaps, delivered messages and the payload fields kept from the
 model are what a run would make; held-out `test` rows appear only behind the page's switch,
 `local_dev` rows never. Adding a shadcn component with `bunx shadcn add` imports `cn` from an

@@ -25,8 +25,8 @@ class Style:
     def setup(self, task: Task, services) -> list[Episode]:
         return tasks.setup(task, services)
 
-    async def play(self, eps: list[Episode], services, turn) -> list[Episode]:
-        return await tasks.play(eps, services, turn)
+    async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
+        return tasks.next_delivery(ep)
 
     async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
         return await score.score(ep, services, tally, twin)

@@ -123,6 +123,15 @@ class Episode:
                 return ev.data["turn_idx"]
         raise LookupError(f"no delivery to {actor!r} in {self.ep_id}")
 
+    def last_reply(self) -> str:
+        """The reply to the latest delivery: the text of the last call made for it. "" before
+        the first delivery, and when no call answered it."""
+        for ev in reversed(self.events):
+            if ev.kind == "deliver":
+                turn = (ev.actor, ev.data["turn_idx"])
+                return next((c.response for c in reversed(self.calls) if (c.actor, c.turn_idx) == turn), "")
+        return ""
+
     def write_file(self, actor: str, path: str, text: str, visible_to: dict[str, str] | None = None) -> int:
         """Write a file (no ACL or revision check: callers acting for a model go through
         `tools.py`) and log a `file_write` event with before/after. Returns the new rev."""

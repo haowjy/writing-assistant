@@ -1,4 +1,4 @@
-"""Suite 1a tasks: `setup` builds the episodes a task row describes, `play` runs them.
+"""Suite 1a tasks: `setup` builds the episodes a task row describes, `next_delivery` steps one.
 
 Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`; cli.py
 replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
@@ -13,8 +13,8 @@ Task row payloads (`Task.payload`), by kind:
 pivot_unbinding: {brief, files: {path: text}, direction_a: [line, 2-4], pivot: str,
     direction_b: str, decision: {superseded, adopted}, final: [line], scene_path,
     residue_probes: [question], topics?: {keyword: reply}}
-    The pivot play delivers direction_a, then `pivot + "\\n\\n" + direction_b` with a
-    `decision` event, then `final`; its `clean_b` twin delivers `direction_b` alone, then
+    The pivot episode is sent direction_a, then `pivot + "\\n\\n" + direction_b` with a
+    `decision` event, then `final`; its `clean_b` twin is sent `direction_b` alone, then
     the same `final`. A residue probe is a yes/no question asking whether the scene
     carries over an element of direction A.
 dm_play: {brief, world: <srd world skeleton>, turns: [{as: character id, say: str}],
@@ -43,13 +43,12 @@ collab_edit: {brief, path, text, files?: {path: text}, rounds: [{request: str,
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import json
 
 from writing_assistant.episode import Episode, Event, norm_path, strings
 from writing_assistant.episode.tools import dispatch_tool
-from writing_assistant.suites import SUBJECT, KindAbout, paragraphs
+from writing_assistant.suites import SUBJECT, KindAbout, one_message, paragraphs
 from writing_assistant.suites.world import author, srd
 
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
@@ -161,13 +160,13 @@ def setup_rule_bend(task, services) -> list[Episode]:
 
 # -- the scripted-author conversation (pivot, collab, rule_bend) ---------------------------
 
-async def converse(ep: Episode, turn, apply=None) -> None:
-    reply = ""
-    while author.remaining(ep.state) and ep.status == "running":
-        entry = author.next_entry(ep.state, reply)
-        if apply:
-            apply(ep, entry)
-        reply = await turn(ep, WRITER, entry["say"])
+async def next_line(ep: Episode, last_reply: str, apply=None) -> tuple[str, str] | None:
+    if not author.remaining(ep.state) or ep.status != "running":
+        return None
+    entry = author.next_entry(ep.state, last_reply)
+    if apply:
+        apply(ep, entry)
+    return WRITER, entry["say"]
 
 
 # -- dm_play -------------------------------------------------------------------------------
@@ -200,21 +199,28 @@ def dm_prompt(brief: str, world: dict) -> str:
     )
 
 
-async def play_dm(ep: Episode, turn) -> None:
+async def next_dm(ep: Episode, last_reply: str) -> tuple[str, str] | None:
+    """A player's line goes to the DM, and the DM's narration of it is logged by the step
+    that follows the reply. A scripted DM answers inside the step, so its whole session is
+    one step and no delivery."""
     world = ep.state["world"]
-    reply = ""
-    while author.remaining(ep.state) and ep.status == "running":
-        entry = author.next_entry(ep.state, reply)
+    while True:
+        answered = author.previous(ep.state)
+        if answered:
+            # The narration answers the speaker: whoever is with them now hears it.
+            location = world["characters"][answered["as"]]["location"]
+            ep.log(DM, "say", {"text": last_reply}, srd.sees(world, location))
+        if not author.remaining(ep.state) or ep.status != "running":
+            return None
+        entry = author.next_entry(ep.state, last_reply)
         speaker = world["characters"][entry["as"]]
-        ep.log(entry["as"], "say", {"text": f"{speaker['name']}: {entry['say']}"}, srd.sees(world, speaker["location"]))
-        if ep.actors[DM] == "scripted":
-            for call in entry["dm"]["calls"]:
-                await dispatch_tool(ep, DM, call["name"], call["arguments"], srd.TOOLS)
-            reply = entry["dm"]["narration"]
-        else:
-            reply = await turn(ep, DM, f"{speaker['name']}: {entry['say']}")
-        # The narration answers the speaker: whoever is with them now hears it.
-        ep.log(DM, "say", {"text": reply}, srd.sees(world, speaker["location"]))
+        line = f"{speaker['name']}: {entry['say']}"
+        ep.log(entry["as"], "say", {"text": line}, srd.sees(world, speaker["location"]))
+        if ep.actors[DM] != "scripted":
+            return DM, line
+        for call in entry["dm"]["calls"]:
+            await dispatch_tool(ep, DM, call["name"], call["arguments"], srd.TOOLS)
+        last_reply = entry["dm"]["narration"]
 
 
 # -- pov_write -----------------------------------------------------------------------------
@@ -276,8 +282,8 @@ def pov_message(ep: Episode) -> str:
     return f"{s['request']}\n\nSession log:\n{render_log(events, name)}"
 
 
-async def play_pov(ep: Episode, turn) -> None:
-    await turn(ep, WRITER, pov_message(ep))
+async def next_pov(ep: Episode, last_reply: str) -> tuple[str, str] | None:
+    return one_message(ep, WRITER, pov_message)
 
 
 # -- dispatch ------------------------------------------------------------------------------
@@ -289,12 +295,12 @@ SETUP = {
     "rule_bend": setup_rule_bend,
     "collab_edit": setup_collab,
 }
-PLAY = {
-    "pivot_unbinding": lambda ep, turn: converse(ep, turn, _pivot_entry),
-    "dm_play": play_dm,
-    "pov_write": play_pov,
-    "rule_bend": converse,
-    "collab_edit": lambda ep, turn: converse(ep, turn, _collab_entry),
+NEXT = {
+    "pivot_unbinding": lambda ep, last_reply: next_line(ep, last_reply, _pivot_entry),
+    "dm_play": next_dm,
+    "pov_write": next_pov,
+    "rule_bend": next_line,
+    "collab_edit": lambda ep, last_reply: next_line(ep, last_reply, _collab_entry),
 }
 
 
@@ -304,11 +310,8 @@ def setup(task, services) -> list[Episode]:
     return SETUP[task.kind](task, services)
 
 
-async def play(eps: list[Episode], services, turn) -> list[Episode]:
-    """Episodes play concurrently: twins share no play and each has its own session. They
-    start in list order, so a scripted Turn that never suspends still answers them in order."""
-    await asyncio.gather(*(PLAY[ep.state["kind"]](ep, turn) for ep in eps))
-    return eps
+async def next_delivery(ep: Episode, last_reply: str) -> tuple[str, str] | None:
+    return await NEXT[ep.state["kind"]](ep, last_reply)
 ABOUT = {
     "pov_write": KindAbout(
         title="POV writing",

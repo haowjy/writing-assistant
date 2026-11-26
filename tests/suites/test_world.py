@@ -1,8 +1,10 @@
 """Suite 1a: the SRD engine's determinism, legality and visibility, the POV write task's
 two guarantees (the projected prompt holds no hidden text; the swap twin differs only in the
-designated event and its state), and the SRD worlds' split by secret template."""
+designated event and its state), the SRD worlds' split by secret template, and an episode
+continued from a copy taken mid-play."""
 
 import copy
+import json
 from collections import Counter
 from types import SimpleNamespace
 
@@ -12,7 +14,7 @@ from writing_assistant.episode import Episode
 from writing_assistant.episode.store import Task
 from writing_assistant.episode.tools import dispatch_tool
 from writing_assistant.judges import Judge
-from writing_assistant.suites import Tally
+from writing_assistant.suites import Tally, play
 from writing_assistant.suites.world import srd, suite_1a, worlds
 
 SECRET = "Orin is the last heir of the drowned kings."
@@ -128,7 +130,7 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
 
     pad = " The wind kept on." * 200  # to the chapter length pov_write asks for
     turn = fake_turn(["Mira turned the glove over. Orin was the heir; she knew it." + pad] + ["Mira held the glove." + pad] * 3)
-    await suite_1a.play(eps, None, turn)
+    await play(suite_1a, eps, turn)
     prompts = {ep.ep_id: "\n".join(m["content"] for m in r["messages"]) for ep, r in zip(eps, turn.llm.requests, strict=True)}
     pov_prompt, pov_twin_prompt = prompts[pov.ep_id], prompts[f"{pov.ep_id}~twin_swap"]
     hidden = [ev["data"]["text"] for ev in POV_LOG if "mira" not in ev["visible_to"]]
@@ -156,6 +158,52 @@ def test_a_secret_quoted_in_a_later_visible_event_is_refused_whatever_its_charac
         "log": log, "hidden_event_idx": 0, "swap": {"data": {"text": "Orin is innocent."}}})
     with pytest.raises(ValueError, match="still contains"):
         suite_1a.setup(task, None)
+
+
+DM_TASK = Task("dm-1", "1a", "dm_play", "dev", [], {
+    "brief": "A night at the tavern.", "world": WORLD,
+    "turns": [{"as": "mira", "say": "I listen at the crypt door."}, {"as": "tam", "say": "I go out to the street."},
+              {"as": "mira", "say": "I wait for Tam."}]})
+DM_REPLIES = [{"tool_calls": [{"name": "srd_roll", "arguments": {"expr": "1d20"}}]}, "Mira hears nothing.",
+              {"tool_calls": [{"name": "srd_resolve", "arguments": {"action": "move", "actor": "tam", "to": "street"}}]},
+              "Tam steps out beside Mira.", "They wait."]
+PIVOT_TASK = Task("pivot-1", "1a", "pivot_unbinding", "dev", [], {
+    "brief": "A harbour story.", "files": {"notes.md": "Notes."},
+    "direction_a": ["Start the scene in the harbour.", "Add the storm."], "pivot": "Change of plan.",
+    "direction_b": "Set it inland.", "decision": {"superseded": "the harbour", "adopted": "inland"},
+    "final": ["Finish the scene."], "scene_path": "scene.md", "residue_probes": ["Is there a harbour?"],
+    "topics": {"lighthouse": "Yes, keep the lighthouse."}})
+PIVOT_REPLIES = ["Done. Should the lighthouse stay?", "Storm added.", "Moved inland.", "Finished."]
+
+
+@pytest.mark.parametrize("task, replies, logged", [
+    (DM_TASK, DM_REPLIES, [("dm", "say", "Mira hears nothing."), ("dm", "say", "Tam steps out beside Mira."), ("dm", "say", "They wait.")]),
+    (PIVOT_TASK, PIVOT_REPLIES, [("writer", "deliver", "Yes, keep the lighthouse.\n\nAdd the storm.")]),
+], ids=["dm_play", "pivot_unbinding"])
+async def test_an_episode_copied_when_a_delivery_returns_continues_as_the_original(fake_turn, task, replies, logged):
+    """The copy is what a store would hold (the episode as JSON); it is reopened with a new
+    driver and a client that has only the replies not yet given. What the suite does after a
+    reply (the DM's narration on the log, the author answering a question) must not be lost
+    with the loop that was running, nor the conversation with the session."""
+    ep = suite_1a.setup(task, None)[0]
+    turn = fake_turn(replies, srd.TOOLS)
+    copies = []
+
+    async def copying(ep, actor, message):
+        await turn(ep, actor, message)
+        copies.append((json.dumps(ep.to_dict()), len(turn.llm.requests)))
+
+    await play(suite_1a, [ep], copying)
+    assert len(copies) == len(ep.state["script"]["turns"])
+    log = [(e.actor, e.kind, e.data.get("text") or e.data.get("message")) for e in ep.events]
+    assert [entry for entry in logged if entry not in log] == []
+    for saved, answered in copies:
+        reopened = Episode.from_dict(json.loads(saved))
+        rest = fake_turn(replies[answered:], srd.TOOLS)
+        await play(suite_1a, [reopened], rest)
+        assert [r["messages"] for r in rest.llm.requests] == [r["messages"] for r in turn.llm.requests[answered:]]
+        assert reopened.events == ep.events
+        assert reopened.to_dict() == ep.to_dict()
 
 
 async def test_no_secret_template_spans_two_splits_and_dev_and_test_hold_three_each():

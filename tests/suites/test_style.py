@@ -7,6 +7,7 @@ import copy
 import pytest
 
 from writing_assistant.episode.store import Task
+from writing_assistant.suites import play
 from writing_assistant.suites.style import suite
 
 
@@ -31,7 +32,7 @@ async def test_targets_and_verifier_passages_never_reach_the_writer(fake_turn, m
     row.payload["mode"] = mode
     [ep] = suite.setup(row, None)
     turn = fake_turn(["The ship left at dawn."])
-    await suite.play([ep], None, turn)
+    await play(suite, [ep], turn)
     [request] = turn.llm.requests
     shown = "\n".join(m["content"] for m in request["messages"])
     assert all(p["text"] in shown for p in POOL)

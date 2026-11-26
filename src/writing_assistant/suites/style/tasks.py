@@ -1,4 +1,4 @@
-"""Suite 3 tasks: `setup` builds one episode per task row, `play` delivers its one message.
+"""Suite 3 tasks: `setup` builds one episode per task row, `next_delivery` gives its one message.
 
 The writer is the only model actor (`suites.SUBJECT`). What it must never see stays in
 `ep.state` and is never delivered: the author's true passage `y_star`, the verifier's
@@ -24,12 +24,11 @@ critique_edit: {author, source, familiarity?, passage: passage, objection: str,
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from writing_assistant.corpus.text import norm_words
 from writing_assistant.episode import Episode, norm_path
-from writing_assistant.suites import SUBJECT, KindAbout, paragraphs
+from writing_assistant.suites import SUBJECT, KindAbout, one_message, paragraphs
 
 WRITER = "writer"
 EDIT_TOOLS = ["episode_read", "episode_edit", "episode_write"]
@@ -148,9 +147,8 @@ def setup(task, services) -> list[Episode]:
     return SETUP[task.kind](task)
 
 
-async def play(eps: list[Episode], services, turn) -> list[Episode]:
-    await asyncio.gather(*(turn(ep, WRITER, MESSAGE[ep.state["kind"]](ep)) for ep in eps))
-    return eps
+def next_delivery(ep: Episode) -> tuple[str, str] | None:
+    return one_message(ep, WRITER, MESSAGE[ep.state["kind"]])
 ABOUT = {
     "k_exemplar_scene": KindAbout(
         title="Scene in an author's style",
