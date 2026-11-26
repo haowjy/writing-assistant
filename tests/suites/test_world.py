@@ -174,7 +174,10 @@ PIVOT_TASK = Task("pivot-1", "1a", "pivot_unbinding", "dev", [], {
     "direction_b": "Set it inland.", "decision": {"superseded": "the harbour", "adopted": "inland"},
     "final": ["Finish the scene."], "scene_path": "scene.md", "residue_probes": ["Is there a harbour?"],
     "topics": {"lighthouse": "Yes, keep the lighthouse."}})
-PIVOT_REPLIES = ["Done. Should the lighthouse stay?", "Storm added.", "Moved inland.", "Finished."]
+PIVOT_REPLIES = [{"tool_calls": [{"name": "episode_write", "arguments": {"path": "scene.md", "text": "The harbour at dusk.", "rev": 0}}]},
+                 "Done. Should the lighthouse stay?", "Storm added.",
+                 {"tool_calls": [{"name": "episode_write", "arguments": {"path": "scene.md", "text": "A farm inland.", "rev": 1}}]},
+                 "Moved inland.", "Finished."]
 
 
 @pytest.mark.parametrize("task, replies, logged", [
@@ -217,6 +220,7 @@ async def test_a_stored_episode_reopened_at_any_turn_checkpoint_continues_as_the
     assert len(killed) == len(ep.state["script"]["turns"])
     log = [(e.actor, e.kind, e.data.get("text") or e.data.get("message")) for e in ep.events]
     assert [entry for entry in logged if entry not in log] == []
+    assert task is not PIVOT_TASK or (ep.files["scene.md"], ep.file_revs["scene.md"]) == ("A farm inland.", 2)
 
     for n, (copy_path, answered) in enumerate(killed, 1):
         rest = [r["messages"] for r in turn.llm.requests[answered:]]
