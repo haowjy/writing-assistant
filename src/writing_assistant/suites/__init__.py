@@ -146,16 +146,20 @@ class Tally:
     metrics, so a report can give the refused rate beside each metric. A metric with no
     judged item is absent, never 0.0. `judgments` holds every labelable item (question,
     evidence or a/b/context, the judge's stamp, answer or unscored reason, and replies);
-    `about` names the episode whose text was judged when it is not the one being scored."""
+    `about` names the episode whose text was judged when it is not the one being scored.
+    `stamps` holds the stamp of every judge asked, by use: what a score row says it was
+    judged by."""
 
     judged: Counter[str] = field(default_factory=Counter)
     unscored: Counter[tuple[str, str]] = field(default_factory=Counter)
     judgments: list[dict[str, Any]] = field(default_factory=list)
+    stamps: dict[str, dict[str, str]] = field(default_factory=dict)
 
     async def ask(self, metric: str, judge: Judge, *args: Any, about: str | None = None) -> Any:
         # The slot is taken before the await: judgments keep the order the items were asked
         # in, not the order the judge answered, so a stored id (`<ep_id>#<n>`) names the
         # same item when the run is re-scored.
+        self.stamps[judge.stamp["use"]] = judge.stamp
         item = judge.item(*args)
         if item:
             slot = {"metric": metric, **({"ep_id": about} if about else {}), **item}

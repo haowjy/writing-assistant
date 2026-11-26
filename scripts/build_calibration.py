@@ -4,7 +4,7 @@
     uv run python scripts/build_calibration.py sample --use author_verify --runs runs/c --n 60 --out FILE
     uv run python scripts/build_calibration.py add-judge --file FILE --endpoint <models.toml endpoint>
 
-`sample` reads `judgments-<profile>.jsonl` of each run (only items the judge answered:
+`sample` reads the judge items each run's store holds under the profile (only items the judge answered:
 an unscored item says nothing about agreement) and drops repeats of the same input. It
 splits `--n` evenly between the judge's answers (yes/no, or P(a) above/below 0.5), each
 answer's part evenly between metrics, and takes each metric's items round-robin over
@@ -34,7 +34,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from writing_assistant.cli import load_dotenv
-from writing_assistant.episode.segments import closed_episodes
+from writing_assistant.episode.segments import closed_episodes, read_run
 from writing_assistant.episode.store import read_jsonl
 from writing_assistant.judges import judges_from
 from writing_assistant.judges.extract import FACT
@@ -66,7 +66,7 @@ def run_items(run: Path, use: str, profile: str) -> list[dict]:
     # fill the file with one task.
     rollouts = {ep.ep_id for ep in episodes if ep.rollout_of}
     out = []
-    for j in read_jsonl(run / f"judgments-{profile}.jsonl"):
+    for j in read_run(run, lambda store: store.judgments(profile), []):
         if j["judge"]["use"] != use or j["model"] is None or j["scored"] in rollouts:
             continue
         item = {k: j[k] for k in ("question", "evidence", "a", "b", "context") if k in j}

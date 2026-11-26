@@ -36,6 +36,21 @@ What the caller owes the store:
   it they may be set with no event (what `setup` mounts), and the start records them.
 - State is plain JSON.
 
+A store also holds the **score rows** of its episodes, each with the judge items behind it
+(`put_scores`), so an episode travels with its scores: `copy` carries a segment, its
+ancestors, its listing and its rows in one transaction. Rows are only ever added, like
+checkpoints: scoring an episode again adds a row. Every reader takes one row of an episode
+under a judge profile, by one rule (`_current`): the newest that does not say the scorer
+raised (`error`), or the newest of all when every one does. So a re-score that failed (a
+judge was down) hides no good row, and which row is read never depends on the order rows
+arrived in. The row read may therefore be older than the last attempt; it says which code
+scored it and when. A row's id is worked out from its content, so the same row arriving
+twice is one row.
+
+A **rollout** is a fork of a stored turn checkpoint that says so (`rollout_of`), and the
+rollouts one run made of one checkpoint in one round are a **group** (`grp`; the id is the
+caller's, `run.group_id`). `groups` says which are settled.
+
 SQLite gives one writer at a time, on one machine: several processes may append to one
 store, and each `append`/`close` is one transaction. The file is in the default rollback
 mode, so a store nobody is writing is one file. Two writers continuing the same segment is
@@ -46,11 +61,12 @@ another split's (`corpus/release.py` relies on it, and filters what leaves besid
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import sqlite3
 import weakref
 import zlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -61,9 +77,6 @@ from writing_assistant.episode.model import CallRecord, Episode, Event
 from writing_assistant.episode.store import LOCAL_DEV
 
 STORE_FILE = "store.db"  # in a run directory, beside run.json
-# The on-disk format (PRAGMA user_version). A store written under another number is refused:
-# there is no reader for any format but this one.
-FORMAT = 1
 HELD_APART = (LOCAL_DEV, "test")  # splits whose segments share a store with no other split's
 JSONL_FILE = "episodes.jsonl"  # what a run directory held before the store; read by nothing
 
@@ -72,7 +85,10 @@ class Unreadable(Exception):
     """A run directory or store file this build will not read or write. The message is for
     the person at the command line: `wa-bench` exits with it and no traceback."""
 
-_SCHEMA = (
+# The on-disk format is how many of these steps a file has had (PRAGMA user_version). Each
+# step only adds, so a writer brings an older file up to date in place; a change that cannot
+# be made by adding is a new store with no reader for the old one.
+_STEPS = ((
     """CREATE TABLE segments (
         seg TEXT PRIMARY KEY, parent TEXT, parent_events INTEGER, parent_calls INTEGER,
         ep_id TEXT NOT NULL, task_id TEXT NOT NULL, suite TEXT NOT NULL, split TEXT NOT NULL,
@@ -83,9 +99,30 @@ _SCHEMA = (
         seg TEXT NOT NULL, n INTEGER NOT NULL, kind TEXT NOT NULL, events INTEGER NOT NULL,
         calls INTEGER NOT NULL, body BLOB NOT NULL, PRIMARY KEY (seg, n))""",
     "CREATE TABLE episodes (ep_id TEXT PRIMARY KEY, seg TEXT NOT NULL UNIQUE)",
-)
+), (  # 2: groups, and the score rows beside the episodes
+    "ALTER TABLE segments ADD COLUMN grp TEXT",  # a rollout's group; NULL otherwise
+    "CREATE INDEX segments_rollout ON segments (rollout_of, rollout_at, grp)",
+    # final: 0 for a row that says the scorer raised (`error`)
+    """CREATE TABLE scores (
+        id TEXT PRIMARY KEY, ep_id TEXT NOT NULL, profile TEXT NOT NULL, final INT NOT NULL, scored_at TEXT NOT NULL,
+        row TEXT NOT NULL)""",
+    "CREATE INDEX scores_episode ON scores (ep_id, profile, final, scored_at)",
+    # score: the id of the score row the item counts in; n: its place among that row's items
+    "CREATE TABLE judgments (score TEXT NOT NULL, n INTEGER NOT NULL, row TEXT NOT NULL, PRIMARY KEY (score, n))",
+))
+FORMAT = len(_STEPS)
 _SEGMENT = ("seg, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, "
-            "rollout_of, rollout_at, meta")
+            "rollout_of, rollout_at, meta, grp")
+
+
+def _current(s: str) -> str:
+    """SQL: of the score rows the alias `s` ranges over, the one readers take for its
+    episode under its profile. Final before not, then the later; two rows of one time are
+    told apart by id, so every reader on every machine takes the same one."""
+    return (f"{s}.id = (SELECT id FROM scores WHERE ep_id = {s}.ep_id AND profile = {s}.profile "
+            "ORDER BY final DESC, scored_at DESC, id DESC LIMIT 1)")
+
+
 _CLOSED = "EXISTS (SELECT 1 FROM checkpoints c WHERE c.seg = e.seg AND c.kind = 'closing')"
 
 
@@ -102,8 +139,9 @@ class _Tip:
 
 
 class Store:
-    """`with Store(path) as store:` opens the file, creating it when it is not there;
-    `readonly=True` opens an existing one and writes nothing, not even a lock file."""
+    """`with Store(path) as store:` opens the file, creating it when it is not there and
+    bringing one of an older format up to this one; `readonly=True` opens an existing one
+    and writes nothing, not even a lock file, so it refuses an older format."""
 
     def __init__(self, path: str | Path, readonly: bool = False) -> None:
         self.path = Path(path)
@@ -114,22 +152,36 @@ class Store:
         # so a prefix of it never changes.
         self._prefixes: dict[tuple[str, int, int], tuple[list[Event], list[CallRecord], dict[str, list]]] = {}
         try:
-            if not readonly:
+            if readonly:
+                try:
+                    version = self.db.execute("PRAGMA user_version").fetchone()[0]
+                except sqlite3.OperationalError as e:
+                    if "readonly" not in str(e):
+                        raise
+                    # SQLite must roll the dead writer's journal back before anything can be read.
+                    raise Unreadable(f"{self.path}: a writer died in the middle of a checkpoint, and a reader may not "
+                                       "repair the file; the next writer does (`wa-bench run` on this directory)") from e
+                if version < FORMAT:
+                    raise Unreadable(
+                        f"{self.path}: store format {version}; this build reads format {FORMAT}, and a reader changes no "
+                        "file. Opening it once for writing brings it up to date in place: `wa-bench score --run` on its "
+                        "directory (score rows are kept in the store from format 2 on, and that puts them there), or "
+                        "`wa-bench run` on it")
+            else:
+                # The version is read inside the write transaction: of two writers opening an
+                # old file together, the second waits and then finds nothing left to add.
                 with self._write():
-                    if not self.db.execute("SELECT 1 FROM sqlite_master").fetchone():
-                        for statement in _SCHEMA:
+                    version = self.db.execute("PRAGMA user_version").fetchone()[0]
+                    if version == 0 and self.db.execute("SELECT 1 FROM sqlite_master").fetchone():
+                        raise Unreadable(f"{self.path}: an SQLite file that is not an episode store")
+                    for step in _STEPS[version:]:
+                        for statement in step:
                             self.db.execute(statement)
+                    if version < FORMAT:
                         self.db.execute(f"PRAGMA user_version = {FORMAT}")
-            try:
-                version = self.db.execute("PRAGMA user_version").fetchone()[0]
-            except sqlite3.OperationalError as e:
-                if not readonly or "readonly" not in str(e):
-                    raise
-                # SQLite must roll the dead writer's journal back before anything can be read.
-                raise Unreadable(f"{self.path}: a writer died in the middle of a checkpoint, and a reader may not "
-                                   "repair the file; the next writer does (`wa-bench run` on this directory)") from e
-            if version != FORMAT:
-                raise Unreadable(f"{self.path}: store format {version}; this build reads and writes format {FORMAT} only")
+            if version > FORMAT:
+                raise Unreadable(f"{self.path}: store format {version}, written by a later build; this one reads and "
+                                   f"writes format {FORMAT}")
         except BaseException:
             self.db.close()
             raise
@@ -238,7 +290,7 @@ class Store:
             files = {p: files.get(p) for p in files.keys() | was_files.keys() if files.get(p) != was_files.get(p)}
         self._insert_segment((ep.seg, *(ep.parent or (None, None, None)), ep.ep_id, ep.task_id, ep.suite, ep.split,
                               ep.condition, ep.baseline_of, *(ep.rollout_of or (None, None)),
-                              json.dumps(ep.meta, ensure_ascii=False)))
+                              json.dumps(ep.meta, ensure_ascii=False), ep.group))
         return {"files": files, "replaced": replaced}
 
     def _insert_segment(self, row: tuple) -> None:
@@ -256,6 +308,9 @@ class Store:
         """One read transaction: everything read inside sees the file as it stood at the
         first read, whatever another process appends meanwhile. In rollback mode a commit
         waits for it to end (up to the writer's 60 s timeout), so it is kept short."""
+        if self.db.in_transaction:  # already inside one: the outer block is the transaction
+            yield
+            return
         self.db.execute("BEGIN")
         try:
             yield
@@ -283,7 +338,7 @@ class Store:
         seg = self._seg(name)
         events, calls, files, tip, n, kind, head = self._rebuild(seg, at=at)
         (_, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of,
-         rollout_of, rollout_at, meta) = head
+         rollout_of, rollout_at, meta, group) = head
         if at is not None and n != at:
             raise LookupError(f"{self.path}: {ep_id} has no checkpoint {at} (its last is {n})")
         if at is not None and kind == "closing":
@@ -291,7 +346,7 @@ class Store:
                              f"continue from the end of an episode (its turn checkpoints are 0 to {at - 1})")
         ep = Episode(ep_id=ep_id, task_id=task_id, suite=suite, split=split, seg=seg,
                      parent=(parent, parent_events, parent_calls) if parent else None, baseline_of=baseline_of,
-                     rollout_of=(rollout_of, rollout_at) if rollout_of else None,
+                     rollout_of=(rollout_of, rollout_at) if rollout_of else None, group=group,
                      condition=condition, meta=json.loads(meta), events=events, calls=calls,
                      files={p: text for p, (text, _) in files.items()}, file_revs={p: rev for p, (_, rev) in files.items()},
                      **copy.deepcopy(tip))
@@ -329,29 +384,139 @@ class Store:
         that store's episodes; otherwise it arrives as an unlisted ancestor to fork from. A
         checkpoint the other store holds with a different body is refused, and nothing is
         copied: both stores continued one open segment."""
-        chain = self.chain(name)
         with into._write():
-            for seg in chain:
-                row = self.db.execute(f"SELECT {_SEGMENT} FROM segments WHERE seg = ?", (seg,)).fetchone()
-                if into.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone() is None:
-                    into._insert_segment(row)
-                have = dict(into.db.execute("SELECT n, body FROM checkpoints WHERE seg = ?", (seg,)).fetchall())
-                for n, kind, events, calls, body in self.db.execute(
-                        "SELECT n, kind, events, calls, body FROM checkpoints WHERE seg = ? ORDER BY n", (seg,)).fetchall():
-                    if n not in have:
-                        into.db.execute("INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, ?, ?, ?, ?)",
-                                        (seg, n, kind, events, calls, body))
-                    elif have[n] != body and _unpack(have[n]) != _unpack(body):  # two zlib builds pack one body differently
-                        raise ValueError(f"{into.path}: checkpoint {n} of {row[4]} is stored there with another body: "
-                                         f"it and {self.path} each continued this episode, and only one of them can be kept")
-            if listed:
-                ep_id = row[4]
-                have = into.db.execute("SELECT seg FROM episodes WHERE ep_id = ?", (ep_id,)).fetchone()
-                if have is None:
-                    into.db.execute("INSERT INTO episodes (ep_id, seg) VALUES (?, ?)", (ep_id, chain[-1]))
-                elif have[0] != chain[-1]:
-                    raise ValueError(f"{into.path}: another episode named {ep_id!r} is already stored there")
+            return self._copy_chain(name, into, listed)
+
+    def _copy_chain(self, name: str, into: Store, listed: bool) -> str:
+        chain = self.chain(name)
+        for seg in chain:
+            row = self.db.execute(f"SELECT {_SEGMENT} FROM segments WHERE seg = ?", (seg,)).fetchone()
+            if into.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone() is None:
+                into._insert_segment(row)
+            have = dict(into.db.execute("SELECT n, body FROM checkpoints WHERE seg = ?", (seg,)).fetchall())
+            for n, kind, events, calls, body in self.db.execute(
+                    "SELECT n, kind, events, calls, body FROM checkpoints WHERE seg = ? ORDER BY n", (seg,)).fetchall():
+                if n not in have:
+                    into.db.execute("INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, ?, ?, ?, ?)",
+                                    (seg, n, kind, events, calls, body))
+                elif have[n] != body and _unpack(have[n]) != _unpack(body):  # two zlib builds pack one body differently
+                    raise ValueError(f"{into.path}: checkpoint {n} of {row[4]} is stored there with another body: "
+                                     f"it and {self.path} each continued this episode, and only one of them can be kept")
+        if listed:
+            ep_id = row[4]
+            have = into.db.execute("SELECT seg FROM episodes WHERE ep_id = ?", (ep_id,)).fetchone()
+            if have is None:
+                into.db.execute("INSERT INTO episodes (ep_id, seg) VALUES (?, ?)", (ep_id, chain[-1]))
+            elif have[0] != chain[-1]:
+                raise ValueError(f"{into.path}: another episode named {ep_id!r} is already stored there")
         return chain[-1]
+
+    def copy(self, names: list[str], into: Store) -> None:
+        """Copy each named episode into another store as it is here: its segment and every
+        ancestor (`copy_chain`), its listing, and every score row of it with its judge
+        items, skipping the rows already there. A name that is an unlisted segment's `seg`
+        arrives unlisted and brings no rows. This store is read in one read transaction, so
+        what is copied is one state of a file another process may be writing, and the other
+        is written in one transaction: an episode is there with its rows or not at all."""
+        with self.reading(), into._write():
+            for name in names:
+                listed = self.db.execute("SELECT ep_id FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
+                self._copy_chain(name, into, bool(listed))
+                if listed:
+                    for id_, profile, row in self.db.execute(
+                            "SELECT id, profile, row FROM scores WHERE ep_id = ? ORDER BY rowid", listed).fetchall():
+                        into._add_score(profile, row, [j for (j,) in self.db.execute(
+                            "SELECT row FROM judgments WHERE score = ? ORDER BY n", (id_,)).fetchall()])
+
+    def rollouts(self, source: str, at: int | None = None, group: str | None = None) -> list[str]:
+        """`ep_id` of the stored rollouts of the episode named `source`, open ones included:
+        of every turn checkpoint and group, or of the ones given."""
+        tests = {"rollout_at": at, "grp": group}
+        rows = self.db.execute(
+            "SELECT e.ep_id FROM episodes e JOIN segments s ON s.seg = e.seg WHERE s.rollout_of = ?"
+            + "".join(f" AND s.{column} = ?" for column, value in tests.items() if value is not None) + " ORDER BY e.rowid",
+            (source, *(value for value in tests.values() if value is not None)))
+        return [r[0] for r in rows.fetchall()]
+
+    # -- score rows ------------------------------------------------------------------------
+
+    def put_scores(self, profile: str, rows: list[dict[str, Any]], judgments: list[dict[str, Any]] = ()) -> None:
+        """Add score rows under a judge profile, each with the judge items that count in it
+        (`judgments` whose `scored` is the row's `ep_id`, in the order given), all in one
+        transaction. A row carries `ep_id` and `scored_at`. Nothing is replaced: the rows an
+        episode had stay, and `_current` says which is read."""
+        behind: dict[str, list[str]] = {}
+        for j in judgments:
+            behind.setdefault(j["scored"], []).append(json.dumps(j, ensure_ascii=False))
+        with self._write():
+            for row in rows:
+                self._add_score(profile, json.dumps(row, ensure_ascii=False), behind.get(row["ep_id"], []))
+
+    def _add_score(self, profile: str, text: str, judgments: list[str]) -> None:
+        """One row arriving, as its JSON text, with its judge items as JSON texts. Its id,
+        episode, time and whether it is final are worked out from the text here, never taken
+        from the file it came from, and a row already held is skipped with its items."""
+        row = json.loads(text)
+        id_ = hashlib.sha256(f"{profile}\0{text}".encode()).hexdigest()[:32]
+        added = self.db.execute(
+            "INSERT OR IGNORE INTO scores (id, ep_id, profile, final, scored_at, row) VALUES (?, ?, ?, ?, ?, ?)",
+            (id_, row["ep_id"], profile, "error" not in row, row["scored_at"], text))
+        if added.rowcount:
+            self.db.executemany("INSERT INTO judgments (score, n, row) VALUES (?, ?, ?)",
+                                [(id_, n, j) for n, j in enumerate(judgments)])
+
+    def profiles(self) -> list[str]:
+        """The judge profiles this store holds score rows under."""
+        return [r[0] for r in self.db.execute("SELECT DISTINCT profile FROM scores ORDER BY profile").fetchall()]
+
+    def scores(self, profile: str) -> dict[str, dict[str, Any]]:
+        """`ep_id` -> its score row under `profile` (`_current`)."""
+        rows = self.db.execute(f"SELECT s.ep_id, s.row FROM scores s WHERE s.profile = ? AND {_current('s')} ORDER BY s.rowid",
+                               (profile,))
+        return {ep_id: json.loads(row) for ep_id, row in rows.fetchall()}
+
+    def judgments(self, profile: str | None = None, scored: str | None = None, superseded: bool = False) -> list[dict[str, Any]]:
+        """The judge items behind the score rows readers take (`_current`), in the order they
+        were asked within a row: under one profile or every one, of every episode or of the
+        one named `scored`. `superseded` gives the items of an episode's other rows as
+        well: everything `copy` would carry."""
+        tests = {"s.profile": profile, "s.ep_id": scored}
+        rows = self.db.execute(
+            "SELECT j.row FROM judgments j JOIN scores s ON s.id = j.score WHERE " + ("1" if superseded else _current("s"))
+            + "".join(f" AND {c} = ?" for c, v in tests.items() if v is not None) + " ORDER BY s.rowid, j.n",
+            tuple(v for v in tests.values() if v is not None))
+        return [json.loads(r[0]) for r in rows.fetchall()]
+
+    def groups(self, profile: str, group: str | None = None) -> dict[str, dict[str, Any]]:
+        """Every group of rollouts stored here, or the one named: group id -> `size` (the
+        members asked for of each source episode, `meta["group_size"]`), `sources` (source
+        `ep_id` -> how many of its members are closed and have a final row under `profile`)
+        and `settled`. A member's row is the one every reader takes (`_current`), and it is
+        final unless it says the scorer raised (`error`), which is what a judge that was down
+        leaves.
+
+        A group is settled when every source episode in it (a base, and its twin when the
+        twin was rolled out too) has `size` such members and no two of their rows were
+        scored by different judges for one use (the rows' `judges` stamps: a profile is a
+        name in one machine's models.toml). A member that never closed is not counted, so a
+        group short of its size is never settled, whoever copied it here."""
+        found: dict[str, dict[str, Any]] = {}
+        stamps: dict[str, dict[str, set[str]]] = {}
+        rows = self.db.execute(
+            f"""SELECT s.grp, s.rollout_of, s.meta, {_CLOSED}, sc.row FROM episodes e JOIN segments s ON s.seg = e.seg
+                LEFT JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
+                WHERE s.grp {'= ?' if group else 'IS NOT NULL'} ORDER BY e.rowid""", (profile, *([group] if group else [])))
+        for grp, source, meta, closed, row in rows.fetchall():
+            g = found.setdefault(grp, {"size": json.loads(meta)["group_size"], "sources": {}})
+            g["sources"].setdefault(source, 0)
+            if closed and row:
+                g["sources"][source] += 1
+                for stamp in json.loads(row).get("judges", []):
+                    stamps.setdefault(grp, {}).setdefault(stamp["use"], set()).add(json.dumps(stamp, sort_keys=True))
+        for grp, g in found.items():
+            g["settled"] = (all(n == g["size"] for n in g["sources"].values())
+                            and all(len(judges) == 1 for judges in stamps.get(grp, {}).values()))
+        return found
 
     def _seg(self, name: str) -> str:
         row = (self.db.execute("SELECT seg FROM episodes WHERE ep_id = ?", (name,)).fetchone()
@@ -476,18 +641,21 @@ def has_store(run_dir: str | Path) -> bool:
     return (run_dir / STORE_FILE).exists()
 
 
+def read_run[T](run_dir: str | Path, read: Callable[[Store], T], empty: T) -> T:
+    """What `read` makes of a run directory's store, opened read-only; `empty` when the
+    run has no store yet."""
+    if not has_store(run_dir):
+        return empty
+    with Store(Path(run_dir) / STORE_FILE, readonly=True) as store:
+        return read(store)
+
+
 def open_episodes(run_dir: str | Path) -> list[str]:
     """The names of a run directory's open episodes: a live run's, in play, or what a killed
     run left for the next `run` to continue. Readers show none of them, and say so."""
-    if not has_store(run_dir):
-        return []
-    with Store(Path(run_dir) / STORE_FILE, readonly=True) as store:
-        return store.names(closed=False)
+    return read_run(run_dir, lambda store: store.names(closed=False), [])
 
 
 def closed_episodes(run_dir: str | Path) -> list[Episode]:
     """The closed episodes of a run directory's store; none when the run has no store yet."""
-    if not has_store(run_dir):
-        return []
-    with Store(Path(run_dir) / STORE_FILE, readonly=True) as store:
-        return list(store.episodes())
+    return read_run(run_dir, lambda store: list(store.episodes()), [])

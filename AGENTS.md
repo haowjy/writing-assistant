@@ -31,14 +31,16 @@ generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
 
 - The subject is the actors `setup` left on the `SUBJECT` placeholder. `run.bind_subject`
   maps them to the endpoint under test and records them in `meta["subject_actors"]`; a
-  rollout rebinds those and no other seat. An episode stored before they were recorded (the
-  `base-*` stores) is read as: the actors on its `meta["endpoint"]`.
+  rollout rebinds those and no other seat. Every stored episode has the key (the `base-*`
+  stores had it added when their score rows were imported).
 - An actor that is not the subject is driven through `direct` whatever `--driver` is, with
   the `max_tokens` and `max_steps` in `state["sampling"][actor]` when `setup` gave them
   (otherwise the run's). No suite sets them yet.
 
 A store takes an episode's `meta` once, when it first saves it: bind and stamp an episode
-before its first `Store.append`.
+before its first `Store.append`. `Runner.bind` is the one place a run's stamps are put
+(`endpoint`, `model`, `max_tokens`, `code`, `run_id`, `round`), and `Runner.rollouts` adds a
+member's `group` and `group_size`.
 
 Run tests with
 `CUDA_VISIBLE_DEVICES= uv run pytest` (no test may touch the network or a GPU); the fakes in
@@ -61,8 +63,8 @@ uv run python scripts/build_seed_tasks.py collect    # more Gutenberg authors (n
 uv run python scripts/build_seed_tasks.py build      # task rows; judge answers cached in judge-cache.jsonl
 llmpick start gemma-4-26b-qat                        # serve the subject first
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
-uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N --out runs/<new>   # N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
-uv run wa-bench score --run runs/<id> --judges eval|train   # re-score saved episodes
+uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N [--round R] --out runs/<new>   # a group of N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
+uv run wa-bench score --run runs/<id> --judges eval|train [--pending]   # re-score saved episodes; --pending: only those whose scorer raised
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
 uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges
@@ -115,10 +117,18 @@ exit 1.
 
 ## How episodes are stored
 
-A run's episodes are in `store.db` (SQLite, standard library; `episode/segments.py` has the
-model and the rules, `design/branch-store.md` in the work item `project-reorientation` the reasons). There is no
-other episode format and no reader for an older one.
+A run directory is `run.json`, `store.db`, `errors.jsonl` and `run.lock`. The run's episodes
+and their score rows are in `store.db` (SQLite, standard library; `episode/segments.py` has
+the model and the rules, `design/branch-store.md` and `design/buildout.md` in the work item
+`project-reorientation` the reasons).
 
+- The store's format is a count of steps that only add (`PRAGMA user_version`, now 2). A
+  writer that opens an older store brings it up to date in place, inside one transaction; a
+  reader changes no file, so `report`, `view`, `sync` and `build_calibration.py` refuse an
+  older store with a sentence that says to `score` or `run` it once. A change that cannot be
+  made by adding is a new store with no reader for the old one. Format 1 kept score rows in
+  `scores-<profile>.jsonl` and `judgments-<profile>.jsonl` beside the store: nothing reads
+  those files now, and a format 1 directory gets its rows by being scored again.
 - An episode is a **segment**: its own part of a log, stored after a parent segment or none.
   `Episode.parent` means only that; `Episode` itself keeps no history.
 - `run` saves each episode before play and again every time a delivery returns (**turn
@@ -138,26 +148,38 @@ other episode format and no reader for an older one.
   an episode `run` set up, `n` is the checkpoint taken when its n-th delivery returned; a
   rollout starts where it was forked, so `@1` of a rollout of `<ep_id>@3` is the source's
   fourth delivery.
-- A **rollout** records what it replays in `Episode.rollout_of` (source `ep_id`, checkpoint)
-  and is named `<ep_id>@<n>.<i>`, so each samples with its own seed. It has no twin: it
+- A **rollout** records what it replays in `Episode.rollout_of` (source `ep_id`, checkpoint).
+  The rollouts one run makes of one checkpoint in one `--round` are a **group**
+  (`Episode.group`, 12 hex digits derived from run.json's `id`, the round, the source's name
+  and the checkpoint), and member `i` is named `<ep_id>@<n>.<group>.<i>`: each samples with
+  its own seed, two runs never make the same name, and a resumed run works the id out again
+  and makes only the members still missing. A twin's group is its base's, so rollout `i` of
+  each is the matched pair. A group's size is fixed by the first command that asks for it,
+  per source episode (`meta["group_size"]`; a base and its twin rolled out N times each are
+  2N members saying N); another size under the same round is refused, and more rollouts are
+  another round. A group is **settled** (`Store.groups(profile)`) when every source episode
+  in it has that many closed members whose row is not an `error`, and no two of those rows
+  were scored by different judges for one use. It reads the store alone, so a base whose
+  twin's rollouts never arrived at all reads as a settled group of the base. A rollout has no twin: it
   carries its own metrics only and gets no `net_*` (its source's twin had another
   conversation, so subtracting it would not be a matched counterfactual). A twin can be
   rolled out too: its rollout carries its own metrics and is the baseline of nothing
   (pairing rollouts into a counterfactual is not built). `report`, `view` and `build_calibration.py` keep rollouts apart from
   the run's task episodes: no group, metric, episode list or sample includes one, and `report`
-  prints them after the run's groups, per checkpoint. The lines at the head of `report`
+  prints them after the run's groups, per checkpoint and group, saying which groups are settled. The lines at the head of `report`
   (spend, served, played by code, task errors) are per directory and do include them, and
-  the page has no screen for rollouts yet (its API lists them under `rollouts`). A rollout stores no task, so a
+  the page has no screen for rollouts yet (its API lists them under `rollouts`, each with its `group`). A rollout stores no task, so a
   directory holding only rollouts of a task has not played it.
 - Twins are paired by `Episode.baseline_of` (set by `fork(..., baseline=True)` in `setup`),
   never by who was forked from whom.
 - A `test` or `local_dev` segment never shares a store with another split's. `sync --runs`
   takes the folder that holds run directories, not one run directory (given one, it finds no
   runs and stages nothing). It uploads
-  no store file: it writes a new one holding the closed episodes that may leave, and holds
-  an episode back when any segment in its chain is `local_dev` or draws, at any of its
-  checkpoints, on a work whose licence does not allow release. It may run while a `run` is
-  writing: each episode's chain is tested and copied inside one read transaction
+  no store file: it writes a new one holding the closed episodes that may leave, each with
+  its score rows and judge items (`Store.copy`), and holds an episode back when any segment
+  in its chain, or in the chain of an episode its judge items quote, is `local_dev` or draws,
+  at any of its checkpoints, on a work whose licence does not allow release. It may run while
+  a `run` is writing: each episode is tested and copied inside one read transaction
   (`Store.reading()`), so a checkpoint an open ancestor gains after the test is not copied.
 - A run directory written before the store (`episodes.jsonl`) cannot be read: `run`,
   `score`, `report`, `view` and `sync` refuse it by name (`segments.has_store`) and write
@@ -166,8 +188,11 @@ other episode format and no reader for an older one.
   which `wa-bench` turns into its exit message. The ten
   `base-*` baseline runs, converted by replaying their saved calls through the suites so
   they hold real turn checkpoints and can be forked, are in
-  `/data/jimyao/research/writing-assistant/baseline-stores/` with the one-off converter;
-  no run directory is committed.
+  `/data/jimyao/research/writing-assistant/baseline-stores/` with the one-off converter.
+  Those files are format 1 with their rows in JSONL: this build reads copies that a second
+  one-off script brought to format 2 with the rows imported (`reports/buildout-phase1-import-base-rows.py`
+  in the work item; it reproduces `report`, the page's API and calibration sampling exactly).
+  No run directory is committed.
 
 ## Scoring
 
@@ -178,9 +203,24 @@ asked for is `too_short`, not scored. `collab_edit` has one artefact per round: 
 writer skips loses its metrics, the others keep theirs. Twins are baselines inside their parent's `net_*`, and `report` never averages
 across conditions. Every metric that depends on a model judge reads "ungated" in `report`
 until that judge's human-label gate passes (`[gates] passed` in `models.toml`), and is left
-out of `report --baseline`. Each run stores the judge items behind its scores in
-`judgments-<profile>.jsonl`, in `label_ui.py`'s format. Runs, task rows and model outputs
-are not committed.
+out of `report --baseline`.
+
+Score rows live in the run's `store.db`, per judge profile, each with the judge items behind
+it in `label_ui.py`'s format; a row says which code scored it (`code`), when (`scored_at`)
+and by which judges (`judges`: use, endpoint, model, prompt version). Rows are only ever
+added: every scoring of an episode adds a row (`run`, `score`; one at a time, so a `score`
+killed part-way keeps what it finished), and copying between stores adds the rows the other
+store lacks. All readers take one row per episode and profile by one rule
+(`segments._current`, behind `Store.scores`, `judgments` and `groups`): the newest row that
+is not an `error`, or the newest of all when every row is one. A row with `error` means the
+scorer raised, which is what a judge that was down leaves; `score --pending` scores those
+episodes again. So a re-score that fails hides no good row and unsettles no group, and the
+row shown may come from older scoring code than the latest attempt: read its `code`. Each
+re-score of a run adds about as much as its rows took the first time (measured: 2.1 MB on
+the 3.1 MB `base-1a-gemma-4-26b` store); nothing removes superseded rows. A profile is a
+name in one machine's `models.toml`, so `report` says so under a group whose rows were
+scored by two judges for one use; it does not yet keep their metrics apart. Runs, task rows
+and model outputs are not committed.
 
 A judge's calibration file is drawn from those stored judgments by
 `scripts/build_calibration.py sample --use <use> --runs <run dirs> --n <N> --out

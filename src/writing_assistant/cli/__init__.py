@@ -5,30 +5,36 @@ itself (bind, deliver, save, close, score) is `run.Runner`, which other callers 
 
 A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one):
 
-    run.json            what was run: suite, driver, endpoint, model, split, max_tokens; one
+    run.json            what was run: suite, driver, endpoint, model, split, max_tokens; `id`,
+                        random, minted when the directory is claimed (the run's identity in
+                        every group it makes); one
                         entry per invocation (time, code version, where, limit); the USD the
                         hosts reported; `served`, every build that answered each endpoint (the
                         response's model and system_fingerprint: on a local llama.cpp server,
                         the weights file and engine build). Each episode's meta has its own temperature, max_tokens
                         and code version, so a run resumed after a code change says which is which
-    store.db            the episodes (`episode/segments.py`): each is saved before play, again
-                        every time a delivery returns, and closed when its task's play ends.
-                        Readers (`score`, `report`, `view`, `sync`) see closed episodes only
+    store.db            the episodes and their score rows (`episode/segments.py`). Each episode
+                        is saved before play, again every time a delivery returns, and closed
+                        when its task's play ends. Readers (`score`, `report`, `view`, `sync`)
+                        see closed episodes only. Score rows are kept per judge profile
+                        (`--judges`, a `[judges.<profile>]` table in models.toml; `none` names
+                        no judge, so a run with no judge served plays and scores what needs no
+                        model now and is re-scored later with `score --judges eval`). One row
+                        per episode: metrics, or why it was not scored (`skipped`: the episode
+                        failed; `error`: the scorer raised), the `code` version that scored it,
+                        when (`scored_at`) and by which judges (`judges`); a twin's row says
+                        only whose baseline it is (`baseline_of`). With each row are the judge
+                        items behind it, in label_ui.py's shape (question, evidence or
+                        a/b/context, `model` the judge's answer or null) plus `scored` (the row
+                        it counts in), `ep_id` (whose text was judged), `metric`, `unscored`,
+                        `judge` and `replies`. Rows are only added: `wa-bench score` adds a
+                        row for each episode it scores, as it is made. Every reader takes an
+                        episode's newest row that is not an `error`, or its newest when all
+                        are, so the row shown may be older than the last attempt
     errors.jsonl        tasks that raised in setup (a resume sets them up again) or in play
                         (their episodes stay open, and a resume continues them)
     run.lock            empty; every live `run` holds a lock on it, which is how one starting
                         up tells episodes a dead run left open from those another is playing
-    scores-<profile>.jsonl  `<profile>` is `--judges`, a `[judges.<profile>]` table in
-                        models.toml; `none` names no judge, so a run with no judge served
-                        plays and scores what needs no model now and is re-scored later with
-                        `score --judges eval`. One row per episode: metrics, or why it was not scored, and the
-                        `code` version that scored it; a twin's row says only whose baseline it
-                        is (`baseline_of`). `wa-bench score` replaces the rows of the episodes it
-                        scored, never the store
-    judgments-<profile>.jsonl  every labelable judge item behind the scores, one per line, in
-                        label_ui.py's shape (question, evidence or a/b/context, `model` the
-                        judge's answer or null) plus `scored` (the row it counts in), `ep_id`
-                        (whose text was judged), `metric`, `unscored`, `judge` and `replies`
     guardrails.json     from `wa-bench guardrails --run`
 
 `run` resumes a directory that already has a run.json for the same suite, driver, endpoint,
@@ -51,12 +57,25 @@ stored episode N times and plays each fork on from there against `--endpoint`. `
 that episode's own checkpoints (0: its start; a rollout's start is where it was forked), so
 for an episode `run` set up it is the number of deliveries that had returned. The episode is read from this run's store, or from
 `--from-run`'s, whose chain is first copied into this run's store so the store stays
-self-contained. Rollout `i` is named `<ep_id>@<n>.<i>` and records what it is a rollout of
-(`Episode.rollout_of`), so each samples with its own seed; one already stored is not made
-again. A rollout has no twin: it is scored on its own metrics and gets no `net_*`. A twin
+self-contained. The N rollouts are a **group**: what this run made of this checkpoint in this
+`--round` (default `0`). The group's id is 12 hex digits derived from run.json's `id`, the
+round, the episode's name (its base's, for a twin: rollout `i` of each is then in one group)
+and `n`, so a resumed run works it out again and makes only the members still missing.
+Member `i` is named `<ep_id>@<n>.<group>.<i>` and records what it is a rollout of
+(`Episode.rollout_of`, `Episode.group`), so each samples with its own seed and no two runs
+make the same name. A group's size is fixed by the first command that asks for it (N per
+episode rolled out; every member carries it in `meta["group_size"]`): asking again with
+another N is refused, and more rollouts of the checkpoint are another `--round`. A rollout
+has no twin: it is scored on its own metrics and gets no `net_*`. A twin
 can be rolled out like any episode, and its rollouts are baselines of nothing. Only the
 subject's actors (`meta["subject_actors"]`) are rebound to `--endpoint`. `report`,
-`view` and calibration sampling keep rollouts out of the run's own numbers.
+`view` and calibration sampling keep rollouts out of the run's own numbers; `report` lists
+them per group and says which groups are settled (`Store.groups`).
+
+`score` re-scores a run's closed episodes into its store, row by row: one killed part-way
+has added the rows it finished and left the other episodes with the rows they had.
+`score --pending` re-scores only the episodes with no row but ones saying the scorer raised
+(`error`), which is what a judge that was down leaves.
 """
 
 from __future__ import annotations
@@ -71,6 +90,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import uuid
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
@@ -80,11 +100,11 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS
 from writing_assistant.episode import Episode
-from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, closed_episodes, has_store
-from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches, read_jsonl
+from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, has_store
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.run import ROOT, Runner, code_version, run_info, score_all
+from writing_assistant.run import ROOT, Runner, code_version, run_info, score_into
 from writing_assistant.run import now as _now
 from writing_assistant.suites import SUITES, Services
 
@@ -115,15 +135,9 @@ def services_for(models: Path, profile: str) -> Services:
 
 def episode_row(ep: Episode) -> dict[str, Any]:
     """What `--where` and `--group-by` test of a saved episode: its row's fields, its condition
-    and, of a rollout, the checkpoint it was forked from (`<ep_id>@<n>`)."""
+    and, of a rollout, the checkpoint it was forked from (`<ep_id>@<n>`) and its group."""
     return (ep.meta.get("row", {}) | {"condition": ep.condition}
-            | ({"rollout_of": "{}@{}".format(*ep.rollout_of)} if ep.rollout_of else {}))
-
-
-def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
-    tmp.replace(path)
+            | ({"rollout_of": "{}@{}".format(*ep.rollout_of), "group": ep.group} if ep.rollout_of else {}))
 
 
 # -- run.json and the end of a command ---------------------------------------------------
@@ -165,8 +179,8 @@ async def cmd_run(args: argparse.Namespace) -> int:
                  f"{sorted(n for n, e in services.llm.endpoints.items() if e.get('local'))}")
     if args.source and (args.where or args.limit):
         sys.exit("--from plays rollouts of one stored episode; --where and --limit choose task rows and do not apply")
-    if not args.source and (args.from_run or args.rollouts != 1):
-        sys.exit("--from-run and --rollouts go with --from <ep_id>@<n>")
+    if not args.source and (args.from_run or args.rollouts != 1 or args.round != "0"):
+        sys.exit("--from-run, --rollouts and --round go with --from <ep_id>@<n>")
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
     stored = has_store(run_dir)  # a directory written before the store is refused, not given a store
     # What --from names is looked at before the directory is made or its run.json touched.
@@ -196,14 +210,15 @@ async def cmd_run(args: argparse.Namespace) -> int:
             info |= identity | {"started": _now(), "reported_apart": args.driver == "direct"}
         elif {k: info.get(k) for k in identity} != identity:
             sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}; this one is {identity}")
+        run_id = info.setdefault("id", uuid.uuid4().hex)  # a directory claimed before runs had one gets it now
         store = Store(run_dir / STORE_FILE)  # one this build does not write is refused here, run.json unchanged
     if args.split == "test":
         append_jsonl(TEST_USES, [identity | {"at": _now(), "run": str(run_dir.resolve()), "code": code,
                                              "where": args.where, "limit": args.limit}])
 
-    runner = Runner(suite, services, store, run_dir, endpoint=args.endpoint, driver=args.driver,
+    runner = Runner(suite, services, store, run_dir, run_id=run_id, endpoint=args.endpoint, driver=args.driver,
                     max_tokens=args.max_tokens, profile=args.judges, concurrency=args.concurrency,
-                    score=not args.no_score)
+                    round=args.round, score=not args.no_score)
     stopped: AccountError | None = None
 
     # Held shared for as long as this run lives (the kernel drops it when the process dies).
@@ -219,27 +234,24 @@ async def cmd_run(args: argparse.Namespace) -> int:
     with store:
         closed = list(store.episodes())
         with local_only(args.split == LOCAL_DEV):
-            # Open episodes, grouped as they were played: a task's episodes close together, a
-            # rollout alone. With another run alive here they are that run's, in play, and are
+            # With another run alive here the open episodes are that run's, in play, and are
             # left to it, as are the closed ones it has yet to score.
-            unfinished: dict[str, list[Episode]] = {}
-            for ep in store.episodes(closed=False):
-                unfinished.setdefault(ep.ep_id if ep.rollout_of else ep.task_id, []).append(ep)
+            unfinished = runner.unfinished()
             # A rollout stores no task: a directory holding only rollouts of a task has yet to play it.
             done = {ep.task_id for ep in [*closed, *(ep for eps in unfinished.values() for ep in eps)] if not ep.rollout_of}
             if not alone:
                 print(f"{run_dir}: another run is alive here; its {sum(map(len, unfinished.values()))} open episodes are left to it")
                 unfinished = {}
             if source:
-                tasks, rollouts = [], runner.bind(_rollouts(args, store, home, *source))
+                tasks, rollouts = [], _rollouts(args, runner, home, *source)
             else:
                 tasks, rollouts = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit], []
         with run_info(run_dir) as info:  # every refusal is behind: this invocation plays
             info.setdefault("invocations", []).append(
                 {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
-                | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts} if args.source else {}))
-        unscored = ({ep.ep_id for ep in closed} - {r["ep_id"] for r in read_jsonl(run_dir / f"scores-{args.judges}.jsonl")}
-                    if alone and not args.no_score else set())
+                | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts, "round": args.round}
+                   if args.source else {}))
+        unscored = {ep.ep_id for ep in closed} - store.scores(args.judges).keys() if alone and not args.no_score else set()
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
               + ", ".join([f"{len(done)} tasks already stored"]
                           + [f"{sum(map(len, unfinished.values()))} open episodes to continue"] * bool(unfinished)
@@ -270,27 +282,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def _rollouts(args: argparse.Namespace, store: Store, home: Store | None, name: str, at: int) -> list[Episode]:
-    """`--from <name>@<at> --rollouts N`: the rollouts of that turn checkpoint not yet in the
-    run's store, for the run to bind to its endpoint. The episode comes from this store or,
-    with `--from-run`, from `home`, its chain copied in first."""
+def _rollouts(args: argparse.Namespace, runner: Runner, home: Store | None, name: str, at: int) -> list[Episode]:
+    """`--from <name>@<at> --rollouts N`: the members of that group the run's store does not
+    hold yet. The episode comes from the run's store or, with `--from-run`, from `home`, its
+    chain copied in first."""
     try:
-        with home or nullcontext(store) as home:
+        with home or nullcontext(runner.store) as home:
             source = home.load(name, at=at)
             if (source.suite, source.split) != (args.suite, args.split):
                 sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
                          f"this run is suite {args.suite}, split {args.split}")
-            rollouts = [source.rollout(at, i) for i in range(args.rollouts)]
-            stored = set(store.names()) | set(store.names(closed=False))
-            for ep in rollouts:  # two runs' episodes may share a name, never a segment
-                if ep.ep_id in stored and store.chain(ep.ep_id)[-2:-1] != [source.seg]:
-                    sys.exit(f"--from {args.source}: {store.path} already holds {ep.ep_id}, a rollout of another episode "
-                             f"named {name} (another run's); give this run's rollouts their own --out")
-            if home is not store:
-                home.copy_chain(name, store)
+            rollouts = runner.rollouts(source, at, args.rollouts)
+            if home is not runner.store:
+                home.copy_chain(name, runner.store)
     except (LookupError, ValueError, sqlite3.Error) as e:
         sys.exit(f"--from {args.source}: {e}")
-    return [ep for ep in rollouts if ep.ep_id not in stored]
+    return rollouts
 
 
 # -- score ---------------------------------------------------------------------------------
@@ -299,25 +306,26 @@ async def cmd_score(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
     info = json.loads((run_dir / RUN_FILE).read_text())
     suite = SUITES[info["suite"]]
-    episodes = closed_episodes(run_dir)
-    only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
+    if not has_store(run_dir):
+        sys.exit(f"{run_dir}: no {STORE_FILE}; nothing has been played here")
     services = services_for(args.models, args.judges)
-    try:
-        rows, judgments = await score_all(suite, episodes, services, args.concurrency, only)
-    except* AccountError as group:
-        sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); no scores were written")
-    finally:
-        await close(services)
-    # Merged by ep_id: the rows and judgments of episodes `--where` did not select stay.
-    path = run_dir / f"scores-{args.judges}.jsonl"
-    _write_jsonl(path, list(({r["ep_id"]: r for r in read_jsonl(path)} | {r["ep_id"]: r for r in rows}).values()))
-    rescored = {r["ep_id"] for r in rows}
-    jpath = run_dir / f"judgments-{args.judges}.jsonl"
-    _write_jsonl(jpath, [j for j in read_jsonl(jpath) if j["scored"] not in rescored] + judgments)
+    with Store(run_dir / STORE_FILE) as store:
+        episodes = list(store.episodes())
+        only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
+        if args.pending:
+            pending = {ep_id for ep_id, row in store.scores(args.judges).items() if "error" in row}
+            only = pending if only is None else only & pending
+        try:
+            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, only)
+        except* AccountError as group:
+            sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are "
+                     "stored, the others are as they were")
+        finally:
+            await close(services)
     record_usage(run_dir, services)
     errors = sum("error" in r for r in rows)
-    print(f"{path}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, {errors} scorer errors; "
-          f"spent ${sum(services.llm.spent.values()):.4f}")
+    print(f"{run_dir}, judges {args.judges}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, "
+          f"{errors} scorer errors; spent ${sum(services.llm.spent.values()):.4f}")
     return 1 if errors else 0
 
 
@@ -387,7 +395,11 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--from", dest="source", metavar="EP_ID@N",
                    help="play rollouts of a stored episode's turn checkpoint N instead of task rows (see --rollouts)")
     r.add_argument("--from-run", help="the run directory whose store holds --from's episode (default: --out's own)")
-    r.add_argument("--rollouts", type=int, default=1, help="with --from: how many forks of the checkpoint to play")
+    r.add_argument("--rollouts", type=int, default=1,
+                   help="with --from: how many forks of the checkpoint to play; they are one group, whose size is then fixed")
+    r.add_argument("--round", default="0",
+                   help="with --from: which pass over the checkpoint this is (a trainer's policy step); each round's "
+                        "rollouts are a group of their own")
     r.add_argument("--out", help="run directory (resumed when it exists)")
     r.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     r.add_argument("--no-score", action="store_true", help="play and save only; score later")
@@ -398,6 +410,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--run", required=True)
     s.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     s.add_argument("--where", help="key=value[,key=value]: the episode's row fields and its condition, as in report")
+    s.add_argument("--pending", action="store_true",
+                   help="only the episodes whose row says the scorer raised (a judge that was down)")
     s.add_argument("--concurrency", type=int, default=8)
 
     rp = sub.add_parser("report", help="metrics per group, with gates, refusals and baseline deltas")

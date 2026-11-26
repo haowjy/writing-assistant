@@ -11,6 +11,7 @@ import pytest
 
 from writing_assistant import cli
 from writing_assistant.episode import store
+from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import LocalOnly, local_only
 from writing_assistant.llm.client import LLMClient
 
@@ -73,7 +74,8 @@ def test_a_hosted_judge_leaves_a_local_dev_item_unscored_and_the_rest_scored(loc
     out = local_dev_row / "run"
     cli.main(["--models", str(models), "run", "--suite", "3", "--split", "local_dev",
               "--endpoint", "inkling-2-mini", "--out", str(out)])
-    [row] = [json.loads(line) for line in (out / "scores-eval.jsonl").read_text().splitlines()]
+    with Store(out / "store.db", readonly=True) as stored:
+        [row] = stored.scores("eval").values()
     assert row["metrics"]["edited"] == 1.0 and row["metrics"]["edit_scope"] == 1.0
     assert row["metrics"]["n_unscored.edit_pair_win.local_only"] == 1.0 and "edit_pair_win" not in row["metrics"]
     assert set(sent) == {"127.0.0.1"}  # the hosted judge was never called

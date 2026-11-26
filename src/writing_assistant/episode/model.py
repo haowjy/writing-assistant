@@ -106,6 +106,9 @@ class Episode:
     # (ep_id, turn checkpoint) of the stored episode this one replays from: set by `rollout()`.
     # Readers keep rollouts apart from a run's task episodes.
     rollout_of: tuple[str, int] | None = None
+    # The group a rollout is a member of: the rollouts one run made of one checkpoint in one
+    # round (the id is `run.group_id`'s). None on anything that is not a rollout.
+    group: str | None = None
     condition: str = "base"
     meta: dict[str, Any] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
@@ -232,14 +235,15 @@ class Episode:
             _deep_merge(child.state, copy.deepcopy(swap.get("state", {})))
         return child
 
-    def rollout(self, at: int, i: int) -> Episode:
-        """Rollout `i` of this episode as the store loaded it at its turn checkpoint `at`: a
-        fork under the same condition to play on from there, named `<ep_id>@<at>.<i>`, so
-        rollouts of different checkpoints never share a name and each samples with its own
-        seed. It has no twin and is scored on its own metrics only. A twin's rollout is the
-        same thing: it replays the control checkpoint and is the baseline of nothing."""
+    def rollout(self, at: int, i: int, group: str) -> Episode:
+        """Member `i` of the group `group` of rollouts of this episode as the store loaded it
+        at its turn checkpoint `at`: a fork under the same condition to play on from there,
+        named `<ep_id>@<at>.<group>.<i>`. A group belongs to one run, so two runs' rollouts
+        of one checkpoint never share a name, and each samples with its own seed. It has no
+        twin and is scored on its own metrics only. A twin's rollout is the same thing: it
+        replays the control checkpoint and is the baseline of nothing."""
         child = self.fork(self.condition)
-        child.ep_id, child.rollout_of = f"{self.ep_id}@{at}.{i}", (self.ep_id, at)
+        child.ep_id, child.rollout_of, child.group = f"{self.ep_id}@{at}.{group}.{i}", (self.ep_id, at), group
         return child
 
     def fail(self, reason: str) -> None:

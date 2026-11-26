@@ -12,10 +12,14 @@ builds one `Runner` and hands it groups of episodes.
   `bind_subject` maps them to the endpoint under test and records them in
   `meta["subject_actors"]`, so a rollout played against another endpoint rebinds those
   and no other seat.
-- `Runner.play` is the one way a group of episodes is played: saved before play and each
-  time a delivery returns, closed together, then scored. A task's episodes are one group
-  (they close together, so a reader never sees an arm without its twin); a rollout is a
-  group of one.
+- `Runner.play` is the one way episodes are played: saved before play and each time a
+  delivery returns, closed together, then scored. A task's episodes are played as one
+  (they close together, so a reader never sees an arm without its twin); a rollout alone.
+- A **group** is the rollouts one run made of one turn checkpoint in one round
+  (`group_id`, `Runner.rollouts`). Its id is derived, so a resumed run finds it again with
+  nothing saved, and it is in each member's name, so two runs never make the same name.
+- Score rows go into the store beside the episodes, each as soon as it is made
+  (`score_into`), so a scoring cut short keeps the rows it finished.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ import asyncio
 import datetime as dt
 import fcntl
 import functools
+import hashlib
 import json
 import os
 import subprocess
@@ -48,6 +53,13 @@ ERRORS_FILE = "errors.jsonl"
 
 def now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def group_id(run_id: str, round: str, source: Episode, at: int) -> str:
+    """The group of the rollouts the run `run_id` makes, in `round`, of `source`'s turn
+    checkpoint `at`. A twin's is its base's, so member `i` of each is the matched pair."""
+    key = json.dumps([run_id, round, source.baseline_of or source.ep_id, at])
+    return hashlib.sha256(key.encode()).hexdigest()[:12]
 
 
 @functools.cache
@@ -90,12 +102,10 @@ def run_info(run_dir: Path) -> Iterator[dict[str, Any]]:
 
 def subject_actors(ep: Episode) -> list[str]:
     """The actors the model under test plays: the ones recorded when the episode was
-    bound, or, before that, the ones still on the placeholder. An episode stored before
-    they were recorded (the `base-*` stores) names its run's endpoint in `meta`, and no
-    seat but the subject's was then mapped to an endpoint."""
+    bound, or, before that, the ones still on the placeholder."""
     if "subject_actors" in ep.meta:
         return ep.meta["subject_actors"]
-    return [a for a, e in ep.actors.items() if e in (SUBJECT, ep.meta.get("endpoint"))]
+    return [a for a, e in ep.actors.items() if e == SUBJECT]
 
 
 def bind_subject(eps: list[Episode], endpoint: str) -> None:
@@ -139,9 +149,13 @@ class Binding:
 # -- scoring -------------------------------------------------------------------------------
 
 async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, services: Services) -> tuple[dict, list[dict]]:
-    """(scores row, the judgments behind it)."""
+    """(score row, the judgments behind it). A row with `error` says the scorer raised,
+    which is what a judge that is down leaves: the episode is pending until it has a row
+    without one (`score --pending`). Every other row is final, a judge's refusal and a use
+    the profile names no endpoint for (`unavailable`) included: the same profile would say
+    the same again."""
     row = {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
-           "twin": twin.ep_id if twin else None}
+           "twin": twin.ep_id if twin else None} | ({"group": ep.group} if ep.group else {})
     if ep.status == "failed":
         return row | {"skipped": ep.failure_reason}, []
     tally = Tally()
@@ -154,28 +168,36 @@ async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, service
         return row | {"error": f"{type(e).__name__}: {e}"}, []
     judgments = [{"id": f"{ep.ep_id}#{n}", "scored": ep.ep_id, "ep_id": ep.ep_id} | j
                  for n, j in enumerate(tally.judgments)]
-    return row | {"metrics": tally.into(metrics)}, judgments
+    return row | {"metrics": tally.into(metrics), "judges": [tally.stamps[use] for use in sorted(tally.stamps)]}, judgments
 
 
-async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int,
-                    only: set[str] | None = None) -> tuple[list[dict], list[dict]]:
-    """Rows for every episode, or for the ep_ids in `only`, each stamped with the scoring
-    code, and all their judgments. A twin is a baseline, judged only through the `score()` of
-    the episode it names: its row says whose it is. Twins are paired over all of `episodes`;
-    a rollout is the baseline of nothing and has none."""
+async def score_into(store: Store, profile: str, suite: Suite, episodes: list[Episode], services: Services,
+                     concurrency: int, only: set[str] | None = None) -> list[dict]:
+    """Score every episode, or the ep_ids in `only`, and add each row to the store under
+    `profile` with its judgments as soon as it is made; the rows are returned. Each is
+    stamped with the scoring code, the time and the judges asked. The rows an episode had
+    stay in the store, and readers take the new one unless it says the scorer raised and an
+    older one does not. A twin is a baseline,
+    judged only through the `score()` of the episode it names: its row says whose it is.
+    Twins are paired over all of `episodes`; a rollout is the baseline of nothing and has
+    none."""
     twins = {ep.baseline_of: ep for ep in episodes if ep.baseline_of is not None}
     sem = asyncio.Semaphore(concurrency)
-
-    async def one(ep: Episode) -> tuple[dict, list[dict]]:
-        if ep.baseline_of is not None:
-            return {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
-                    "baseline_of": ep.baseline_of}, []
-        async with sem:
-            return await score_episode(suite, ep, twins.get(ep.ep_id), services)
-
-    scored = await asyncio.gather(*(one(ep) for ep in episodes if only is None or ep.ep_id in only))
     code = code_version()
-    return [row | {"code": code} for row, _ in scored], [j for _, js in scored for j in js]
+
+    async def one(ep: Episode) -> dict:
+        if ep.baseline_of is not None:
+            row, judgments = {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
+                              "baseline_of": ep.baseline_of}, []
+        else:
+            async with sem:
+                row, judgments = await score_episode(suite, ep, twins.get(ep.ep_id), services)
+        # To the microsecond: readers take the later of two rows, and one scored again at once must be it.
+        row |= {"code": code, "scored_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")}
+        store.put_scores(profile, [row], judgments)
+        return row
+
+    return list(await asyncio.gather(*(one(ep) for ep in episodes if only is None or ep.ep_id in only)))
 
 
 # -- the runner ----------------------------------------------------------------------------
@@ -189,21 +211,26 @@ def row_meta(task: Task) -> dict[str, Any]:
 
 
 class Runner:
-    """One run's play: a suite, the endpoint under test, the store and directory the
-    episodes and their rows go to. `profile` names the judges `services` was built with
-    (the rows' files carry it); `score=False` plays and saves only. `counts` adds up what
-    happened (episode statuses, `task_errors`, `score_errors`) for the caller to report."""
+    """One run's play: a suite, the endpoint under test, the store the episodes and their
+    score rows go to, and the run directory (its name, and where errors are recorded).
+    `run_id` is the run's identity (run.json `id`) and `round` the caller's name for this
+    pass over a checkpoint (a trainer's policy step): the two name the groups this runner
+    makes. `profile` names the judges `services` was built with (the rows are stored under
+    it); `score=False` plays and saves only. `counts` adds up what happened (episode
+    statuses, `task_errors`, `score_errors`) for the caller to report."""
 
-    def __init__(self, suite: Suite, services: Services, store: Store, run_dir: Path, *, endpoint: str,
-                 driver: str, max_tokens: int, profile: str, concurrency: int, score: bool = True) -> None:
+    def __init__(self, suite: Suite, services: Services, store: Store, run_dir: Path, *, run_id: str, endpoint: str,
+                 driver: str, max_tokens: int, profile: str, concurrency: int, round: str = "0",
+                 score: bool = True) -> None:
         self.suite, self.services, self.store, self.run_dir = suite, services, store, run_dir
-        self.endpoint, self.profile, self.scoring = endpoint, profile, score
+        self.endpoint, self.profile, self.scoring, self.run_id, self.round = endpoint, profile, score, run_id, round
         self.binding = Binding(DRIVERS[driver](services.llm, suite.tools, max_tokens=max_tokens),
                                DirectDriver(services.llm, suite.tools, max_tokens=max_tokens))
         code = code_version()
         # Stamped on every episode this run binds, so a run resumed after a code change says which is which.
         self.meta = {"driver": driver, "harness": f"{driver}@{code}", "code": code, "endpoint": endpoint,
-                     "max_tokens": max_tokens, "run": run_dir.name}
+                     "model": services.llm.endpoints[endpoint]["model"], "max_tokens": max_tokens,
+                     "run": run_dir.name, "run_id": run_id, "round": round}
         self.sem = asyncio.Semaphore(concurrency)
         self.counts: Counter[str] = Counter()
 
@@ -222,14 +249,46 @@ class Runner:
             ep.meta["row"] = row_meta(task)
         return eps
 
-    async def play(self, name: str, begin: Callable[[], list[Episode]]) -> list[Episode] | None:
-        """Play one group of episodes to the end, close them together and score them, and
-        return them. `begin` gives the group once a slot is free: a task's episodes set up
-        there and then (`fresh`), or ones already made or stored, to go on with.
+    def rollouts(self, source: Episode, at: int, n: int) -> list[Episode]:
+        """The members the store does not hold yet of this run's group of `n` rollouts of
+        `source`, an episode loaded at its turn checkpoint `at`: bound to this run and
+        stamped with the group and its size, to be played each on its own. A group's size
+        is fixed when it is first asked for and is per source episode (a base and its twin
+        rolled out `n` times each are one group of 2n): another size under the same round
+        is refused, since readers tell a whole group from a short one by it."""
+        group = group_id(self.run_id, self.round, source, at)
+        asked = self.store.groups(self.profile, group).get(group)
+        if asked and asked["size"] != n:
+            raise ValueError(f"group {group} (this run's rollouts of {source.baseline_of or source.ep_id}@{at} in round "
+                             f"{self.round!r}) was asked for with {asked['size']} rollouts per episode, not {n}; a "
+                             "group's size is fixed, and more rollouts are another round (--round)")
+        stored = set(self.store.rollouts(source.ep_id, at, group))
+        members = [source.rollout(at, i, group) for i in range(n)]
+        for ep in members:  # one run's rollouts of two episodes of one name share a name, never a segment
+            if ep.ep_id in stored and self.store.chain(ep.ep_id)[-2:-1] != [source.seg]:
+                raise ValueError(f"{self.store.path} already holds {ep.ep_id}, a rollout of another episode named "
+                                 f"{source.ep_id} (from another run's store); give these rollouts their own --out")
+        new = self.bind([ep for ep in members if ep.ep_id not in stored])
+        for ep in new:
+            ep.meta |= {"group": group, "group_size": n}
+        return new
 
-        A group that raises in `begin` or in play is recorded under `name` in the errors
-        file and counted, and None is returned: its episodes stay open for a later run to
-        continue. An `AccountError` is recorded the same way and then raised."""
+    def unfinished(self) -> dict[str, list[Episode]]:
+        """The store's open episodes as they are played on: a task's together under its
+        `task_id`, a rollout alone under its own name."""
+        out: dict[str, list[Episode]] = {}
+        for ep in self.store.episodes(closed=False):
+            out.setdefault(ep.ep_id if ep.rollout_of else ep.task_id, []).append(ep)
+        return out
+
+    async def play(self, name: str, begin: Callable[[], list[Episode]]) -> list[Episode] | None:
+        """Play episodes to the end together, close them together and score them, and
+        return them. `begin` gives them once a slot is free: a task's episodes set up there
+        and then (`fresh`), or ones already made or stored, to go on with.
+
+        If `begin` or the play raises, that is recorded under `name` in the errors file and
+        counted, and None is returned: the episodes stay open for a later run to continue.
+        An `AccountError` is recorded the same way and then raised."""
         async with self.sem:
             eps: list[Episode] = []
             phase = "setup"
@@ -239,7 +298,7 @@ class Runner:
                     self.store.append(*eps)
                     phase = "play"
                     await play(self.suite, eps, self._turn)
-            except Exception as e:  # one group failing must not stop the run; a resume takes it up again
+            except Exception as e:  # one play failing must not stop the run; a resume takes it up again
                 self.counts["task_errors"] += 1
                 append_jsonl(self.run_dir / ERRORS_FILE, [{"task_id": name, "phase": phase, "at": now(),
                                                            "error": f"{type(e).__name__}: {e}",
@@ -265,8 +324,6 @@ class Runner:
 
     async def score(self, eps: list[Episode], only: set[str] | None = None) -> None:
         """Score closed episodes (all of them, or the ep_ids in `only`, twins paired over
-        all) and add their rows and judgments to the run's files."""
-        rows, judgments = await score_all(self.suite, eps, self.services, len(eps) or 1, only)
-        append_jsonl(self.run_dir / f"judgments-{self.profile}.jsonl", judgments)
-        append_jsonl(self.run_dir / f"scores-{self.profile}.jsonl", rows)
+        all) into the store."""
+        rows = await score_into(self.store, self.profile, self.suite, eps, self.services, len(eps) or 1, only)
         self.counts["score_errors"] += sum("error" in row for row in rows)

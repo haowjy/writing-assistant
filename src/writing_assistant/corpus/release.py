@@ -17,12 +17,15 @@ leave.
   author and is not in `work_ids`). A mark that is mistyped, or missing for a new field,
   would let text out silently, so a hashed row that still shares a `RUN`-word run with a
   work it draws on is refused.
-- Episodes, and the scores and judgments rows about them, leave whole or not at all: only
+- Episodes, and the score rows and judge items about them, leave whole or not at all: only
   when every work the episode draws on is permissive (DECISIONS #12: left out, not hashed).
   A run's store file never leaves: `sync` writes a new store holding the closed episodes
-  that may, each with the ancestors it was forked from. The test is made of every segment
-  in an episode's chain, over the state at each of its checkpoints (state changes along a
-  chain, and an ancestor is copied whole), and one segment failing keeps the episode back.
+  that may, each with the ancestors it was forked from and its rows (`Store.copy`). The
+  test is made of every segment in an episode's chain, over the state at each of its
+  checkpoints (state changes along a chain, and an ancestor is copied whole), and one
+  segment failing keeps the episode back. A judge item quotes the episode it judged, which
+  for a twin's text is not the episode the row is about: the chains of the episodes an
+  episode's items quote are tested with its own.
 """
 
 from __future__ import annotations
@@ -40,7 +43,7 @@ from typing import TYPE_CHECKING, Any
 from writing_assistant.corpus.text import norm_words
 from writing_assistant.episode.model import strings
 from writing_assistant.episode.segments import STORE_FILE, Store, has_store
-from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TASKS_DIR, load_rows, local_only, read_jsonl
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TASKS_DIR, load_rows, local_only
 
 if TYPE_CHECKING:
     from writing_assistant.corpus.rows import Corpus
@@ -165,8 +168,8 @@ def export_public(corpus: Corpus, out: Path, suites: SuiteFields, tasks_dir: Pat
 
 def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> Counter[str]:
     """What `wa-bench sync` uploads, staged under `stage`: the public export under `corpus/`
-    and `tasks/`, and each run's files with episodes, scores and judgments filtered. The
-    staged `store.db` is written here, never copied. Whatever `stage` held is replaced; a run
+    and `tasks/`, and of each run a new `store.db` holding the episodes that may leave and
+    their rows, written here, never copied. Whatever `stage` held is replaced; a run
     directory this build does not read (`has_store`) stops the sync before that."""
     counts: Counter[str] = Counter()
     stored = {p: has_store(p) for p in sorted(runs.glob("*")) if (p / RUN_FILE).exists()}
@@ -179,28 +182,29 @@ def stage_sync(stage: Path, runs: Path, corpus: Corpus, suites: SuiteFields) -> 
     for run_dir in stored:
         dest = stage / "runs" / run_dir.name
         dest.mkdir(parents=True)
-        keep: set[str] = set()
         if stored[run_dir]:
             with Store(run_dir / STORE_FILE, readonly=True) as store, Store(dest / STORE_FILE) as staged:
-                def segment_leaves(seg: str) -> bool:
-                    split, states = store.snapshots(seg)
-                    return split != LOCAL_DEV and all(may_leave(corpus, works_in(state)) for state in states)
+                def leaves(name: str) -> bool:
+                    for seg in store.chain(name):
+                        split, states = store.snapshots(seg)
+                        if split == LOCAL_DEV or not all(may_leave(corpus, works_in(state)) for state in states):
+                            return False
+                    return True
 
-                names = store.names()
+                names, kept = store.names(), 0
                 for ep_id in names:
                     # A run may be writing: an open ancestor of a closed episode can gain a
-                    # checkpoint at any moment. What is copied is what was tested, so both read
-                    # one state of the file, and no answer about a segment is kept for the next
-                    # episode. One episode at a time, so a run's write waits for one chain.
+                    # checkpoint at any moment, and the episode a row. What is copied is
+                    # what was tested, so both read one state of the file, and no answer about
+                    # a segment is kept for the next episode. One episode at a time, so a
+                    # run's write waits for one chain.
                     with store.reading():
-                        if all(segment_leaves(seg) for seg in store.chain(ep_id)):
-                            store.copy_chain(ep_id, staged, listed=True)
-                            keep.add(ep_id)
-                counts["episodes_left_out"] += len(names) - len(keep)
-                counts["episodes"] += len(keep)
-        for path in [*run_dir.glob("scores-*.jsonl"), *run_dir.glob("judgments-*.jsonl")]:
-            _write_jsonl(dest / path.name, [r for r in read_jsonl(path)
-                                            if r["ep_id"] in keep and r.get("scored", r["ep_id"]) in keep])
+                        quoted = {j["ep_id"] for j in store.judgments(scored=ep_id, superseded=True)}
+                        if all(leaves(name) for name in sorted({ep_id} | quoted)):
+                            store.copy([ep_id], staged)
+                            kept += 1
+                counts["episodes_left_out"] += len(names) - kept
+                counts["episodes"] += kept
         for name in (RUN_FILE, "guardrails.json"):
             if (run_dir / name).exists():
                 shutil.copy(run_dir / name, dest / name)

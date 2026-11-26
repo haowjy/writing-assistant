@@ -43,8 +43,8 @@ from urllib.parse import parse_qs, urlsplit
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
-from writing_assistant.episode.segments import STORE_FILE, closed_episodes, open_episodes
-from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, read_jsonl, task_rows
+from writing_assistant.episode.segments import STORE_FILE, closed_episodes, open_episodes, read_run
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, task_rows
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.run import ERRORS_FILE, row_meta
 from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, play
@@ -74,7 +74,6 @@ class Run:
         # The files the page reads, by name: these are only ever replaced whole or appended to.
         # A live run's journal and `.tmp` files come and go between a listing and a stat.
         files = [self.path / name for name in (RUN_FILE, STORE_FILE, ERRORS_FILE, "guardrails.json")]
-        files += sorted(p for pattern in ("scores-*.jsonl", "judgments-*.jsonl") for p in self.path.glob(pattern))
         sig = tuple((p.name, stat.st_mtime_ns, stat.st_size) for p in files if p.exists() for stat in [p.stat()])
         if sig != self._sig:
             self._sig, self._cache = sig, {}
@@ -87,8 +86,8 @@ class Run:
                             if (self.path / RUN_FILE).exists() else {})
 
     def profiles(self) -> list[str]:
-        """Judge profiles with a scores file, `eval` first."""
-        names = [p.name.removeprefix("scores-").removesuffix(".jsonl") for p in self.path.glob("scores-*.jsonl")]
+        """Judge profiles the run has score rows under, `eval` first."""
+        names = self._cached("profiles", lambda: read_run(self.path, lambda store: store.profiles(), []))
         return sorted(names, key=lambda n: (n != "eval", n))
 
     def profile(self, asked: str | None) -> str:
@@ -112,17 +111,16 @@ class Run:
                                               if ep.baseline_of in self.episodes()})
 
     def scores(self, profile: str) -> dict[str, dict]:
-        return self._cached(("scores", profile),
-                            lambda: {r["ep_id"]: r for r in read_jsonl(self.path / f"scores-{profile}.jsonl")})
+        return self._cached(("scores", profile), lambda: read_run(self.path, lambda store: store.scores(profile), {}))
 
     def judgments(self, profile: str) -> dict[str, list[dict]] | None:
-        """Scored ep_id -> its judge items in the order asked; None when the run stored none."""
+        """Scored ep_id -> its judge items in the order asked; None when the run was never
+        scored under the profile."""
         def make() -> dict[str, list[dict]] | None:
-            path = self.path / f"judgments-{profile}.jsonl"
-            if not path.exists():
+            if profile not in self.profiles():
                 return None
             out: dict[str, list[dict]] = defaultdict(list)
-            for j in read_jsonl(path):
+            for j in read_run(self.path, lambda store: store.judgments(profile), []):
                 out[j["scored"]].append(j)
             return out
         return self._cached(("judgments", profile), make)
@@ -373,7 +371,8 @@ def episode_list(run: Run, profile: str, rollouts: bool = False) -> list[dict[st
                     "metrics": sc.get("metrics", {}), "not_scored": sc.get("not_scored"),
                     "no_output": [k.split(".", 1)[1] for k in counts if k.startswith("n_no_output.")],
                     "words": sum(len(w["text"].split()) for w in written(ep))}
-                   | ({"rollout_of": {"ep_id": ep.rollout_of[0], "checkpoint": ep.rollout_of[1]}} if rollouts else {}))
+                   | ({"rollout_of": {"ep_id": ep.rollout_of[0], "checkpoint": ep.rollout_of[1]}, "group": ep.group}
+                      if rollouts else {}))
     return out
 
 
