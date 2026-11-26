@@ -13,10 +13,9 @@ catalogue is not ranked by popularity) and imports up to four books each through
 Gutendex `ids` query, which brings their download counts. Gutendex's `topic` and `search`
 filters and its deep ranking pages time out server-side, so nothing here depends on them.
 Which authors land in which split is the hash's call, never ours.
-Which authors land in which split is the hash's call, never ours.
 
 `build` is deterministic given the corpus and the judges' answers, which are cached in
-`TASKS_DIR/.judge-cache.jsonl` (keyed by prompt version and input), so a rebuild reproduces
+`TASKS_DIR/.judge-cache.jsonl` (keyed by judge model, prompt version and input), so a rebuild reproduces
 the same rows without calling a model again:
 - Suite 1a: `pov_write` and `dm_play` rows from procedurally generated SRD worlds (seed ->
   world; split hashed from `srd-world-<seed>`). Each world's fixed log is one scripted-DM
@@ -64,8 +63,9 @@ def _h(*parts: Any) -> str:
 
 
 class CachedJudges:
-    """`fact` and `outline` through a JSONL cache keyed by prompt version and input, so a
-    rebuild never asks a model the same question twice and reproduces the same rows."""
+    """`fact` and `outline` through a JSONL cache keyed by judge model, prompt version and
+    input, so a rebuild never asks a model the same question twice and reproduces the same
+    rows, and `--judges train` never reuses another model's answers."""
 
     def __init__(self, judges) -> None:
         self.judges = judges
@@ -76,20 +76,23 @@ class CachedJudges:
                 self.cache[row["key"]] = row["value"]
         self.calls = 0
 
-    async def _get(self, key: str, call) -> Any:
+    async def _get(self, model: str, key: str, call) -> Any:
+        key = _h(model, key)
         if key not in self.cache:
             self.calls += 1
             self.cache[key] = await call()
             CACHE.parent.mkdir(parents=True, exist_ok=True)
             with CACHE.open("a") as f:
-                f.write(json.dumps({"key": key, "value": self.cache[key]}) + "\n")
+                f.write(json.dumps({"key": key, "model": model, "value": self.cache[key]}) + "\n")
         return self.cache[key]
 
     async def fact(self, question: str, evidence: str) -> bool:
-        return await self._get(_h(FACT.version, question, evidence), lambda: self.judges.fact(question, evidence))
+        return await self._get(self.judges.fact.stamp["model"], _h(FACT.version, question, evidence),
+                               lambda: self.judges.fact(question, evidence))
 
     async def outline(self, text: str) -> list[dict]:
-        return await self._get(_h(OUTLINE.version, text), lambda: self.judges.outline(text))
+        return await self._get(self.judges.outline.stamp["model"], _h(OUTLINE.version, text),
+                               lambda: self.judges.outline(text))
 
 
 # == Suite 1a: SRD worlds and their pre-played logs ============================================
@@ -452,7 +455,10 @@ async def style_rows(corpus: Corpus, judges) -> list[dict]:
 
 # == collect ====================================================================================
 
-EXTRA = [35, 155]  # works the hand-written rule_bend rows mount (The Time Machine, The Moonstone)
+# Imported besides the authors walk: The Time Machine (35), which a hand-written rule_bend row
+# mounts, and The Moonstone (155): Wilkie Collins hashes to `dev`, and his book is where the
+# dev critique_edit rows come from.
+EXTRA = [35, 155]
 
 
 def cmd_collect(args: argparse.Namespace) -> None:
