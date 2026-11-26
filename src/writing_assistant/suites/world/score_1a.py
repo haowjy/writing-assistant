@@ -11,7 +11,8 @@ asked of the `fact` judge with the text in view; an item the judge leaves unscor
 (`judges.Unscored`) is left out and counted per metric by `Tally`, and a rate with no judged
 item is absent. The twin (`tasks_1a.TWINS`) is judged here, once, as the parent's baseline:
 its rate is written as `twin_<metric>` and a `net_*` metric is the parent's rate minus it,
-absent when either side has no artefact or no judged item.
+absent when either side has no artefact or no judged item. A twin's missing artefact is
+counted as `n_twin_no_output.<reason>`; a twin that was never saved, as `missing`.
 """
 
 from __future__ import annotations
@@ -227,9 +228,11 @@ async def score(ep: Episode, services, tally: Tally, twin: Episode | None = None
         return out | _collab(ep)
     metrics, own = await SCORERS[kind](ep, text, services, tally)
     out |= metrics
-    if twin is not None and kind in NET:
+    if kind in NET:
         net, twin_metric, probes = NET[kind]
         try:
+            if twin is None:  # not saved: a run cut off between a task's episodes
+                raise NoOutput("missing")
             twin_text = OUTPUT[kind](twin)
         except NoOutput as e:
             out[f"n_twin_no_output.{e.reason}"] = 1.0

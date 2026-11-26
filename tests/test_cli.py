@@ -104,3 +104,14 @@ def test_report_warns_about_any_scores_row_without_the_scoring_code(bench, capsy
     (out / "scores-eval.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     cli.main(["report", "--run", str(out)])
     assert "1 scores row written before the scoring code was stamped" in capsys.readouterr().out
+
+
+def test_a_parent_whose_twin_is_missing_says_so(bench, capsys):
+    out = bench([POV_ROW], chapter("Mira turned the glove over."))
+    run_and_score(capsys, out, "--no-score")
+    episodes = out / "episodes.jsonl"
+    episodes.write_text("".join(line + "\n" for line in episodes.read_text().splitlines()
+                                if json.loads(line)["condition"] != "twin_swap"))
+    cli.main(["score", "--run", str(out)])
+    cli.main(["report", "--run", str(out)])
+    assert capsys.readouterr().out.count("twin had no artefact (no net_*): missing 1") == 2
