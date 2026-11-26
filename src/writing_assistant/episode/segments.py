@@ -24,7 +24,8 @@ store; `seg` is unique everywhere). An ancestor nothing listed (the base both PO
 forked from, a chain copied in from another store) sits in the same file unlisted. Every
 store is self-contained: `copy_chain` brings a segment and its ancestors into another store,
 and because `seg` is unique everywhere copying twice, or merging stores written on two
-machines, is the same idempotent operation.
+machines, is the same idempotent operation. It refuses the one case that is not: a
+checkpoint both stores hold with different bodies, each having continued the segment.
 
 What the caller owes the store:
 - `append` only before play or when a delivery has returned; `close` when play has ended.
@@ -322,16 +323,24 @@ class Store:
     def copy_chain(self, name: str, into: Store, listed: bool = False) -> str:
         """Copy the episode's segment and every ancestor into another store, whole, skipping
         what is already there, and return its `seg`. `listed` also lists it there as one of
-        that store's episodes; otherwise it arrives as an unlisted ancestor to fork from."""
+        that store's episodes; otherwise it arrives as an unlisted ancestor to fork from. A
+        checkpoint the other store holds with a different body is refused, and nothing is
+        copied: both stores continued one open segment."""
         chain = self.chain(name)
         with into._write():
             for seg in chain:
                 row = self.db.execute(f"SELECT {_SEGMENT} FROM segments WHERE seg = ?", (seg,)).fetchone()
                 if into.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone() is None:
                     into._insert_segment(row)
-                into.db.executemany(
-                    "INSERT OR IGNORE INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, ?, ?, ?, ?)",
-                    self.db.execute("SELECT seg, n, kind, events, calls, body FROM checkpoints WHERE seg = ?", (seg,)).fetchall())
+                have = dict(into.db.execute("SELECT n, body FROM checkpoints WHERE seg = ?", (seg,)).fetchall())
+                for n, kind, events, calls, body in self.db.execute(
+                        "SELECT n, kind, events, calls, body FROM checkpoints WHERE seg = ? ORDER BY n", (seg,)).fetchall():
+                    if n not in have:
+                        into.db.execute("INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, ?, ?, ?, ?)",
+                                        (seg, n, kind, events, calls, body))
+                    elif have[n] != body and _unpack(have[n]) != _unpack(body):  # two zlib builds pack one body differently
+                        raise ValueError(f"{into.path}: checkpoint {n} of {row[4]} is stored there with another body: "
+                                         f"it and {self.path} each continued this episode, and only one of them can be kept")
             if listed:
                 ep_id = row[4]
                 have = into.db.execute("SELECT seg FROM episodes WHERE ep_id = ?", (ep_id,)).fetchone()
