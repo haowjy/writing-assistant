@@ -20,8 +20,11 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
 
 `run` resumes a directory that already has a run.json for the same suite, driver, endpoint,
 model, split and max_tokens (anything else is refused): tasks with saved episodes are
-skipped (`--where` may differ between invocations). One task that raises, or one episode whose
-scoring raises, is recorded and the run goes on. `local_dev` rows are set up, played and
+skipped (`--where` may differ between invocations) and saved episodes with no scores row are
+scored first. One task that raises, or one episode whose scoring raises, is recorded and the
+run goes on, but the command then exits 1. An account-level refusal from a host (HTTP 401,
+402, 403: `llm.client.AccountError`) stops the run at once, exit 1; what was saved stays
+resumable. Every append cuts off a line a killed run left unfinished first. `local_dev` rows are set up, played and
 scored inside `episode.store.local_only()`, and only against a `local = true` endpoint.
 """
 
@@ -45,10 +48,10 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.episode import Episode
-from writing_assistant.episode.store import (EPISODES_FILE, LOCAL_DEV, RUN_FILE, Task, load_episodes, local_only, matches,
+from writing_assistant.episode.store import (LOCAL_DEV, RUN_FILE, Task, append_jsonl, load_episodes, local_only, matches,
                                              read_jsonl, save_episodes)
 from writing_assistant.judges import Judges, judges_from
-from writing_assistant.llm.client import LLMClient
+from writing_assistant.llm.client import AccountError, LLMClient
 from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -132,11 +135,6 @@ def _now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _append(path: Path, row: dict) -> None:
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
@@ -170,6 +168,8 @@ async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, service
     try:
         with local_only(ep.split == LOCAL_DEV):
             metrics = await suite.score(ep, services, tally, twin)
+    except AccountError:
+        raise
     except Exception as e:  # one episode's scorer failing must not stop the others
         return row | {"error": f"{type(e).__name__}: {e}"}, []
     judgments = [{"id": f"{ep.ep_id}#{n}", "scored": ep.ep_id, "ep_id": ep.ep_id} | j
@@ -177,8 +177,10 @@ async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, service
     return row | {"metrics": tally.into(metrics)}, judgments
 
 
-async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int) -> tuple[list[dict], list[dict]]:
-    """Rows for every episode (a twin's says whose baseline it is) and all judgments."""
+async def score_all(suite: Suite, episodes: list[Episode], services: Services, concurrency: int,
+                    only: set[str] | None = None) -> tuple[list[dict], list[dict]]:
+    """Rows for every episode, or for the ep_ids in `only` (a twin's row says whose baseline
+    it is), and all their judgments. Twins are paired over all of `episodes`."""
     twins = twins_of(episodes, suite)
     baseline_of = {twin.ep_id: parent for parent, twin in twins.items()}
     sem = asyncio.Semaphore(concurrency)
@@ -190,7 +192,7 @@ async def score_all(suite: Suite, episodes: list[Episode], services: Services, c
         async with sem:
             return await score_episode(suite, ep, twins.get(ep.ep_id), services)
 
-    scored = await asyncio.gather(*(one(ep) for ep in episodes))
+    scored = await asyncio.gather(*(one(ep) for ep in episodes if only is None or ep.ep_id in only))
     return [row for row, _ in scored], [j for _, js in scored for j in js]
 
 
@@ -232,16 +234,32 @@ async def cmd_run(args: argparse.Namespace) -> int:
     info.setdefault("invocations", []).append({"at": _now(), "code": code, "where": args.where, "limit": args.limit})
     _write_json(run_dir / RUN_FILE, info)
 
-    done = {ep.task_id for ep in load_episodes(run_dir)} if (run_dir / EPISODES_FILE).exists() else set()
+    saved = load_episodes(run_dir)
+    done = {ep.task_id for ep in saved}
     with local_only(args.split == LOCAL_DEV):
         tasks = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit]
-    print(f"{run_dir}: {len(tasks)} tasks to run ({len(done)} already saved)", flush=True)
+    scores_path, judgments_path = run_dir / f"scores-{args.judges}.jsonl", run_dir / f"judgments-{args.judges}.jsonl"
+    # Rows about episodes no longer saved (a task cut off mid-write, which plays again) go.
+    ids = {ep.ep_id for ep in saved}
+    for path, key in ((scores_path, "ep_id"), (judgments_path, "scored")):
+        rows = read_jsonl(path)
+        if any(r[key] not in ids for r in rows):
+            _write_jsonl(path, [r for r in rows if r[key] in ids])
+    unscored = set() if args.no_score else {ep.ep_id for ep in saved} - {r["ep_id"] for r in read_jsonl(scores_path)}
+    print(f"{run_dir}: {len(tasks)} tasks to run ({len(done)} already saved"
+          + (f", {len(unscored)} saved episodes to score first)" if unscored else ")"), flush=True)
     driver = DRIVERS[args.driver](services.llm, suite.tools, max_tokens=args.max_tokens)
     turn = Binding(driver)
     meta = {"driver": args.driver, "harness": f"{args.driver}@{code}", "code": code, "endpoint": args.endpoint,
             "max_tokens": args.max_tokens, "run": run_dir.name}
     sem = asyncio.Semaphore(args.concurrency)
     counts: Counter[str] = Counter()
+
+    async def score(eps: list[Episode], only: set[str] | None = None) -> None:
+        rows, judgments = await score_all(suite, eps, services, len(eps) or 1, only)
+        append_jsonl(judgments_path, judgments)
+        append_jsonl(scores_path, rows)
+        counts["score_errors"] += sum("error" in row for row in rows)
 
     async def one(task: Task) -> None:
         async with sem:
@@ -257,10 +275,12 @@ async def cmd_run(args: argparse.Namespace) -> int:
                     eps = await suite.play(eps, services, turn)
             except Exception as e:  # one task failing must not stop the run; resume reruns it
                 counts["task_errors"] += 1
-                _append(run_dir / ERRORS_FILE, {"task_id": task.task_id, "phase": phase, "at": _now(),
-                                                "error": f"{type(e).__name__}: {e}",
-                                                "trace": traceback.format_exc(limit=-4)})
+                append_jsonl(run_dir / ERRORS_FILE, [{"task_id": task.task_id, "phase": phase, "at": _now(),
+                                                      "error": f"{type(e).__name__}: {e}",
+                                                      "trace": traceback.format_exc(limit=-4)}])
                 print(f"  {task.task_id}: {phase} error: {type(e).__name__}: {str(e)[:200]}", flush=True)
+                if isinstance(e, AccountError):
+                    raise
                 return
             finally:
                 await turn.close({ep.ep_id for ep in eps})
@@ -269,21 +289,28 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 counts[ep.status] += 1
             save_episodes(eps, run_dir)
             if not args.no_score:
-                rows, judgments = await score_all(suite, eps, services, len(eps) or 1)
-                for j in judgments:
-                    _append(run_dir / f"judgments-{args.judges}.jsonl", j)
-                for row in rows:
-                    _append(run_dir / f"scores-{args.judges}.jsonl", row)
-                    counts["score_errors"] += "error" in row
+                await score(eps)
             print(f"  {task.task_id}: " + ", ".join(f"{ep.condition}={ep.status}" for ep in eps), flush=True)
 
+    stopped: AccountError | None = None
     try:
-        await asyncio.gather(*(one(t) for t in tasks))
+        async with asyncio.TaskGroup() as tg:  # an AccountError in one task cancels the rest
+            if unscored:
+                tg.create_task(score(saved, unscored))
+            for t in tasks:
+                tg.create_task(one(t))
+    except* AccountError as group:
+        stopped = group.exceptions[0]
     finally:
         record(run_dir, services, None if args.no_score else args.judges)
         await services.llm.aclose()
     print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
+    if stopped:
+        print(f"stopped: the host refused the account ({stopped}); nothing more can run until that is fixed. "
+              f"Saved episodes stay; rerun the same command to resume.", file=sys.stderr)
+    if stopped or counts["task_errors"] or counts["score_errors"]:
+        return 1
     return 0
 
 
@@ -299,6 +326,8 @@ async def cmd_score(args: argparse.Namespace) -> int:
     services = services_for(args.models, args.judges)
     try:
         rows, judgments = await score_all(suite, episodes, services, args.concurrency)
+    except* AccountError as group:
+        sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); no scores were written")
     finally:
         await services.llm.aclose()
     # Merged by ep_id: the rows and judgments of episodes `--where` did not select stay.
@@ -311,7 +340,7 @@ async def cmd_score(args: argparse.Namespace) -> int:
     errors = sum("error" in r for r in rows)
     print(f"{path}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, {errors} scorer errors; "
           f"spent ${sum(services.llm.spent.values()):.4f}")
-    return 0
+    return 1 if errors else 0
 
 
 # -- guardrails, collect, export, sync -----------------------------------------------------

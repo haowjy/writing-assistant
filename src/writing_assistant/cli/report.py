@@ -89,7 +89,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         print("scores written before the scoring code was stamped (before the artefact and twin rules): "
               f"re-score with `wa-bench score --run {run_dir} --judges {args.judges}`")
     if spent := info.get("spent_usd"):
-        print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())})")
+        print(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())}); "
+              "counts only the chat-call cost a host reports (DeepInfra's estimated_cost): embedding calls "
+              "and hosts that report no cost add nothing")
     if (run_dir / "guardrails.json").exists():
         print(_guardrails_line(run_dir / "guardrails.json"))
     errors = read_jsonl(run_dir / ERRORS_FILE)

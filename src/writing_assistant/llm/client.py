@@ -43,7 +43,10 @@ ANTHROPIC_VERSION = "2023-06-01"
 EMBED_BATCH = 64
 TIMEOUT = 600.0  # seconds; local models on small GPUs are slow; per endpoint: `timeout = ...`
 CONCURRENCY = 16  # requests in flight per endpoint; per endpoint: `concurrency = ...`
-RETRIES = 6  # attempts on 429, 5xx and transport errors, backing off 2, 4, 8, ... s (or Retry-After)
+# Attempts on 429, 5xx and connection errors, backing off 2, 4, 8, ... s (or Retry-After). A
+# timeout is not retried: the call already held its task for `timeout` seconds.
+RETRIES = 6
+ACCOUNT_STATUSES = (401, 402, 403)  # the key or the account, not this request: no call can succeed
 # Each adapter's stop words mapped to one vocabulary; anything else is kept as the host said it.
 _FINISH = {
     "stop": "stop", "end_turn": "stop", "stop_sequence": "stop", "eos": "stop",
@@ -51,6 +54,11 @@ _FINISH = {
     "tool_calls": "tool_calls", "tool_use": "tool_calls", "function_call": "tool_calls",
     "content_filter": "refusal", "refusal": "refusal",
 }
+
+class AccountError(RuntimeError):
+    """The host refused the account (401, 402, 403): every later call would fail the same
+    way, so a run stops instead of playing its remaining tasks into the error."""
+
 
 class LLMClient:
     def __init__(self, models_toml: str | Path) -> None:
@@ -165,14 +173,15 @@ def _parse_args(raw: Any) -> Any:
 
 
 async def _post(http: httpx.AsyncClient, url: str, headers: dict, body: dict, timeout: float) -> dict[str, Any]:
-    """POST with a slow retry on 429, 5xx and transport errors; any other status raises at
-    once. Errors name the URL and status only, never the headers (they carry the key)."""
+    """POST with a slow retry on 429, 5xx and connection errors; a timeout, an account status
+    (`AccountError`) or any other status raises at once. Errors name the URL and status only,
+    never the headers (they carry the key)."""
     for attempt in range(1, RETRIES + 1):
         wait = 2.0**attempt
         try:
             resp = await http.post(url, json=body, headers=headers, timeout=timeout)
         except httpx.TransportError as e:
-            if attempt == RETRIES:
+            if attempt == RETRIES or isinstance(e, httpx.TimeoutException):
                 raise
             log.warning("%s: %s; retry %d in %.0fs", url, type(e).__name__, attempt, wait)
             await asyncio.sleep(wait)
@@ -185,6 +194,8 @@ async def _post(http: httpx.AsyncClient, url: str, headers: dict, body: dict, ti
             log.warning("%s: HTTP %d; retry %d in %.0fs", url, resp.status_code, attempt, wait)
             await asyncio.sleep(wait)
             continue
+        if resp.status_code in ACCOUNT_STATUSES:
+            raise AccountError(f"HTTP {resp.status_code} from {url}: {resp.text[:300]}")
         if resp.is_error:
             raise httpx.HTTPStatusError(f"HTTP {resp.status_code} from {url}: {resp.text[:300]}", request=resp.request, response=resp)
         return resp.json()
