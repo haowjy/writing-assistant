@@ -38,7 +38,7 @@ from writing_assistant.corpus.authors import PASSAGE_TOKENS
 from writing_assistant.corpus.text import count_tokens, truncate_tokens
 from writing_assistant.episode import Episode
 from writing_assistant.suites import NoOutput, Tally, file_output, norm, paragraphs, prose_metrics, reply_output
-from writing_assistant.suites.style.tasks import WRITER
+from writing_assistant.suites.style.tasks import WRITER, target_words
 
 JUDGED_BY = {
     "discriminator_fool_rate": "author_verify",
@@ -96,7 +96,7 @@ async def _edit(ep: Episode, after: str, services, out: dict[str, float], tally:
 
 SCORERS = {"k_exemplar_scene": _scene, "critique_edit": _edit}
 OUTPUT = {
-    "k_exemplar_scene": lambda ep: reply_output(ep, WRITER),
+    "k_exemplar_scene": lambda ep: reply_output(ep, WRITER, target_words(ep)),
     "critique_edit": lambda ep: file_output(ep, WRITER, ep.state["edit"]["path"]),
 }
 

@@ -46,7 +46,8 @@ the value, so `--where "author=Austen, Jane,mode=instruction"` works.
 another `--max-tokens` is refused, and an HTTP 401/402/403 from a host stops the run with
 exit 1. Scoring reads each task kind's artefact, never `Episode.status`: an episode with
 no reply or file to score gets no outcome metric, and `report` counts it under "no
-artefact". Twins are baselines inside their parent's `net_*`, and `report` never averages
+artefact". A refusal is the host's stop reason only; a reply under half the length its task
+asked for is `too_short`, not scored. Twins are baselines inside their parent's `net_*`, and `report` never averages
 across conditions. Every metric that depends on a model judge reads "ungated" in `report`
 until that judge's human-label gate passes (`[gates] passed` in `models.toml`), and is left
 out of `report --baseline`. Each run stores the judge items behind its scores in

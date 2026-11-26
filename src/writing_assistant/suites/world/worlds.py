@@ -385,8 +385,6 @@ TEMPLATES: list[dict[str, Any]] = [
 ]
 PARTY_NAMES = ["Mira", "Tam", "Bren", "Ysolde", "Corin", "Ash", "Lio", "Wren", "Dace", "Nell", "Hale", "Iva"]
 NPC_NAMES = ["Orin", "Maud", "Fennick", "Old Sabe", "Jory", "Petronel"]
-POV_REQUEST = ("Write the next chapter of the novel, about 700 words, covering this session in close third person "
-               "from {pov}'s point of view. Reply with the chapter text only.")
 
 
 def template_split(template: dict) -> str:
@@ -482,7 +480,7 @@ def make_world(template: dict, i: int) -> dict[str, Any]:
                  f"Does the text mention {c} taking the {clue_name}?",
                  f(template["cue_probe"])]
     return {"template": template["id"], "i": i, "seed": seed, "world": world, "session": session,
-            "names": {A: a, B: b, C: c, "npc": npc}, "secret": secret, "swapped": f(template["swapped"]),
+            "secret": secret, "swapped": f(template["swapped"]),
             "hidden_probes": [f(q) for q in template["probes"]], "permitted_probes": permitted,
             "povs": [B, C], "brief": f"A small party has come to {hub_name} looking for answers."}
 
@@ -534,7 +532,6 @@ async def world_rows(per_template: int, fact: Fact) -> list[dict]:
                        "work_ids": [], "payload": {
                            "template": template["id"], "world_seed": w["seed"], "world": w["world"], "pov": pov,
                            "log": log, "hidden_event_idx": hidden_idx, "swap": swap,
-                           "request": POV_REQUEST.format(pov=w["names"][pov]),
                            "hidden_probes": w["hidden_probes"], "permitted_probes": w["permitted_probes"]}}
                 tasks_1a.setup_pov(Task(**row), None)  # raises if the swap twin keeps the secret's text
                 rows.append(row)

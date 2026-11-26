@@ -22,8 +22,9 @@ dm_play: {brief, world: <srd world skeleton>, turns: [{as: character id, say: st
     With `dm_script` the DM is scripted (no model): how build_seed_tasks.py produces the
     fixed logs pov_write reads.
 pov_write: {world, pov: character id, log: [{actor, kind, data, visible_to}],
-    hidden_event_idx: int (into log), swap: {data, state}, request: str,
+    hidden_event_idx: int (into log), swap: {data, state},
     hidden_probes: [question], permitted_probes: [question]}
+    The request is `POV_REQUEST`, which asks for `POV_WORDS` words.
     `log` is the world/say events of a scripted dm_play run; the secret must appear only
     in the hidden event (and in the world state `swap.state` replaces).
     Rows built from SRD worlds (worlds.py) also carry `template`, the secret template whose
@@ -58,6 +59,10 @@ TWINS = {"pivot": "clean_b", "full_view": "twin_swap", "pov_view": "twin_swap", 
 # rule_bend rules are written by the benchmark; rule_bend's canon is mounted from the corpus.
 TEXT_FIELDS = {"pivot_unbinding": ["files.*"], "collab_edit": ["text", "files.*", "rounds[].edit.text"],
                "pov_write": [], "dm_play": [], "rule_bend": []}
+# pov_write's request; the scorer's length floor reads the same POV_WORDS.
+POV_WORDS = 700
+POV_REQUEST = ("Write the next chapter of the novel, about {words} words, covering this session in close third person "
+               "from {pov}'s point of view. Reply with the chapter text only.")
 # Sampling temperature per task kind, stamped on each episode (`ep.meta`) and read by drivers.
 TEMPERATURE = {"pivot_unbinding": 0.7, "dm_play": 0.7, "pov_write": 0.7, "rule_bend": 0.7, "collab_edit": 0.7}
 PUBLIC = {"*": "full"}
@@ -224,7 +229,7 @@ def setup_pov(task, services) -> list[Episode]:
     name = p["world"]["characters"][pov]["name"]
     _writer(base, f"You are a novelist turning a tabletop session into a book. Write in close third person "
                   f"from {name}'s point of view.", [], scripted_author=False)
-    base.state["pov"] = {"pov": pov, "request": p["request"],
+    base.state["pov"] = {"pov": pov, "request": POV_REQUEST.format(words=POV_WORDS, pov=name),
                          "hidden_probes": p["hidden_probes"], "permitted_probes": p["permitted_probes"]}
     swap = {"event_idx": i, "data": p["swap"]["data"], "state": p["swap"].get("state", {}), "restricted": [pov]}
     # The strings the swap removes from the hidden event must not survive anywhere else.

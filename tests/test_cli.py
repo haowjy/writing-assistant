@@ -17,9 +17,14 @@ POV_ROW = {"task_id": "pov-1", "suite": "1a", "kind": "pov_write", "split": "dev
     "log": [{"actor": "dm", "kind": "say", "data": {"text": "Mira finds a glove with a crown sigil."},
              "visible_to": {"mira": "full", "dm": "full"}},
             {"actor": "dm", "kind": "world", "data": {"text": SECRET}, "visible_to": {"dm": "full"}}],
-    "swap": {"data": {"text": SWAPPED}}, "request": "Write the next chapter from Mira's point of view.",
+    "swap": {"data": {"text": SWAPPED}},
     "hidden_probes": ["Does the chapter state or imply that Orin is an heir?"],
     "permitted_probes": ["Does the chapter mention the glove?"]}}
+
+
+def chapter(text: str) -> str:
+    """`text` grown to the chapter length pov_write asks for."""
+    return text + " The wind kept on." * 200
 
 
 def _last_user(messages) -> str:
@@ -62,7 +67,7 @@ def score_rows(out) -> list[dict]:
 
 
 @pytest.mark.parametrize("writer", [{"text": "<think>The chapter should open on", "finish": "length"},
-                                    "I'm sorry, I can't write that."], ids=["cut-off", "refusal"])
+                                    "Sorry, but that's not something I'm going to write."], ids=["cut-off", "refusal"])
 def test_a_chapter_that_was_never_written_gets_no_leak_score(bench, capsys, writer):
     out = bench([POV_ROW], writer)
     run_and_score(capsys, out)
@@ -72,8 +77,8 @@ def test_a_chapter_that_was_never_written_gets_no_leak_score(bench, capsys, writ
 
 def test_the_report_never_averages_the_two_arms_or_their_twins(bench, capsys):
     # The writer repeats whatever the log told it: the full log leaks the heir, the POV log cannot.
-    out = bench([POV_ROW], lambda m, t, e: "Orin is the heir, Mira thought." if "heir" in _last_user(m)
-                else "Mira turned the glove over.")
+    out = bench([POV_ROW], lambda m, t, e: chapter("Orin is the heir, Mira thought." if "heir" in _last_user(m)
+                                                   else "Mira turned the glove over."))
     run_and_score(capsys, out)
     cli.main(["report", "--run", str(out)])
     report = capsys.readouterr().out
@@ -83,9 +88,9 @@ def test_the_report_never_averages_the_two_arms_or_their_twins(bench, capsys):
 
 def test_score_where_keeps_the_scores_of_episodes_it_did_not_select(bench, capsys):
     other = copy.deepcopy(POV_ROW) | {"task_id": "pov-2"}
-    other["payload"]["request"] = "Write Mira's next chapter."
-    out = bench([POV_ROW, other], "Mira turned the glove over.")
+    other["payload"]["permitted_probes"] = ["Does the chapter mention the wind?"]
+    out = bench([POV_ROW, other], chapter("Mira turned the glove over."))
     run_and_score(capsys, out)
     before = {r["ep_id"] for r in score_rows(out)}
-    cli.main(["score", "--run", str(out), "--where", "request=Write Mira's next chapter."])
+    cli.main(["score", "--run", str(out), "--where", "task_id=pov-2"])
     assert {r["ep_id"] for r in score_rows(out)} == before

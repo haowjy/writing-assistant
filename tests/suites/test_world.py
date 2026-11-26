@@ -102,7 +102,6 @@ SWAP = {"data": {"tool": "record_fact", "text": SWAPPED},
         "state": {"world": {"secrets": {"heir": {"text": SWAPPED}}, "facts": [{"text": SWAPPED, "visible_to": ["dm", "orin"]}]}}}
 POV_TASK = Task("pov-1", "1a", "pov_write", "dev", [], {
     "world": WORLD, "pov": "mira", "log": POV_LOG, "hidden_event_idx": 2, "swap": SWAP,
-    "request": "Write the next chapter from Mira's point of view.",
     "hidden_probes": ["Does the chapter state or imply that Orin is an heir?"],
     "permitted_probes": ["Does the chapter mention the glove?"],
 })
@@ -127,7 +126,8 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
     with pytest.raises(ValueError, match="still contains"):
         suite_1a.setup(leaky, None)
 
-    turn = fake_turn(["Mira turned the glove over. Orin was the heir; she knew it."] + ["Mira held the glove."] * 3)
+    pad = " The wind kept on." * 200  # to the chapter length pov_write asks for
+    turn = fake_turn(["Mira turned the glove over. Orin was the heir; she knew it." + pad] + ["Mira held the glove." + pad] * 3)
     await suite_1a.play(eps, None, turn)
     prompts = {ep.ep_id: "\n".join(m["content"] for m in r["messages"]) for ep, r in zip(eps, turn.llm.requests, strict=True)}
     pov_prompt, pov_twin_prompt = prompts[pov.ep_id], prompts[f"{pov.ep_id}~twin_swap"]

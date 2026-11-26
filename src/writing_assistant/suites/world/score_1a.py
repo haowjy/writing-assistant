@@ -21,7 +21,7 @@ import asyncio
 from writing_assistant.episode import Episode
 from writing_assistant.suites import NoOutput, Tally, file_output, mean, norm, paragraphs, prose_metrics, reply_output
 from writing_assistant.suites.world import author, srd
-from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, WRITER, render_log
+from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, POV_WORDS, WRITER, render_log
 
 CONTRADICTION_Q = "Does the narration state anything that contradicts the recorded world events?"
 
@@ -71,7 +71,7 @@ def _narration(ep: Episode) -> str:
 
 OUTPUT = {
     "pivot_unbinding": lambda ep: _written(ep, ep.state["pivot"]["scene_path"]),
-    "pov_write": lambda ep: reply_output(ep, WRITER),
+    "pov_write": lambda ep: reply_output(ep, WRITER, POV_WORDS),
     "rule_bend": lambda ep: _written(ep, ep.state["rule_bend"]["out_path"]),
     "collab_edit": lambda ep: _written(ep, ep.state["collab"]["path"]),
     "dm_play": _narration,

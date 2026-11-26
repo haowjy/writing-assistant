@@ -15,7 +15,8 @@ never import drivers. A suite package never imports another suite package.
   metric ungated until that use's human-label gate has passed. Metrics not listed are
   deterministic.
 - Scoring never reads `Episode.status` (plan/benchmark-code.md §3.1). Each task kind names
-  the one artefact its outcome metrics read, through `reply_output` or `file_output` here;
+  the one artefact its outcome metrics read, through `reply_output` or `file_output` here,
+  and a kind that asks for a length passes that length to `reply_output` (a floor below it);
   with none, those functions raise `NoOutput` and the scorer writes no outcome metric, only
   `n_no_output.<reason>`. Bookkeeping metrics (tool calls, rejections) read the log and are
   written whenever the episode ran. A failed episode is never scored (cli.py skips it).
@@ -29,7 +30,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from writing_assistant.episode import Episode
-from writing_assistant.judges.reply import REFUSAL
 
 if TYPE_CHECKING:
     from writing_assistant.corpus import Corpus
@@ -163,17 +163,18 @@ def prose_metrics(out: dict[str, float], text: str, ep: Episode, services: Servi
 class NoOutput(Exception):
     """The episode did not produce the artefact a metric reads. `reason`: "truncated" (the
     script did not run to its end, or the last call was cut off at max_tokens or the step
-    limit), "refusal" (the host's stop reason, or a reply that declines), "empty_output"
-    (nothing written, or only whitespace)."""
+    limit), "refusal" (the host's stop reason), "too_short" (a reply under `FLOOR` of the
+    length the task asked for), "empty_output" (nothing written, or only whitespace)."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
 
 
-# A reply that opens with a refusal phrase and is too short to be the prose asked for. A
-# chapter that merely opens with "I'm sorry," in dialogue runs far past this length.
-_REFUSAL_HEAD, _REFUSAL_WORDS = 200, 150
+# A reply under this fraction of the length asked for is not the prose asked for: a refusal
+# in any wording, or one padded with offered alternatives. Chosen from the saved live runs,
+# whose 24 chapters and scenes came in at 0.82-1.04 of the asked length (bench-v0 notes).
+FLOOR = 0.5
 
 
 def _last_delivery(ep: Episode, actor: str) -> int:
@@ -184,8 +185,9 @@ def _last_delivery(ep: Episode, actor: str) -> int:
     raise NoOutput("truncated")
 
 
-def reply_output(ep: Episode, actor: str) -> str:
-    """The reply to the last delivery to `actor`, from a call that ended with `stop`."""
+def reply_output(ep: Episode, actor: str, words: int | None = None) -> str:
+    """The reply to the last delivery to `actor`, from a call that ended with `stop`, and at
+    least `FLOOR * words` words long when the task asked for `words`."""
     turn = ep.events[_last_delivery(ep, actor)].data["turn_idx"]
     calls = [c for c in ep.calls if c.actor == actor and c.turn_idx == turn]
     if not calls:
@@ -198,8 +200,8 @@ def reply_output(ep: Episode, actor: str) -> str:
     text = last.response.strip()
     if not text:
         raise NoOutput("empty_output")
-    if REFUSAL.search(text[:_REFUSAL_HEAD]) and len(text.split()) < _REFUSAL_WORDS:
-        raise NoOutput("refusal")
+    if words is not None and len(text.split()) < FLOOR * words:
+        raise NoOutput("too_short")
     return text
 
 
