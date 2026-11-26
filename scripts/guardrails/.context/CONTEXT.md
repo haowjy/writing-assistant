@@ -28,6 +28,15 @@ the tool versions, data and scoring mode are identical, so all of them are pinne
 - Scores reflect the endpoint's default mode. On DeepInfra, Gemma 4 has thinking off by
   default. Published numbers measured with thinking on are not comparable.
 
+## Run-to-run noise
+
+"Greedy" through a hosted endpoint is not deterministic. Two runs of IFEval against DeepInfra's
+Gemma 4 26B-A4B, a few hours apart (2026-11-25), returned identical text for only 56 of 541
+prompts, and 16 prompts flipped pass/fail. Prompt-strict accuracy was 88.91 and 88.54. A
+difference of a few tenths of a point between checkpoints is noise, not a regression. Serve
+both checkpoints the same way (same engine and precision), and repeat a run before acting on
+a drop near a threshold.
+
 ## Sandbox
 
 Two steps run model-written code: HumanEval+ executes generated programs, and BFCL
@@ -40,6 +49,8 @@ its output directory. For a loopback `base_url`, the endpoint steps use the host
 
 ## Failure handling
 
+- A one-token request goes out first, so an unfunded account, a bad key or a wrong model
+  name fails in seconds.
 - A run removes any earlier `guardrails.json` first and writes the new one only after
   `summarize.py` has checked that each suite was fully scored (541, 164, 4 x 200).
 - lm-eval re-raises after its retries.

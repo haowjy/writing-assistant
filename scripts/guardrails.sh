@@ -57,6 +57,21 @@ else
 fi
 export OPENAI_API_KEY=$api_key OPENAI_BASE_URL=$base_url
 
+# One-token request first: an unfunded account, bad key or wrong model name fails here in
+# seconds instead of after evalplus spends an hour retrying it. The key goes in on stdin, not
+# argv. Skipped for loopback endpoints, which have no account to check.
+case $base_url in
+  http://localhost[:/]* | http://127.* | https://localhost[:/]* | https://127.*) ;;
+  *)
+    preflight=$(printf 'Authorization: Bearer %s\n' "$api_key" | curl -sS -m 60 -H @- \
+      -H 'Content-Type: application/json' -w '\n%{http_code}' "$base_url/chat/completions" \
+      -d "{\"model\": \"$model\", \"messages\": [{\"role\": \"user\", \"content\": \"hi\"}], \"max_tokens\": 1}")
+    if [[ ${preflight##*$'\n'} != 200 ]]; then
+      echo "guardrails: $endpoint refused a test request: ${preflight%$'\n'*}" >&2
+      exit 1
+    fi ;;
+esac
+
 # --- image ---------------------------------------------------------------------------------
 image=wa-guardrails:$(sha256sum "$here/Dockerfile" | cut -c1-12)
 if ! docker image inspect "$image" >/dev/null 2>&1; then
