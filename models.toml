@@ -13,7 +13,7 @@
 # the file and engine build that answered. `concurrency` is the server's slot count: a request
 # queued behind a full server would spend its timeout waiting.
 
-[endpoints.inkling-2-mini]          # llmpick start inkling-5.4
+[endpoints.inkling-2-mini]          # llmpick start inkling-nvfp4q8
 kind = "openai"
 base_url = "http://127.0.0.1:18080/v1"
 model = "Inkling-2-Mini-ATX-NVFP4Q8-5.4bpw.gguf"
