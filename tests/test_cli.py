@@ -3,11 +3,15 @@ scores file and what the report prints."""
 
 import copy
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 
 import pytest
 
 from writing_assistant import cli
 from writing_assistant.episode import store
+from writing_assistant.episode.segments import Store
 
 SECRET = "Orin is the last heir of the drowned kings."
 SWAPPED = "Orin is a smuggler who owes the harbour guild."
@@ -134,6 +138,42 @@ def test_rollouts_carry_their_own_metrics_and_stay_out_of_the_runs_numbers(bench
     assert [g.split(":")[0] for g in apart.splitlines() if g.startswith("== ")] == [
         "== rollout_of=pov-1~full_view@0, condition=full_view", "== rollout_of=pov-1~full_view@1, condition=full_view"], report
     assert "twin" not in apart, report
+
+
+def test_of_two_first_invocations_one_claims_the_directory_and_the_other_is_refused(bench, monkeypatch, fake_llm):
+    """Two `run`s start together in a new directory, for two models. Each looks for run.json
+    before either has written it; one claims the directory, and the other is refused before it
+    stores an episode, so the directory never holds two models' episodes under one run."""
+    out = bench([POV_ROW | {"task_id": "one"}, POV_ROW | {"task_id": "two"}], "draft")
+    llm = fake_llm(["draft"] * 40)
+    monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+    both, now, seen = threading.Barrier(2), cli._now, threading.local()
+
+    def together() -> str:
+        # An invocation first reads the clock after it has looked for run.json and before it
+        # writes it: hold each there until the other has got as far, if it can.
+        if not getattr(seen, "clock", False):
+            seen.clock = True
+            with suppress(threading.BrokenBarrierError):
+                both.wait(timeout=0.5)
+        return now()
+
+    def run(endpoint: str, task: str) -> int | str:
+        try:
+            return cli.main(["run", "--suite", "1a", "--endpoint", endpoint, "--out", str(out),
+                             "--where", f"task_id={task}", "--judges", "none", "--no-score"])
+        except SystemExit as e:
+            return str(e)
+
+    monkeypatch.setattr(cli, "_now", together)
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(run, ("gemma-4-26b", "qwen3.5-9b"), ("one", "two")))
+
+    refused = [r for r in results if r != 0]
+    assert len(refused) == 1 and "holds a different run" in refused[0], results
+    claimed = json.loads((out / "run.json").read_text())["endpoint"]
+    with Store(out / "store.db", readonly=True) as stored:
+        assert {ep.meta["endpoint"] for ep in stored.episodes()} == {claimed}
 
 
 def test_score_where_matches_condition_as_report_does_and_keeps_the_twin(bench, capsys):

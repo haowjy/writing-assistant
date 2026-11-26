@@ -29,7 +29,8 @@ A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one)
     guardrails.json     from `wa-bench guardrails --run`
 
 `run` resumes a directory that already has a run.json for the same suite, driver, endpoint,
-model, split and max_tokens (anything else is refused): tasks with stored episodes are
+model, split and max_tokens (anything else is refused, and of two runs starting together in a
+new directory one claims it: `run_info`): tasks with stored episodes are
 skipped (`--where` may differ between invocations), closed episodes with no scores row are
 scored first, and every open episode (a run killed mid-task, a task whose play raised) is
 continued from its last turn checkpoint through the same loop as a fresh one, so a killed
@@ -68,8 +69,8 @@ import subprocess
 import sys
 import traceback
 from collections import Counter
-from collections.abc import Callable
-from contextlib import nullcontext
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -176,10 +177,24 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
     tmp.replace(path)
 
 
-def _write_json(path: Path, data: dict) -> None:
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
-    tmp.replace(path)
+@contextmanager
+def run_info(run_dir: Path) -> Iterator[dict[str, Any]]:
+    """run.json to read and change, every other process kept out until it is written back:
+    {} when the directory has none yet, and nothing is written when the block raises. This is
+    how a run's identity is claimed by one process, and how two runs sharing a directory
+    do not lose each other's entries. The lock is on the directory: run.json is replaced
+    whole, so a lock on the file would be on one no longer there."""
+    fd = os.open(run_dir, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        path = run_dir / RUN_FILE
+        info = json.loads(path.read_text()) if path.exists() else {}
+        yield info
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(info, indent=1, ensure_ascii=False) + "\n")
+        tmp.replace(path)
+    finally:
+        os.close(fd)
 
 
 # -- scoring -------------------------------------------------------------------------------
@@ -226,14 +241,13 @@ async def score_all(suite: Suite, episodes: list[Episode], services: Services, c
 
 def record_usage(run_dir: Path, services: Services) -> None:
     """Add the USD the hosts reported, and the builds that answered, to run.json."""
-    info = json.loads((run_dir / RUN_FILE).read_text())
-    spent = info.setdefault("spent_usd", {})
-    for endpoint, usd in services.llm.spent.items():
-        spent[endpoint] = round(spent.get(endpoint, 0.0) + usd, 6)
-    served = info.setdefault("served", {})
-    for endpoint, builds in services.llm.served.items():
-        served[endpoint] = sorted(set(served.get(endpoint, [])) | builds)
-    _write_json(run_dir / RUN_FILE, info)
+    with run_info(run_dir) as info:
+        spent = info.setdefault("spent_usd", {})
+        for endpoint, usd in services.llm.spent.items():
+            spent[endpoint] = round(spent.get(endpoint, 0.0) + usd, 6)
+        served = info.setdefault("served", {})
+        for endpoint, builds in services.llm.served.items():
+            served[endpoint] = sorted(set(served.get(endpoint, [])) | builds)
 
 
 async def close(services: Services) -> None:
@@ -270,16 +284,16 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split,
                 "max_tokens": args.max_tokens}
     code = code_version()
-    if (run_dir / RUN_FILE).exists():
-        info = json.loads((run_dir / RUN_FILE).read_text())
-        if {k: info.get(k) for k in identity} != identity:
+    # The directory is this run's, or becomes it, before anything is stored in it: of two
+    # first invocations one claims the identity and the other is held to it.
+    with run_info(run_dir) as info:
+        if not info:
+            info |= identity | {"started": _now(), "reported_apart": args.driver == "direct"}
+        elif {k: info.get(k) for k in identity} != identity:
             sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}; this one is {identity}")
-    else:
-        info = identity | {"started": _now(), "reported_apart": args.driver == "direct"}
-    info.setdefault("invocations", []).append({"at": _now(), "code": code, "where": args.where, "limit": args.limit}
-                                              | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts}
-                                                 if args.source else {}))
-    _write_json(run_dir / RUN_FILE, info)
+        info.setdefault("invocations", []).append({"at": _now(), "code": code, "where": args.where, "limit": args.limit}
+                                                  | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts}
+                                                     if args.source else {}))
     if args.split == "test":
         append_jsonl(TEST_USES, [identity | {"at": _now(), "run": str(run_dir.resolve()), "code": code,
                                              "where": args.where, "limit": args.limit}])
