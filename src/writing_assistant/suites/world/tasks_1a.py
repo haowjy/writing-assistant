@@ -1,20 +1,20 @@
-"""Suite 1a tasks: `setup` builds the episodes a task row describes, `play` runs them.
+"""Suite 1a tasks: `setup` builds the episodes a task row describes, `next_delivery` steps one.
 
 Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`; cli.py
 replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
 at rev 1 with no event, which is how the record says the benchmark wrote them.
 
-Twins are children of the episode they are paired with (`parent_id` = that episode's id,
-condition from `TWINS`), because both POV arms have a `twin_swap` and could not be told
-apart as siblings.
+A twin is forked from the episode it is the baseline of (`fork(..., baseline=True)`), so it
+names that episode in `baseline_of`: both POV arms have a `twin_swap`, and the name is what
+tells them apart.
 
 Task row payloads (`Task.payload`), by kind:
 
 pivot_unbinding: {brief, files: {path: text}, direction_a: [line, 2-4], pivot: str,
     direction_b: str, decision: {superseded, adopted}, final: [line], scene_path,
     residue_probes: [question], topics?: {keyword: reply}}
-    The pivot play delivers direction_a, then `pivot + "\\n\\n" + direction_b` with a
-    `decision` event, then `final`; its `clean_b` twin delivers `direction_b` alone, then
+    The pivot episode is sent direction_a, then `pivot + "\\n\\n" + direction_b` with a
+    `decision` event, then `final`; its `clean_b` twin is sent `direction_b` alone, then
     the same `final`. A residue probe is a yes/no question asking whether the scene
     carries over an element of direction A.
 dm_play: {brief, world: <srd world skeleton>, turns: [{as: character id, say: str}],
@@ -43,18 +43,16 @@ collab_edit: {brief, path, text, files?: {path: text}, rounds: [{request: str,
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import json
 
 from writing_assistant.episode import Episode, Event, norm_path, strings
 from writing_assistant.episode.tools import dispatch_tool
-from writing_assistant.suites import SUBJECT, paragraphs
+from writing_assistant.suites import SUBJECT, KindAbout, one_message, paragraphs
 from writing_assistant.suites.world import author, srd
 
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
 WORKSPACE = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_list"]
-TWINS = {"pivot": "clean_b", "full_view": "twin_swap", "pov_view": "twin_swap", "bent": "twin_swap"}
 # Payload fields that may carry work text (corpus/release.py). pov_write and dm_play logs and
 # rule_bend rules are written by the benchmark; rule_bend's canon is mounted from the corpus.
 TEXT_FIELDS = {"pivot_unbinding": ["files.*"], "collab_edit": ["text", "files.*", "rounds[].edit.text"],
@@ -95,7 +93,7 @@ def setup_pivot(task, services) -> list[Episode]:
     _mount(ep, p["files"])
     _writer(ep, f"You are co-writing a story with its author in a shared project folder.\n\n{p['brief']}", WORKSPACE)
     ep.state["pivot"] = {"scene_path": norm_path(p["scene_path"]), "residue_probes": p["residue_probes"]}
-    clean = ep.fork("clean_b")
+    clean = ep.fork("clean_b", baseline=True)
     final = [{"say": line} for line in p["final"]]
     topics = p.get("topics", {})
     ep.state["script"] = author.script(
@@ -153,7 +151,7 @@ def setup_rule_bend(task, services) -> list[Episode]:
     ep.state["rule_bend"] = {"out_path": norm_path(p["out_path"]), "canon_probes": p["canon_probes"],
                              "bent_probes": p["bent_probes"]}
     ep.state["script"] = author.script([{"say": p["request"]}])
-    twin = ep.fork("twin_swap")
+    twin = ep.fork("twin_swap", baseline=True)
     _mount(ep, {p["rules_path"]: p["bent_rules"]})
     _mount(twin, {p["rules_path"]: p["kept_rules"]})
     return [ep, twin]
@@ -161,13 +159,13 @@ def setup_rule_bend(task, services) -> list[Episode]:
 
 # -- the scripted-author conversation (pivot, collab, rule_bend) ---------------------------
 
-async def converse(ep: Episode, turn, apply=None) -> None:
-    reply = ""
-    while author.remaining(ep.state) and ep.status == "running":
-        entry = author.next_entry(ep.state, reply)
-        if apply:
-            apply(ep, entry)
-        reply = await turn(ep, WRITER, entry["say"])
+async def next_line(ep: Episode, last_reply: str, apply=None) -> tuple[str, str] | None:
+    if not author.remaining(ep.state) or ep.status != "running":
+        return None
+    entry = author.next_entry(ep.state, last_reply)
+    if apply:
+        apply(ep, entry)
+    return WRITER, entry["say"]
 
 
 # -- dm_play -------------------------------------------------------------------------------
@@ -200,21 +198,28 @@ def dm_prompt(brief: str, world: dict) -> str:
     )
 
 
-async def play_dm(ep: Episode, turn) -> None:
+async def next_dm(ep: Episode, last_reply: str) -> tuple[str, str] | None:
+    """A player's line goes to the DM, and the DM's narration of it is logged by the step
+    that follows the reply. A scripted DM answers inside the step, so its whole session is
+    one step and no delivery."""
     world = ep.state["world"]
-    reply = ""
-    while author.remaining(ep.state) and ep.status == "running":
-        entry = author.next_entry(ep.state, reply)
+    while True:
+        answered = author.previous(ep.state)
+        if answered:
+            # The narration answers the speaker: whoever is with them now hears it.
+            location = world["characters"][answered["as"]]["location"]
+            ep.log(DM, "say", {"text": last_reply}, srd.sees(world, location))
+        if not author.remaining(ep.state) or ep.status != "running":
+            return None
+        entry = author.next_entry(ep.state, last_reply)
         speaker = world["characters"][entry["as"]]
-        ep.log(entry["as"], "say", {"text": f"{speaker['name']}: {entry['say']}"}, srd.sees(world, speaker["location"]))
-        if ep.actors[DM] == "scripted":
-            for call in entry["dm"]["calls"]:
-                await dispatch_tool(ep, DM, call["name"], call["arguments"], srd.TOOLS)
-            reply = entry["dm"]["narration"]
-        else:
-            reply = await turn(ep, DM, f"{speaker['name']}: {entry['say']}")
-        # The narration answers the speaker: whoever is with them now hears it.
-        ep.log(DM, "say", {"text": reply}, srd.sees(world, speaker["location"]))
+        line = f"{speaker['name']}: {entry['say']}"
+        ep.log(entry["as"], "say", {"text": line}, srd.sees(world, speaker["location"]))
+        if ep.actors[DM] != "scripted":
+            return DM, line
+        for call in entry["dm"]["calls"]:
+            await dispatch_tool(ep, DM, call["name"], call["arguments"], srd.TOOLS)
+        last_reply = entry["dm"]["narration"]
 
 
 # -- pov_write -----------------------------------------------------------------------------
@@ -238,7 +243,7 @@ def setup_pov(task, services) -> list[Episode]:
     for arm in ("full_view", "pov_view"):
         ep = base.fork(arm)
         ep.state["pov"]["arm"] = arm
-        twin = ep.fork("twin_swap", swap=swap)
+        twin = ep.fork("twin_swap", swap=swap, baseline=True)
         reachable = _reachablestrings(twin)
         left = [s for s in secret if any(s in text for text in reachable)]
         if left:
@@ -276,8 +281,8 @@ def pov_message(ep: Episode) -> str:
     return f"{s['request']}\n\nSession log:\n{render_log(events, name)}"
 
 
-async def play_pov(ep: Episode, turn) -> None:
-    await turn(ep, WRITER, pov_message(ep))
+async def next_pov(ep: Episode, last_reply: str) -> tuple[str, str] | None:
+    return one_message(ep, WRITER, pov_message)
 
 
 # -- dispatch ------------------------------------------------------------------------------
@@ -289,12 +294,12 @@ SETUP = {
     "rule_bend": setup_rule_bend,
     "collab_edit": setup_collab,
 }
-PLAY = {
-    "pivot_unbinding": lambda ep, turn: converse(ep, turn, _pivot_entry),
-    "dm_play": play_dm,
-    "pov_write": play_pov,
-    "rule_bend": converse,
-    "collab_edit": lambda ep, turn: converse(ep, turn, _collab_entry),
+NEXT = {
+    "pivot_unbinding": lambda ep, last_reply: next_line(ep, last_reply, _pivot_entry),
+    "dm_play": next_dm,
+    "pov_write": next_pov,
+    "rule_bend": next_line,
+    "collab_edit": lambda ep, last_reply: next_line(ep, last_reply, _collab_entry),
 }
 
 
@@ -304,8 +309,53 @@ def setup(task, services) -> list[Episode]:
     return SETUP[task.kind](task, services)
 
 
-async def play(eps: list[Episode], services, turn) -> list[Episode]:
-    """Episodes play concurrently: twins share no play and each has its own session. They
-    start in list order, so a scripted Turn that never suspends still answers them in order."""
-    await asyncio.gather(*(PLAY[ep.state["kind"]](ep, turn) for ep in eps))
-    return eps
+async def next_delivery(ep: Episode, last_reply: str) -> tuple[str, str] | None:
+    return await NEXT[ep.state["kind"]](ep, last_reply)
+ABOUT = {
+    "pov_write": KindAbout(
+        title="POV writing",
+        tests="Does the model keep a character from knowing what they never witnessed?",
+        given=f"The log of a tabletop session already played (speech and world events), and a request for the next "
+              f"chapter, about {POV_WORDS} words, in close third person from one character's point of view. One event "
+              "is a secret that character never saw.",
+        kept="In pov_view, every event the character did not see is left out of the log, the secret among them.",
+        arms={"full_view": "The whole log, the secret included: a good writer still keeps it out of the chapter.",
+              "pov_view": "Only what the character saw. It cannot leak what it was never shown, so it is the floor."},
+        twin="Each arm is played again with the secret swapped for another one the character also never sees. The "
+             "judge is asked the original secret's questions of that chapter: a yes there is the judge or chance, "
+             "not a leak, and net_pov_leak subtracts it."),
+    "dm_play": KindAbout(
+        title="Running the game",
+        tests="Can the model run a consistent world as the game master?",
+        given="A world (party, places, characters, items, secrets) and the rules tools (srd_*); scripted players "
+              "speak one line at a time and the model replies with narration. Every change to the world must go "
+              "through the tools, and each event goes only to the characters who could perceive it.",
+        kept=None,
+        arms={"base": "One episode per task. (With no model, a scripted game master plays the same task to make "
+                      "the fixed logs pov_write reads.)"}),
+    "pivot_unbinding": KindAbout(
+        title="Changing direction",
+        tests="When the author changes their mind, does the model drop the old idea?",
+        given="A shared project folder. The author gives direction A over a few messages, then scraps it for "
+              "direction B, then asks for the scene in a file.",
+        kept=None,
+        arms={"pivot": "Direction A, the change to B, then the request."},
+        twin="clean_b: the author only ever gives direction B, then the same request. Questions about direction A "
+             "asked of that scene measure what shows up anyway; post_pivot_residue subtracts it."),
+    "rule_bend": KindAbout(
+        title="Bending canon",
+        tests="Can the model write in an existing book's world with one rule deliberately changed?",
+        given="The first chapters of a real book under canon/, a rules file saying how this story departs from it "
+              "(and that it overrides the book), and a request for a chapter in a file.",
+        kept=None,
+        arms={"bent": "The rules file changes one of the book's rules."},
+        twin="The rules file keeps the book's rule. How often that chapter uses the changed rule anyway is "
+             "subtracted in net_canon_snapback."),
+    "collab_edit": KindAbout(
+        title="Editing together",
+        tests="Can the model edit a shared document without trampling the author's work?",
+        given="A document in a shared folder and an author who, over several rounds, edits a paragraph themselves "
+              "and then asks the model to change specific paragraphs.",
+        kept=None,
+        arms={"base": "One episode per task; each round is scored on its own, with no judge."}),
+}

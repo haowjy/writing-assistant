@@ -1,4 +1,4 @@
-"""Suite 3 tasks: `setup` builds one episode per task row, `play` delivers its one message.
+"""Suite 3 tasks: `setup` builds one episode per task row, `next_delivery` gives its one message.
 
 The writer is the only model actor (`suites.SUBJECT`). What it must never see stays in
 `ep.state` and is never delivered: the author's true passage `y_star`, the verifier's
@@ -24,12 +24,11 @@ critique_edit: {author, source, familiarity?, passage: passage, objection: str,
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from writing_assistant.corpus.text import norm_words
 from writing_assistant.episode import Episode, norm_path
-from writing_assistant.suites import SUBJECT, paragraphs
+from writing_assistant.suites import SUBJECT, KindAbout, one_message, paragraphs
 
 WRITER = "writer"
 EDIT_TOOLS = ["episode_read", "episode_edit", "episode_write"]
@@ -148,6 +147,23 @@ def setup(task, services) -> list[Episode]:
     return SETUP[task.kind](task)
 
 
-async def play(eps: list[Episode], services, turn) -> list[Episode]:
-    await asyncio.gather(*(turn(ep, WRITER, MESSAGE[ep.state["kind"]](ep)) for ep in eps))
-    return eps
+def next_delivery(ep: Episode) -> tuple[str, str] | None:
+    return one_message(ep, WRITER, MESSAGE[ep.state["kind"]])
+ABOUT = {
+    "k_exemplar_scene": KindAbout(
+        title="Scene in an author's style",
+        tests="Can the model write a scene in the voice of an author it only sees samples of?",
+        given="k passages by one author, never named, and a beat sheet: a paraphrased outline of a real scene that "
+              "author wrote, with the length of that scene. In instruction mode the passages are samples of the voice "
+              "to match; in continuation mode they are excerpts of a manuscript to continue.",
+        kept="The author's real scene for those beats, the verifier's further passages by the author, and a passage "
+             "by another author (the impostor).",
+        arms={"base": "One episode per task; the mode and k are part of the task."}),
+    "critique_edit": KindAbout(
+        title="Editing to a critique",
+        tests="Can the model answer an editor's objection by changing only what it is about?",
+        given="A real passage mounted as a file, and an editor's note objecting to some of its paragraphs; the model "
+              "revises the file in place with the tools.",
+        kept=None,
+        arms={"base": "One episode per task."}),
+}

@@ -1,6 +1,9 @@
 """Gate tests for corpus/ (plan/benchmark-code.md §4, Slice 1). No network, no GPU."""
 
 import json
+import sqlite3
+import zlib
+from contextlib import suppress
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -11,8 +14,9 @@ import pytest
 from writing_assistant.corpus import Corpus, Work
 from writing_assistant.corpus.authors import K_VALUES, partition_author_corpus
 from writing_assistant.corpus.collect import collect
-from writing_assistant.corpus.release import export_public
+from writing_assistant.corpus.release import export_public, stage_sync
 from writing_assistant.episode import Episode
+from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import local_only, split_of
 from writing_assistant.episode.tools import dispatch_tool
 
@@ -212,3 +216,87 @@ async def test_export_never_writes_restricted_text(tmp_path):
                                                "work_ids": ["gutenberg:2"], "payload": {"passage": passage}}) + "\n")
     with pytest.raises(ValueError, match="still holds text of gutenberg:2"):
         export_public(corpus, tmp_path / "out", {"3": {"critique_edit": ["passage.txt"]}}, tasks_dir=tasks)
+
+
+def test_sync_holds_back_an_episode_when_any_segment_of_its_chain_may_not_leave(tmp_path):
+    """`sync` writes a new store of the episodes that may leave, and each is copied with the
+    whole chain it is stored after. So the licence test is of every segment in the chain at
+    every checkpoint: an unlisted ancestor's text, or a work the state named for a while,
+    would otherwise leave inside an episode whose final state is clean."""
+    corpus = Corpus(tmp_path / "cache")
+    add(corpus, 1, "A", book(1, 2))
+    add(corpus, 2, "B", book(2, 2), licence="copyrighted")
+    free, held = "gutenberg:1", "gutenberg:2"
+
+    def ep(ep_id, split="dev", works=(), note=""):
+        return Episode(ep_id=ep_id, task_id=ep_id, suite="1a", split=split, state={"work_ids": list(works), "note": note})
+
+    runs = tmp_path / "runs"
+    for run in ("r", "mine"):
+        (runs / run).mkdir(parents=True)
+        (runs / run / "run.json").write_text("{}")
+    with Store(runs / "r" / "store.db") as store:
+        base = ep("free", works=[free], note="FREE TEXT")
+        fork = base.fork("fork")
+        store.close(base, fork)
+        clean = ep("ancestor", works=[held], note="HELD ANCESTOR").fork("clean")  # the ancestor is saved unlisted
+        clean.state = {"work_ids": [free], "note": ""}
+        store.close(clean)
+        middle = ep("middle", works=[free])
+        store.append(middle)
+        middle.state = {"work_ids": [free, held], "note": "HELD MIDDLE"}
+        middle.log("dm", "say", {"text": "a turn"}, {"*": "full"})
+        store.append(middle)
+        middle.state = {"work_ids": [free], "note": ""}
+        store.close(middle)
+    with Store(runs / "mine" / "store.db") as store:
+        store.close(ep("personal", split="local_dev", note="HELD PERSONAL"))  # names no work at all
+    for run, ids in (("r", ["free", "free~fork", "ancestor~clean", "middle"]), ("mine", ["personal"])):
+        (runs / run / "scores-eval.jsonl").write_text("".join(json.dumps({"ep_id": i}) + "\n" for i in ids))
+        (runs / run / "judgments-eval.jsonl").write_text("".join(json.dumps({"ep_id": i, "scored": i}) + "\n" for i in ids))
+
+    counts = stage_sync(tmp_path / "stage", runs, corpus, {})
+
+    assert dict(counts) == {"episodes": 2, "episodes_left_out": 3}
+    staged = tmp_path / "stage" / "runs"
+    text = b""
+    for run, names in (("r", ["free", "free~fork"]), ("mine", [])):
+        with Store(staged / run / "store.db", readonly=True) as store:
+            assert [e.ep_id for e in store.episodes()] == names
+            text += b"".join(zlib.decompress(body) for (body,) in store.db.execute("SELECT body FROM checkpoints"))
+        for file in ("scores-eval.jsonl", "judgments-eval.jsonl"):
+            assert [json.loads(line)["ep_id"] for line in (staged / run / file).read_text().splitlines()] == names
+    text += b"".join(p.read_bytes() for p in (tmp_path / "stage").rglob("*") if p.is_file())
+    assert b"FREE TEXT" in text and b"HELD" not in text
+
+
+def test_sync_stages_nothing_an_open_ancestor_gained_after_its_release_check(tmp_path, monkeypatch):
+    """A run may be writing while `sync` stages: a closed episode's parent can still be open,
+    and gain a checkpoint that draws on a held-back work between the release check and the
+    copy. What is staged is what was checked."""
+    corpus = Corpus(tmp_path / "cache")
+    add(corpus, 1, "A", book(1, 2))
+    add(corpus, 2, "B", book(2, 2), licence="copyrighted")
+    run = tmp_path / "runs" / "r"
+    run.mkdir(parents=True)
+    (run / "run.json").write_text("{}")
+    parent = Episode(ep_id="parent", task_id="t", suite="1a", split="dev", state={"work_ids": ["gutenberg:1"], "note": ""})
+    with Store(run / "store.db") as writer:
+        writer.append(parent)
+        writer.close(parent.fork("done"))
+        writer.db.execute("PRAGMA busy_timeout = 100")  # this writer gives up at once where a run would wait
+        parent.state = {"work_ids": ["gutenberg:1", "gutenberg:2"], "note": "HELD TEXT"}
+        copy_chain = Store.copy_chain
+
+        def a_run_writes_first(self, name, into, **kw):
+            with suppress(sqlite3.OperationalError):  # locked out: its write waits for the copy
+                writer.append(parent)
+            return copy_chain(self, name, into, **kw)
+
+        monkeypatch.setattr(Store, "copy_chain", a_run_writes_first)
+        counts = stage_sync(tmp_path / "stage", tmp_path / "runs", corpus, {})
+
+    assert dict(counts) == {"episodes": 1, "episodes_left_out": 0}
+    with Store(tmp_path / "stage" / "runs" / "r" / "store.db", readonly=True) as staged:
+        bodies = b"".join(zlib.decompress(body) for (body,) in staged.db.execute("SELECT body FROM checkpoints"))
+    assert b"HELD TEXT" not in bodies and b"gutenberg:2" not in bodies

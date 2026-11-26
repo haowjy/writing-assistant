@@ -486,12 +486,12 @@ def make_world(template: dict, i: int) -> dict[str, Any]:
 
 
 async def pre_played_log(w: dict) -> list[dict]:
-    """One scripted-DM dm_play run through Suite 1a's own setup and play: the fixed log."""
+    """One scripted-DM dm_play run through Suite 1a's own setup and step: the fixed log."""
     task = Task(f"build:{w['template']}:{w['i']}", "1a", "dm_play", "train", [], {
         "brief": w["brief"], "world": w["world"], "turns": [{"as": who, "say": say} for who, say, _, _ in w["session"]],
         "dm_script": [{"calls": calls, "narration": text} for _, _, calls, text in w["session"]]})
     [ep] = tasks_1a.setup_dm(task, None)
-    await tasks_1a.play_dm(ep, None)
+    await tasks_1a.next_dm(ep, "")  # a scripted DM's session is one step and no delivery
     if ep.state["world"]["rules_rejections"]:
         bad = [e.data for e in ep.events if e.kind == "tool" and not e.data["result"]["ok"]]
         raise ValueError(f"{task.task_id}: the scripted DM was refused: {bad}")

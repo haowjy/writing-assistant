@@ -17,6 +17,10 @@ ALLOWED = {
     "cli": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers"},
     "label_ui": set(),
 }
+# Leaves inside a layer: a module only its layer's entry point imports. `cli/view.py` reads
+# runs through the run loader and `report`'s aggregation (one reading of a run, not two),
+# so it sits in `cli`; nothing may build on the page's server.
+LEAVES = {("cli", "view"): ("cli", "__init__")}
 
 
 def _imports(path: Path) -> list[tuple[str, ...]]:
@@ -53,4 +57,6 @@ def test_imports_point_down():
                     bad.append(f"{'/'.join(src)} -> {'.'.join(target)}")
             elif target[0] not in ALLOWED[layer]:
                 bad.append(f"{'/'.join(src)} -> {'.'.join(target)}")
+            if target[:2] in LEAVES and src != LEAVES[target[:2]] and src[:2] != target[:2]:
+                bad.append(f"{'/'.join(src)} -> {'.'.join(target)} (a leaf)")
     assert not bad, "upward or sideways imports:\n" + "\n".join(bad)

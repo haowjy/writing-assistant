@@ -3,7 +3,8 @@
 A driver is constructed by cli.py with the model client and the suite's tool table; `open`
 gets the episode, so everything per-episode (actor tools, the actor's system prompt in
 `ep.state["system_prompts"][actor]`, the sampling temperature in `ep.meta["temperature"]`)
-is read from it.
+is read from it, and so is the conversation so far when the episode is already under way: a
+driver keeps nothing between turns that it could not rebuild from the episode.
 """
 
 from __future__ import annotations
@@ -26,8 +27,9 @@ class Session:
 class Driver(Protocol):
     async def open(self, ep: Episode, actor: str, endpoint: str) -> Session: ...
 
-    async def turn(self, session: Session, message: str) -> str:
-        """One delivery; the model calls episode_* tools until it replies."""
+    async def turn(self, session: Session, message: str) -> None:
+        """One delivery; the model calls episode_* tools until it replies. Every model call
+        is appended to `ep.calls`, and the reply is the last one's text (`Episode.last_reply`)."""
         ...
 
     async def close(self, session: Session) -> None: ...

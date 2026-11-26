@@ -137,10 +137,10 @@ def _fake_turn(replies: list[Reply] | dict[str, list[Reply]], tools: ToolTable |
     llm = FakeLLM(replies)
     binding = Binding(DirectDriver(llm, tools or {}, **driver_kw))
 
-    async def turn(ep: Episode, actor: str, message: str) -> str:
+    async def turn(ep: Episode, actor: str, message: str) -> None:
         if ep.actors.get(actor) == SUBJECT:
             bind_subject([ep], "subject-endpoint")
-        return await binding(ep, actor, message)
+        await binding(ep, actor, message)
 
     turn.llm = llm
     return turn

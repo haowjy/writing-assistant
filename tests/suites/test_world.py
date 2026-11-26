@@ -1,18 +1,21 @@
 """Suite 1a: the SRD engine's determinism, legality and visibility, the POV write task's
 two guarantees (the projected prompt holds no hidden text; the swap twin differs only in the
-designated event and its state), and the SRD worlds' split by secret template."""
+designated event and its state), the SRD worlds' split by secret template, and an episode
+continued from a copy taken mid-play."""
 
 import copy
+import shutil
 from collections import Counter
 from types import SimpleNamespace
 
 import pytest
 
 from writing_assistant.episode import Episode
+from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import Task
 from writing_assistant.episode.tools import dispatch_tool
 from writing_assistant.judges import Judge
-from writing_assistant.suites import Tally
+from writing_assistant.suites import Tally, play
 from writing_assistant.suites.world import srd, suite_1a, worlds
 
 SECRET = "Orin is the last heir of the drowned kings."
@@ -114,7 +117,7 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
     pov = by_id["pov-1~pov_view"]
 
     # The swap twin differs from its parent only in the designated event and its state.
-    assert full_twin.parent_id == full.ep_id
+    assert full_twin.baseline_of == full.ep_id and pov.baseline_of is None
     assert [i for i, (a, b) in enumerate(zip(full.events, full_twin.events, strict=True)) if a != b] == [2]
     assert full_twin.events[2].data["text"] == SWAPPED
     assert {k for k in full.state["world"] if full.state["world"][k] != full_twin.state["world"][k]} == {"secrets", "facts"}
@@ -128,7 +131,7 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
 
     pad = " The wind kept on." * 200  # to the chapter length pov_write asks for
     turn = fake_turn(["Mira turned the glove over. Orin was the heir; she knew it." + pad] + ["Mira held the glove." + pad] * 3)
-    await suite_1a.play(eps, None, turn)
+    await play(suite_1a, eps, turn)
     prompts = {ep.ep_id: "\n".join(m["content"] for m in r["messages"]) for ep, r in zip(eps, turn.llm.requests, strict=True)}
     pov_prompt, pov_twin_prompt = prompts[pov.ep_id], prompts[f"{pov.ep_id}~twin_swap"]
     hidden = [ev["data"]["text"] for ev in POV_LOG if "mira" not in ev["visible_to"]]
@@ -156,6 +159,104 @@ def test_a_secret_quoted_in_a_later_visible_event_is_refused_whatever_its_charac
         "log": log, "hidden_event_idx": 0, "swap": {"data": {"text": "Orin is innocent."}}})
     with pytest.raises(ValueError, match="still contains"):
         suite_1a.setup(task, None)
+
+
+DM_TASK = Task("dm-1", "1a", "dm_play", "dev", [], {
+    "brief": "A night at the tavern.", "world": WORLD,
+    "turns": [{"as": "mira", "say": "I listen at the crypt door."}, {"as": "tam", "say": "I go out to the street."},
+              {"as": "mira", "say": "I wait for Tam."}]})
+DM_REPLIES = [{"tool_calls": [{"name": "srd_roll", "arguments": {"expr": "1d20"}}]}, "Mira hears nothing.",
+              {"tool_calls": [{"name": "srd_resolve", "arguments": {"action": "move", "actor": "tam", "to": "street"}}]},
+              "Tam steps out beside Mira.", "They wait."]
+PIVOT_TASK = Task("pivot-1", "1a", "pivot_unbinding", "dev", [], {
+    "brief": "A harbour story.", "files": {"notes.md": "Notes."},
+    "direction_a": ["Start the scene in the harbour.", "Add the storm."], "pivot": "Change of plan.",
+    "direction_b": "Set it inland.", "decision": {"superseded": "the harbour", "adopted": "inland"},
+    "final": ["Finish the scene."], "scene_path": "scene.md", "residue_probes": ["Is there a harbour?"],
+    "topics": {"lighthouse": "Yes, keep the lighthouse."}})
+PIVOT_REPLIES = [{"tool_calls": [{"name": "episode_write", "arguments": {"path": "scene.md", "text": "The harbour at dusk.", "rev": 0}}]},
+                 "Done. Should the lighthouse stay?", "Storm added.",
+                 {"tool_calls": [{"name": "episode_write", "arguments": {"path": "scene.md", "text": "A farm inland.", "rev": 1}}]},
+                 "Moved inland.", "Finished."]
+
+
+@pytest.mark.parametrize("task, replies, logged", [
+    (DM_TASK, DM_REPLIES, [("dm", "say", "Mira hears nothing."), ("dm", "say", "Tam steps out beside Mira."), ("dm", "say", "They wait.")]),
+    (PIVOT_TASK, PIVOT_REPLIES, [("writer", "deliver", "Yes, keep the lighthouse.\n\nAdd the storm.")]),
+], ids=["dm_play", "pivot_unbinding"])
+async def test_a_stored_episode_reopened_at_any_turn_checkpoint_continues_as_the_original(fake_turn, tmp_path, task, replies, logged):
+    """Saved through the store as a run saves it (before play, when each delivery returns,
+    closed at the end), then reopened two ways with a new driver and a client holding only
+    the replies not yet given: the store file as a kill at that moment would have left it,
+    continued as the same episode; and a fork of that checkpoint in the finished store. What
+    the suite does after a reply (the DM's narration on the log, the author answering a
+    question) must not be lost with the loop that was running, nor the conversation with the
+    session."""
+    killed = []  # (the store file when delivery n had returned, the requests answered by then)
+
+    async def finish(store, ep, turn, copies=False):
+        async def saved(ep, actor, message):
+            await turn(ep, actor, message)
+            store.append(ep)
+            if copies:
+                killed.append((shutil.copy(store.path, tmp_path / f"killed-{len(killed) + 1}.db"), len(turn.llm.requests)))
+
+        await play(suite_1a, [ep], saved)
+        ep.complete()
+        store.close(ep)
+
+    def whole(ep):
+        return ep.events, ep.calls, ep.files, ep.file_revs, ep.state, ep.actors, ep.actor_tools, ep.status, ep.failure_reason
+
+    ep = suite_1a.setup(task, None)[0]
+    turn = fake_turn(replies, srd.TOOLS)
+    path = tmp_path / "store.db"
+    with Store(path) as store:
+        store.append(ep)
+        await finish(store, ep, turn, copies=True)
+        assert store.load(ep.ep_id) == ep
+        with pytest.raises(ValueError, match="closing checkpoint"):
+            store.load(ep.ep_id, at=len(killed) + 1)
+    assert len(killed) == len(ep.state["script"]["turns"])
+    log = [(e.actor, e.kind, e.data.get("text") or e.data.get("message")) for e in ep.events]
+    assert [entry for entry in logged if entry not in log] == []
+    assert task is not PIVOT_TASK or (ep.files["scene.md"], ep.file_revs["scene.md"]) == ("A farm inland.", 2)
+
+    for n, (copy_path, answered) in enumerate(killed, 1):
+        rest = [r["messages"] for r in turn.llm.requests[answered:]]
+        with Store(copy_path) as store:
+            assert store.names() == []
+            [reopened] = store.episodes(closed=False)
+            resumed = fake_turn(replies[answered:], srd.TOOLS)
+            await finish(store, reopened, resumed)
+            assert [r["messages"] for r in resumed.llm.requests] == rest
+            assert reopened == ep and store.load(ep.ep_id) == ep
+        with Store(path) as store:
+            rollout = store.load(ep.ep_id, at=n).rollout(n, 0)
+            forked = fake_turn(replies[answered:], srd.TOOLS)
+            await finish(store, rollout, forked)
+            assert [r["messages"] for r in forked.llm.requests] == rest
+            assert whole(rollout) == whole(ep) and whole(store.load(rollout.ep_id)) == whole(ep)
+
+
+def test_a_fork_that_differs_from_its_parent_at_birth_loads_as_itself(tmp_path):
+    """Twins and arms are stored as what they changed against the episode they were forked
+    from, and some of that is on no event: a twin's script, a POV arm's state, a swapped
+    event, a rules file mounted after the fork. Each must load as itself, not as its parent."""
+    corpus = SimpleNamespace(select=lambda where: [None], chapters=lambda work: ["Chapter one.", "Chapter two."])
+    rules = Task("bend-1", "1a", "rule_bend", "dev", ["w1"], {
+        "rules_path": "rules.md", "bent_rules": "Magic costs memory.", "kept_rules": "Magic is free.",
+        "out_path": "scene.md", "canon_probes": ["q?"], "bent_probes": ["q?"], "request": "Write the scene."})
+    eps = [ep for task in (PIVOT_TASK, POV_TASK, rules) for ep in suite_1a.setup(task, SimpleNamespace(corpus=corpus))]
+    by_id = {ep.ep_id: ep for ep in eps}
+    assert by_id["bend-1"].files["rules.md"] != by_id["bend-1~twin_swap"].files["rules.md"]
+    assert by_id["pivot-1"].state["script"] != by_id["pivot-1~clean_b"].state["script"]
+    assert by_id["pov-1~full_view"].events != by_id["pov-1~full_view~twin_swap"].events
+    with Store(tmp_path / "store.db") as store:
+        store.append(*eps)
+        assert set(store.names(closed=False)) == set(by_id)  # the base both POV arms fork from is stored unlisted
+    with Store(tmp_path / "store.db", readonly=True) as store:
+        assert [store.load(ep.ep_id) for ep in eps] == eps
 
 
 async def test_no_secret_template_spans_two_splits_and_dev_and_test_hold_three_each():

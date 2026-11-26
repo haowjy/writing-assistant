@@ -1,8 +1,9 @@
 """The scripted author: a reply/pivot table in `ep.state["script"]`.
 
-Scripted actors never go through `Turn`; `play()` asks this table what the author (or a
-scripted player) says next and delivers it to the model. Keeping the table and its position
-in `state` means a fork faces exactly the turns its parent would have faced.
+Scripted actors never go through `Turn`; the suite's step asks this table what the author
+(or a scripted player) says next, and that line is delivered to the model. The table and
+its position are all the step knows of where it is, and they are in `state`: a fork, or an
+episode reopened after a delivery, faces exactly the turns its original would have faced.
 
     state["script"] = {
         "pos": 0,                       # next entry
@@ -30,6 +31,12 @@ def script(turns: list[dict[str, Any]], topics: dict[str, str] | None = None) ->
 def remaining(state: dict) -> int:
     s = state["script"]
     return len(s["turns"]) - s["pos"]
+
+
+def previous(state: dict) -> dict[str, Any] | None:
+    """The entry `next_entry` returned last; None before the first."""
+    s = state["script"]
+    return s["turns"][s["pos"] - 1] if s["pos"] else None
 
 
 def next_entry(state: dict, last_reply: str = "") -> dict[str, Any]:

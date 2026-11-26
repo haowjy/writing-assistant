@@ -13,8 +13,9 @@ from writing_assistant.suites.style import score, tasks
 
 class Style:
     tools: dict = {}  # workspace tools only
-    twins: dict[str, str] = {}  # no twins: each episode is scored on its own
     judged_by = score.JUDGED_BY
+    about = tasks.ABOUT
+    metric_about = score.ABOUT
     text_fields = tasks.TEXT_FIELDS
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
@@ -23,8 +24,8 @@ class Style:
     def setup(self, task: Task, services) -> list[Episode]:
         return tasks.setup(task, services)
 
-    async def play(self, eps: list[Episode], services, turn) -> list[Episode]:
-        return await tasks.play(eps, services, turn)
+    async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
+        return tasks.next_delivery(ep)
 
     async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
         return await score.score(ep, services, tally, twin)
