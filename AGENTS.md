@@ -189,8 +189,8 @@ Jimmy's approval; free usage does not.
 
 Use Google's CLIs through their skills, or a Google-hosted MCP server if connected:
 `colab` (`colab-operator` skill) for Colab, `gwscli` (`gwscli` skill) for Drive and other
-Workspace data. No direct REST calls or `rclone`: Google requires agents to use these
-from February 2027. Signing in is Jimmy's to do.
+Workspace data. No direct REST calls: Google requires agents to use these from
+February 2027.
 
 The code and history before the restart are in the private
 `haowjy/writing-assistant-archive` repository, and a bundle of every ref is in
