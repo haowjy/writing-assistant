@@ -216,8 +216,9 @@ is not an `error`, or the newest of all when every row is one. A row with `error
 scorer raised, which is what a judge that was down leaves; `score --pending` scores those
 episodes again. So a re-score that fails hides no good row and unsettles no group, and the
 row shown may come from older scoring code than the latest attempt: read its `code`. Each
-re-score of a run adds about as much as its rows took the first time (measured: 2.1 MB on
-the 3.1 MB `base-1a-gemma-4-26b` store); nothing removes superseded rows. A profile is a
+re-score of a run adds about as much as its rows took the first time (measured: 0.4 MB on
+the 1.4 MB `base-1a-gemma-4-26b` store, 1.6 MB on the 3.2 MB `base-3-gemma-4-26b`; a row's
+judge items are stored packed together); nothing removes superseded rows. A profile is a
 name in one machine's `models.toml`, so `report` says so under a group whose rows were
 scored by two judges for one use; it does not yet keep their metrics apart. Runs, task rows
 and model outputs are not committed.

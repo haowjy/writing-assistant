@@ -107,8 +107,9 @@ _STEPS = ((
         id TEXT PRIMARY KEY, ep_id TEXT NOT NULL, profile TEXT NOT NULL, final INT NOT NULL, scored_at TEXT NOT NULL,
         row TEXT NOT NULL)""",
     "CREATE INDEX scores_episode ON scores (ep_id, profile, final, scored_at)",
-    # score: the id of the score row the item counts in; n: its place among that row's items
-    "CREATE TABLE judgments (score TEXT NOT NULL, n INTEGER NOT NULL, row TEXT NOT NULL, PRIMARY KEY (score, n))",
+    # The judge items that count in one score row (`score` is its id), in the order asked,
+    # packed together as a checkpoint's body is: one row's items repeat each other's evidence.
+    "CREATE TABLE judgments (score TEXT PRIMARY KEY, body BLOB NOT NULL)",
 ))
 FORMAT = len(_STEPS)
 _SEGMENT = ("seg, parent, parent_events, parent_calls, ep_id, task_id, suite, split, condition, baseline_of, "
@@ -423,10 +424,10 @@ class Store:
                 listed = self.db.execute("SELECT ep_id FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
                 self._copy_chain(name, into, bool(listed))
                 if listed:
-                    for id_, profile, row in self.db.execute(
-                            "SELECT id, profile, row FROM scores WHERE ep_id = ? ORDER BY rowid", listed).fetchall():
-                        into._add_score(profile, row, [j for (j,) in self.db.execute(
-                            "SELECT row FROM judgments WHERE score = ? ORDER BY n", (id_,)).fetchall()])
+                    for profile, row, items in self.db.execute(
+                            "SELECT s.profile, s.row, j.body FROM scores s LEFT JOIN judgments j ON j.score = s.id "
+                            "WHERE s.ep_id = ? ORDER BY s.rowid", listed).fetchall():
+                        into._add_score(profile, row, items)
 
     def rollouts(self, source: str, at: int | None = None, group: str | None = None) -> list[str]:
         """`ep_id` of the stored rollouts of the episode named `source`, open ones included:
@@ -445,25 +446,26 @@ class Store:
         (`judgments` whose `scored` is the row's `ep_id`, in the order given), all in one
         transaction. A row carries `ep_id` and `scored_at`. Nothing is replaced: the rows an
         episode had stay, and `_current` says which is read."""
-        behind: dict[str, list[str]] = {}
+        behind: dict[str, list[dict[str, Any]]] = {}
         for j in judgments:
-            behind.setdefault(j["scored"], []).append(json.dumps(j, ensure_ascii=False))
+            behind.setdefault(j["scored"], []).append(j)
         with self._write():
             for row in rows:
-                self._add_score(profile, json.dumps(row, ensure_ascii=False), behind.get(row["ep_id"], []))
+                items = behind.get(row["ep_id"])
+                self._add_score(profile, json.dumps(row, ensure_ascii=False), _pack(items) if items else None)
 
-    def _add_score(self, profile: str, text: str, judgments: list[str]) -> None:
-        """One row arriving, as its JSON text, with its judge items as JSON texts. Its id,
-        episode, time and whether it is final are worked out from the text here, never taken
-        from the file it came from, and a row already held is skipped with its items."""
+    def _add_score(self, profile: str, text: str, items: bytes | None) -> None:
+        """One row arriving, as its JSON text, with its judge items packed (None: it has
+        none). Its id, episode, time and whether it is final are worked out from the text
+        here, never taken from the file it came from, and a row already held is skipped with
+        its items."""
         row = json.loads(text)
         id_ = hashlib.sha256(f"{profile}\0{text}".encode()).hexdigest()[:32]
         added = self.db.execute(
             "INSERT OR IGNORE INTO scores (id, ep_id, profile, final, scored_at, row) VALUES (?, ?, ?, ?, ?, ?)",
             (id_, row["ep_id"], profile, "error" not in row, row["scored_at"], text))
-        if added.rowcount:
-            self.db.executemany("INSERT INTO judgments (score, n, row) VALUES (?, ?, ?)",
-                                [(id_, n, j) for n, j in enumerate(judgments)])
+        if added.rowcount and items:
+            self.db.execute("INSERT INTO judgments (score, body) VALUES (?, ?)", (id_, items))
 
     def profiles(self) -> list[str]:
         """The judge profiles this store holds score rows under."""
@@ -482,10 +484,10 @@ class Store:
         well: everything `copy` would carry."""
         tests = {"s.profile": profile, "s.ep_id": scored}
         rows = self.db.execute(
-            "SELECT j.row FROM judgments j JOIN scores s ON s.id = j.score WHERE " + ("1" if superseded else _current("s"))
-            + "".join(f" AND {c} = ?" for c, v in tests.items() if v is not None) + " ORDER BY s.rowid, j.n",
+            "SELECT j.body FROM judgments j JOIN scores s ON s.id = j.score WHERE " + ("1" if superseded else _current("s"))
+            + "".join(f" AND {c} = ?" for c, v in tests.items() if v is not None) + " ORDER BY s.rowid",
             tuple(v for v in tests.values() if v is not None))
-        return [json.loads(r[0]) for r in rows.fetchall()]
+        return [item for r in rows.fetchall() for item in _unpack(r[0])]
 
     def groups(self, profile: str, group: str | None = None) -> dict[str, dict[str, Any]]:
         """Every group of rollouts stored here, or the one named: group id -> `size` (the
@@ -565,11 +567,11 @@ class Store:
 
 # -- a checkpoint's body ---------------------------------------------------------------------
 
-def _pack(body: dict[str, Any]) -> bytes:
+def _pack(body: Any) -> bytes:
     return zlib.compress(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 6)
 
 
-def _unpack(blob: bytes) -> dict[str, Any]:
+def _unpack(blob: bytes) -> Any:
     return json.loads(zlib.decompress(blob))
 
 
