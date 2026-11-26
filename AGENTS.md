@@ -53,6 +53,29 @@ generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
   keep their limits whatever `--max-tokens` a run has; otherwise the temperature is the
   task kind's (`meta["temperature"]`) or 0.7, and the limits are the run's.
 
+A conversation among any number of seats is one shared step, `suites/converse.py`
+(`converse(ep, last_reply, hears=)`, its place in `state["converse"]`): seats speak in table
+order; every line is a `say` event by its seat (the opening too, and a model seat's reply),
+visible to the seats that hear it; a model seat is delivered the others' lines it was shown
+since its last delivery, and one that heard nothing is passed over; a scripted seat speaks
+inside the step from `state["script"]` (`suites/script.py`, one table per episode, taken in
+speaking order). It ends at `max_turns` (lines by all seats, the opening included), when a
+seat calls `conversation_end`, when a scripted seat finds the script empty, or when every
+seat was passed over; `state["converse"]["ended"]` says which. A delivery to a seat that
+is not the subject's that leaves the episode truncated fails it with `<seat>: <reason>`, so
+its row is `skipped`. A kind built on the step logs no other `say` event. Only round robin
+is built; a `hears` that changes mid-conversation and an `apply` hook for what a line does
+besides being said are not. Suite 1a keeps its own two schedules (`tasks_1a.next_line`,
+`next_dm`) until it goes. A module file directly under `suites/` is shared by every suite
+package and imports none (`tests/test_layering.py`).
+
+`suites/madeup/` is a placeholder suite with one kind, `converse`, built on that step
+(seats, each with a cast name, a brief, who hears it, the restricted files it may read; a
+request; a turn budget; scored with no judge on turns, the subject's lines and words, and how
+it ended). It is what later phases play until the benchmark's new kinds exist; its rows
+hold no book text and it declares no `text_fields`. It sets a task up at a position
+(`situate`) or from a row alone.
+
 A store takes an episode's `meta` once, when it first saves it: bind and stamp an episode
 before its first `Store.append`. `Runner.bind` is the one place a run's stamps are put
 (`endpoint`, `model`, `cast`, `max_tokens`, `code`, `run_id`, `round`), and `Runner.rollouts` adds a

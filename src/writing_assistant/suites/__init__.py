@@ -6,7 +6,9 @@ the next delivery. `play()` here is the only loop over it, and makes each delive
 `Turn`; `run.Binding` binds the drivers to that, so suites never import drivers. Because the step
 reads its place from the episode (`ep.state`, the log), an episode copied when a delivery
 returns continues, through the same `play()`, exactly as the original would have. A suite
-package never imports another suite package.
+package never imports another suite package; a module file directly in this directory
+(`script.py`, the scripted seats' table; `converse.py`, the conversation step for any number
+of seats) is shared by every suite package and imports none.
 
 - A seat (an entry in `Episode.actors`) is `scripted`, which the suite's step speaks for,
   or names who plays it by a cast name: `SUBJECT` for the model under test, any other name
@@ -296,7 +298,7 @@ def file_output(ep: Episode, actor: str, path: str) -> str:
 
 
 # Last, so suite packages can import SUBJECT, Tally and one_message from here.
-from writing_assistant.suites import style  # noqa: E402
+from writing_assistant.suites import madeup, style  # noqa: E402
 from writing_assistant.suites.world import suite_1a  # noqa: E402
 
-SUITES: dict[str, Suite] = {"1a": suite_1a, "3": style.suite}
+SUITES: dict[str, Suite] = {"1a": suite_1a, "3": style.suite, "madeup": madeup.suite}

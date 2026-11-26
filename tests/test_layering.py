@@ -52,7 +52,10 @@ def test_imports_point_down():
         for target in _imports(path):
             if target[0] == layer:
                 # Within a layer: suites/<a> never imports suites/<b>; no provider imports gateway.
-                if layer == "suites" and len(src) > 2 and len(target) > 1 and target[1] != src[1]:
+                # A module file directly under suites/ is shared: every suite package may
+                # import it, and it imports no suite package (`__init__` registers them all).
+                if layer == "suites" and len(target) > 1 and target[1] != src[1] and src[1] != "__init__" \
+                        and (PKG / "suites" / target[1]).is_dir():
                     bad.append(f"{'/'.join(src)} -> {'.'.join(target)}")
                 if src[:2] == ("search", "providers") and target[:2] == ("search", "gateway"):
                     bad.append(f"{'/'.join(src)} -> {'.'.join(target)}")
