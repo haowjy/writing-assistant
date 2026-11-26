@@ -1,4 +1,0 @@
-visibility = "exported"
-
-[targets.".agy"]
-native-hook = "agy.json"

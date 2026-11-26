@@ -4,6 +4,10 @@ url = "https://github.com/haowjy/meridian-base"
 [dependencies.meridian-dev-workflow]
 url = "https://github.com/haowjy/meridian-dev-workflow"
 
+[dependencies.google-colab-cli]
+only_skills = true
+url = "https://github.com/googlecolab/google-colab-cli"
+
 [settings]
 targets = [".codex", ".opencode", ".pi", ".claude", ".agy"]
 models_cache_ttl_hours = 24
