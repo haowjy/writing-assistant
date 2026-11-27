@@ -131,6 +131,7 @@ from writing_assistant.cli.common import close, episode_row, folder_files, playe
 from writing_assistant.cli.library import add_parser as add_library_parser
 from writing_assistant.cli.library import cmd_library
 from writing_assistant.cli.report import cmd_report
+from writing_assistant.cli.status import cmd_status
 from writing_assistant.cli.view import cmd_view
 from writing_assistant.cli.world import run_world, score_world
 from writing_assistant.corpus import Corpus
@@ -511,6 +512,11 @@ def parser() -> argparse.ArgumentParser:
     rp.add_argument("--where")
     rp.add_argument("--baseline")
 
+    ss = sub.add_parser("status", help="what is running or last ran, how far it got, what failed, and what is next")
+    status_of = ss.add_mutually_exclusive_group(required=True)
+    status_of.add_argument("--run", help="a run directory")
+    status_of.add_argument("--world", help="a library world")
+
     g = sub.add_parser("guardrails", help="IFEval, HumanEval+ and BFCL for one endpoint (scripts/guardrails.sh)")
     g.add_argument("--endpoint", required=True)
     g.add_argument("--run", help="store guardrails.json in this run directory")
@@ -540,7 +546,7 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
-COMMANDS = {"run": cmd_run, "situate": cmd_situate, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
+COMMANDS = {"run": cmd_run, "situate": cmd_situate, "score": cmd_score, "report": cmd_report, "status": cmd_status, "guardrails": cmd_guardrails,
             "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view, "library": cmd_library}
 
 
