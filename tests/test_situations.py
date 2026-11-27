@@ -187,13 +187,15 @@ def test_a_situation_copied_into_another_store_is_one_there_and_plays_by_name(no
 MODELS = {"gemma-4-26b": "gemma-4-26B_q4_0-it.gguf", "qwen3.5-9b": "Qwen3.5-9B-Q8_0.gguf", "qwen3-32b-mini": "qwen3-32b"}
 
 
-def test_one_situation_is_played_by_whichever_cast_the_run_names_and_says_who_played_each_seat(notes, tmp_path, capsys):
+def test_one_situation_is_played_by_whichever_cast_the_run_names_and_says_who_played_each_seat(notes, tmp_path, capsys, monkeypatch):
     """Three runs of one stored situation: two subjects against the benchmark cast, and one
     subject with itself in the other seat. A seat keeps its cast name in every one, each
-    episode is stamped with the models that played, the reviewer keeps the situation's
+    episode is stamped with the models that played (and whether an endpoint's recorded
+    thinking is a trace or a summary, when models.toml says), the reviewer keeps the situation's
     limits whatever `--max-tokens` the run has, and `report --baseline` compares only the
     runs whose reviewer was the same model."""
     [name] = notes.situate("sel", payload={"review": True})
+    monkeypatch.setitem(notes.llm.endpoints["qwen3.5-9b"], "thinking", "summary")  # what models.toml says its reasoning is
     a, b, own = tmp_path / "a", tmp_path / "b", tmp_path / "own"
     notes.play(f"{name}@0", a, "--cast", "bench", "--max-tokens", "1000")
     notes.play(f"{name}@0", b, "--cast", "bench", "--max-tokens", "2000", endpoint="qwen3.5-9b")
@@ -206,7 +208,7 @@ def test_one_situation_is_played_by_whichever_cast_the_run_names_and_says_who_pl
     for ep, subject, counterpart in ((in_a, "gemma-4-26b", "qwen3-32b-mini"), (in_b, "qwen3.5-9b", "qwen3-32b-mini"),
                                      (in_own, "gemma-4-26b", "gemma-4-26b")):
         assert {seat: ep.meta["cast"][cast_name] for seat, cast_name in ep.actors.items()} == {
-            "writer": {"endpoint": subject, "model": MODELS[subject]},
+            "writer": {"endpoint": subject, "model": MODELS[subject]} | ({"thinking": "summary"} if subject == "qwen3.5-9b" else {}),
             "reviewer": {"endpoint": counterpart, "model": MODELS[counterpart]}}
     infos = [json.loads((run / "run.json").read_text()) for run in (a, b, own)]
     assert len({info["id"] for info in infos}) == 3 and infos[0]["cast"] == infos[1]["cast"] != infos[2]["cast"]

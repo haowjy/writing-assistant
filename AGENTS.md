@@ -51,7 +51,11 @@ Two rules live in `run/`:
   or any model called. The resolved cast (name, endpoint, model) is in run.json's identity
   (without `subject`, which `endpoint` and `model` already are) and on every episode a run
   binds (`meta["cast"]`, `subject` included); who really answered a call is
-  `CallRecord.endpoint`. `report --baseline` matches the baseline's rollouts of a checkpoint
+  `CallRecord.endpoint`. An endpoint's entry there also carries `thinking` (`trace` or
+  `summary`) when models.toml gives the endpoint one: whether recorded reasoning is the
+  model's own or a host's summary is not in a call record, and a judge that reads a turn's
+  thinking takes it from the stamp. No endpoint is marked yet. Thinking is still never
+  replayed to a model and never counted as the reply. `report --baseline` matches the baseline's rollouts of a checkpoint
   whatever group they are in (a group is one run's), and refuses two runs whose episodes used a cast
   name, other than `subject`, played by different models; the page's side-by-side screen
   does not check.

@@ -13,6 +13,7 @@ def test_models_toml_parses_and_judges_name_endpoints():
         assert ep["kind"] in KINDS, name
         assert ep["model"], name
         assert ep["kind"] == "anthropic" or ep["base_url"], name
+        assert ep.get("thinking") in (None, "trace", "summary"), name
     for profile, uses in cfg["judges"].items():
         for use, endpoint in uses.items():
             assert endpoint in endpoints, f"judges.{profile}.{use} -> unknown endpoint {endpoint!r}"

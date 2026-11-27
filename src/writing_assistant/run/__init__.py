@@ -61,8 +61,13 @@ ERRORS_FILE = "errors.jsonl"
 
 def resolved(endpoints: dict[str, dict[str, Any]], cast: dict[str, str]) -> dict[str, dict[str, str]]:
     """A cast as it is recorded: each name with its endpoint and that endpoint's model, as a
-    judge's stamp has them, so a comparison reads stores and no machine's models.toml."""
-    return {name: {"endpoint": endpoint, "model": endpoints[endpoint]["model"]} for name, endpoint in sorted(cast.items())}
+    judge's stamp has them, so a comparison reads stores and no machine's models.toml. With
+    them, what the endpoint's recorded thinking is when models.toml says (`thinking`:
+    `trace` or `summary`): a call record does not say, and a judge that reads a turn's
+    thinking needs to know which it was given."""
+    return {name: {"endpoint": endpoint, "model": endpoints[endpoint]["model"]}
+            | ({"thinking": endpoints[endpoint]["thinking"]} if "thinking" in endpoints[endpoint] else {})
+            for name, endpoint in sorted(cast.items())}
 
 
 def now() -> str:
