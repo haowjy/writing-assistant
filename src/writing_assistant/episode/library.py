@@ -246,7 +246,7 @@ class Library:
 
     def restore(self, world: str) -> Path:
         """Put the newest snapshot that verifies in the world's place and return where the
-        file that was there went (`<world>.db.damaged-<utc>`). Every other user of the
+        file that was there went (`<world>.db.replaced-<utc>`). Every other user of the
         world is kept out, and waited for, by the world's lock.
 
         A world's `-wal` file holds what was committed and not yet folded into the world
@@ -268,7 +268,7 @@ class Library:
                 raise Damaged(f"{world}: no snapshot of it verifies ({len(self.snapshots(world))} in {self.snapshots_dir}); "
                               "the world file is left as it is")
             _settle(path)
-            aside = path.with_name(f"{path.name}.damaged-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:4]}")
+            aside = path.with_name(f"{path.name}.replaced-{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:4]}")
             for suffix in SIDE_FILES:
                 if (side := path.with_name(path.name + suffix)).exists():
                     side.rename(aside.with_name(aside.name + suffix))

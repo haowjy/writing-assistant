@@ -83,8 +83,9 @@ def _push(lib: Library, args: argparse.Namespace) -> int:
         sys.exit(f"--run {args.run}: no run directory with a {STORE_FILE} there")
     with Store(Path(args.run) / STORE_FILE, readonly=True) as store:
         added = lib.push(store, args.names or None)
-    print(f"{args.run}: added " + ", ".join(f"{n} {what}" for what, n in added.items())
-          if added else f"{args.run}: no closed episode to push")
+    print(f"{args.run}: no closed episode to push" if not added
+          else f"{args.run}: nothing to add: its world already holds every closed episode here" if not any(added.values())
+          else f"{args.run}: added " + ", ".join(f"{n} {what}" for what, n in added.items()))
     return 0
 
 
@@ -101,8 +102,10 @@ def _snapshot(lib: Library, args: argparse.Namespace) -> int:
 
 def _restore(lib: Library, args: argparse.Namespace) -> int:
     aside = lib.restore(args.name)
-    print(f"{lib.path(args.name)}: restored from its newest snapshot that verifies; the file that was there is {aside}. "
-          "Push again from the run directories that pushed since that snapshot")
+    print(f"{lib.path(args.name)}: now the newest snapshot of it that verifies. The file that was there is kept as {aside} "
+          "(delete it once you do not need it). Rollouts and score rows added to the world after that snapshot are "
+          "not in it: `wa-bench library push --run DIR`, for each run directory that played since, puts the rollouts "
+          f"back, and `wa-bench score --world {args.name}` then judges them again")
     return 0
 
 

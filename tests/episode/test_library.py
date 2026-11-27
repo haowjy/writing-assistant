@@ -292,7 +292,7 @@ def test_a_damaged_world_fails_verify_is_never_snapshotted_and_is_restored_from_
             with pytest.raises(Damaged):
                 library_module._verify(good)
             aside = lib.restore("sel")
-            assert aside.name.startswith("sel.db.damaged-") and aside.stat().st_size == (0 if damage == "emptied" else size)
+            assert aside.name.startswith("sel.db.replaced-") and aside.stat().st_size == (0 if damage == "emptied" else size)
             lib.verify("sel")
             assert rows(lib.path("sel")) == rows(old) != kept
             assert lib.push(b)["episodes"] == 2 and lib.push(c)["episodes"] == 2

@@ -322,8 +322,10 @@ position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--ro
   whole takes 43 s). `snapshot` verifies, copies with SQLite's backup, verifies the copy and
   keeps the two newest under `snapshots/`. `restore` takes the world's lock exclusively,
   puts the newest snapshot that verifies in the world's place and keeps the file that was
-  there beside it (`.damaged-<time>`); what was pushed after that snapshot is pushed again
-  from the run directories that hold it (`library push --run DIR`). `<world>.lock` is held
+  there beside it (`.replaced-<time>`; it may be sound, restore does not ask). Rollouts and
+  score rows added after that snapshot are not in the restored world: the rollouts are
+  pushed again from the run directories that hold them (`library push --run DIR`) and
+  `score --world` then judges them again. `<world>.lock` is held
   shared by every reader and writer for as long as its connection is open
   (`Library.open`, `Library.writing`: there is no other way in) and exclusively by a
   restore, so keep a `with lib.open(...)` block as short as the reading.
