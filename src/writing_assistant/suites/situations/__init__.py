@@ -7,6 +7,7 @@ judge. A row holds no book text, so the suite declares no `text_fields`.
     payload = {
         "request": str,                 # the opening line
         "opening": seat,                # who says it (default: the first seat)
+        "to": [seat, ...],              # the seats it is addressed to (default: everyone who hears the speaker)
         "max_turns": int,               # lines spoken by all seats together, the request included
         "seats": {seat: {               # in table order, which is speaking order
             "cast": "scripted" | "subject" | another cast name,
@@ -16,7 +17,7 @@ judge. A row holds no book text, so the suite declares no `text_fields`.
             "tools": [name, ...],       # default: the workspace tools and conversation_end
             "sampling": {...},          # temperature, max_tokens, max_steps of a model seat
         }},
-        "script": [{"say": str}, ...],  # the scripted seats' lines, in the order they come to speak
+        "script": [{"say": str, "to": [seat, ...]?}, ...],  # the scripted seats' lines, in the order they come to speak
     }
 
 Set up at a position (`wa-bench situate`), the seats work on that episode's files; a
@@ -41,8 +42,8 @@ ABOUT = {"converse": KindAbout(
     arms={"base": "Every seat as the row describes it."},
 )}
 METRIC_ABOUT = {
-    "turns": "Lines spoken by all seats together, the opening request included.",
-    "subject_lines": "Lines the model under test spoke, over all the seats it held.",
+    "turns": "Turns taken by all seats together, the opening request included.",
+    "subject_lines": "Lines the model under test spoke, to everyone or to named seats, over all the seats it held.",
     "subject_words": "Words in those lines.",
     "ended_by_": "1 when the conversation ended that way: a seat called conversation_end, the turn budget ran out, "
                  "the script ran out, or nobody had anything left to answer.",
@@ -75,8 +76,8 @@ class Situations:
             for path in restricted.keys() & set(s.get("reads", [])):  # any other path is open to every seat already
                 restricted[path].append(seat)
         ep.state["script"] = script.script(p.get("script", []))
-        ep.state["converse"] = converse.conversation(list(seats), {"seat": p.get("opening", next(iter(seats))), "text": p["request"]},
-                                                     p["max_turns"])
+        opening = {"seat": p.get("opening", next(iter(seats))), "text": p["request"]} | ({"to": p["to"]} if "to" in p else {})
+        ep.state["converse"] = converse.conversation(list(seats), opening, p["max_turns"])
         return [ep]
 
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:

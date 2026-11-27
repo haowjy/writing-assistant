@@ -56,11 +56,16 @@ generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
 
 A conversation among any number of seats is one shared step, `suites/converse.py`
 (`converse(ep, last_reply, hears=)`, its place in `state["converse"]`): seats speak in table
-order; every line is a `say` event by its seat (the opening too, and a model seat's reply),
-visible to the seats that hear it; a model seat is delivered the others' lines it was shown
-since its last delivery, and one that heard nothing is passed over; a scripted seat speaks
-inside the step from `state["script"]` (`suites/script.py`, one table per episode, taken in
-speaking order). It ends at `max_turns` (lines by all seats, the opening included), when a
+order; every line is a `say` event by its seat (the opening too, and a model seat's reply;
+an empty reply logs none), visible to the seats that hear it; a model seat is delivered the
+others' lines it was shown since its last delivery, and one that heard nothing is passed
+over; a scripted seat speaks inside the step from `state["script"]` (`suites/script.py`,
+one table per episode, taken in speaking order). A line may be addressed: `data["to"]`
+names its listeners and only they and the speaker see it, whatever `hears` says (a model
+seat's `say_to(seats, text)` tool during its turn, or `to` on a script entry or the
+opening); a listener is delivered it as `<speaker> (to <names>): <text>`. The reply the
+step is given belongs to the seat the latest `deliver` went to. It ends at `max_turns`
+(turns by all seats: the opening, each scripted line, each delivery answered), when a
 seat calls `conversation_end`, when a scripted seat finds the script empty, or when every
 seat was passed over; `state["converse"]["ended"]` says which. A delivery to a seat that
 is not the subject's that leaves the episode truncated fails it with `<seat>: <reason>`, so

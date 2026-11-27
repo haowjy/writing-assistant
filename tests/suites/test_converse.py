@@ -16,12 +16,16 @@ from writing_assistant.suites.situations import suite
 CAST = {"counterpart": "other-endpoint"}
 
 
-def talk(seats: dict[str, dict], max_turns: int, lines: int = 0) -> Task:
+def talk(seats: dict[str, dict], max_turns: int, lines: int = 0, **payload) -> Task:
     """A `converse` row: `seats` maps seat -> its cast name, or a dict with more of its fields."""
     seats = {name: {"brief": f"You are {name}."} | (s if isinstance(s, dict) else {"cast": s}) for name, s in seats.items()}
     return Task("talk", "situations", "converse", "dev", [], {
         "request": "Plan the crossing.", "max_turns": max_turns, "seats": seats,
-        "script": [{"say": f"scripted line {n}"} for n in range(lines)]})
+        "script": [{"say": f"scripted line {n}"} for n in range(lines)]} | payload)
+
+
+def say_to(seats: list[str], text: str) -> dict:
+    return {"name": "say_to", "arguments": {"seats": seats, "text": text}}
 
 
 def numbered():
@@ -88,6 +92,60 @@ async def test_a_seat_that_has_heard_nothing_is_passed_over(fake_turn):
     assert (deliveries(ep), ep.state["converse"]["ended"], ep.status) == ([], "silence", "completed")
 
 
+async def test_an_addressed_line_reaches_its_listeners_and_its_speaker_and_nobody_else(fake_turn):
+    """The opening, a model seat's `say_to` and a script entry, each addressed. bo hears nobody's
+    public lines here (`heard_by`), and is still told what ana says to it."""
+    seats = {"gm": "scripted", "ana": {"cast": SUBJECT, "heard_by": ["gm", "cy"]}, "bo": "counterpart", "cy": "counterpart"}
+    task = talk(seats, 6, to=["ana"], script=[{"say": "A word, cy.", "to": ["cy", "ana"]}])
+    refused = [say_to(["zed"], "x"), say_to(["ana"], "x"), say_to([], "x")]
+    turn = fake_turn({"subject-endpoint": [{"tool_calls": [*refused, say_to(["bo", "bo"], "Hold the rope.")]}, "We cross at dawn.", "Agreed."],
+                      "other-endpoint": ["bo answers", "cy answers"]}, converse.TOOLS, CAST)
+    ep = await played(task, turn)
+    said = [(e.actor, e.data["text"], e.data.get("to"), sorted(e.visible_to)) for e in ep.events if e.kind == "say"]
+    assert said == [("gm", "Plan the crossing.", ["ana"], ["ana", "gm"]),
+                    ("ana", "Hold the rope.", ["bo"], ["ana", "bo"]),
+                    ("ana", "We cross at dawn.", None, ["ana", "cy", "gm"]),
+                    ("bo", "bo answers", None, ["ana", "bo", "cy", "gm"]),
+                    ("cy", "cy answers", None, ["ana", "bo", "cy", "gm"]),
+                    ("gm", "A word, cy.", ["cy", "ana"], ["ana", "cy", "gm"]),
+                    ("ana", "Agreed.", None, ["ana", "cy", "gm"])]
+    assert deliveries(ep) == [("ana", "gm (to ana): Plan the crossing."),
+                              ("bo", "ana (to bo): Hold the rope."),
+                              ("cy", "ana: We cross at dawn.\n\nbo: bo answers"),
+                              ("ana", "bo: bo answers\n\ncy: cy answers\n\ngm (to cy, ana): A word, cy.")]
+    errors = [e.data["result"].get("error") for e in ep.events if e.kind == "tool"]
+    assert errors == ["no seat named zed; the seats are gm, ana, bo, cy", "a seat cannot address itself", "it is addressed to nobody", None]
+    assert (ep.state["converse"]["turns"], ep.state["converse"]["ended"]) == (6, "turn_budget")
+
+
+async def test_two_seats_that_only_whisper_to_each_other_stop_at_the_turn_budget(fake_turn):
+    """Each replies "" after its `say_to`, so no public line is ever logged after the opening;
+    turns are still counted."""
+    def whisper(messages, tools, endpoint):
+        mine = "ana" if endpoint == "subject-endpoint" else "bo"
+        return "" if messages[-1]["role"] == "tool" else {"tool_calls": [say_to(["bo" if mine == "ana" else "ana"], f"from {mine}")]}
+
+    turn = fake_turn({"subject-endpoint": [whisper] * 20, "other-endpoint": [whisper] * 20}, converse.TOOLS, CAST)
+    ep = await played(talk({"ana": SUBJECT, "bo": "counterpart"}, 7), turn)
+    assert lines(ep) == [("ana", "Plan the crossing."), *[(("bo", "from bo"), ("ana", "from ana"))[n % 2] for n in range(6)]]
+    assert deliveries(ep)[1:3] == [("ana", "bo (to ana): from bo"), ("bo", "ana (to bo): from ana")]
+    assert (ep.state["converse"]["turns"], ep.state["converse"]["ended"], ep.status) == (7, "turn_budget", "completed")
+
+
+async def test_one_endpoint_playing_three_seats_keeps_three_conversations(fake_turn):
+    """Each call's prompt is its own seat's brief, the deliveries to that seat and that seat's
+    replies: nothing another seat was sent or said outside what it was delivered."""
+    turn = fake_turn([numbered()] * 20, converse.TOOLS)
+    ep = await played(talk({"ana": SUBJECT, "bo": SUBJECT, "cy": SUBJECT}, 10), turn)
+    assert {c.endpoint for c in ep.calls} == {"subject-endpoint"} and {c.actor for c in ep.calls} == {"bo", "cy", "ana"}
+    sent: dict[str, list[dict]] = {seat: [{"role": "system", "content": f"You are {seat}."}] for seat in ep.actors}
+    for call in ep.calls:
+        delivered = next(e.data["message"] for e in ep.events if e.kind == "deliver" and e.data["turn_idx"] == call.turn_idx)
+        sent[call.actor].append({"role": "user", "content": delivered})
+        assert [(m["role"], m["content"]) for m in call.messages] == [(m["role"], m["content"]) for m in sent[call.actor]]
+        sent[call.actor].append({"role": "assistant", "content": call.response})
+
+
 async def test_a_conversation_of_scripted_seats_ends_when_the_script_does(fake_turn):
     ep = await played(talk({"gm": "scripted", "crow": "scripted"}, 50, lines=3), fake_turn([]))
     assert lines(ep) == [("gm", "Plan the crossing."), ("crow", "scripted line 0"), ("gm", "scripted line 1"), ("crow", "scripted line 2")]
@@ -116,8 +174,10 @@ async def test_another_seat_cut_off_fails_the_episode_so_the_subject_is_not_scor
 async def test_a_conversation_of_eight_saved_at_any_delivery_goes_on_as_the_original_did(fake_turn, tmp_path):
     """Killed after any delivery returned and continued from the store, the conversation asks
     the models the same things and ends as the same episode: the step's place is in the
-    episode, and the scripted lines it spoke between two deliveries were saved with it."""
-    replies = [f"reply {n}" for n in range(40)]
+    episode, and the scripted lines it spoke between two deliveries were saved with it. Every
+    third turn says a line to the gm with `say_to` before it replies, which puts a line on the
+    log in the middle of the turn."""
+    replies = [r for n in range(40) for r in ([{"tool_calls": [say_to(["gm"], f"aside {n}")]}] if n % 3 == 0 else []) + [f"reply {n}"]]
     killed = []
 
     async def finish(store, ep, turn, copies=False):
