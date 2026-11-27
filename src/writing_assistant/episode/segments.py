@@ -376,6 +376,10 @@ class Store:
         end, or a start): one lookup, for a caller that has the name and not the listing."""
         return bool(self.db.execute(f"SELECT 1 FROM episodes e WHERE e.ep_id = ? AND {_CLOSED}", (name,)).fetchone())
 
+    def root_of(self, name: str) -> str:
+        """The `ep_id` of the first segment in the episode's chain: in a world, the world."""
+        return self.db.execute("SELECT ep_id FROM segments WHERE seg = ?", (self.chain(name)[0],)).fetchone()[0]
+
     def starts(self) -> list[str]:
         """`ep_id` of the episodes stored as starts (`add_starts`), in the order stored."""
         return [r[0] for r in self.db.execute("SELECT ep_id FROM episodes WHERE start ORDER BY rowid").fetchall()]

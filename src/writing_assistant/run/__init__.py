@@ -187,10 +187,10 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
     as a played task's are."""
     held = home or store
     with held.reading():
-        if at not in held.names() and at not in held.starts():
+        if not held.is_closed(at):  # one lookup: a world may hold a hundred thousand names
             raise LookupError(f"{held.path}: no closed episode named {at!r} to set a task up at")
         position = held.load(at)
-        world = held.load(held.chain(at)[0]).ep_id
+        world = held.root_of(at)
     task = Task(task_id=name or f"{world}/{uuid.uuid4().hex[:12]}", suite=suite, kind=kind, split=position.split,
                 work_ids=sorted(works_in(position.state)), payload=payload)
     with local_only(position.split == LOCAL_DEV):

@@ -53,6 +53,7 @@ from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from writing_assistant.episode.model import Episode
 from writing_assistant.episode.segments import Store, Unreadable
@@ -196,7 +197,7 @@ class Library:
                 raise ValueError(f"{src.path}: {', '.join(still_open)} cannot be pushed: only a closed episode this store "
                                  "lists goes to the library, and nothing there is ever continued")
             roots = {name: src.chain(name)[0] for name in names}
-            world = src.db.execute("SELECT ep_id FROM segments WHERE seg = ?", (roots[names[0]],)).fetchone()[0]
+            world = src.root_of(names[0])
             with self.writing(world) as store:
                 root = _root(store)[0]
                 if foreign := [name for name, seg in roots.items() if seg != root]:
@@ -224,7 +225,7 @@ class Library:
             tmp = self.snapshots_dir / f".{world}.{uuid.uuid4().hex[:8]}.tmp"
             try:
                 # SQLite's backup: one state of the file, whatever is pushed while it runs.
-                with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=60)) as src, \
+                with closing(sqlite3.connect(f"file:{quote(str(path))}?mode=ro", uri=True, timeout=60)) as src, \
                         closing(sqlite3.connect(tmp)) as dst:
                     src.backup(dst)
                     dst.execute("PRAGMA journal_mode = DELETE")  # the copy took the world's write-ahead mode with its header
@@ -273,7 +274,7 @@ class Library:
                     side.rename(aside.with_name(aside.name + suffix))
             tmp = path.with_name(f".{world}.{uuid.uuid4().hex[:8]}.tmp")
             try:
-                with closing(sqlite3.connect(f"file:{good}?mode=ro", uri=True)) as src, closing(sqlite3.connect(tmp)) as dst:
+                with closing(sqlite3.connect(f"file:{quote(str(good))}?mode=ro", uri=True)) as src, closing(sqlite3.connect(tmp)) as dst:
                     src.backup(dst)
                     dst.execute("PRAGMA journal_mode = WAL")
                 os.link(path, aside)  # the name always points at a file: the old one until the new one replaces it
