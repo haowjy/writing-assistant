@@ -136,7 +136,9 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
             short = _missing(store, sources, groups, runners)
             if not short or attempt == 2:
                 break
-            print(f"{run_dir}: {sum(map(len, short.values()))} rollouts to play in {len(short)} groups", flush=True)
+            asked, left = sum(w.rollouts for w in sources), sum(map(len, short.values()))
+            print(f"{run_dir}: {left} rollouts to play in {len(short)} groups ({asked - left} of the {asked} asked for are "
+                  "closed here)", flush=True)
 
             async def member(runner: Runner, ep: Episode, store: Store = store) -> None:
                 async with slots:

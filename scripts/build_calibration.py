@@ -19,7 +19,9 @@ stores findings that hold references and no text. Each scored finding becomes a 
 item: the question states the judge's score and what it cited, the evidence is the record
 the judge read, built again from the stored rollout (`rollout_evidence`), and a "yes" label
 agrees with the score. Its share is spread over the scores 0, 1 and 2. `--worlds` reads
-library worlds, where such rollouts live; `add-judge` does not take these files.
+library worlds, where such rollouts live; `add-judge` does not take these files. An item
+from a `local_dev` rollout holds personal text like the world it came from and says so
+(`source.split`); it stays on this machine with the other label files.
 
 Each line is a `label_ui.py` item plus `answers` ({judge model: answer}; `model` is the
 first judge's), `judge` (its stamp) and `source` (where the item came from). `add-judge`
@@ -108,7 +110,7 @@ def finding_items(store: Store, where: str, use: str, profile: str) -> list[dict
                 "evidence": render(rollout_evidence(ep, j["seat"]), turn),
                 "model": True, "answers": {j["judge"]["model"]: True}, "judge": j["judge"],
                 "source": {"run": where, "subject": ep.meta.get("endpoint"), "ep_id": ep.ep_id, "metric": j["metric"],
-                           "kind": ep.meta.get("row", {}).get("kind"), "stratum": f"scored {j['value']}", "finding": j["id"]}})
+                           "kind": ep.meta.get("row", {}).get("kind"), "stratum": f"scored {j['value']}", "finding": j["id"], "split": ep.split}})
     return out
 
 
@@ -221,6 +223,9 @@ def cmd_sample(args: argparse.Namespace) -> None:
 
 
 async def add_judge(path: Path, models: Path, endpoint: str, use: str) -> None:
+    if use in PROMPTS:
+        sys.exit(f"--use {use}: a judge that reads a rollout is asked again by `wa-bench score` under another profile, "
+                 "not from a label file")
     client = LLMClient(models)
     client.config["judges"]["_calibration"] = {use: endpoint}
     judge = getattr(judges_from(client, "_calibration"), use)

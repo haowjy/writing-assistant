@@ -27,7 +27,8 @@ from writing_assistant.suites import SUITES, listed_rubrics
 
 
 async def run_world(args: argparse.Namespace) -> int:
-    """`run --world NAME --endpoint E [--cast C] --rollouts N [--round R] [--where kind=…]`."""
+    """`run --world NAME --endpoint E [--cast C] --rollouts N [--round R] [--where kind=…]`.
+    `--where` tests a situation's name (`task_id`) and its row's scalar fields."""
     from writing_assistant.cli import episode_row
 
     lib = Library()
@@ -35,7 +36,7 @@ async def run_world(args: argparse.Namespace) -> int:
         with lib.open(args.world) as home, home.reading():
             names = home.situations()
             if args.where:  # a row's fields are in the situation, so each is loaded: only when asked
-                names = [name for name in names if matches(episode_row(home.load(name)), args.where)]
+                names = [name for name in names if matches({"task_id": name} | episode_row(home.load(name)), args.where)]
     except (LookupError, sqlite3.Error) as e:
         sys.exit(f"--world {args.world}: {e}")
     if not names:
