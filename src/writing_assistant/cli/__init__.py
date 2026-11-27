@@ -172,11 +172,10 @@ async def cmd_run(args: argparse.Namespace) -> int:
     if args.world:
         if given := [flag for flag, value in (("--suite", args.suite), ("--from", args.source), ("--from-run", args.from_run),
                                               ("--limit", args.limit), ("--no-score", args.no_score)) if value]:
-            sys.exit(f"--world plays a group of each of a world's situations and scores nothing; {', '.join(given)} "
-                     "goes with a run of task rows or of one stored episode")
+            sys.exit(f"{', '.join(given)} does not go with --world")
         return await run_world(args)
     if not args.suite:
-        sys.exit("run takes --suite (task rows, or --from's episode) or --world (a library world's situations)")
+        sys.exit("run takes --suite or --world")
     suite = SUITES[args.suite]
     services = services_for(args.models, args.judges)
     try:
@@ -186,10 +185,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
     identity = run_identity(services, suite=args.suite, driver=args.driver, endpoint=args.endpoint, split=args.split,
                             max_tokens=args.max_tokens, cast=cast)
     if args.split == "test" and not args.held_out_test:  # `open_run` refuses it too; said here before anything else is looked at
-        sys.exit(f"--split test is the held-out split, never used to choose anything; pass --held-out-test to run "
-                 f"it, and the run is logged in {TEST_USES}")
+        sys.exit(f"--split test is held out: pass --held-out-test to run it (logged in {TEST_USES})")
     if args.source and (args.where or args.limit):
-        sys.exit("--from plays rollouts of one stored episode; --where and --limit choose task rows and do not apply")
+        sys.exit("--where and --limit do not go with --from")
     if not args.source and (args.from_run or args.rollouts != 1 or args.round != "0"):
         sys.exit("--from-run, --rollouts and --round go with --from <ep_id>@<n>")
     run_dir = Path(args.out or f"runs/{args.suite}-{args.endpoint}-{dt.datetime.now(dt.UTC):%Y%m%d-%H%M%S}")
@@ -200,15 +198,14 @@ async def cmd_run(args: argparse.Namespace) -> int:
     if args.source:
         name, _, at = args.source.rpartition("@")
         if not name or not at.isdigit():
-            sys.exit(f"--from takes <ep_id>@<n>, the episode and its turn checkpoint; got {args.source!r}")
+            sys.exit(f"--from takes <ep_id>@<n>; got {args.source!r}")
         source = (name, int(at))
         if args.from_run:
             if not has_store(args.from_run):
                 sys.exit(f"--from-run {args.from_run}: no run directory with a {STORE_FILE} there")
             home = Store(Path(args.from_run) / STORE_FILE, readonly=True)
         elif not stored:
-            sys.exit(f"--from {args.source}: {run_dir} has no {STORE_FILE} to take the episode from; "
-                     "--from-run names the run that holds it")
+            sys.exit(f"--from {args.source}: {run_dir} has no {STORE_FILE}; --from-run names the run that holds the episode")
     code = code_version()
     # The directory is this run's, or becomes it, before anything is stored in it.
     opened = open_run(run_dir, identity, held_out_test=args.held_out_test, note={"where": args.where, "limit": args.limit})
@@ -292,8 +289,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
     print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
     if stopped:
-        print(f"stopped: the host refused the account ({stopped}); nothing more can run until that is fixed. "
-              f"Saved episodes stay; rerun the same command to resume.", file=sys.stderr)
+        print(f"stopped: the host refused the account ({stopped}). The same command continues.", file=sys.stderr)
     if stopped or counts["task_errors"] or counts["score_errors"]:
         return 1
     return 0
@@ -307,12 +303,10 @@ def _rollouts(args: argparse.Namespace, runner: Runner, home: Store | None, name
         with home or nullcontext(runner.store) as home:
             source = home.load(name, at=at)
             if (source.suite, source.split) != (args.suite, args.split):
-                sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
-                         f"this run is suite {args.suite}, split {args.split}")
+                sys.exit(f"--from {args.source} is suite {source.suite}, split {source.split}; this run is suite "
+                         f"{args.suite}, split {args.split}")
             if name in home.starts() and not situated(source):  # as the controller refuses it: its state holds no task
-                sys.exit(f"--from {args.source}: {name} is a position, files with no task set up on them, so there is "
-                         f"nothing to play from it. `wa-bench situate --at {name} --row task.json` sets a task up "
-                         "there and prints the name --from takes")
+                sys.exit(f"--from {args.source}: {name} has no task; `wa-bench situate --at {name} --row task.json` sets one up")
             rollouts = runner.rollouts(source, at, args.rollouts)
             if home is not runner.store:
                 home.copy_chain(name, runner.store)
@@ -331,7 +325,7 @@ def cmd_situate(args: argparse.Namespace) -> int:
     if args.world:
         # In a world: the position and the situation are in one file, and no judge is reachable.
         if args.from_run:
-            sys.exit("--from-run names a run directory that holds --at's episode; a world holds its own positions")
+            sys.exit("--from-run does not go with --world")
         services = services_for(args.models, "none")
         try:
             with Library().writing(args.world) as store:
@@ -344,7 +338,7 @@ def cmd_situate(args: argparse.Namespace) -> int:
         if args.from_run and not has_store(args.from_run):
             sys.exit(f"--from-run {args.from_run}: no run directory with a {STORE_FILE} there")
         if not args.from_run and not has_store(run_dir):
-            sys.exit(f"--at {args.at}: {run_dir} has no {STORE_FILE} to take the episode from; --from-run names the run that holds it")
+            sys.exit(f"--at {args.at}: {run_dir} has no {STORE_FILE}; --from-run names the run that holds the episode")
         services = services_for(args.models, args.judges)
         run_dir.mkdir(parents=True, exist_ok=True)
         with Store(run_dir / STORE_FILE) as store, \
@@ -355,8 +349,7 @@ def cmd_situate(args: argparse.Namespace) -> int:
             except (LookupError, ValueError, sqlite3.Error) as e:
                 sys.exit(f"--at {args.at}: {e}")
     for ep in eps:
-        print(ep.ep_id + (f"  (on {args.at}'s files, with {len(files)} of {args.files} laid over them: {', '.join(sorted(files))})"
-                          if files else ""))
+        print(ep.ep_id + (f"  (with {', '.join(sorted(files))})" if files else ""))
     return 0
 
 
@@ -374,8 +367,7 @@ async def cmd_score(args: argparse.Namespace) -> int:
     with Store(run_dir / STORE_FILE) as store:
         episodes = list(store.episodes())
         if args.rubric is not None and args.rubric not in suite.rubrics:
-            sys.exit(f"--rubric {args.rubric}: the suite has no rubric of that name; it has "
-                     f"{', '.join(repr(r) for r in suite.rubrics)}")
+            sys.exit(f"--rubric {args.rubric}: the suite's rubrics are {', '.join(repr(r) for r in suite.rubrics)}")
         only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
         want, unknown, _ = selected(args, store, services, only=only, loaded={ep.ep_id: ep for ep in episodes})
         log = Log(run_dir / LOG_FILE)
@@ -384,8 +376,7 @@ async def cmd_score(args: argparse.Namespace) -> int:
         try:
             rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, want.get(info["suite"], {}), log)
         except* AccountError as group:
-            sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are "
-                     "stored, the others are as they were")
+            sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}). The same command scores the rest.")
         finally:
             await close(services)
             log.finished()

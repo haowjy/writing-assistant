@@ -95,8 +95,7 @@ async def play_groups(lib: Library, work: list[Work], settings: Settings) -> dic
                             continue
                         source = home.load(w.source, at=0)
                         if not situated(source):
-                            raise Refused(f"{world}: {w.source} is not a situation (a task set up at a position, "
-                                          "`wa-bench situate`); only a situation's rollouts are a group")
+                            raise Refused(f"{world}: {w.source} is not a situation (`wa-bench situate` makes one)")
                         by_run.setdefault((world, source.suite), {})[w] = source
         except LookupError as e:  # no such world, no such situation; only here, so a bug in play is a traceback
             raise Refused(str(e)) from None
@@ -145,12 +144,10 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
             short = _missing(store, sources, groups, runners)
             asked, left = sum(w.rollouts for w in sources), sum(map(len, short.values()))
             if not attempt and not short:
-                print(f"{run_dir}: nothing to play: the {asked} rollouts asked for ({len(sources)} groups) are closed here "
-                      "already. Another --round plays a new group of each", flush=True)
+                print(f"{run_dir}: nothing to play: the {asked} rollouts are closed (another --round plays new ones)", flush=True)
             if not short or attempt == 2:
                 break
-            print(f"{run_dir}: {left} rollouts to play in {len(short)} groups ({asked - left} of the {asked} asked for are "
-                  "closed here)", flush=True)
+            print(f"{run_dir}: {left} of {asked} rollouts to play", flush=True)
 
             async def member(runner: Runner, ep: Episode, store: Store = store) -> None:
                 async with slots:
@@ -177,10 +174,8 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
             store.db.close()
             opened.lock.close()
     if short:
-        raise Unplayed("; ".join(f"group {groups[w]} ({w.rollouts} rollouts of {w.source}, round {w.round!r}) is short of "
-                                 f"{', '.join(ep.ep_id for ep in eps)}" for w, eps in short.items())
-                       + f"; each error is in {run_dir}/errors.jsonl, and the same work asked for again continues them",
-                       {w: groups[w] for w in short})
+        raise Unplayed(f"not played: {', '.join(ep.ep_id for eps in short.values() for ep in eps)} (errors in "
+                       f"{run_dir}/errors.jsonl). The same command continues them.", {w: groups[w] for w in short})
     with lib.open(world) as home:  # the promise is about the library, so that is what is asked
         if unpushed := {w: g for w, g in groups.items() if not home.groups(g).get(g, {}).get("played")}:
             raise Unplayed(f"{world}: played here and not in the library: groups {', '.join(unpushed.values())}", unpushed)

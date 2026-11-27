@@ -83,9 +83,8 @@ def refuse(suite: Suite, rubrics: set[str], judges: Judges, profile: str) -> Non
     `profile` names no endpoint for. Scored anyway, such a rubric would get a row in which
     nothing is scored, and that row would read as the rollout having been judged."""
     if missing := sorted((r, use) for r in rubrics for use in suite.needs.get(r, ()) if not judges.named(use)):
-        raise Refused("; ".join(f"rubric {r!r} is scored by the judge use {use!r}, and [judges.{profile}] in models.toml names "
-                                "no endpoint for it" for r, use in missing)
-                      + ". Nothing was scored. Name an endpoint there, or pass --rubric for one that needs none")
+        raise Refused("; ".join(f"rubric {r!r} needs the judge use {use!r}, and [judges.{profile}] names no endpoint for it"
+                                for r, use in missing) + ". Nothing was scored.")
 
 
 async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, services: Services,

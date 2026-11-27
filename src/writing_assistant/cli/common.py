@@ -42,10 +42,8 @@ def played_here(run_dir: Path) -> dict[str, Any]:
     if (run_dir / RUN_FILE).exists():
         return json.loads((run_dir / RUN_FILE).read_text())
     if has_store(run_dir):
-        raise Unreadable(f"{run_dir}: no run has played here. It holds situations and the positions they were set up at "
-                         f"(`situate`), which are never scored or reported themselves. `run --from '<situation>@0'` plays "
-                         f"one, here (`--out {run_dir}`) or in another directory (`--from-run {run_dir}`), and `score` "
-                         "and `report` read the directory it played in")
+        raise Unreadable(f"{run_dir}: no run has played here; it holds only situations. "
+                         f"`wa-bench run --from '<situation>@0' --out {run_dir}` plays one")
     raise Unreadable(f"{run_dir}: no run directory there (no {RUN_FILE})")
 
 
@@ -83,5 +81,5 @@ def scored(where: str, args: argparse.Namespace, suite: str, rows: list[dict], u
         f"{len(empty)} with nothing scored{' (' + ', '.join(why) + ')' if why else ''}, "
         f"{errors} scorer errors; spent ${sum(services.llm.spent.values()):.4f}")))
     for name, n in sorted(unknown.items()):
-        print(f"  rubric {name!r}: listed by {n} episodes, and suite {suite} has no rubric of that name; nothing was scored under it")
+        print(f"  rubric {name!r}: listed by {n} episodes, not a rubric of suite {suite}; not scored")
     return 1 if errors else 0

@@ -159,7 +159,7 @@ def test_an_open_episode_and_a_segment_of_another_world_are_each_refused_by_name
     with played(lib, tmp_path / "a.db", "a", close=False) as a:
         [first, second] = a.names(closed=False)
         assert lib.push(a) == Counter()  # nothing is closed, so there is nothing to push
-        with pytest.raises(ValueError, match=f"{first}, {second} cannot be pushed: only a closed episode"):
+        with pytest.raises(ValueError, match=f"{first}, {second} cannot be pushed: not a closed episode"):
             lib.push(a, [first, second])
     with played(lib, tmp_path / "b.db", "b") as b, played(lib, tmp_path / "o.db", "o", world="other") as other:
         other.copy(other.names(), b)  # one store holding rollouts of two worlds

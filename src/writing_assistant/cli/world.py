@@ -40,9 +40,8 @@ async def run_world(args: argparse.Namespace) -> int:
     except (LookupError, sqlite3.Error) as e:
         sys.exit(f"--world {args.world}: {e}")
     if not names:
-        sys.exit(f"--world {args.world}: no situation" + (
-            f" matches --where {args.where}; it has {', '.join(every)} (--where tests `task_id`, the whole name, and the "
-            "row's scalar fields)" if every else " in it yet (`wa-bench situate --world` sets a task up at a position)"))
+        sys.exit(f"--world {args.world}: no situation matches --where {args.where}; it has {', '.join(every)}" if every
+                 else f"--world {args.world}: no situations; `wa-bench situate --world {args.world}` adds one")
     work = [Work(args.world, name, args.rollouts, args.round) for name in names]
     settings = Settings(endpoint=args.endpoint, cast=args.cast, max_tokens=args.max_tokens, concurrency=args.concurrency,
                         driver=args.driver, models=args.models, runs=Path(args.out or "runs"), held_out_test=args.held_out_test)
@@ -52,8 +51,7 @@ async def run_world(args: argparse.Namespace) -> int:
         print(f"--world {args.world}: {e}", file=sys.stderr)
         return 1
     except AccountError as e:
-        print(f"stopped: the host refused the account ({e}); nothing more can run until that is fixed. "
-              "Closed rollouts are in the world; rerun the same command to continue.", file=sys.stderr)
+        print(f"stopped: the host refused the account ({e}). The same command continues.", file=sys.stderr)
         return 1
     except ValueError as e:  # a cast that lacks a seat's name, a group asked for again with another size
         sys.exit(f"--world {args.world}: {e}")
@@ -76,7 +74,7 @@ async def score_world(args: argparse.Namespace) -> int:
     restore waits for the pass, and a second pass under the same profile is refused while
     this one runs (`Library.judging`)."""
     if args.where:
-        sys.exit("--where chooses a run directory's episodes; a world is judged whole (--rubric narrows what is scored)")
+        sys.exit("--where does not apply to --world; --rubric narrows what is scored")
     services = services_for(args.models, args.judges)
     rows: list[dict] = []
     unknown: dict[str, int] = {}
@@ -105,8 +103,7 @@ async def score_world(args: argparse.Namespace) -> int:
                         episodes = [store.load(name) for name in names]
                         rows += await score_into(store, args.judges, SUITES[suite], episodes, services, args.concurrency, wanted, log)
         except* AccountError as group:
-            sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are in "
-                     "the world, and the same command scores the rest")
+            sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}). The same command scores the rest.")
         finally:
             await close(services)
     except sqlite3.Error as e:  # a file that will not open
@@ -115,17 +112,8 @@ async def score_world(args: argparse.Namespace) -> int:
 
 
 def _nothing_to_score(args: argparse.Namespace, store: Store) -> str:
-    """Why a judging pass found no work, in a sentence: an empty result is otherwise read
-    as a pass that did not look."""
+    """Why a judging pass found no work: an empty result otherwise reads as a pass that did not look."""
     rollouts = len(store.judged(args.judges))
     if not rollouts:
-        return (f"nothing to score: no closed rollout in the world yet. `wa-bench run --world {args.world} --endpoint E` "
-                "plays its situations")
-    if args.pending:
-        return f"nothing to score: no row of its {rollouts} closed rollouts says the scorer raised"
-    if args.rubric:
-        return (f"nothing to score: each of its {rollouts} closed rollouts has a row under {args.judges}/{args.rubric} by the "
-                "judges the profile names now. `--all` scores them again")
-    return (f"nothing to score: each of its {rollouts} closed rollouts has a row, by the judges the profile names now, under "
-            f"every rubric its situation lists (judgings in the world: {', '.join(store.judgings(args.judges)) or 'none'}). "
-            "`--all` scores them again, `--rubric R` scores every rollout under one rubric")
+        return f"nothing to score: no rollouts yet (`wa-bench run --world {args.world} --endpoint E`)"
+    return f"nothing to score: its {rollouts} rollouts have their rows (`--all` scores them again)"

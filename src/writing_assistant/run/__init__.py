@@ -151,8 +151,7 @@ def cast_from(config: dict[str, Any], name: str) -> dict[str, str]:
         raise ValueError(f"no [cast.{name}] in models.toml; it has {sorted(tables)}")
     cast = tables[name]
     if reserved := sorted({SUBJECT, "scripted"} & cast.keys()):
-        raise ValueError(f"[cast.{name}] defines {', '.join(reserved)}: `{SUBJECT}` is the run's --endpoint and "
-                         "`scripted` is a seat the suite speaks for, so a cast names neither")
+        raise ValueError(f"[cast.{name}] may not name {', '.join(reserved)}: `{SUBJECT}` is --endpoint, `scripted` the suite's")
     if unknown := {n: e for n, e in cast.items() if e not in config["endpoints"]}:
         raise ValueError(f"[cast.{name}] names endpoints models.toml does not have: {unknown}")
     return dict(cast)
@@ -232,8 +231,7 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
             path = norm_path(path)
             ep.files[path], ep.file_revs[path] = text, ep.file_revs.get(path, 0) + 1
         if missing := sorted(set(payload.get("requires", [])) - ep.files.keys()):
-            raise ValueError(f"the row requires {', '.join(missing)}, and the files at {at} are {', '.join(sorted(ep.files))}; "
-                             "`--files DIR` lays a folder's files over the position's, or --at names a position that holds them")
+            raise ValueError(f"the row requires {', '.join(missing)}; {at} has {', '.join(sorted(ep.files))}. `--files DIR` adds files")
         ep.state["task"] = asdict(task)
         ep.meta["row"] = row_meta(task)
     if home:
@@ -283,8 +281,8 @@ class Runner:
         for ep in eps:
             for seat, name in ep.actors.items():
                 if name != "scripted" and name not in self.cast:
-                    raise ValueError(f"{ep.ep_id}: seat {seat!r} is played by {name!r}, and this run's cast names only "
-                                     f"{', '.join(sorted(self.cast))} (--cast picks a [cast.<name>] table of models.toml)")
+                    raise ValueError(f"{ep.ep_id}: seat {seat!r} is played by {name!r}; the cast has "
+                                     f"{', '.join(sorted(self.cast))} (--cast picks a [cast.<name>] table)")
             ep.meta |= self.meta
         return eps
 
@@ -310,9 +308,8 @@ class Runner:
         group = group_id(self.run_id, self.round, source, at)
         asked = self.store.groups(group).get(group)
         if asked and asked["size"] != n:
-            raise ValueError(f"group {group} (this run's rollouts of {source.baseline_of or source.ep_id}@{at} in round "
-                             f"{self.round!r}) was asked for with {asked['size']} rollouts per episode, not {n}; a "
-                             "group's size is fixed, and more rollouts are another round (--round)")
+            raise ValueError(f"group {group} ({source.baseline_of or source.ep_id}@{at}, round {self.round!r}) has "
+                             f"{asked['size']} rollouts, not {n}; another --round plays more")
         stored = set(self.store.rollouts(source.ep_id, at, group))
         members = [source.rollout(at, i, group) for i in range(n)]
         for ep in members:  # one run's rollouts of two episodes of one name share a name, never a segment

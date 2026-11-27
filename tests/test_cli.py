@@ -302,5 +302,5 @@ def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_
         members = [stored.load(name) for name in stored.rollouts(twin, 0)]
     assert [ep.ep_id for ep in members] == names
     assert [(ep.group, ep.meta["group"], ep.meta["group_size"], ep.meta["round"]) for ep in members] == [(group, group, 4, "0")] * 4
-    with pytest.raises(SystemExit, match="a group's size is fixed"):
+    with pytest.raises(SystemExit, match="has 4 rollouts, not 2"):
         cli.main([*again, "--rollouts", "2"])
