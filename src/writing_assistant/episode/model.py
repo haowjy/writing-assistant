@@ -335,6 +335,7 @@ class RolloutEvidence:
     state: dict[str, Any]  # the suite's state as the rollout ended
     status: str
     failure_reason: str | None
+    thinking: str | None  # what the recorded thinking of this seat's endpoint is (`trace`, `summary`), when its cast stamp says
 
 
 def rollout_evidence(ep: Episode, seat: str) -> RolloutEvidence:
@@ -351,7 +352,8 @@ def rollout_evidence(ep: Episode, seat: str) -> RolloutEvidence:
       (`Episode.parent`). A rollout of a situation has none; one forked in the middle of a
       conversation has its source's first turns, and `files_at_start` is then the files at
       the fork, those turns' writes included.
-    - visible: the file access list as the episode ended."""
+    - visible: the file access list as the episode ended.
+    - thinking: the cast stamp of the seat's cast name (`meta["cast"]`, from models.toml)."""
     began = ep.parent[1] if ep.parent else 0
     delivered = [e for e in ep.events if e.kind == "deliver"]
     turns = []
@@ -372,7 +374,8 @@ def rollout_evidence(ep: Episode, seat: str) -> RolloutEvidence:
         files_at_start={path: (text, rev) for path, (text, rev) in files_at(ep, began).items()},
         files_at_end={path: (text, ep.file_revs[path]) for path, text in ep.files.items()},
         visible={path for path in ep.files if ep.readable(seat, path)},
-        events=list(ep.events), state=ep.state, status=ep.status, failure_reason=ep.failure_reason)
+        events=list(ep.events), state=ep.state, status=ep.status, failure_reason=ep.failure_reason,
+        thinking=ep.meta.get("cast", {}).get(ep.actors.get(seat, ""), {}).get("thinking"))
 
 
 def strings(value: Any) -> list[str]:

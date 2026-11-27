@@ -1,6 +1,8 @@
 """`wa-bench library`: the worlds kept in the library (`episode/library.py`).
 
-    library create NAME --files DIR [--split S]   a new world whose root holds DIR's files
+    library create NAME --files DIR [--split S] [--closed PATH ...]
+                                                  a new world whose root holds DIR's files; a closed one is
+                                                  read by no seat until a task's setup grants it (`reads`)
     library list                                  every world: name, split, what it holds
     library push --run DIR [EP_ID ...]            add a run directory's closed episodes to their world
     library verify NAME                           say what is wrong with a world file, or that nothing is
@@ -30,6 +32,8 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     c.add_argument("name")
     c.add_argument("--files", required=True, help="a folder; every file under it becomes a file of the world's root")
     c.add_argument("--split", default="dev", choices=[*SPLITS, LOCAL_DEV], help="the world's split, which everything in it has")
+    c.add_argument("--closed", nargs="+", default=[], metavar="PATH",
+                   help="files of the folder (paths relative to it) no seat may read unless a task's row grants it")
     cmd.add_parser("list", help="every world in the library")
     ps = cmd.add_parser("push", help="add a run directory's closed episodes, with their score rows, to their world")
     ps.add_argument("--run", required=True)
@@ -53,9 +57,12 @@ def _create(lib: Library, args: argparse.Namespace) -> int:
     if not folder.is_dir():
         sys.exit(f"--files {folder}: no folder there")
     files = {str(p.relative_to(folder)): p.read_text() for p in sorted(folder.rglob("*")) if p.is_file()}
+    if missing := sorted(set(args.closed) - files.keys()):
+        sys.exit(f"--closed {' '.join(missing)}: not under {folder}; it holds {', '.join(files) or 'no files'}")
     name = lib.create(Episode(ep_id=args.name, task_id=args.name, suite="root", split=args.split, files=files,
-                              file_revs=dict.fromkeys(files, 1)))
-    print(f"{lib.path(name)}: world {name}, split {args.split}, {len(files)} files")
+                              file_revs=dict.fromkeys(files, 1), state={"file_acl": {path: [] for path in args.closed}}))
+    print(f"{lib.path(name)}: world {name}, split {args.split}, {len(files)} files"
+          + (f", {len(args.closed)} closed" if args.closed else ""))
     return 0
 
 

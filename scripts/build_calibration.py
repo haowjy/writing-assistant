@@ -2,6 +2,7 @@
 
     uv run python scripts/build_calibration.py sample --use fact --runs runs/a runs/b --n 200 --out FILE [--build-checks]
     uv run python scripts/build_calibration.py sample --use author_verify --runs runs/c --n 60 --out FILE
+    uv run python scripts/build_calibration.py sample --use world_coherence --worlds NAME --profile P --n 60 --out FILE
     uv run python scripts/build_calibration.py add-judge --file FILE --endpoint <models.toml endpoint>
 
 `sample` reads the judge items each run's store holds under the profile (only items the judge answered:
@@ -12,6 +13,13 @@ answer's part evenly between metrics, and takes each metric's items round-robin 
 others. So no one answer, metric, model or template fills the file. `--build-checks` (fact only) adds the build-time checks
 of `scripts/build_seed_tasks.py`: per SRD world, does any event after the hidden one state
 the secret? They are replayed from the judge cache with no model call, as their own group.
+
+A judge that reads a whole rollout (`judges/findings.py`; `--use` is its rubric's name)
+stores findings that hold references and no text. Each scored finding becomes a yes/no
+item: the question states the judge's score and what it cited, the evidence is the record
+the judge read, built again from the stored rollout (`rollout_evidence`), and a "yes" label
+agrees with the score. Its share is spread over the scores 0, 1 and 2. `--worlds` reads
+library worlds, where such rollouts live; `add-judge` does not take these files.
 
 Each line is a `label_ui.py` item plus `answers` ({judge model: answer}; `model` is the
 first judge's), `judge` (its stamp) and `source` (where the item came from). `add-judge`
@@ -34,10 +42,13 @@ from types import SimpleNamespace
 from typing import Any
 
 from writing_assistant.cli import load_dotenv
-from writing_assistant.episode.segments import closed_episodes, read_run
+from writing_assistant.episode import rollout_evidence
+from writing_assistant.episode.library import Library
+from writing_assistant.episode.segments import Store, closed_episodes, read_run
 from writing_assistant.episode.store import read_jsonl
 from writing_assistant.judges import judges_from
 from writing_assistant.judges.extract import FACT
+from writing_assistant.judges.findings import PROMPTS, render
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.suites.world import tasks_1a, worlds
 
@@ -49,7 +60,7 @@ SEED = 20261125
 
 
 def _id(use: str, item: dict) -> str:
-    keys = ("question", "evidence") if use == "fact" else ("question", "a", "b", "context")
+    keys = ("question", "evidence") if "evidence" in item else ("question", "a", "b", "context")
     return f"{use}:" + hashlib.sha256(json.dumps([item.get(k) for k in keys]).encode()).hexdigest()[:16]
 
 
@@ -76,6 +87,28 @@ def run_items(run: Path, use: str, profile: str) -> list[dict]:
             "source": {"run": run.name, "subject": info["endpoint"], "ep_id": j["ep_id"], "metric": j["metric"],
                        "kind": rows.get(j["ep_id"], {}).get("kind"),
                        "stratum": _stratum(j["ep_id"], rows.get(j["ep_id"], {}))}})
+    return out
+
+
+def finding_items(store: Store, where: str, use: str, profile: str) -> list[dict]:
+    """The scored findings of one rollout-reading judge in `store`, each as a yes/no item
+    with the record its judge read."""
+    out, episodes = [], {}
+    for name in store.judgings(profile):
+        for j in store.judgments(name):
+            if j.get("judge", {}).get("use") != use or "value" not in j:
+                continue
+            ep = episodes.get(j["scored"]) or episodes.setdefault(j["scored"], store.load(j["scored"]))
+            turn = None if j["covers"] == "task" else j["covers"]["turn"]
+            cited = "; ".join(f"turn {c['turn']}: {c['note']}" for c in j["cites"])
+            out.append({
+                "question": f"{use}: for seat {j['seat']}, on {'the whole task' if turn is None else f'turn {turn}'}, the judge "
+                            f"scored {j['dimension']}.{j['criterion']} at {j['value']} of 2"
+                            + (f", citing {cited}" if cited else "") + ". Is that the right score under the rubric?",
+                "evidence": render(rollout_evidence(ep, j["seat"]), turn),
+                "model": True, "answers": {j["judge"]["model"]: True}, "judge": j["judge"],
+                "source": {"run": where, "subject": ep.meta.get("endpoint"), "ep_id": ep.ep_id, "metric": j["metric"],
+                           "kind": ep.meta.get("row", {}).get("kind"), "stratum": f"scored {j['value']}", "finding": j["id"]}})
     return out
 
 
@@ -155,7 +188,15 @@ def sample(items: list[dict], n: int) -> list[dict]:
 
 
 def cmd_sample(args: argparse.Namespace) -> None:
-    items = [it for run in args.runs for it in run_items(Path(run), args.use, args.profile)]
+    if args.use in PROMPTS:
+        items = [it for run in args.runs for it in read_run(Path(run), lambda s, run=run: finding_items(s, Path(run).name, args.use, args.profile), [])]
+        for world in args.worlds:
+            with Library().open(world) as store:
+                items += finding_items(store, world, args.use, args.profile)
+    else:
+        if args.worlds:
+            sys.exit(f"--worlds holds rollouts, which only a judge that reads a rollout scores ({', '.join(PROMPTS)}); --use {args.use} reads --runs")
+        items = [it for run in args.runs for it in run_items(Path(run), args.use, args.profile)]
     if args.build_checks:
         items += build_checks(args.models, args.profile)
     unique: dict[str, dict] = {}
@@ -207,8 +248,9 @@ def main() -> None:
     p.add_argument("--models", type=Path, default=ROOT / "models.toml")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("sample")
-    s.add_argument("--use", required=True, choices=["fact", "author_verify", "edit_pair", "craft_pair", "secret_2afc"])
-    s.add_argument("--runs", nargs="+", required=True)
+    s.add_argument("--use", required=True, choices=["fact", "author_verify", "edit_pair", "craft_pair", "secret_2afc", *PROMPTS])
+    s.add_argument("--runs", nargs="+", default=[], help="run directories")
+    s.add_argument("--worlds", nargs="+", default=[], help="library worlds (for a judge that reads a rollout)")
     s.add_argument("--profile", default="eval")
     s.add_argument("--n", type=int, required=True)
     s.add_argument("--out", type=Path, required=True)

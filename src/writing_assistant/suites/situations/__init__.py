@@ -130,7 +130,6 @@ async def _read(ep: Episode, services: Services, rubric: str, tally: Tally) -> N
     scope it was asked about; a criterion it left out is `unparseable`."""
     reads, judge = READS[rubric], services.judges.findings[rubric]
     seats = [seat for seat, cast in ep.actors.items() if cast == SUBJECT]
-    said = ep.meta.get("cast", {}).get(SUBJECT, {}).get("thinking")  # what this endpoint's thinking is, when known
     calls = []
     for seat in seats:
         ev = rollout_evidence(ep, seat)
@@ -138,7 +137,7 @@ async def _read(ep: Episode, services: Services, rubric: str, tally: Tally) -> N
         for turn in [None] if reads.covers == "task" else [t.turn_idx for t in own]:
             thought = any(t.thinking for t in own if turn in (None, t.turn_idx))
             ask = [(d, c) for d, c in reads.criteria if d == "output" or thought]
-            calls.append((seat, turn, ask, judge.judge(render(ev, turn, said)) if ask else None))
+            calls.append((seat, turn, ask, judge.judge(render(ev, turn)) if ask else None))
     answers = await asyncio.gather(*(call or asyncio.sleep(0) for *_, call in calls))
     for (seat, turn, ask, _), j in zip(calls, answers, strict=True):
         about = {"covers": "task" if turn is None else {"turn": turn}, "seat": seat}

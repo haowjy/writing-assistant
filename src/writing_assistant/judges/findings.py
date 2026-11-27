@@ -74,13 +74,13 @@ def _finding(f: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def render(ev: RolloutEvidence, turn: int | None = None, thinking: str | None = None) -> str:
+def render(ev: RolloutEvidence, turn: int | None = None) -> str:
     """The rollout as the judge reads it, for one seat: the task, the seat's brief, the files
     as the rollout began (each marked when the seat could not read it), then every delivery
     to the seat with what it heard, thought, called, replied and wrote. With `turn`, the
     record stops after that turn, which is named as the target, and the end files are left
-    out; without, the files as the rollout ended close it. `thinking` says what the recorded
-    thinking is (`trace`: the model's own; `summary`: its host's summary of it)."""
+    out; without, the files as the rollout ended close it. It is a function of the stored
+    rollout alone, so the record a stored finding was made from can be built again."""
     task = {k: v for k, v in ev.task.items() if k in ("task_id", "kind")} | {
         k: v for k, v in ev.task.get("payload", {}).items() if k not in ("seats", "script", "rubrics")}
     out = ["# Task", json.dumps(task, ensure_ascii=False, indent=1), f"# Seat under judgment: {ev.seat}"]
@@ -88,7 +88,7 @@ def render(ev: RolloutEvidence, turn: int | None = None, thinking: str | None = 
         out.append(f"Target: turn {turn} of this seat. The record below ends with it.")
     out += ["## Its brief", ev.brief or "(none)", "# Files when the rollout began", *_files(ev, ev.files_at_start)]
     out.append("# Turns of this seat" + {"trace": " (thinking is the model's own trace)",
-                                         "summary": " (thinking is the host's summary of the model's)"}.get(thinking, ""))
+                                         "summary": " (thinking is the host's summary of the model's)"}.get(ev.thinking, ""))
     for t in ev.turns:
         if turn is not None and t.turn_idx > turn:
             break

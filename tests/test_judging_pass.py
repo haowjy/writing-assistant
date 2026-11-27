@@ -227,3 +227,26 @@ async def test_two_rubrics_may_share_one_judge_call_and_each_gets_its_own_row(wo
     assert scored["turns"][0]["metrics"] == {"output.line": 0.75, "n_judged.output.line": 2.0}
     assert [j["covers"] for j in scored["turns"][1]] == [{"turn": 1}, {"turn": 3}]
     assert SUITES["situations"].rubrics.keys() >= {"counts", "world_coherence", "character_voice_consistency", "thinking_about_prose"}
+
+
+def test_a_label_file_holds_the_record_the_judge_read_and_the_labelling_page_shows_it(world, tmp_path, monkeypatch):
+    """Stored findings hold references only (asserted above); the sampler builds the text
+    again from the stored rollout, so the standalone labelling page needs nothing else."""
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    import build_calibration
+
+    from writing_assistant import label_ui
+
+    world.score()
+    with world.open("sel") as home:
+        items = build_calibration.finding_items(home, "sel", "world_coherence", "j")
+        per_turn = build_calibration.finding_items(home, "sel", "thinking_about_prose", "j")
+    assert len(items) == 2 and len(per_turn) == 6  # scored findings only: `not_applicable` and `no_thinking` are left out
+    file = tmp_path / "labels.jsonl"
+    file.write_text("".join(json.dumps({"id": f"i{n}"} | item) + "\n" for n, item in enumerate(items + per_turn)))
+    shown = label_ui.view(label_ui.Store(file).next_item())
+    assert shown["kind"] == "yes_no" and "scored output.continuity at 2 of 2" in shown["question"]
+    assert "The tide turns at six." in shown["evidence"] and "We sail at dawn." in shown["evidence"]
+    # A turn's finding is shown the record up to that turn and no further.
+    first = min(per_turn, key=lambda item: len(item["evidence"]))
+    assert "Target: turn" in first["evidence"] and "# Files when the rollout ended" not in first["evidence"]
