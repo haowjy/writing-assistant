@@ -50,6 +50,7 @@ from writing_assistant.corpus.release import works_in
 from writing_assistant.drivers import DRIVERS, Driver, Session
 from writing_assistant.drivers.direct import DirectDriver
 from writing_assistant.episode import Episode
+from writing_assistant.episode.model import norm_path
 from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, Task, append_jsonl, local_only
 from writing_assistant.llm.client import AccountError
@@ -174,7 +175,7 @@ def row_meta(task: Task) -> dict[str, Any]:
 
 
 def situate(store: Store, services: Services, suite: str, kind: str, payload: dict[str, Any], at: str, *,
-            name: str | None = None, home: Store | None = None) -> list[Episode]:
+            name: str | None = None, home: Store | None = None, files: dict[str, str] | None = None) -> list[Episode]:
     """Set a task of `suite` up at the position `at` and store its episodes in `store` as
     situations; they are returned. A position is a closed episode (a rollout's end, a
     root, another situation), looked up by name as every reader finds one, so an open
@@ -184,7 +185,13 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
     The task row is made here: `name` (default `<root's name>/<12 random hex>`) is its
     `task_id` and the first situation's name, and its split and works are the position's.
     It is kept in each situation (`state["task"]`), and its scalar fields in `meta["row"]`
-    as a played task's are."""
+    as a played task's are.
+
+    `files` (path -> text) are laid over the position's files in each situation: its own
+    file change, at the next revision of a path the position holds and the first of a new
+    one. A path closed at the position stays closed. A row may name the paths its task
+    cannot be played without (`payload["requires"]`); one the situation would not hold
+    is refused, since the task would be set up on another world than its author meant."""
     held = home or store
     with held.reading():
         if not held.is_closed(at):  # one lookup: a world may hold a hundred thousand names
@@ -199,6 +206,12 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
         raise ValueError(f"suite {suite} set {kind!r} up from its row alone, not on the position's files "
                          "(`Suite.setup(..., at)` begins with `at.begin`)")
     for ep in eps:
+        for path, text in (files or {}).items():
+            path = norm_path(path)
+            ep.files[path], ep.file_revs[path] = text, ep.file_revs.get(path, 0) + 1
+        if missing := sorted(set(payload.get("requires", [])) - ep.files.keys()):
+            raise ValueError(f"the row requires {', '.join(missing)}, and the files at {at} are {', '.join(sorted(ep.files))}; "
+                             "`--files DIR` lays a folder's files over the position's, or --at names a position that holds them")
         ep.state["task"] = asdict(task)
         ep.meta["row"] = row_meta(task)
     if home:

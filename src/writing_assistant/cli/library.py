@@ -19,6 +19,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from writing_assistant.cli.common import folder_files
 from writing_assistant.episode import Episode
 from writing_assistant.episode.library import Damaged, Library
 from writing_assistant.episode.segments import STORE_FILE, Store, has_store
@@ -53,12 +54,9 @@ def cmd_library(args: argparse.Namespace) -> int:
 
 
 def _create(lib: Library, args: argparse.Namespace) -> int:
-    folder = Path(args.files)
-    if not folder.is_dir():
-        sys.exit(f"--files {folder}: no folder there")
-    files = {str(p.relative_to(folder)): p.read_text() for p in sorted(folder.rglob("*")) if p.is_file()}
+    files = folder_files("--files", args.files)
     if missing := sorted(set(args.closed) - files.keys()):
-        sys.exit(f"--closed {' '.join(missing)}: not under {folder}; it holds {', '.join(files) or 'no files'}")
+        sys.exit(f"--closed {' '.join(missing)}: not under {args.files}; it holds {', '.join(files) or 'no files'}")
     name = lib.create(Episode(ep_id=args.name, task_id=args.name, suite="root", split=args.split, files=files,
                               file_revs=dict.fromkeys(files, 1), state={"file_acl": {path: [] for path in args.closed}}))
     print(f"{lib.path(name)}: world {name}, split {args.split}, {len(files)} files"

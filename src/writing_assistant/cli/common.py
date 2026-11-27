@@ -25,6 +25,17 @@ def episode_row(ep: Episode) -> dict[str, Any]:
             | ({"rollout_of": "{}@{}".format(*ep.rollout_of), "group": ep.group} if ep.rollout_of else {}))
 
 
+def folder_files(flag: str, folder: str) -> dict[str, str]:
+    """path -> text of every file under `folder`, as an episode holds files."""
+    root = Path(folder)
+    if not root.is_dir():
+        sys.exit(f"{flag} {root}: no folder there")
+    try:
+        return {str(p.relative_to(root)): p.read_text() for p in sorted(root.rglob("*")) if p.is_file()}
+    except UnicodeDecodeError as e:
+        sys.exit(f"{flag} {root}: an episode's files are text, and one there is not UTF-8 ({e})")
+
+
 def played_here(run_dir: Path) -> dict[str, Any]:
     """run.json of a directory some run has played in, for the commands that read a run.
     One that holds only what `situate` stored, or nothing, is refused in a sentence."""

@@ -81,8 +81,10 @@ episode ended with and stores it in DIR's store as a **situation** (`run.situate
 file some seats could not read stays closed to every new seat until the task's `setup`
 grants it. The row file is one JSON object, `suite`, `kind` and `payload` (and `task_id` to
 name the situation; otherwise `<root episode's name>/<12 random hex>`); the split and works
-are the position's. `--from-run` names the run whose store holds the position when DIR's
-does not. A situation is stored closed and is never played in place, scored or reported:
+are the position's. `--files FOLDER` lays a folder's files over the position's in the new
+situation (its own file change), and a row's `payload.requires` lists paths the situation
+must hold, so a task is not set up on files its author did not mean. `--from-run` names the
+run whose store holds the position when DIR's does not. A situation is stored closed and is never played in place, scored or reported:
 `run --from '<situation>@0' --rollouts N` plays a group of it, in a directory whose run is
 of the situation's suite and split. `run` plays those rollouts and does not score them:
 judging is its own pass (`score`), which nothing that plays or grows a world calls.
@@ -125,7 +127,7 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli.common import close, episode_row, played_here, scored, selected
+from writing_assistant.cli.common import close, episode_row, folder_files, played_here, scored, selected
 from writing_assistant.cli.library import add_parser as add_library_parser
 from writing_assistant.cli.library import cmd_library
 from writing_assistant.cli.report import cmd_report
@@ -315,6 +317,7 @@ def cmd_situate(args: argparse.Namespace) -> int:
     row = json.loads(Path(args.row).read_text())
     if not isinstance(row, dict) or row.get("suite") not in SUITES or not isinstance(row.get("kind"), str):
         sys.exit(f"--row {args.row}: one JSON object with `suite` (one of {sorted(SUITES)}), `kind` and `payload`")
+    files = folder_files("--files", args.files) if args.files else None
     if args.world:
         # In a world: the position and the situation are in one file, and no judge is reachable.
         if args.from_run:
@@ -322,7 +325,8 @@ def cmd_situate(args: argparse.Namespace) -> int:
         services = services_for(args.models, "none")
         try:
             with Library().writing(args.world) as store:
-                eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at, name=row.get("task_id"))
+                eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at, name=row.get("task_id"),
+                              files=files)
         except (LookupError, ValueError, sqlite3.Error) as e:
             sys.exit(f"--at {args.at}: {e}")
     else:
@@ -337,11 +341,12 @@ def cmd_situate(args: argparse.Namespace) -> int:
                 (Store(Path(args.from_run) / STORE_FILE, readonly=True) if args.from_run else nullcontext()) as home:
             try:
                 eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at,
-                              name=row.get("task_id"), home=home)
+                              name=row.get("task_id"), home=home, files=files)
             except (LookupError, ValueError, sqlite3.Error) as e:
                 sys.exit(f"--at {args.at}: {e}")
     for ep in eps:
-        print(ep.ep_id)
+        print(ep.ep_id + (f"  (on {args.at}'s files, with {len(files)} of {args.files} laid over them: {', '.join(sorted(files))})"
+                          if files else ""))
     return 0
 
 
@@ -462,6 +467,8 @@ def parser() -> argparse.ArgumentParser:
     st.add_argument("--at", required=True, metavar="EP_ID", help="the position: a closed episode's name")
     st.add_argument("--row", required=True, help="a JSON file: the task's suite, kind and payload")
     st.add_argument("--from-run", help="the run directory whose store holds --at's episode (default: --run's own)")
+    st.add_argument("--files", metavar="DIR", help="a folder of files laid over the position's in the new situation: a start "
+                                                   "that adds or replaces files (a row's `payload.requires` names the paths it needs)")
     st.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml, for what the suite's setup asks of the corpus")
 
     s = sub.add_parser("score", help="score a run's or a world's closed episodes under the rubrics they list, where no "
