@@ -142,7 +142,7 @@ from writing_assistant.episode.library import Library
 from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, has_store, split_judging
 from writing_assistant.episode.store import LOCAL_DEV, TEST_USES, local_only, matches
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.run import ROOT, Runner, cast_from, code_version, run_info, situate, situated
+from writing_assistant.run import LOG_FILE, ROOT, Log, Runner, cast_from, code_version, run_info, situate, situated
 from writing_assistant.run import now as _now
 from writing_assistant.run.directory import Refused, open_run, record_usage, services_for
 from writing_assistant.run.directory import identity as run_identity
@@ -212,8 +212,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
     # The directory is this run's, or becomes it, before anything is stored in it.
     opened = open_run(run_dir, identity, held_out_test=args.held_out_test, note={"where": args.where, "limit": args.limit})
     store, alone = opened.store, opened.alone
+    log = Log(run_dir / LOG_FILE)
     runner = Runner(suite, services, store, run_dir, run_id=opened.run_id, endpoint=args.endpoint, driver=args.driver,
-                    max_tokens=args.max_tokens, concurrency=args.concurrency, cast=cast, round=args.round)
+                    max_tokens=args.max_tokens, concurrency=args.concurrency, cast=cast, round=args.round, log=log)
     stopped: AccountError | None = None
     counts = runner.counts  # this command adds what its scoring did to what the runner played
     scoring = asyncio.Semaphore(args.concurrency)
@@ -226,7 +227,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
     async def score(eps: list[Episode], want: dict[str, list[str]]) -> None:
         """Score closed episodes into the store (twins paired over all of `eps`)."""
         async with scoring:
-            rows = await score_into(store, args.judges, suite, eps, services, len(eps) or 1, want)
+            rows = await score_into(store, args.judges, suite, eps, services, len(eps) or 1, want, log)
         counts["score_errors"] += sum("error" in row for row in rows)
 
     async def play(name: str, begin: Callable[[], list[Episode]]) -> None:
@@ -263,6 +264,9 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
                 | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts, "round": args.round}
                    if args.source else {}))
+        log("started", cmd="run", suite=args.suite, endpoint=args.endpoint, code=code, judges=None if args.no_score else args.judges,
+            tasks=len(tasks), rollouts=len(rollouts), to_continue=sum(map(len, unfinished.values())), to_score=len(unscored),
+            **({"source": args.source, "round": args.round} if args.source else {}))
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
               + ", ".join([f"{len(done)} tasks already stored"]
                           + [f"{sum(map(len, unfinished.values()))} open episodes to continue"] * bool(unfinished)
@@ -283,6 +287,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
         finally:
             record_usage(run_dir, services)
             await close(services)
+            log.finished(**counts)
     print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
     if stopped:
@@ -372,13 +377,17 @@ async def cmd_score(args: argparse.Namespace) -> int:
                      f"{', '.join(repr(r) for r in suite.rubrics)}")
         only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
         want, unknown, _ = selected(args, store, services, only=only, loaded={ep.ep_id: ep for ep in episodes})
+        log = Log(run_dir / LOG_FILE)
+        log("started", cmd="score", judges=args.judges, rubric=args.rubric, code=code_version(),
+            to_score=len(want.get(info["suite"], {})))
         try:
-            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, want.get(info["suite"], {}))
+            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, want.get(info["suite"], {}), log)
         except* AccountError as group:
             sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are "
                      "stored, the others are as they were")
         finally:
             await close(services)
+            log.finished()
     record_usage(run_dir, services)
     return scored(str(run_dir), args, info["suite"], rows, unknown, services)
 

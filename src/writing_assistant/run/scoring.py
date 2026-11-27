@@ -20,7 +20,7 @@ from writing_assistant.episode.segments import Store, judging
 from writing_assistant.episode.store import LOCAL_DEV, local_only
 from writing_assistant.llm.client import AccountError
 from writing_assistant.judges import Judges
-from writing_assistant.run import code_version
+from writing_assistant.run import Log, code_version
 from writing_assistant.run.directory import Refused
 from writing_assistant.suites import SUITES, Services, Suite, Tally, listed_rubrics
 
@@ -117,15 +117,30 @@ async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, service
     return out
 
 
+def outcome(row: dict) -> tuple[str, str]:
+    """What a score row says happened, for the log and the closing line: (`scored`,
+    `unscored`, `error`, `skipped` or `twin`, why). `unscored`: every item went unscored."""
+    if "error" in row:
+        return "error", row["error"].split(":")[0]
+    if "skipped" in row:
+        return "skipped", "the episode failed"
+    if "metrics" not in row:
+        return "twin", ""
+    if row["metrics"] and all(k.startswith("n_unscored.") for k in row["metrics"]):
+        return "unscored", ", ".join(sorted({k.rsplit(".", 1)[1] for k in row["metrics"]}))
+    return "scored", ""
+
+
 async def score_into(store: Store, profile: str, suite: Suite, episodes: list[Episode], services: Services,
-                     concurrency: int, want: dict[str, list[str]]) -> list[dict]:
+                     concurrency: int, want: dict[str, list[str]], log: Log) -> list[dict]:
     """Score each episode `want` names under the rubrics it gives (`to_score`), and add each
     row to the store under its judging with its judgments as soon as it is made; the rows
     are returned. Each is stamped with the scoring code, the time and the judges asked. The
     rows an episode had stay in the store, and readers take the new one unless it says the
     scorer raised and an older one does not. A twin is a baseline, judged only through the
     `score()` of the episode it names: its row says whose it is. Twins are paired over all
-    of `episodes`; a rollout is the baseline of nothing and has none."""
+    of `episodes`; a rollout is the baseline of nothing and has none. Each row is one
+    `judged` line of `log`."""
     refuse(suite, {r for rubrics in want.values() for r in rubrics}, services.judges, profile)  # the one writer of rows
     twins = {ep.baseline_of: ep for ep in episodes if ep.baseline_of is not None}
     sem = asyncio.Semaphore(concurrency)
@@ -143,6 +158,8 @@ async def score_into(store: Store, profile: str, suite: Suite, episodes: list[Ep
         for rubric, (row, judgments) in scored.items():
             row |= stamp
             store.put_scores(judging(profile, rubric), [row], judgments)
+            result, why = outcome(row)
+            log("judged", ep_id=ep.ep_id, judging=judging(profile, rubric), result=result, **({"why": why} if why else {}))
         return [row for row, _ in scored.values()]
 
     rows = await asyncio.gather(*(one(ep, want[ep.ep_id]) for ep in episodes if want.get(ep.ep_id)))

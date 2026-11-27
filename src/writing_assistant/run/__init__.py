@@ -37,6 +37,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 import traceback
 import uuid
 from collections import Counter
@@ -58,6 +59,7 @@ from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, play
 
 ROOT = Path(__file__).resolve().parents[3]
 ERRORS_FILE = "errors.jsonl"
+LOG_FILE = "log.jsonl"
 
 
 def resolved(endpoints: dict[str, dict[str, Any]], cast: dict[str, str]) -> dict[str, dict[str, str]]:
@@ -73,6 +75,26 @@ def resolved(endpoints: dict[str, dict[str, Any]], cast: dict[str, str]) -> dict
 
 def now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class Log:
+    """The run log: one appended JSON line per event (`at`, `pid`, `event`, then names that
+    find the thing in the store), in `log.jsonl` of a run directory and, for what happens
+    to a world, `<world>.log.jsonl` beside the world file. A line is written whole and at
+    once, so a killed process leaves every event up to its last, and `wa-bench status`
+    reads it. Events: started, opened, resumed, closed, failed, pushed, judged, finished.
+    No line holds episode text: names, counts, statuses and error types only."""
+
+    def __init__(self, *paths: Path) -> None:
+        self.paths, self.began = paths, time.monotonic()
+
+    def __call__(self, event: str, **names: Any) -> None:
+        line = {"at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-4] + "Z", "pid": os.getpid(), "event": event} | names
+        for path in self.paths:
+            append_jsonl(path, [line])
+
+    def finished(self, **names: Any) -> None:
+        self("finished", seconds=round(time.monotonic() - self.began, 1), **names)
 
 
 def group_id(run_id: str, round: str, source: Episode, at: int) -> str:
@@ -238,8 +260,9 @@ class Runner:
 
     def __init__(self, suite: Suite, services: Services, store: Store, run_dir: Path, *, run_id: str, endpoint: str,
                  driver: str, max_tokens: int, concurrency: int, cast: dict[str, str] | None = None,
-                 round: str = "0") -> None:
+                 round: str = "0", log: Log | None = None) -> None:
         self.suite, self.services, self.store, self.run_dir = suite, services, store, run_dir
+        self.log = log or Log(run_dir / LOG_FILE)
         self.run_id, self.round = run_id, round
         self.cast = {SUBJECT: endpoint} | (cast or {})
         self.binding = Binding(self.cast, DRIVERS[driver](services.llm, suite.tools, max_tokens=max_tokens),
@@ -321,10 +344,13 @@ class Runner:
         An `AccountError` is recorded the same way and then raised."""
         async with self.sem:
             eps: list[Episode] = []
-            phase = "setup"
+            phase, private = "setup", False
             try:
                 eps = begin()
-                with local_only(any(ep.split == LOCAL_DEV for ep in eps)):
+                private = any(ep.split == LOCAL_DEV for ep in eps)
+                for ep in eps:
+                    self.log("resumed" if ep.calls else "opened", ep_id=ep.ep_id, **({"group": ep.group} if ep.group else {}))
+                with local_only(private):
                     self.store.append(*eps)
                     phase = "play"
                     await play(self.suite, eps, self._turn)
@@ -334,6 +360,8 @@ class Runner:
                                                            "error": f"{type(e).__name__}: {e}",
                                                            "trace": traceback.format_exc(limit=-4)}])
                 print(f"  {name}: {phase} error: {type(e).__name__}: {str(e)[:200]}", flush=True)
+                # An error's message may quote what was being read: not logged for local_dev text.
+                self.log("failed", name=name, phase=phase, error=type(e).__name__ if private else f"{type(e).__name__}: {str(e)[:200]}")
                 if isinstance(e, AccountError):
                     raise
                 return None
@@ -343,6 +371,8 @@ class Runner:
                 ep.complete()
                 self.counts[ep.status] += 1
             self.store.close(*eps)
+            for ep in eps:
+                self.log("closed", ep_id=ep.ep_id, status=ep.status)
             print(f"  {name}: " + ", ".join(f"{ep.condition}={ep.status}" for ep in eps), flush=True)
             return eps
 

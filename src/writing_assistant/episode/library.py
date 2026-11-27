@@ -139,6 +139,10 @@ class Library:
                 out.append(World(found.stem, _root(store)[1], found))
         return out
 
+    def log_path(self, world: str) -> Path:
+        """Where what happens to the world is logged (`run.Log`)."""
+        return self.worlds_dir / f"{world}.log.jsonl"
+
     @contextmanager
     def open(self, world: str) -> Iterator[Store]:
         """The world's store, read-only, with the world's lock held shared until the block

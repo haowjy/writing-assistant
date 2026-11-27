@@ -32,7 +32,7 @@ from writing_assistant.episode import Episode
 from writing_assistant.episode.library import Library
 from writing_assistant.episode.segments import STORE_FILE, Store
 from writing_assistant.llm.client import AccountError
-from writing_assistant.run import Runner, cast_from, code_version, group_id, now, run_info, situated
+from writing_assistant.run import LOG_FILE, Log, Runner, cast_from, code_version, group_id, now, run_info, situated
 from writing_assistant.run.directory import Refused, identity, open_run, record_usage, services_for
 from writing_assistant.suites import SUITES, Services
 
@@ -120,6 +120,14 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
     slots = asyncio.Semaphore(settings.concurrency)  # over every round's runner together
     short: dict[Work, list[Episode]] = {}
     store = opened.store
+    log = Log(run_dir / LOG_FILE, lib.log_path(world))
+    log("started", cmd="run --world", world=world, run_dir=str(run_dir), endpoint=settings.endpoint, code=code_version(),
+        groups={g: {"source": w.source, "round": w.round, "size": w.rollouts} for w, g in groups.items()})
+
+    def push(names: list[str]) -> None:
+        if lib.push(store, names, scores=False)["episodes"]:
+            log("pushed", world=world, ep_ids=names)
+
     try:
         with run_info(run_dir) as info:
             info.setdefault("invocations", []).append({"at": now(), "code": code_version(), "work": len(sources)})
@@ -132,7 +140,7 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
             # One runner per round: a runner stamps its round on what it binds.
             runners = {round: Runner(SUITES[suite], services, store, run_dir, run_id=opened.run_id, endpoint=settings.endpoint,
                                      driver=settings.driver, max_tokens=settings.max_tokens,
-                                     concurrency=settings.concurrency, cast=cast, round=round)
+                                     concurrency=settings.concurrency, cast=cast, round=round, log=log)
                        for round in {w.round for w in sources}}
             short = _missing(store, sources, groups, runners)
             asked, left = sum(w.rollouts for w in sources), sum(map(len, short.values()))
@@ -147,7 +155,7 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
             async def member(runner: Runner, ep: Episode, store: Store = store) -> None:
                 async with slots:
                     if await runner.play(ep.ep_id, lambda: [ep]):
-                        lib.push(store, [ep.ep_id], scores=False)
+                        push([ep.ep_id])
 
             try:
                 async with asyncio.TaskGroup() as tg:  # an AccountError in one cancels the rest
@@ -162,8 +170,9 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
             # this call's groups: the directory keeps every rollout it ever played.
             if closed := [name for w, source in sources.items() for name in store.rollouts(source.ep_id, 0, groups[w])
                           if store.is_closed(name)]:
-                lib.push(store, closed, scores=False)
+                push(closed)
             record_usage(run_dir, services)
+            log.finished(short=sorted(ep.ep_id for eps in short.values() for ep in eps))
         finally:
             store.db.close()
             opened.lock.close()

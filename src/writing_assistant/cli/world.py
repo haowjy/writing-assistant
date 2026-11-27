@@ -21,6 +21,7 @@ from writing_assistant.episode.library import Busy, Library
 from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import matches
 from writing_assistant.llm.client import AccountError
+from writing_assistant.run import Log, code_version
 from writing_assistant.run.control import Settings, Unplayed, Work, play_groups
 from writing_assistant.run.directory import services_for
 from writing_assistant.run.scoring import score_into
@@ -81,14 +82,19 @@ async def score_world(args: argparse.Namespace) -> int:
     unknown: dict[str, int] = {}
     suites: set[str] = set()
     nothing = ""
+    lib = Library()
     try:
         try:
             with ExitStack() as held:
                 try:  # only the opening: a KeyError from a bug in the pass is a traceback
-                    store = held.enter_context(Library().judging(args.world, args.judges))
+                    store = held.enter_context(lib.judging(args.world, args.judges))
                 except (LookupError, Busy) as e:  # no such world, a pass already running
                     sys.exit(f"--world {args.world}: {e}")
                 want, unknown, suites = selected(args, store, services)
+                log = Log(lib.log_path(args.world))
+                log("started", cmd="score --world", world=args.world, judges=args.judges, rubric=args.rubric, code=code_version(),
+                    to_score=sum(map(len, want.values())))
+                held.callback(log.finished)
                 if not want:
                     nothing = _nothing_to_score(args, store)
                 if args.rubric is not None and not any(args.rubric in SUITES[suite].rubrics for suite in suites):
@@ -97,7 +103,7 @@ async def score_world(args: argparse.Namespace) -> int:
                 for suite, wanted in want.items():
                     for names in batched(wanted, max(4 * args.concurrency, 32)):  # a large world is never loaded whole
                         episodes = [store.load(name) for name in names]
-                        rows += await score_into(store, args.judges, SUITES[suite], episodes, services, args.concurrency, wanted)
+                        rows += await score_into(store, args.judges, SUITES[suite], episodes, services, args.concurrency, wanted, log)
         except* AccountError as group:
             sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are in "
                      "the world, and the same command scores the rest")
