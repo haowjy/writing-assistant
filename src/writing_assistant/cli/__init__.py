@@ -184,6 +184,14 @@ async def close(services: Services) -> None:
 # -- run -----------------------------------------------------------------------------------
 
 async def cmd_run(args: argparse.Namespace) -> int:
+    if args.world:
+        if given := [flag for flag, value in (("--suite", args.suite), ("--from", args.source), ("--from-run", args.from_run),
+                                              ("--limit", args.limit), ("--no-score", args.no_score)) if value]:
+            sys.exit(f"--world plays a group of each of a world's situations and scores nothing; {', '.join(given)} "
+                     "goes with a run of task rows or of one stored episode")
+        return await run_world(args)
+    if not args.suite:
+        sys.exit("run takes --suite (task rows, or --from's episode) or --world (a library world's situations)")
     suite = SUITES[args.suite]
     services = services_for(args.models, args.judges)
     try:
@@ -466,11 +474,13 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     r = sub.add_parser("run", help="set up, play, save and score a suite's tasks against one endpoint")
-    r.add_argument("--suite", required=True, choices=sorted(SUITES))
+    r.add_argument("--suite", choices=sorted(SUITES))
+    r.add_argument("--world", help="play --rollouts rollouts of each situation of this library world (see --where), into "
+                                   "the world; nothing is scored (`score --world` does that)")
     r.add_argument("--endpoint", required=True, help="models.toml endpoint name of the subject")
     r.add_argument("--cast", help="[cast.<name>] in models.toml: the endpoint of every model seat that is not the subject's")
     r.add_argument("--driver", default="direct", choices=sorted(DRIVERS))
-    r.add_argument("--split", default="dev", choices=["train", "dev", "test", LOCAL_DEV])
+    r.add_argument("--split", default="dev", choices=["train", "dev", "test", LOCAL_DEV], help="with --world, the world's is used")
     r.add_argument("--held-out-test", action="store_true",
                    help="required with --split test; each such run is appended to $WA_DATA/test-split-uses.jsonl")
     r.add_argument("--where", help="key=value[,key=value]: task row fields, then payload fields; a comma not followed by key= stays in the value")
@@ -479,11 +489,12 @@ def parser() -> argparse.ArgumentParser:
                    help="play rollouts of a stored episode's turn checkpoint N instead of task rows (see --rollouts)")
     r.add_argument("--from-run", help="the run directory whose store holds --from's episode (default: --out's own)")
     r.add_argument("--rollouts", type=int, default=1,
-                   help="with --from: how many forks of the checkpoint to play; they are one group, whose size is then fixed")
+                   help="with --from or --world: how many forks to play of the checkpoint, or of each situation; they are "
+                        "one group, whose size is then fixed")
     r.add_argument("--round", default="0",
-                   help="with --from: which pass over the checkpoint this is (a trainer's policy step); each round's "
-                        "rollouts are a group of their own")
-    r.add_argument("--out", help="run directory (resumed when it exists)")
+                   help="with --from or --world: which pass this is (a trainer's policy step); each round's rollouts are "
+                        "a group of their own")
+    r.add_argument("--out", help="run directory (resumed when it exists); with --world, the folder its run directories go under")
     r.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     r.add_argument("--no-score", action="store_true", help="play and save only; score later")
     r.add_argument("--concurrency", type=int, default=8, help="tasks in flight")
@@ -548,6 +559,7 @@ from writing_assistant.cli.library import add_parser as add_library_parser  # no
 from writing_assistant.cli.library import cmd_library  # noqa: E402
 from writing_assistant.cli.report import cmd_report  # noqa: E402  (needs the helpers above)
 from writing_assistant.cli.view import cmd_view  # noqa: E402
+from writing_assistant.cli.world import run_world  # noqa: E402
 
 COMMANDS = {"run": cmd_run, "situate": cmd_situate, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
             "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view, "library": cmd_library}

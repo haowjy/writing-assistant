@@ -206,14 +206,14 @@ def test_a_push_takes_one_state_of_a_store_a_live_run_is_writing(lib, tmp_path, 
     with played(lib, tmp_path / "a.db", "a") as a:
         copy, late = Store.copy, []
 
-        def the_run_closes_another(self, names, into):
+        def the_run_closes_another(self, names, into, scores=True):
             def close():
                 with played(lib, tmp_path / "a.db", "later", n=1):
                     pass
 
             late.append(after(0.3, close))
             assert late[0].is_alive()  # its commit waits for this read
-            return copy(self, names, into)
+            return copy(self, names, into, scores)
 
         monkeypatch.setattr(Store, "copy", the_run_closes_another)
         assert lib.push(a)["episodes"] == 2
@@ -342,10 +342,10 @@ def test_a_restore_waits_for_a_push_in_flight_and_a_reader_keeps_the_file_it_ope
         good = lib.snapshot("sel")
         copy, restoring = Store.copy, []
 
-        def a_restore_starts(self, names, into):
+        def a_restore_starts(self, names, into, scores=True):
             restoring.append(after(0.3, lambda: lib.restore("sel")))
             assert restoring[0].is_alive()  # it waits for this push to let go of the world
-            return copy(self, names, into)
+            return copy(self, names, into, scores)
 
         monkeypatch.setattr(Store, "copy", a_restore_starts)
         assert lib.push(b)["episodes"] == 2

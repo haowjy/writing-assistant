@@ -168,14 +168,15 @@ class Library:
             for name in names:
                 store.copy_chain(name, into)
 
-    def push(self, src: Store, names: list[str] | None = None) -> Counter[str]:
+    def push(self, src: Store, names: list[str] | None = None, scores: bool = True) -> Counter[str]:
         """Add closed episodes of `src` to their world, each with its chain, listing and score
         rows, in one transaction; what was added is returned (`episodes`, `segments`,
         `checkpoints`, `scores`), all zeros when the world held everything. `names` None:
         every closed episode and every start `src` lists. An open episode is refused by
         name, and so is a segment whose root is not the world's: the world is the one the
         first name's root names. `src` is read in one read transaction (a live run may be
-        writing it), so the names and what is copied are one state of it."""
+        writing it), so the names and what is copied are one state of it. `scores=False`
+        leaves the score rows behind and reads none (the controller, which only plays)."""
         with src.reading():
             names = [*src.names(), *src.starts()] if names is None else names
             if not names:
@@ -191,7 +192,7 @@ class Library:
                 if foreign := [name for name, seg in roots.items() if seg != root]:
                     raise ValueError(f"{', '.join(foreign)}: not of the world {world!r} (another root); one push goes to "
                                      "one world")
-                return src.copy(names, store)
+                return src.copy(names, store, scores)
 
     # -- keeping a world whole ---------------------------------------------------------------
 

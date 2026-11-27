@@ -485,21 +485,22 @@ class Store:
                 raise ValueError(f"{into.path}: another episode named {ep_id!r} is already stored there")
         return chain[-1]
 
-    def copy(self, names: list[str], into: Store) -> Counter[str]:
+    def copy(self, names: list[str], into: Store, scores: bool = True) -> Counter[str]:
         """Copy each named episode into another store as it is here: its segment and every
         ancestor (`copy_chain`), its listing (a start stays one), and every score row of it
         with its judge items, skipping the rows already there. A name that is an unlisted segment's `seg`
         arrives unlisted and brings no rows. This store is read in one read transaction, so
         what is copied is one state of a file another process may be writing, and the other
         is written in one transaction: an episode is there with its rows or not at all.
-        Returns what the other store gained: `episodes`, `segments`, `checkpoints`, `scores`."""
+        Returns what the other store gained: `episodes`, `segments`, `checkpoints`, `scores`.
+        `scores=False` copies the episodes alone and reads no score row: what play does."""
         added: Counter[str] = Counter(episodes=0, segments=0, checkpoints=0, scores=0)
         copied: set[str] = set()
         with self.reading(), into._write():
             for name in names:
                 listed = self.db.execute("SELECT ep_id, start FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
                 self._copy_chain(name, into, listed, added, copied)
-                if listed:
+                if listed and scores:
                     for judging_, row, items in self.db.execute(
                             "SELECT s.profile, s.row, j.body FROM scores s LEFT JOIN judgments j ON j.score = s.id "
                             "WHERE s.ep_id = ? ORDER BY s.rowid", listed[:1]).fetchall():
