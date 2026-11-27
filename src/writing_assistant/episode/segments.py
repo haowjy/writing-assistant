@@ -77,6 +77,7 @@ import json
 import sqlite3
 import weakref
 import zlib
+from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
@@ -440,22 +441,25 @@ class Store:
         fork from (`copy` lists it too). A checkpoint the other store holds with a different
         body is refused, and nothing is copied: both stores continued one open segment."""
         with into._write():
-            return self._copy_chain(name, into, None)
+            return self._copy_chain(name, into, None, Counter())
 
-    def _copy_chain(self, name: str, into: Store, listing: tuple[str, int | None] | None) -> str:
+    def _copy_chain(self, name: str, into: Store, listing: tuple[str, int | None] | None, added: Counter[str]) -> str:
         """`listing`: the episode's (`ep_id`, `start`) in this store's `episodes`, to list
-        it the same way there; None leaves it unlisted."""
+        it the same way there; None leaves it unlisted. `added` counts what the other store
+        gained."""
         chain = self.chain(name)
         for seg in chain:
             row = self.db.execute(f"SELECT {_SEGMENT} FROM segments WHERE seg = ?", (seg,)).fetchone()
             if into.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone() is None:
                 into._insert_segment(row)
+                added["segments"] += 1
             have = dict(into.db.execute("SELECT n, body FROM checkpoints WHERE seg = ?", (seg,)).fetchall())
             for n, kind, events, calls, body in self.db.execute(
                     "SELECT n, kind, events, calls, body FROM checkpoints WHERE seg = ? ORDER BY n", (seg,)).fetchall():
                 if n not in have:
                     into.db.execute("INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, ?, ?, ?, ?)",
                                     (seg, n, kind, events, calls, body))
+                    added["checkpoints"] += 1
                 elif have[n] != body and _unpack(have[n]) != _unpack(body):  # two zlib builds pack one body differently
                     raise ValueError(f"{into.path}: checkpoint {n} of {row[4]} is stored there with another body: "
                                      f"it and {self.path} each continued this episode, and only one of them can be kept")
@@ -464,26 +468,30 @@ class Store:
             have = into.db.execute("SELECT seg FROM episodes WHERE ep_id = ?", (ep_id,)).fetchone()
             if have is None:
                 into.db.execute("INSERT INTO episodes (ep_id, seg, start) VALUES (?, ?, ?)", (ep_id, chain[-1], start))
+                added["episodes"] += 1
             elif have[0] != chain[-1]:
                 raise ValueError(f"{into.path}: another episode named {ep_id!r} is already stored there")
         return chain[-1]
 
-    def copy(self, names: list[str], into: Store) -> None:
+    def copy(self, names: list[str], into: Store) -> Counter[str]:
         """Copy each named episode into another store as it is here: its segment and every
         ancestor (`copy_chain`), its listing (a start stays one), and every score row of it
         with its judge items, skipping the rows already there. A name that is an unlisted segment's `seg`
         arrives unlisted and brings no rows. This store is read in one read transaction, so
         what is copied is one state of a file another process may be writing, and the other
-        is written in one transaction: an episode is there with its rows or not at all."""
+        is written in one transaction: an episode is there with its rows or not at all.
+        Returns what the other store gained: `episodes`, `segments`, `checkpoints`, `scores`."""
+        added: Counter[str] = Counter(episodes=0, segments=0, checkpoints=0, scores=0)
         with self.reading(), into._write():
             for name in names:
                 listed = self.db.execute("SELECT ep_id, start FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
-                self._copy_chain(name, into, listed)
+                self._copy_chain(name, into, listed, added)
                 if listed:
                     for judging_, row, items in self.db.execute(
                             "SELECT s.profile, s.row, j.body FROM scores s LEFT JOIN judgments j ON j.score = s.id "
                             "WHERE s.ep_id = ? ORDER BY s.rowid", listed[:1]).fetchall():
-                        into._add_score(judging_, row, items)
+                        added["scores"] += into._add_score(judging_, row, items)
+        return added
 
     def rollouts(self, source: str, at: int | None = None, group: str | None = None) -> list[str]:
         """`ep_id` of the stored rollouts of the episode named `source`, open ones included:
@@ -510,11 +518,11 @@ class Store:
                 items = behind.get(row["ep_id"])
                 self._add_score(judging, json.dumps(row, ensure_ascii=False), _pack(items) if items else None)
 
-    def _add_score(self, judging: str, text: str, items: bytes | None) -> None:
+    def _add_score(self, judging: str, text: str, items: bytes | None) -> int:
         """One row arriving, as its JSON text, with its judge items packed (None: it has
         none). Its id, episode, time and whether it is final are worked out from the text
         here, never taken from the file it came from, and a row already held is skipped with
-        its items."""
+        its items. Returns how many rows that added (1 or 0)."""
         row = json.loads(text)
         id_ = hashlib.sha256(f"{judging}\0{text}".encode()).hexdigest()[:32]
         added = self.db.execute(
@@ -522,6 +530,7 @@ class Store:
             (id_, row["ep_id"], judging, "error" not in row, row["scored_at"], text))
         if added.rowcount and items:
             self.db.execute("INSERT INTO judgments (score, body) VALUES (?, ?)", (id_, items))
+        return added.rowcount
 
     def judgings(self, profile: str | None = None) -> list[str]:
         """The judgings this store holds score rows under: all of them, or those of one

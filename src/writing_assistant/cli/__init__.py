@@ -124,6 +124,7 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS
 from writing_assistant.episode import Episode
+from writing_assistant.episode.library import Library
 from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, has_store, judging, split_judging
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
 from writing_assistant.judges import judges_from
@@ -370,20 +371,31 @@ def cmd_situate(args: argparse.Namespace) -> int:
     row = json.loads(Path(args.row).read_text())
     if not isinstance(row, dict) or row.get("suite") not in SUITES or not isinstance(row.get("kind"), str):
         sys.exit(f"--row {args.row}: one JSON object with `suite` (one of {sorted(SUITES)}), `kind` and `payload`")
-    run_dir = Path(args.run)
-    if args.from_run and not has_store(args.from_run):
-        sys.exit(f"--from-run {args.from_run}: no run directory with a {STORE_FILE} there")
-    if not args.from_run and not has_store(run_dir):
-        sys.exit(f"--at {args.at}: {run_dir} has no {STORE_FILE} to take the episode from; --from-run names the run that holds it")
-    services = services_for(args.models, args.judges)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    with Store(run_dir / STORE_FILE) as store, \
-            (Store(Path(args.from_run) / STORE_FILE, readonly=True) if args.from_run else nullcontext()) as home:
+    if args.world:
+        # In a world: the position and the situation are in one file, and no judge is reachable.
+        if args.from_run:
+            sys.exit("--from-run names a run directory that holds --at's episode; a world holds its own positions")
+        services = services_for(args.models, "none")
         try:
-            eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at,
-                          name=row.get("task_id"), home=home)
+            with Library().writing(args.world) as store:
+                eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at, name=row.get("task_id"))
         except (LookupError, ValueError, sqlite3.Error) as e:
             sys.exit(f"--at {args.at}: {e}")
+    else:
+        run_dir = Path(args.run)
+        if args.from_run and not has_store(args.from_run):
+            sys.exit(f"--from-run {args.from_run}: no run directory with a {STORE_FILE} there")
+        if not args.from_run and not has_store(run_dir):
+            sys.exit(f"--at {args.at}: {run_dir} has no {STORE_FILE} to take the episode from; --from-run names the run that holds it")
+        services = services_for(args.models, args.judges)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        with Store(run_dir / STORE_FILE) as store, \
+                (Store(Path(args.from_run) / STORE_FILE, readonly=True) if args.from_run else nullcontext()) as home:
+            try:
+                eps = situate(store, services, row["suite"], row["kind"], row.get("payload", {}), args.at,
+                              name=row.get("task_id"), home=home)
+            except (LookupError, ValueError, sqlite3.Error) as e:
+                sys.exit(f"--at {args.at}: {e}")
     for ep in eps:
         print(ep.ep_id)
     return 0
@@ -528,7 +540,9 @@ def parser() -> argparse.ArgumentParser:
     r.add_argument("--max-tokens", type=int, default=16384, help="per model call, thinking included")
 
     st = sub.add_parser("situate", help="set a new task up on the files a closed episode ended with, and store it")
-    st.add_argument("--run", required=True, help="the run directory whose store the situation goes into")
+    where = st.add_mutually_exclusive_group(required=True)
+    where.add_argument("--run", help="the run directory whose store the situation goes into")
+    where.add_argument("--world", help="the library world the situation goes into; --at is then an episode of that world")
     st.add_argument("--at", required=True, metavar="EP_ID", help="the position: a closed episode's name")
     st.add_argument("--row", required=True, help="a JSON file: the task's suite, kind and payload")
     st.add_argument("--from-run", help="the run directory whose store holds --at's episode (default: --run's own)")
@@ -576,14 +590,17 @@ def parser() -> argparse.ArgumentParser:
     y.add_argument("--runs", default="runs")
     y.add_argument("--stage", default="runs/.sync-stage")
     y.add_argument("--dry-run", action="store_true")
+    add_library_parser(sub)
     return p
 
 
+from writing_assistant.cli.library import add_parser as add_library_parser  # noqa: E402
+from writing_assistant.cli.library import cmd_library  # noqa: E402
 from writing_assistant.cli.report import cmd_report  # noqa: E402  (needs the helpers above)
 from writing_assistant.cli.view import cmd_view  # noqa: E402
 
 COMMANDS = {"run": cmd_run, "situate": cmd_situate, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
-            "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view}
+            "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view, "library": cmd_library}
 
 
 def main(argv: list[str] | None = None) -> int:
