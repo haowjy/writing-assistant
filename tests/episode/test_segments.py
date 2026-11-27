@@ -183,3 +183,35 @@ def test_a_format_1_store_is_brought_up_to_date_by_a_writer_and_refused_by_a_rea
     with Store(path, readonly=True) as store:
         assert store.db.execute("PRAGMA user_version").fetchone()[0] == FORMAT == 3
         assert list(store.episodes()) == before and store.scores("eval") == {}
+
+
+def test_settled_answers_from_one_state_of_a_store_a_group_is_arriving_in(tmp_path, monkeypatch):
+    """`settled` asks what is played and then reads the rows: a group pushed and scored by
+    another process between the two is not half there. (A world file, which keeps a log: in
+    a run directory the push would wait for the read to end.)"""
+    path = tmp_path / "store.db"
+    with Store(path) as store:
+        store.db.execute("PRAGMA journal_mode = WAL")
+        source = Episode(ep_id="s", task_id="t", suite="1a", split="dev")
+        store.append(source)
+
+        def arrives(group):
+            with Store(path) as other:  # another process: its own connection
+                ep = source.rollout(0, 0, group)
+                ep.meta = {"group_size": 1}
+                other.close(ep)
+                other.put_scores("eval", [_row(ep.ep_id, "1")])
+
+        arrives("g")
+        groups = Store.groups
+
+        def groups_then_a_push_lands(self, group=None):
+            found = groups(self, group)
+            arrives("late")
+            return found
+
+        with Store(path, readonly=True) as reader:
+            monkeypatch.setattr(Store, "groups", groups_then_a_push_lands)
+            assert reader.settled("eval") == {"g": {"size": 1, "sources": {"s": 1}, "settled": True}}
+            monkeypatch.setattr(Store, "groups", groups)
+            assert set(reader.settled("eval")) == {"g", "late"}

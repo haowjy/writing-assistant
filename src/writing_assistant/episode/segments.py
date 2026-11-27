@@ -621,17 +621,19 @@ class Store:
         A group is settled when it is played, every member has such a row and no two of the
         rows were scored by different judges for one use (the rows' `judges` stamps: a
         profile is a name in one machine's models.toml)."""
-        found = {grp: {"size": g["size"], "sources": dict.fromkeys(g["sources"], 0), "settled": g["played"]}
-                 for grp, g in self.groups(group).items()}
         stamps: dict[str, dict[str, set[str]]] = {}
-        # CROSS JOIN fixes the order: the group's segments first, then each one's rows. Left to
-        # itself SQLite starts from every score row in the file (1.4 s for one group of a
-        # 100,000-rollout world, against 10 ms).
-        rows = self.db.execute(
-            f"""SELECT s.grp, s.rollout_of, sc.row FROM segments s CROSS JOIN episodes e ON e.seg = s.seg
-                CROSS JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
-                WHERE s.grp {'= ?' if group else 'IS NOT NULL'} AND {_CLOSED}""", (judging, *([group] if group else [])))
-        for grp, source, row in rows.fetchall():
+        with self.reading():  # the groups and their rows are one state: a group may be arriving
+            found = {grp: {"size": g["size"], "sources": dict.fromkeys(g["sources"], 0), "settled": g["played"]}
+                     for grp, g in self.groups(group).items()}
+            # CROSS JOIN fixes the order: the group's segments first, then each one's rows. Left to
+            # itself SQLite starts from every score row in the file (1.4 s for one group of a
+            # 100,000-rollout world, against 10 ms).
+            rows = self.db.execute(
+                f"""SELECT s.grp, s.rollout_of, sc.row FROM segments s CROSS JOIN episodes e ON e.seg = s.seg
+                    CROSS JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
+                    WHERE s.grp {'= ?' if group else 'IS NOT NULL'} AND {_CLOSED}""",
+                (judging, *([group] if group else []))).fetchall()
+        for grp, source, row in rows:
             found[grp]["sources"][source] += 1
             for stamp in json.loads(row).get("judges", []):
                 stamps.setdefault(grp, {}).setdefault(stamp["use"], set()).add(json.dumps(stamp, sort_keys=True))
