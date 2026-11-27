@@ -302,3 +302,38 @@ def test_the_closing_line_counts_a_row_in_which_nothing_was_scored_apart(world):
     out = world.score()
     # plain: counts (2 rows); judged: 2 rubrics x 2; quiet: 2 rows holding only `no_thinking`.
     assert "6 episodes, 8 rows: 6 scored, 2 with nothing scored (no_thinking), 0 scorer errors" in out
+
+
+def test_a_second_pass_on_one_world_and_profile_is_refused_while_the_first_runs(world, monkeypatch):
+    """Two at once would each pay the judge for the same rollouts: the first has looked, the
+    second scores everything, and the first then scores what it saw."""
+    from writing_assistant.episode.segments import Store
+
+    judged, second = Store.judged, []
+
+    def another_pass_starts(self, profile):
+        found = judged(self, profile)
+        if not second:
+            second.append(None)
+
+            def run():
+                try:
+                    second.append(cli.main(["--models", str(MODELS_TOML), "score", "--world", "sel", "--judges", "j"]))
+                except SystemExit as e:
+                    second.append(str(e))
+
+            thread = threading.Thread(target=run)
+            thread.start()
+            thread.join()
+        return found
+
+    monkeypatch.setattr(Store, "judged", another_pass_starts)
+    world.score()
+    assert "another judging pass" in str(second[1]) and "sel" in second[1] and "'j'" in second[1]
+    with world.open("sel") as home:
+        assert {n for (n,) in home.db.execute("SELECT COUNT(*) FROM scores GROUP BY ep_id, profile")} == {1}
+    # Another profile is another judge's money, and a pass that has ended holds nothing.
+    world.llm.config["judges"]["k"] = world.llm.config["judges"]["j"]
+    second.clear()
+    assert cli.main(["--models", str(MODELS_TOML), "score", "--world", "sel", "--judges", "k", "--rubric", "counts"]) == 0
+    assert ": 0 episodes" in world.score()

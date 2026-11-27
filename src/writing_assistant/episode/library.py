@@ -3,6 +3,7 @@
     <root>/                                 /cold/writing-assistant/library; WA_LIBRARY overrides
       worlds/<world>.db                     the world: a store (`episode/segments.py`)
       worlds/<world>.lock, <world>.master   empty files that are locked, never read
+      worlds/<world>.judging-<profile>.lock the same, for the one judging pass per world and judge profile (`judging`)
       snapshots/<world>.<utc>-<4 hex>.db    verified copies; the two newest of a world are kept
 
 A **world** is the tree under one root episode: the root (a start with no parent, whose
@@ -59,6 +60,11 @@ DEFAULT_ROOT = "/cold/writing-assistant/library"
 KEPT = 2  # snapshots of a world
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")  # a world's name is a file name and the first part of its situations' names
 SIDE_FILES = ("-journal", "-wal", "-shm")  # what SQLite keeps beside a file a writer has open, or died holding
+
+
+class Busy(Exception):
+    """Something that runs one at a time on a world is already running. The message is for
+    the person at the command line."""
 
 
 class Damaged(Exception):
@@ -157,6 +163,20 @@ class Library:
         """The world's store open for writing, with the world's lock held shared: how
         anything but a restore adds rows to it (a push, a judging pass)."""
         with self._locked(world) as path, Store(path) as store:
+            yield store
+
+    @contextmanager
+    def judging(self, world: str, profile: str) -> Iterator[Store]:
+        """`writing(world)` for the one judging pass a world has under a judge profile at a
+        time: a second is refused at once (`Busy`). Rows only ever add, so two passes would
+        harm nothing but the bill: each would pay the judge for the rollouts the other is
+        scoring. Passes under other profiles, pushes and readers are not held up."""
+        with self.writing(world) as store, open(self.path(world).with_suffix(f".judging-{profile}.lock"), "a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise Busy(f"another judging pass is alive on {world} under the profile {profile!r} ({lock.name} is "
+                           "locked); this one would pay the judge for the same rollouts. Run it again when that one ends") from None
             yield store
 
     # -- in and out --------------------------------------------------------------------------

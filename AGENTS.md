@@ -338,7 +338,9 @@ position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--ro
   situations: what a pass with nothing to do costs); rollouts to be scored are loaded a
   batch at a time. It
   holds the world's lock shared and may run beside a `run --world`: it scores what is
-  closed when it looks, and the next pass scores the rest.
+  closed when it looks, and the next pass scores the rest. One pass per world and judge
+  profile at a time: a second is refused in a sentence (`Library.judging`), since two would
+  each pay the judge for the same rollouts.
 - The library has no rule for splits or personal text: a `local_dev` world is a file on this
   machine, a hosted subject is refused for it by `run.directory.identity`, and a hosted
   judge leaves its findings `local_only` without being called. Nothing copies a world off

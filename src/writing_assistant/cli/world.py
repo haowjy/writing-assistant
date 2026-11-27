@@ -15,7 +15,7 @@ import sys
 from itertools import batched
 from pathlib import Path
 
-from writing_assistant.episode.library import Library
+from writing_assistant.episode.library import Busy, Library
 from writing_assistant.episode.store import matches
 from writing_assistant.llm.client import AccountError
 from writing_assistant.run.control import Settings, Unplayed, Work, play_groups
@@ -70,7 +70,8 @@ async def score_world(args: argparse.Namespace) -> int:
     What is to do is found by one query over the world's tables (`Store.judged`) and one
     loaded rollout per situation, for its listing; only rollouts to be scored are loaded
     beyond that, a batch at a time. The world's lock is held shared throughout, so a
-    restore waits for the pass."""
+    restore waits for the pass, and a second pass under the same profile is refused while
+    this one runs (`Library.judging`)."""
     from writing_assistant.cli import close, scored, selected
 
     if args.where:
@@ -81,7 +82,7 @@ async def score_world(args: argparse.Namespace) -> int:
     suites: set[str] = set()
     try:
         try:
-            with Library().writing(args.world) as store:
+            with Library().judging(args.world, args.judges) as store:
                 want, unknown, suites = selected(args, store, services)
                 if args.rubric is not None and not any(args.rubric in SUITES[suite].rubrics for suite in suites):
                     sys.exit(f"--rubric {args.rubric}: no suite played in {args.world} ({', '.join(sorted(suites)) or 'none yet'}) "
@@ -95,6 +96,6 @@ async def score_world(args: argparse.Namespace) -> int:
                      "the world, and the same command scores the rest")
         finally:
             await close(services)
-    except LookupError as e:
+    except (LookupError, Busy) as e:
         sys.exit(f"--world {args.world}: {e}")
     return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, unknown, services)
