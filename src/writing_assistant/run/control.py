@@ -87,22 +87,23 @@ async def play_groups(lib: Library, work: list[Work], settings: Settings) -> dic
         groups: dict[Work, str] = {}
         # A world's situations may be of several suites; a run directory plays one.
         by_run: dict[tuple[str, str], dict[Work, Episode]] = {}
-        for world in sorted({w.world for w in work}):
-            with lib.open(world) as home, home.reading():
-                for w in work:
-                    if w.world != world:
-                        continue
-                    source = home.load(w.source, at=0)
-                    if not situated(source):
-                        raise Refused(f"{world}: {w.source} is not a situation (a task set up at a position, "
-                                      "`wa-bench situate`); only a situation's rollouts are a group")
-                    by_run.setdefault((world, source.suite), {})[w] = source
+        try:
+            for world in sorted({w.world for w in work}):
+                with lib.open(world) as home, home.reading():
+                    for w in work:
+                        if w.world != world:
+                            continue
+                        source = home.load(w.source, at=0)
+                        if not situated(source):
+                            raise Refused(f"{world}: {w.source} is not a situation (a task set up at a position, "
+                                          "`wa-bench situate`); only a situation's rollouts are a group")
+                        by_run.setdefault((world, source.suite), {})[w] = source
+        except LookupError as e:  # no such world, no such situation; only here, so a bug in play is a traceback
+            raise Refused(str(e)) from None
         for (world, suite), sources in by_run.items():
             split = next(iter(sources.values())).split  # the world's: every segment in it has its root's
             groups |= await _play(lib, world, suite, split, sources, cast, services, settings)
         return groups
-    except LookupError as e:  # no such world, no such situation
-        raise Refused(str(e)) from None
     finally:
         await services.llm.aclose()
 

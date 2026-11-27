@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+from contextlib import ExitStack
 from itertools import batched
 from pathlib import Path
 
@@ -79,7 +80,11 @@ async def score_world(args: argparse.Namespace) -> int:
     suites: set[str] = set()
     try:
         try:
-            with Library().judging(args.world, args.judges) as store:
+            with ExitStack() as held:
+                try:  # only the opening: a KeyError from a bug in the pass is a traceback
+                    store = held.enter_context(Library().judging(args.world, args.judges))
+                except (LookupError, Busy) as e:  # no such world, a pass already running
+                    sys.exit(f"--world {args.world}: {e}")
                 want, unknown, suites = selected(args, store, services)
                 if args.rubric is not None and not any(args.rubric in SUITES[suite].rubrics for suite in suites):
                     sys.exit(f"--rubric {args.rubric}: no suite played in {args.world} ({', '.join(sorted(suites)) or 'none yet'}) "
@@ -93,6 +98,6 @@ async def score_world(args: argparse.Namespace) -> int:
                      "the world, and the same command scores the rest")
         finally:
             await close(services)
-    except (LookupError, Busy, sqlite3.Error) as e:  # no such world, a pass already running, a file that will not open
+    except sqlite3.Error as e:  # a file that will not open
         sys.exit(f"--world {args.world}: {e}")
     return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, unknown, services)
