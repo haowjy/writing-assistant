@@ -26,10 +26,11 @@ snapshot is one file in rollback mode: nothing writes it again.
 
 Two file locks per world, both dropped by the kernel when their holder dies:
 
-- `<world>.lock` is held shared by everything that reads or writes the world file through
-  this module (`push`, `checkout`, `verify`, `snapshot`, `writing`), from before the file is
-  opened until after it is closed, and exclusively by `restore`. `open` (read-only) holds
-  nothing: a reader that has the file open when it is restored keeps the old file.
+- `<world>.lock` is held shared by everything that reads or writes the world file, from
+  before the file is opened until after it is closed (`open`, `writing`, and through them
+  `worlds`, `push`, `checkout`, `verify`, `snapshot`), and exclusively by `restore`. There
+  is no way to open a world without it: a connection opened while the file is being
+  replaced would read the old file through side files the restored one then inherits.
 - `<world>.master` is held exclusively by a world's master while it lives (`master_lock`).
   It guards cost (two masters spending on one world), not correctness.
 
@@ -138,17 +139,18 @@ class Library:
         """Every world, read from the files: its name, its split (the root's, which every
         segment in it has) and its path."""
         out = []
-        for path in sorted(self.worlds_dir.glob("*.db")):
-            with Store(path, readonly=True) as store:
-                out.append(World(path.stem, _root(store)[1], path))
+        for found in sorted(self.worlds_dir.glob("*.db")):
+            with self.open(found.stem) as store:
+                out.append(World(found.stem, _root(store)[1], found))
         return out
 
-    def open(self, world: str) -> Store:
-        """The world's store, read-only, holding no lock."""
-        path = self.path(world)
-        if not path.exists():
-            raise LookupError(f"{self.root}: no world named {world!r}")
-        return Store(path, readonly=True)
+    @contextmanager
+    def open(self, world: str) -> Iterator[Store]:
+        """The world's store, read-only, with the world's lock held shared until the block
+        ends: a restore waits for the reader, and a reader for a restore. So keep the block
+        as short as the reading."""
+        with self._locked(world) as path, Store(path, readonly=True) as store:
+            yield store
 
     @contextmanager
     def writing(self, world: str) -> Iterator[Store]:
@@ -164,7 +166,7 @@ class Library:
         rows: positions to fork from. Listed there they would read as episodes that store's
         run played, to be scored, reported and resumed. The world is read in one read
         transaction, so what arrives is one state of it whatever is being pushed meanwhile."""
-        with self._locked(world) as path, Store(path, readonly=True) as store, store.reading():
+        with self.open(world) as store, store.reading():
             for name in names:
                 store.copy_chain(name, into)
 
@@ -242,9 +244,8 @@ class Library:
         file, and whatever a writer that died left half-written; SQLite applies it to
         whatever file has that name the next time it is opened. So the live file is first
         opened for writing and closed, which folds the log in and removes it, and whatever
-        side file is still there afterwards (a reader has the file open, or it was too
-        damaged to open) is moved aside with it: none may be left to be applied to the
-        restored file."""
+        side file is still there afterwards (the file was too damaged to open) is moved
+        aside with it: none may be left to be applied to the restored file."""
         with self._locked(world, exclusive=True) as path:
             good = None
             for taken in self.snapshots(world):
@@ -287,8 +288,8 @@ def _settle(path: Path) -> None:
     """`restore`'s first step, with every other user of the world locked out. When the file
     has a side file, open it for writing, commit nothing and close it: SQLite then folds in
     what was committed, discards what a dead writer left half-written, and removes the side
-    files unless a reader still has the file open. It waits five seconds at most: nobody
-    who could hold it is a writer, and a file too damaged to open says so at once or never.
+    files. It waits five seconds at most: the lock leaves nobody else to hold the file, and
+    one too damaged to open says so at once or never.
     A file with no side file is not opened: a write transaction on an emptied one would
     give it a header."""
     if not any(path.with_name(path.name + suffix).exists() for suffix in SIDE_FILES):

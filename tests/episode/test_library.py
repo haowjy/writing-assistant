@@ -92,7 +92,7 @@ def test_a_world_is_created_whole_or_not_at_all_and_two_creates_of_one_name_cann
     first = rows(lib.path("sel"))
     with pytest.raises(ValueError, match="a world named 'sel' already exists"):
         lib.create(root())
-    assert rows(lib.path("sel")) == first and {p.name for p in lib.worlds_dir.iterdir()} - set(side_files(lib.worlds_dir)) == {"sel.db"}
+    assert rows(lib.path("sel")) == first and {p.name for p in lib.worlds_dir.iterdir()} - set(side_files(lib.worlds_dir)) - {"sel.lock"} == {"sel.db"}
     lib.create(root("private", "local_dev"))
     assert [(w.name, w.split) for w in lib.worlds()] == [("private", "local_dev"), ("sel", "dev")]
     with pytest.raises(ValueError, match="a world's root has no parent"):
@@ -336,7 +336,7 @@ def test_what_a_dead_writer_left_beside_a_world_is_not_applied_to_the_restored_f
             "SELECT COUNT(*) FROM checkpoints WHERE seg LIKE '%dead-writer'").fetchone() == (1,)
 
 
-def test_a_restore_waits_for_a_push_in_flight_and_a_reader_keeps_the_file_it_opened(lib, tmp_path, monkeypatch):
+def test_a_restore_waits_for_a_push_and_for_a_reader_and_nobody_opens_the_world_while_it_is_replaced(lib, tmp_path, monkeypatch):
     with played(lib, tmp_path / "a.db", "a") as a, played(lib, tmp_path / "b.db", "b") as b:
         lib.push(a)
         good = lib.snapshot("sel")
@@ -349,14 +349,36 @@ def test_a_restore_waits_for_a_push_in_flight_and_a_reader_keeps_the_file_it_ope
 
         monkeypatch.setattr(Store, "copy", a_restore_starts)
         assert lib.push(b)["episodes"] == 2
-        reader = lib.open("sel")
         restoring[0].join()
         monkeypatch.undo()
-        assert len(reader.names()) == 4  # the file it opened, which is now the one moved aside
-        reader.db.close()
-        with lib.open("sel") as world:
-            assert len(world.names()) == 2 and rows(lib.path("sel")) == rows(good)
+        assert rows(lib.path("sel")) == rows(good)
         assert lib.push(b)["episodes"] == 2
+
+        # A reader that has the world open holds a restore off until it is done reading.
+        with lib.open("sel") as reader:
+            waiting = after(0.3, lambda: lib.restore("sel"))
+            assert waiting.is_alive() and len(reader.names()) == 4
+        waiting.join()
+
+        # A reader arriving while the file is being replaced waits, and reads the restored one:
+        # opened then, it would read the old file through side files the new one inherits.
+        replace, arrived, seen = os.replace, [], []
+
+        def readers_arrive(src, dst):
+            def read():
+                with lib.open("sel") as world:
+                    seen.append(len(world.names()))
+
+            arrived.extend([after(0.2, read), after(0.2, lambda: seen.append([w.name for w in lib.worlds()]))])
+            assert all(thread.is_alive() for thread in arrived)
+            replace(src, dst)
+
+        lib.push(b)
+        monkeypatch.setattr(library_module.os, "replace", readers_arrive)
+        lib.restore("sel")
+        for thread in arrived:
+            thread.join()
+        assert sorted(seen, key=str) == [2, ["sel"]]
 
 
 def test_one_master_per_world(lib):
