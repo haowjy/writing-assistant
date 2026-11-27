@@ -95,8 +95,6 @@ def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = F
             raise Refused(f"{run_dir} holds a different run: {was}; this one is {identity}")
         run_id = info.setdefault("id", uuid.uuid4().hex)  # a directory claimed before runs had one gets it now
         store = Store(run_dir / STORE_FILE)
-    if identity["split"] == "test":
-        append_jsonl(TEST_USES, [identity | {"at": now(), "run": str(run_dir.resolve()), "code": code_version()} | (note or {})])
     # Getting the lock exclusively first means no other run is alive in this directory.
     lock = (run_dir / LOCK_FILE).open("a")
     try:
@@ -108,6 +106,8 @@ def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = F
         store.db.close()
         lock.close()
         raise Refused(f"{run_dir}: another run is alive here, and its open episodes are its own. Run this again when that one ends")
+    if identity["split"] == "test":  # after every refusal: a call that plays nothing used nothing
+        append_jsonl(TEST_USES, [identity | {"at": now(), "run": str(run_dir.resolve()), "code": code_version()} | (note or {})])
     if not exclusive:  # the change to shared is not atomic (flock(2)), which is why a run that must be alone keeps it
         fcntl.flock(lock, fcntl.LOCK_SH)
     return Opened(run_id, store, alone, lock)
