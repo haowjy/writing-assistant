@@ -106,14 +106,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime as dt
-import fcntl
 import json
 import os
 import shutil
 import sqlite3
 import subprocess
 import sys
-import uuid
 from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
@@ -126,15 +124,15 @@ from writing_assistant.drivers import DRIVERS
 from writing_assistant.episode import Episode
 from writing_assistant.episode.library import Library
 from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, has_store, judging, split_judging
-from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
-from writing_assistant.judges import judges_from
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, local_only, matches
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.run import ROOT, Runner, cast_from, code_version, resolved, run_info, situate, situated
+from writing_assistant.run import ROOT, Runner, cast_from, code_version, run_info, situate, situated
 from writing_assistant.run import now as _now
+from writing_assistant.run.directory import Refused, open_run, record_usage, services_for
+from writing_assistant.run.directory import identity as run_identity
 from writing_assistant.run.scoring import score_into, wanted
 from writing_assistant.suites import SUITES, Services
 
-LOCK_FILE = "run.lock"
 # task kind -> payload fields that carry work text (the licence rule in corpus/release.py)
 TEXT_FIELDS = {name: suite.text_fields for name, suite in SUITES.items()}  # what export and sync may release
 
@@ -149,14 +147,6 @@ def load_dotenv(path: Path) -> None:
         key, sep, value = line.strip().removeprefix("export ").partition("=")
         if sep and key and not key.startswith("#"):
             os.environ.setdefault(key.strip(), value.strip().strip("'\""))
-
-
-def services_for(models: Path, profile: str) -> Services:
-    client = LLMClient(models)
-    if profile not in client.config["judges"]:
-        sys.exit(f"no [judges.{profile}] in {models}; it has {sorted(client.config['judges'])}")
-    judges = judges_from(client, profile)
-    return Services(llm=client, judges=judges, search=None, refs=None, corpus=Corpus(judges=judges))
 
 
 def episode_row(ep: Episode) -> dict[str, Any]:
@@ -181,17 +171,6 @@ def played_here(run_dir: Path) -> dict[str, Any]:
     raise Unreadable(f"{run_dir}: no run directory there (no {RUN_FILE})")
 
 
-def record_usage(run_dir: Path, services: Services) -> None:
-    """Add the USD the hosts reported, and the builds that answered, to run.json."""
-    with run_info(run_dir) as info:
-        spent = info.setdefault("spent_usd", {})
-        for endpoint, usd in services.llm.spent.items():
-            spent[endpoint] = round(spent.get(endpoint, 0.0) + usd, 6)
-        served = info.setdefault("served", {})
-        for endpoint, builds in services.llm.served.items():
-            served[endpoint] = sorted(set(served.get(endpoint, [])) | builds)
-
-
 async def close(services: Services) -> None:
     """End a command: cancel what is still in flight (a gather whose sibling raised leaves
     its other calls running), then close the client, so no request goes out after a stop."""
@@ -207,20 +186,15 @@ async def close(services: Services) -> None:
 async def cmd_run(args: argparse.Namespace) -> int:
     suite = SUITES[args.suite]
     services = services_for(args.models, args.judges)
-    if args.endpoint not in services.llm.endpoints:
-        sys.exit(f"unknown endpoint {args.endpoint!r}; models.toml has {sorted(services.llm.endpoints)}")
-    if args.split == "test" and not args.held_out_test:
-        sys.exit("--split test is the held-out split, never used to choose anything; pass --held-out-test to run "
-                 f"it, and the run is logged in {TEST_USES}")
     try:
         cast = cast_from(services.llm.config, args.cast) if args.cast else {}
     except ValueError as e:
         sys.exit(f"--cast {args.cast}: {e}")
-    hosted = [e for e in (args.endpoint, *cast.values()) if not services.llm.endpoints[e].get("local")]
-    if args.split == LOCAL_DEV and hosted:
-        sys.exit(f"--split local_dev plays personal text, which may reach only an endpoint with `local = true`; "
-                 f"{', '.join(map(repr, hosted))} is hosted. Local endpoints: "
-                 f"{sorted(n for n, e in services.llm.endpoints.items() if e.get('local'))}")
+    identity = run_identity(services, suite=args.suite, driver=args.driver, endpoint=args.endpoint, split=args.split,
+                            max_tokens=args.max_tokens, cast=cast)
+    if args.split == "test" and not args.held_out_test:  # `open_run` refuses it too; said here before anything else is looked at
+        sys.exit(f"--split test is the held-out split, never used to choose anything; pass --held-out-test to run "
+                 f"it, and the run is logged in {TEST_USES}")
     if args.source and (args.where or args.limit):
         sys.exit("--from plays rollouts of one stored episode; --where and --limit choose task rows and do not apply")
     if not args.source and (args.from_run or args.rollouts != 1 or args.round != "0"):
@@ -242,25 +216,11 @@ async def cmd_run(args: argparse.Namespace) -> int:
         elif not stored:
             sys.exit(f"--from {args.source}: {run_dir} has no {STORE_FILE} to take the episode from; "
                      "--from-run names the run that holds it")
-    run_dir.mkdir(parents=True, exist_ok=True)
-    identity = {"suite": args.suite, "driver": args.driver, "endpoint": args.endpoint,
-                "model": services.llm.endpoints[args.endpoint]["model"], "split": args.split,
-                "max_tokens": args.max_tokens, "cast": resolved(services.llm.endpoints, cast)}
     code = code_version()
-    # The directory is this run's, or becomes it, before anything is stored in it: of two
-    # first invocations one claims the identity and the other is held to it.
-    with run_info(run_dir) as info:
-        if not info:
-            info |= identity | {"started": _now(), "reported_apart": args.driver == "direct"}
-        elif {k: info.get(k) for k in identity} | {"cast": info.get("cast", {})} != identity:  # none before runs had one
-            sys.exit(f"{run_dir} holds a different run: {({k: info.get(k) for k in identity})}; this one is {identity}")
-        run_id = info.setdefault("id", uuid.uuid4().hex)  # a directory claimed before runs had one gets it now
-        store = Store(run_dir / STORE_FILE)  # one this build does not write is refused here, run.json unchanged
-    if args.split == "test":
-        append_jsonl(TEST_USES, [identity | {"at": _now(), "run": str(run_dir.resolve()), "code": code,
-                                             "where": args.where, "limit": args.limit}])
-
-    runner = Runner(suite, services, store, run_dir, run_id=run_id, endpoint=args.endpoint, driver=args.driver,
+    # The directory is this run's, or becomes it, before anything is stored in it.
+    opened = open_run(run_dir, identity, held_out_test=args.held_out_test, note={"where": args.where, "limit": args.limit})
+    store, alone = opened.store, opened.alone
+    runner = Runner(suite, services, store, run_dir, run_id=opened.run_id, endpoint=args.endpoint, driver=args.driver,
                     max_tokens=args.max_tokens, concurrency=args.concurrency, cast=cast, round=args.round)
     stopped: AccountError | None = None
     counts = runner.counts  # this command adds what its scoring did to what the runner played
@@ -281,16 +241,6 @@ async def cmd_run(args: argparse.Namespace) -> int:
         eps = await runner.play(name, begin)
         if eps and not args.no_score:
             await score(eps, listed(eps))
-
-    # Held shared for as long as this run lives (the kernel drops it when the process dies).
-    # Getting it exclusively first means no other run is alive in this directory.
-    lock = (run_dir / LOCK_FILE).open("a")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        alone = True
-    except BlockingIOError:
-        alone = False
-    fcntl.flock(lock, fcntl.LOCK_SH)
 
     with store:
         closed = list(store.episodes())
@@ -609,7 +559,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = COMMANDS[args.cmd](args)
         return asyncio.run(result) if asyncio.iscoroutine(result) else result
-    except Unreadable as e:
+    except (Unreadable, Refused) as e:
         sys.exit(str(e))
 
 

@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from writing_assistant import cli
+from writing_assistant.run import directory
 from writing_assistant.episode import store
 from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import LocalOnly, local_only
@@ -70,7 +71,7 @@ def test_a_hosted_judge_leaves_a_local_dev_item_unscored_and_the_rest_scored(loc
     models.write_text(MODELS_TOML.read_text().replace('edit_pair = "qwen3-32b-mini"', 'edit_pair = "hy4"', 1))
     client = LLMClient(models)
     client._http = httpx.AsyncClient(transport=httpx.MockTransport(endpoint))
-    monkeypatch.setattr(cli, "LLMClient", lambda models: client)
+    monkeypatch.setattr(directory, "LLMClient", lambda models: client)
     out = local_dev_row / "run"
     cli.main(["--models", str(models), "run", "--suite", "3", "--split", "local_dev",
               "--endpoint", "inkling-2-mini", "--out", str(out)])

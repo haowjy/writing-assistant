@@ -7,6 +7,7 @@ import json
 import pytest
 
 from writing_assistant import cli
+from writing_assistant.run import directory
 from writing_assistant.episode import Episode
 from writing_assistant.episode.segments import Store, _unpack
 from writing_assistant.suites import SUBJECT, SUITES, one_message
@@ -68,7 +69,7 @@ def notes(tmp_path, monkeypatch, fake_llm, capsys):
         return "Done."
 
     llm = fake_llm({"gemma-4-26b": [writer] * 100, "qwen3.5-9b": [writer] * 100, "qwen3-32b-mini": ["It reads well."] * 100})
-    monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
     out = tmp_path / "run"
     out.mkdir()
     with Store(out / "store.db") as store:

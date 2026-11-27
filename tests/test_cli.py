@@ -10,6 +10,7 @@ from contextlib import suppress
 import pytest
 
 from writing_assistant import cli
+from writing_assistant.run import directory
 from writing_assistant.episode import store
 from writing_assistant.episode.segments import Store
 
@@ -55,7 +56,7 @@ def bench(tmp_path, monkeypatch, fake_llm):
         (tmp_path / "tasks" / "1a.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
         reply = writer if callable(writer) else lambda m, t, e: writer
         llm = fake_llm({"gemma-4-26b": [reply] * 100, "qwen3-14b-mini": [fact_judge] * 400})
-        monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+        monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
         return tmp_path / "run"
 
     return setup
@@ -146,7 +147,7 @@ def test_of_two_first_invocations_one_claims_the_directory_and_the_other_is_refu
     stores an episode, so the directory never holds two models' episodes under one run."""
     out = bench([POV_ROW | {"task_id": "one"}, POV_ROW | {"task_id": "two"}], "draft")
     llm = fake_llm(["draft"] * 40)
-    monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
     both, now, seen = threading.Barrier(2), cli._now, threading.local()
 
     def together() -> str:
@@ -226,7 +227,7 @@ def test_a_score_killed_between_episodes_leaves_the_earlier_rows_and_no_partial_
         return fact_judge(messages, tools, endpoint)
 
     llm = fake_llm({"qwen3-14b-mini": [dies_at_the_second_task] * 400})
-    monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
     killed("score", "--run", str(out), "--concurrency", "1")
     with Store(out / "store.db", readonly=True) as stored:
         rows, items = stored.scores("eval"), stored.judgments("eval")
@@ -278,7 +279,7 @@ def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_
         return chapter("Mira waited.")
 
     llm = fake_llm({"gemma-4-26b": [dies_at_its_second_call] * 100})
-    monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
     twin, names = "pov-1~full_view~twin_swap", [f"pov-1~full_view~twin_swap@0.{group}.{i}" for i in range(4)]
     again = ["run", "--suite", "1a", "--endpoint", "gemma-4-26b", "--out", str(out), "--from", f"{twin}@0", "--concurrency", "1", *judges]
     killed(*again, "--rollouts", "4")
