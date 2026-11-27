@@ -202,7 +202,7 @@ function verdictLine(ep: Episode, judgments: Judgment[]) {
     })
 }
 
-function Chapter({
+export function Chapter({
   family,
   epId,
   metricsAbout,
@@ -297,6 +297,23 @@ function Chapter({
             </div>
           ))}
         </Row>
+        {ep.files.some((f) => f.writers) && (
+          <Row title="Files it changed" meta={ep.files.filter((f) => f.writers).map((f) => f.path).join(", ")}>
+            {ep.files
+              .filter((f) => f.writers)
+              .map((f) => (
+                <div key={f.path} className="mb-4">
+                  <h4 className="mb-1 font-mono text-xs text-muted-foreground">
+                    {f.path} · written by {f.writers!.join(", ")}
+                  </h4>
+                  {f.diff ? <Diff lines={f.diff} /> : <pre className="max-h-[32rem] overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">{f.final}</pre>}
+                </div>
+              ))}
+            <p className="text-xs text-muted-foreground">
+              Unchanged: {ep.files.filter((f) => !f.writers).map((f) => f.path).join(", ") || "none"}
+            </p>
+          </Row>
+        )}
         <Row title="How it was written" meta={callsMeta(ep)}>
           <Calls ep={ep} />
         </Row>
@@ -540,7 +557,7 @@ function SideBySide({
 
 // -- the verdict sheet ---------------------------------------------------------------------------
 
-function VerdictSheet({ family, id, onClose, onGo }: { family: Family; id?: string; onClose: () => void; onGo: (id: string) => void }) {
+export function VerdictSheet({ family, id, onClose, onGo }: { family: Family; id?: string; onClose: () => void; onGo: (id: string) => void }) {
   // the verdicts of the episode this one was scored with, in the order they were asked
   const scored = family.episodes.find((e) => e.judgments?.some((j) => j.id === id))
   const all = (scored?.judgments ?? []).map((j) => ({ j, scored: scored! }))
@@ -579,8 +596,18 @@ function VerdictSheet({ family, id, onClose, onGo }: { family: Family; id?: stri
                 )}
               </section>
               <section className="space-y-2">
-                <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">The text judged</h3>
-                {hit.j.evidence ? (
+                <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{hit.j.cites ? "What the judge cites" : "The text judged"}</h3>
+                {hit.j.cites ? (
+                  hit.j.cites.length ? (
+                    <ul className="list-disc space-y-1 pl-5">
+                      {hit.j.cites.map((c, k) => (
+                        <li key={k}>{c}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground">Nothing cited. The judge read the whole stored rollout.</p>
+                  )
+                ) : hit.j.evidence ? (
                   <pre className="max-h-80 overflow-auto rounded-md border p-3 font-mono text-xs whitespace-pre-wrap">{hit.j.evidence}</pre>
                 ) : hit.j.a !== undefined ? (
                   <div className="grid gap-3">

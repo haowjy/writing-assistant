@@ -43,7 +43,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { kindsQuery, runsQuery, suitesQuery, tasksQuery } from "@/lib/api"
+import { kindsQuery, runsQuery, suitesQuery, tasksQuery, worldsQuery } from "@/lib/api"
 import { useTheme } from "@/lib/theme"
 import { useHidden, useScopeRuns } from "@/lib/view"
 
@@ -109,11 +109,12 @@ function AppSidebar({ onJump }: { onJump: () => void }) {
   const navigate = useNavigate()
   const { data: runs = [] } = useQuery(runsQuery)
   const { data: suites = [] } = useQuery(suitesQuery)
+  const { data: worlds = [] } = useQuery(worldsQuery)
   const { data: kinds } = useQuery(kindsQuery(suite))
   const { all, color } = useScopeRuns(suite, split)
   const hidden = useHidden()
-  const path = useParams({ strict: false }) as { task?: string }
-  const onOverview = !kind && !path.task
+  const path = useParams({ strict: false }) as { task?: string; world?: string }
+  const onOverview = !kind && !path.task && !path.world
 
   // Scopes with runs, then each suite's dev split for reading its tasks with no run.
   const scopes = [...new Set([...runs.filter((r) => r.suite).map((r) => `${r.suite}/${r.split}`), ...suites.map((s) => `${s}/dev`)])]
@@ -161,6 +162,26 @@ function AppSidebar({ onJump }: { onJump: () => void }) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+        {worlds.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Worlds</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {worlds.map((w) => (
+                  <SidebarMenuItem key={w.name}>
+                    <SidebarMenuButton asChild isActive={path.world === w.name} tooltip={w.name}>
+                      <Link to="/world/$world" params={{ world: w.name }}>
+                        <span className="grid size-4 place-items-center text-xs">◎</span>
+                        <span className="truncate">{w.name}</span>
+                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">{w.rollouts}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         <SidebarGroup>
           <SidebarGroupLabel>Task kinds</SidebarGroupLabel>
           <SidebarGroupContent>

@@ -518,6 +518,8 @@ def parser() -> argparse.ArgumentParser:
 
     v = sub.add_parser("view", help="a local read-only page: task rows, and runs' scores, episodes and judges")
     v.add_argument("--run", nargs="+", action="extend", default=[], help="run directories (several to compare)")
+    v.add_argument("--world", nargs="+", action="extend", default=[], metavar="NAME",
+                   help="library worlds: each one's situations, their rollouts and the judges' findings")
     v.add_argument("--port", type=int, default=8766)
     v.add_argument("--host", default="127.0.0.1", help="address to bind; not loopback refuses runs with local_dev text")
 
