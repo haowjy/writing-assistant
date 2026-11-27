@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli import episode_row
+from writing_assistant.cli import episode_row, played_here
 from writing_assistant.episode.segments import closed_episodes, open_episodes, judging, read_run, split_judging
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
@@ -200,6 +200,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not (run_dir / RUN_FILE).exists() and (run_dir / "guardrails.json").exists():
         print(guardrails_line(run_dir / "guardrails.json"))  # a `wa-bench guardrails` directory
         return 0
+    played_here(run_dir)
     group_by = [g for g in (args.group_by or "").split(",") if g]
     # Conditions are arms (full_view and pov_view measure different things): never averaged.
     keys = group_by + ([] if "condition" in group_by else ["condition"])

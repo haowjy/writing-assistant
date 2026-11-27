@@ -167,6 +167,19 @@ def episode_row(ep: Episode) -> dict[str, Any]:
 
 # -- run.json and the end of a command ---------------------------------------------------
 
+def played_here(run_dir: Path) -> dict[str, Any]:
+    """run.json of a directory some run has played in, for the commands that read a run.
+    One that holds only what `situate` stored, or nothing, is refused in a sentence."""
+    if (run_dir / RUN_FILE).exists():
+        return json.loads((run_dir / RUN_FILE).read_text())
+    if has_store(run_dir):
+        raise Unreadable(f"{run_dir}: no run has played here. It holds situations and the positions they were set up at "
+                         f"(`situate`), which are never scored or reported themselves. `run --from '<situation>@0'` plays "
+                         f"one, here (`--out {run_dir}`) or in another directory (`--from-run {run_dir}`), and `score` "
+                         "and `report` read the directory it played in")
+    raise Unreadable(f"{run_dir}: no run directory there (no {RUN_FILE})")
+
+
 def record_usage(run_dir: Path, services: Services) -> None:
     """Add the USD the hosts reported, and the builds that answered, to run.json."""
     with run_info(run_dir) as info:
@@ -380,7 +393,7 @@ def cmd_situate(args: argparse.Namespace) -> int:
 
 async def cmd_score(args: argparse.Namespace) -> int:
     run_dir = Path(args.run)
-    info = json.loads((run_dir / RUN_FILE).read_text())
+    info = played_here(run_dir)
     suite = SUITES[info["suite"]]
     if not has_store(run_dir):
         sys.exit(f"{run_dir}: no {STORE_FILE}; nothing has been played here")
