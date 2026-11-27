@@ -18,6 +18,12 @@ one repeated, or one cut short and run again all end in the same file, and corre
 rests on no lock. `restore` is the one operation that takes rows away, and the one that
 keeps everyone else out.
 
+A world file is in SQLite's write-ahead mode (set at `create` and by `restore`; the file
+keeps it), so `verify`, `snapshot`, `checkout` and any other reader take one state of it
+without making a push wait. It then has `-wal` and `-shm` files beside it, which go when
+the last user to close it was a writer and stay, harmlessly, when it was a reader. A
+snapshot is one file in rollback mode: nothing writes it again.
+
 Two file locks per world, both dropped by the kernel when their holder dies:
 
 - `<world>.lock` is held shared by everything that reads or writes the world file through
@@ -116,6 +122,10 @@ class Library:
         try:
             with Store(tmp) as store:
                 store.add_starts(root_ep)
+                # Write-ahead mode, which the file keeps: a reader then never holds a writer up.
+                # In rollback mode a push waits for a whole `verify` or `snapshot` (44 s and 55 s
+                # measured on a 100,000-rollout world, against the writer's 60 s timeout).
+                store.db.execute("PRAGMA journal_mode = WAL")
             try:
                 os.link(tmp, path)
             except FileExistsError:
@@ -170,8 +180,8 @@ class Library:
             names = [*src.names(), *src.starts()] if names is None else names
             if not names:
                 return Counter()
-            pushed = set(src.names()) | set(src.starts())
-            if still_open := [n for n in names if n not in pushed]:
+            # Asked of each name, not of the whole listing: a run pushes each rollout as it closes.
+            if still_open := [n for n in names if not src.is_closed(n)]:
                 raise ValueError(f"{src.path}: {', '.join(still_open)} cannot be pushed: only a closed episode this store "
                                  "lists goes to the library, and nothing there is ever continued")
             roots = {name: src.chain(name)[0] for name in names}
@@ -188,10 +198,8 @@ class Library:
     def verify(self, world: str) -> None:
         """Raise `Damaged` saying what is wrong with the world file; return when nothing is:
         SQLite's integrity check passes and every episode it lists loads, starts included.
-        A journal a dead writer left is no damage: it is rolled back first, as the next
-        writer would."""
+        What a dead writer left in the log beside the file is no damage: no reader sees it."""
         with self._locked(world) as path:
-            _settle(path)
             _verify(path)
 
     def snapshot(self, world: str) -> Path:
@@ -200,7 +208,6 @@ class Library:
         first, so a file that fails never becomes a snapshot, and the copy is verified
         before it gets its name. Two snapshots at once each write their own name."""
         with self._locked(world) as path:
-            _settle(path)
             _verify(path)
             self.snapshots_dir.mkdir(parents=True, exist_ok=True)
             tmp = self.snapshots_dir / f".{world}.{uuid.uuid4().hex[:8]}.tmp"
@@ -209,11 +216,14 @@ class Library:
                 with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=60)) as src, \
                         closing(sqlite3.connect(tmp)) as dst:
                     src.backup(dst)
+                    dst.execute("PRAGMA journal_mode = DELETE")  # the copy took the world's write-ahead mode with its header
                 _verify(tmp)
                 taken = self.snapshots_dir / f"{world}.{dt.datetime.now(dt.UTC):%Y%m%dT%H%M%S%fZ}-{uuid.uuid4().hex[:4]}.db"
                 os.link(tmp, taken)
             finally:
                 tmp.unlink(missing_ok=True)
+            for side in SIDE_FILES:  # none is expected; one left by a reader of the temporary file would be litter
+                tmp.with_name(tmp.name + side).unlink(missing_ok=True)
             for old in self.snapshots(world)[KEPT:]:
                 old.unlink(missing_ok=True)  # another snapshot may be deleting the same ones
             return taken
@@ -227,11 +237,13 @@ class Library:
         file that was there went (`<world>.db.damaged-<utc>`). Every other user of the
         world is kept out, and waited for, by the world's lock.
 
-        A writer that died mid-transaction leaves a journal beside the file, which SQLite
-        rolls back into whatever file has that name the next time it is opened. So the
-        live file is first opened for writing, which finishes or rolls back any journal,
-        and whatever side file is still there afterwards (the live file was too damaged to
-        open) is moved aside with it: none may be left to be applied to the restored file."""
+        A world's `-wal` file holds what was committed and not yet folded into the world
+        file, and whatever a writer that died left half-written; SQLite applies it to
+        whatever file has that name the next time it is opened. So the live file is first
+        opened for writing and closed, which folds the log in and removes it, and whatever
+        side file is still there afterwards (a reader has the file open, or it was too
+        damaged to open) is moved aside with it: none may be left to be applied to the
+        restored file."""
         with self._locked(world, exclusive=True) as path:
             good = None
             for taken in self.snapshots(world):
@@ -253,6 +265,7 @@ class Library:
             try:
                 with closing(sqlite3.connect(f"file:{good}?mode=ro", uri=True)) as src, closing(sqlite3.connect(tmp)) as dst:
                     src.backup(dst)
+                    dst.execute("PRAGMA journal_mode = WAL")
                 os.link(path, aside)  # the name always points at a file: the old one until the new one replaces it
                 os.replace(tmp, path)
             finally:
@@ -270,14 +283,17 @@ def _root(store: Store) -> tuple[str, str]:
 
 
 def _settle(path: Path) -> None:
-    """When a writer left a journal beside the file, open the file for writing and commit
-    nothing, which makes SQLite finish or roll it back (a live writer's is waited for and
-    left alone). A file too damaged for that is left to `_verify` to name. A file with no
-    side file is not opened: a write transaction on an emptied one would give it a header."""
+    """`restore`'s first step, with every other user of the world locked out. When the file
+    has a side file, open it for writing, commit nothing and close it: SQLite then folds in
+    what was committed, discards what a dead writer left half-written, and removes the side
+    files unless a reader still has the file open. It waits five seconds at most: nobody
+    who could hold it is a writer, and a file too damaged to open says so at once or never.
+    A file with no side file is not opened: a write transaction on an emptied one would
+    give it a header."""
     if not any(path.with_name(path.name + suffix).exists() for suffix in SIDE_FILES):
         return
     try:
-        with closing(sqlite3.connect(path, isolation_level=None, timeout=60)) as live:
+        with closing(sqlite3.connect(path, isolation_level=None, timeout=5)) as live:
             live.execute("BEGIN IMMEDIATE")
             live.execute("COMMIT")
     except sqlite3.DatabaseError:

@@ -63,8 +63,10 @@ caller's, `run.group_id`). `groups` says which are played, and `settled` which o
 scored under one judging.
 
 SQLite gives one writer at a time, on one machine: several processes may append to one
-store, and each `append`/`close` is one transaction. The file is in the default rollback
-mode, so a store nobody is writing is one file. Two writers continuing the same segment is
+store, and each `append`/`close` is one transaction. A file this class creates is in the
+default rollback mode, so a store nobody is writing is one file, and a reader makes a
+writer's commit wait. A library world is created in write-ahead mode instead
+(`episode/library.py`): its long readers must not hold pushes up. Two writers continuing the same segment is
 an error the second one gets. A `local_dev` or `test` segment never shares a store with
 another split's (`corpus/release.py` relies on it, and filters what leaves besides).
 """
@@ -369,6 +371,11 @@ class Store:
             f"SELECT e.ep_id FROM episodes e WHERE {_PLAYED} AND {'' if closed else 'NOT '}{_CLOSED} ORDER BY e.rowid")
         return [r[0] for r in rows.fetchall()]
 
+    def is_closed(self, name: str) -> bool:
+        """Whether the store lists an episode of this name and it is closed (played to its
+        end, or a start): one lookup, for a caller that has the name and not the listing."""
+        return bool(self.db.execute(f"SELECT 1 FROM episodes e WHERE e.ep_id = ? AND {_CLOSED}", (name,)).fetchone())
+
     def starts(self) -> list[str]:
         """`ep_id` of the episodes stored as starts (`add_starts`), in the order stored."""
         return [r[0] for r in self.db.execute("SELECT ep_id FROM episodes WHERE start ORDER BY rowid").fetchall()]
@@ -441,14 +448,19 @@ class Store:
         fork from (`copy` lists it too). A checkpoint the other store holds with a different
         body is refused, and nothing is copied: both stores continued one open segment."""
         with into._write():
-            return self._copy_chain(name, into, None, Counter())
+            return self._copy_chain(name, into, None, Counter(), set())
 
-    def _copy_chain(self, name: str, into: Store, listing: tuple[str, int | None] | None, added: Counter[str]) -> str:
+    def _copy_chain(self, name: str, into: Store, listing: tuple[str, int | None] | None, added: Counter[str],
+                    copied: set[str]) -> str:
         """`listing`: the episode's (`ep_id`, `start`) in this store's `episodes`, to list
         it the same way there; None leaves it unlisted. `added` counts what the other store
-        gained."""
+        gained, and `copied` holds the segments this transaction has already brought over:
+        the members of a group share every ancestor, which is then walked once."""
         chain = self.chain(name)
         for seg in chain:
+            if seg in copied:
+                continue
+            copied.add(seg)
             row = self.db.execute(f"SELECT {_SEGMENT} FROM segments WHERE seg = ?", (seg,)).fetchone()
             if into.db.execute("SELECT 1 FROM segments WHERE seg = ?", (seg,)).fetchone() is None:
                 into._insert_segment(row)
@@ -482,10 +494,11 @@ class Store:
         is written in one transaction: an episode is there with its rows or not at all.
         Returns what the other store gained: `episodes`, `segments`, `checkpoints`, `scores`."""
         added: Counter[str] = Counter(episodes=0, segments=0, checkpoints=0, scores=0)
+        copied: set[str] = set()
         with self.reading(), into._write():
             for name in names:
                 listed = self.db.execute("SELECT ep_id, start FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
-                self._copy_chain(name, into, listed, added)
+                self._copy_chain(name, into, listed, added, copied)
                 if listed:
                     for judging_, row, items in self.db.execute(
                             "SELECT s.profile, s.row, j.body FROM scores s LEFT JOIN judgments j ON j.score = s.id "
@@ -588,9 +601,12 @@ class Store:
         found = {grp: {"size": g["size"], "sources": dict.fromkeys(g["sources"], 0), "settled": g["played"]}
                  for grp, g in self.groups(group).items()}
         stamps: dict[str, dict[str, set[str]]] = {}
+        # CROSS JOIN fixes the order: the group's segments first, then each one's rows. Left to
+        # itself SQLite starts from every score row in the file (1.4 s for one group of a
+        # 100,000-rollout world, against 10 ms).
         rows = self.db.execute(
-            f"""SELECT s.grp, s.rollout_of, sc.row FROM episodes e JOIN segments s ON s.seg = e.seg
-                JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
+            f"""SELECT s.grp, s.rollout_of, sc.row FROM segments s CROSS JOIN episodes e ON e.seg = s.seg
+                CROSS JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
                 WHERE s.grp {'= ?' if group else 'IS NOT NULL'} AND {_CLOSED}""", (judging, *([group] if group else [])))
         for grp, source, row in rows.fetchall():
             found[grp]["sources"][source] += 1

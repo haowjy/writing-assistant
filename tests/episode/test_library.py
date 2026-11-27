@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from collections import Counter
+from contextlib import closing
 
 import pytest
 
@@ -55,8 +56,12 @@ def played(lib: Library, path, group: str, n: int = 2, world: str = "sel", close
 
 def rows(path) -> dict[str, list]:
     """Every row of a store file, in an order that does not depend on when it arrived."""
-    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as db:
+    with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
         return {t: sorted(db.execute(f"SELECT * FROM {t}").fetchall(), key=repr) for t in TABLES}
+
+
+def side_files(folder) -> list[str]:
+    return sorted(p.name for p in folder.iterdir() if p.name.endswith(("-wal", "-shm", "-journal")))
 
 
 def after(seconds: float, act) -> threading.Thread:
@@ -87,7 +92,7 @@ def test_a_world_is_created_whole_or_not_at_all_and_two_creates_of_one_name_cann
     first = rows(lib.path("sel"))
     with pytest.raises(ValueError, match="a world named 'sel' already exists"):
         lib.create(root())
-    assert rows(lib.path("sel")) == first and [p.name for p in lib.worlds_dir.iterdir()] == ["sel.db"]
+    assert rows(lib.path("sel")) == first and {p.name for p in lib.worlds_dir.iterdir()} - set(side_files(lib.worlds_dir)) == {"sel.db"}
     lib.create(root("private", "local_dev"))
     assert [(w.name, w.split) for w in lib.worlds()] == [("private", "local_dev"), ("sel", "dev")]
     with pytest.raises(ValueError, match="a world's root has no parent"):
@@ -217,29 +222,26 @@ def test_a_push_takes_one_state_of_a_store_a_live_run_is_writing(lib, tmp_path, 
         assert len(a.names()) == 3 and lib.push(a)["episodes"] == 1
 
 
-def test_a_checkout_takes_one_state_of_a_world_a_push_is_landing_in(lib, tmp_path, monkeypatch):
-    with played(lib, tmp_path / "a.db", "a") as a, played(lib, tmp_path / "b.db", "b"):
+def test_a_checkout_takes_one_state_of_a_world_and_holds_no_push_up(lib, tmp_path, monkeypatch):
+    """A push lands while the checkout is half-way through its read: it does not wait (the
+    world is in write-ahead mode), and the checkout goes on reading the state it began with."""
+    with played(lib, tmp_path / "a.db", "a") as a, played(lib, tmp_path / "b.db", "b") as b:
         lib.push(a)
         [first, second] = a.names()
-        chain, landing = Store.copy_chain, []
+        chain, seen = Store.copy_chain, []
 
         def a_push_lands(self, name, into):
             if name == second:  # the first chain has been read: the read transaction has begun
-                def push():
-                    with Store(tmp_path / "b.db") as b:
-                        lib.push(b)
-
-                landing.append(after(0.3, push))
-                assert landing[0].is_alive()  # the push's commit waits for the checkout's read
+                assert lib.push(b)["episodes"] == 2
+                seen.append(len(self.names()))  # the checkout's own reading of the world
             return chain(self, name, into)
 
         monkeypatch.setattr(Store, "copy_chain", a_push_lands)
         with Store(tmp_path / "worker.db") as worker:
             lib.checkout("sel", [first, second], worker)
-            landing[0].join()
             with lib.open("sel") as world:
-                assert len(world.names()) == 4 and [worker.load(world.chain(n)[-1]) for n in (first, second)] == [
-                    world.load(first), world.load(second)]
+                assert seen == [2] and len(world.names()) == 4
+                assert [worker.load(world.chain(n)[-1]) for n in (first, second)] == [world.load(first), world.load(second)]
 
 
 def test_a_snapshot_is_one_verified_state_and_the_two_newest_are_kept(lib, tmp_path, monkeypatch):
@@ -261,7 +263,7 @@ def test_a_snapshot_is_one_verified_state_and_the_two_newest_are_kept(lib, tmp_p
         library_module._verify(first)
         assert rows(first) == rows(lib.path("sel"))  # the push landed before the backup began
     taken = [first, lib.snapshot("sel"), lib.snapshot("sel"), lib.snapshot("sel")]
-    assert lib.snapshots("sel") == taken[:1:-1] == sorted(lib.snapshots_dir.iterdir(), reverse=True)
+    assert lib.snapshots("sel") == taken[:1:-1] == sorted(lib.snapshots_dir.iterdir(), reverse=True)  # each one file, no other
 
 
 @pytest.mark.parametrize("damage", ["header", "pages", "emptied"])
@@ -274,7 +276,6 @@ def test_a_damaged_world_fails_verify_is_never_snapshotted_and_is_restored_from_
         kept = rows(good)
         with played(lib, tmp_path / "c.db", "c") as c:
             lib.push(c)  # pushed since the snapshot: lost by the restore, pushed again from the directory
-            reader = lib.open("sel")
             size = lib.path("sel").stat().st_size
             if damage == "header":
                 overwrite(lib.path("sel"), 0, b"\0" * 100)
@@ -294,7 +295,6 @@ def test_a_damaged_world_fails_verify_is_never_snapshotted_and_is_restored_from_
             assert aside.name.startswith("sel.db.damaged-") and aside.stat().st_size == (0 if damage == "emptied" else size)
             lib.verify("sel")
             assert rows(lib.path("sel")) == rows(old) != kept
-            reader.db.close()
             assert lib.push(b)["episodes"] == 2 and lib.push(c)["episodes"] == 2
     with lib.open("sel") as world:
         assert {g: v["played"] for g, v in world.groups().items()} == {"a": True, "b": True, "c": True}
@@ -304,32 +304,36 @@ DIES_MID_WRITE = """
 import os, sqlite3, sys
 db = sqlite3.connect(sys.argv[1], isolation_level=None)
 db.execute("PRAGMA cache_size = 5")
-db.execute("BEGIN IMMEDIATE")
-db.executemany("INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, 'turn', 0, 0, ?)",
-               [("dead-writer", n, os.urandom(4000)) for n in range(400)])
-db.execute("UPDATE checkpoints SET body = ? WHERE seg != 'dead-writer'", (b"overwritten",))
+row = "INSERT INTO checkpoints (seg, n, kind, events, calls, body) VALUES (?, ?, 'turn', 0, 0, ?)"
+db.execute(row, ("committed-by-the-dead-writer", 0, b"x"))      # one transaction that landed
+db.execute("BEGIN IMMEDIATE")                                   # and one that never ended
+db.executemany(row, [("dead-writer", n, os.urandom(4000)) for n in range(400)])
 os.kill(os.getpid(), 9)
 """
 
 
-def test_a_dead_writers_journal_is_not_applied_to_the_restored_world(lib, tmp_path):
-    """A push killed mid-transaction leaves a journal beside the world file. Left there
-    when the file is replaced, SQLite would roll it back into the restored file."""
+def test_what_a_dead_writer_left_beside_a_world_is_not_applied_to_the_restored_file(lib, tmp_path):
+    """A writer killed mid-transaction leaves a log beside the world file holding what it had
+    committed and what it had not. Left there when the file is replaced, SQLite would apply
+    it to the restored file, which would then mix the two and still pass the integrity check."""
     with played(lib, tmp_path / "a.db", "a") as a:
         lib.push(a)
         good = lib.snapshot("sel")
         with played(lib, tmp_path / "b.db", "b") as b:
             lib.push(b)
+    assert side_files(lib.worlds_dir) == []
     assert subprocess.run([sys.executable, "-c", DIES_MID_WRITE, str(lib.path("sel"))]).returncode == -9
-    journal = lib.path("sel").with_name("sel.db-journal")
-    assert journal.exists() and journal.stat().st_size > 0
-    with pytest.raises(Exception, match="a writer died"):
-        lib.open("sel")
+    log = lib.path("sel").with_name("sel.db-wal")
+    assert log.stat().st_size > 400 * 4000
+    with lib.open("sel") as world:  # readers see what was committed and nothing of the transaction that died
+        assert world.db.execute("SELECT seg, COUNT(*) FROM checkpoints WHERE seg LIKE '%dead-writer' GROUP BY seg").fetchall() == [
+            ("committed-by-the-dead-writer", 1)]
     aside = lib.restore("sel")
-    assert not journal.exists() and rows(lib.path("sel")) == rows(good)
+    assert rows(lib.path("sel")) == rows(good)
     lib.verify("sel")
-    with Store(aside, readonly=True) as was:  # the file moved aside is the world as the dead writer found it
-        assert {g for g in was.groups()} == {"a", "b"}
+    with Store(aside, readonly=True) as was:  # the file moved aside is the world with all that was committed to it
+        assert set(was.groups()) == {"a", "b"} and was.db.execute(
+            "SELECT COUNT(*) FROM checkpoints WHERE seg LIKE '%dead-writer'").fetchone() == (1,)
 
 
 def test_a_restore_waits_for_a_push_in_flight_and_a_reader_keeps_the_file_it_opened(lib, tmp_path, monkeypatch):
