@@ -213,6 +213,13 @@ def test_re_scoring_a_stored_run_reproduces_its_rows(bench, capsys):
         assert stored.judgments("eval") == items and len(items) > 0
     assert all(after[ep]["scored_at"] > row["scored_at"] for ep, row in before.items())
     assert [r | {"scored_at": ""} for r in after.values()] == [r | {"scored_at": ""} for r in before.values()]
+    # Under a profile that names no judge, the rows scored without one stand: a second score adds none.
+    counts = []
+    for _ in range(2):
+        cli.main(["score", "--run", str(out), "--judges", "none"])
+        with Store(out / "store.db", readonly=True) as stored:
+            counts.append(stored.db.execute("SELECT count(*) FROM scores WHERE profile LIKE 'none%'").fetchone()[0])
+    assert counts[0] == counts[1] > 0
 
 
 def test_a_score_killed_between_episodes_leaves_the_earlier_rows_and_no_partial_one(bench, capsys, monkeypatch, fake_llm, killed):

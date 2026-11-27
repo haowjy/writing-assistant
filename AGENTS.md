@@ -400,12 +400,13 @@ it is refused before any row is written (`Suite.needs`, `run.scoring.refuse`).
 there is none, it says the scorer raised, or a judge stamped on it (use, endpoint, model,
 prompt version) is not the one the profile names now (`Judges.stamps()`). So a second
 `score` adds nothing, and an edited prompt, another endpoint under the same profile name,
-or a row an earlier build wrote with no judge configured (rows whose stamp has an empty
-endpoint; they stay in the file and are superseded) is scored again, once. `--all` scores
-every listed rubric again, `--pending` only rows that say the scorer raised, `--rubric`
-one rubric for every episode. A use the profile names no endpoint for never matches, so
-suites 1a and 3 under `--judges none` are scored again by every `score`, as they always
-were. Known limit: the stamp covers the prompt text, not the code that renders the record
+or an endpoint named where there was none is scored again, once. `--all` scores every
+listed rubric again, `--pending` only rows that say the scorer raised, `--rubric` one
+rubric for every episode. A use the profile names no endpoint for is stamped with an empty
+endpoint, and that stamp stands while the profile still names none: suites 1a and 3 under
+`--judges none` are scored once. Where the rubric needs the judge (`Suite.needs`) such a
+row never stands (an earlier build wrote some; they stay in the file and are superseded),
+so the pass is refused until the endpoint is named. Known limit: the stamp covers the prompt text, not the code that renders the record
 a judge reads (`judges/findings.render`); a change there re-judges nothing by itself and a
 row's `code` is the only trace, so run `score --all` after one. `score` ends with how many
 rows it wrote and how many of them scored nothing (every item unscored, with the reasons).

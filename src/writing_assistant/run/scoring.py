@@ -36,9 +36,11 @@ def to_score(store: Store, profile: str, judges: Judges, *, rubric: str | None =
     for every episode. One is scored when its row does not **stand**: there is none, it says
     the scorer raised, or a judge it was scored by is not the one `profile` names now
     (`judges.stamps()`: use, endpoint, model, prompt version). So an edited prompt, another
-    endpoint under the same profile name, and a row left by a pass that had no judge for it
-    are each scored again, once; a row no judge was asked for stands. `again` scores
-    every listed rubric whatever stands. `pending` takes only the rubrics whose row says
+    endpoint under the same profile name, and an endpoint named where there was none are
+    each scored again, once. A row no judge was asked for stands, and so does one scored
+    without a judge the profile still does not name, unless the rubric needs that judge
+    (`Suite.needs`): such a row, left by a build that wrote them, never stands, so the
+    pass is refused. `again` scores every listed rubric whatever stands. `pending` takes only the rubrics whose row says
     the scorer raised. `only` keeps to those episodes.
 
     A listed name the suite has no rubric for is counted and scores nothing: `situate`
@@ -67,7 +69,8 @@ def to_score(store: Store, profile: str, judges: Judges, *, rubric: str | None =
             for r in set(names) - suite.rubrics.keys():
                 unknown[r] = unknown.get(r, 0) + 1
         stale = [r for r in names if r in suite.rubrics
-                 and (again or pending or has.get(r) is None or any(current.get(s["use"]) != s for s in has[r]))]
+                 and (again or pending or has.get(r) is None or any(current.get(s["use"]) != s for s in has[r])
+                      or not all(map(judges.named, suite.needs.get(r, ()))))]
         if stale:
             want.setdefault(name, {})[ep_id] = stale
     for name, wanted in want.items():
@@ -79,8 +82,7 @@ def refuse(suite: Suite, rubrics: set[str], judges: Judges, profile: str) -> Non
     """Raise `Refused` when one of `rubrics` needs a judge use (`Suite.needs`) that
     `profile` names no endpoint for. Scored anyway, such a rubric would get a row in which
     nothing is scored, and that row would read as the rollout having been judged."""
-    current = judges.stamps()
-    if missing := sorted((r, use) for r in rubrics for use in suite.needs.get(r, ()) if use not in current):
+    if missing := sorted((r, use) for r in rubrics for use in suite.needs.get(r, ()) if not judges.named(use)):
         raise Refused("; ".join(f"rubric {r!r} is scored by the judge use {use!r}, and [judges.{profile}] in models.toml names "
                                 "no endpoint for it" for r, use in missing)
                       + ". Nothing was scored. Name an endpoint there, or pass --rubric for one that needs none")
