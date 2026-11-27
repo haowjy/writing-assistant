@@ -27,6 +27,11 @@ Run locally first (the 3090, `j-mini48`). Plan every cloud run in the work direc
 before it starts: what runs, expected cost, what stops it. One that costs money needs
 Jimmy's approval; free usage does not.
 
+## What the code handles
+
+Do not write code for rare edge cases. Make every run recoverable instead (a killed or
+failed run restarts from saved state) and log what it does, so a failure can be traced.
+
 ## Google services
 
 Use Google's CLIs through their skills, or a Google-hosted MCP server if connected:
