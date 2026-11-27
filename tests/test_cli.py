@@ -66,9 +66,9 @@ def run_and_score(capsys, out, *argv):
     capsys.readouterr()
 
 
-def groups(out, profile="eval") -> dict:
+def settled(out, profile="eval") -> dict:
     with Store(out / "store.db", readonly=True) as stored:
-        return stored.groups(profile)
+        return stored.settled(profile)
 
 
 def score_rows(out) -> list[dict]:
@@ -246,14 +246,14 @@ def test_two_runs_rolling_out_one_checkpoint_make_two_groups_whose_members_never
     for other in ("a", "b"):
         run_and_score(capsys, tmp_path / other, *source, "--from-run", str(out))
     run_and_score(capsys, tmp_path / "a", *source, "--from-run", str(out), "--round", "1")
-    a, b = groups(tmp_path / "a"), groups(tmp_path / "b")
+    a, b = settled(tmp_path / "a"), settled(tmp_path / "b")
     assert len(a) == 2 and len(b) == 1 and not a.keys() & b.keys()
     assert all(g == {"size": 2, "sources": {"pov-1~full_view": 2}, "settled": True} for g in (a | b).values())
     with Store(tmp_path / "a" / "store.db", readonly=True) as one, Store(tmp_path / "b" / "store.db", readonly=True) as two, \
             Store(tmp_path / "both.db") as both:
         one.copy(one.names(), both)
         two.copy(two.names(), both)
-        assert len(both.names()) == 6 and both.groups("eval") == a | b
+        assert len(both.names()) == 6 and both.settled("eval") == a | b
 
 
 def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_its_size(bench, capsys, monkeypatch, fake_llm, killed):
@@ -266,7 +266,7 @@ def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_
     judges = ["--judges", "none"]
     run_and_score(capsys, out, *judges)
     run_and_score(capsys, out, "--from", "pov-1~full_view@0", "--rollouts", "4", *judges)
-    [(group, whole)] = groups(out, "none").items()
+    [(group, whole)] = settled(out, "none").items()
     assert whole == {"size": 4, "sources": {"pov-1~full_view": 4}, "settled": True}
     with Store(out / "store.db", readonly=True) as stored:
         assert all(row["metrics"]["n_unscored.pov_leak.unavailable"] for row in stored.scores("none").values() if "group" in row)
@@ -281,13 +281,13 @@ def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_
     twin, names = "pov-1~full_view~twin_swap", [f"pov-1~full_view~twin_swap@0.{group}.{i}" for i in range(4)]
     again = ["run", "--suite", "1a", "--endpoint", "gemma-4-26b", "--out", str(out), "--from", f"{twin}@0", "--concurrency", "1", *judges]
     killed(*again, "--rollouts", "4")
-    assert groups(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 1}, "settled": False}}
+    assert settled(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 1}, "settled": False}}
     with Store(out / "store.db", readonly=True) as stored:
         assert (stored.names(closed=False), stored.rollouts(twin, 0, group)) == (names[1:3], names[:3])
     capsys.readouterr()
     cli.main([*again, "--rollouts", "4"])
     assert "1 rollouts of pov-1~full_view~twin_swap@0 to run (1 tasks already stored, 2 open episodes to continue)" in capsys.readouterr().out
-    assert groups(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 4}, "settled": True}}
+    assert settled(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 4}, "settled": True}}
     with Store(out / "store.db", readonly=True) as stored:
         members = [stored.load(name) for name in stored.rollouts(twin, 0)]
     assert [ep.ep_id for ep in members] == names

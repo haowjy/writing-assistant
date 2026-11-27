@@ -56,7 +56,8 @@ them.
 
 A **rollout** is a fork of a stored turn checkpoint that says so (`rollout_of`), and the
 rollouts one run made of one checkpoint in one round are a **group** (`grp`; the id is the
-caller's, `run.group_id`). `groups` says which are settled.
+caller's, `run.group_id`). `groups` says which are played, and `settled` which of those are
+scored under one judging.
 
 SQLite gives one writer at a time, on one machine: several processes may append to one
 store, and each `append`/`close` is one transaction. The file is in the default rollback
@@ -525,34 +526,48 @@ class Store:
             tuple(v for v in tests.values() if v is not None))
         return [item for r in rows.fetchall() for item in _unpack(r[0])]
 
-    def groups(self, profile: str, group: str | None = None) -> dict[str, dict[str, Any]]:
+    def groups(self, group: str | None = None) -> dict[str, dict[str, Any]]:
         """Every group of rollouts stored here, or the one named: group id -> `size` (the
         members asked for of each source episode, `meta["group_size"]`), `sources` (source
-        `ep_id` -> how many of its members are closed and have a final row under `profile`)
-        and `settled`. A member's row is the one every reader takes (`_current`), and it is
-        final unless it says the scorer raised (`error`), which is what a judge that was down
-        leaves.
-
-        A group is settled when every source episode in it (a base, and its twin when the
-        twin was rolled out too) has `size` such members and no two of their rows were
-        scored by different judges for one use (the rows' `judges` stamps: a profile is a
-        name in one machine's models.toml). A member that never closed is not counted, so a
-        group short of its size is never settled, whoever copied it here."""
+        `ep_id` -> how many of its members are closed) and `played`: every source episode in
+        it (a base, and its twin when the twin was rolled out too) has `size` closed members.
+        A member that never closed is not counted, so a group short of its size is never
+        played, whoever copied it here. Read from the episodes and their segments alone:
+        whether anything was scored is `settled`'s question."""
+        rows = self.db.execute(
+            f"""SELECT s.grp, s.rollout_of, MAX(json_extract(s.meta, '$.group_size')), SUM({_CLOSED})
+                FROM episodes e JOIN segments s ON s.seg = e.seg
+                WHERE s.grp {'= ?' if group else 'IS NOT NULL'} GROUP BY s.grp, s.rollout_of ORDER BY MIN(e.rowid)""",
+            (group,) if group else ())
         found: dict[str, dict[str, Any]] = {}
+        for grp, source, size, closed in rows.fetchall():
+            found.setdefault(grp, {"size": size, "sources": {}})["sources"][source] = closed
+        for g in found.values():
+            g["played"] = all(n == g["size"] for n in g["sources"].values())
+        return found
+
+    def settled(self, judging: str, group: str | None = None) -> dict[str, dict[str, Any]]:
+        """`groups`, asked of one judging: group id -> `size`, `sources` (source `ep_id` -> how
+        many of its closed members have a final row under `judging`) and `settled`. A
+        member's row is the one every reader takes (`_current`), and it is final unless it
+        says the scorer raised (`error`), which is what a judge that was down leaves.
+
+        A group is settled when it is played, every member has such a row and no two of the
+        rows were scored by different judges for one use (the rows' `judges` stamps: a
+        profile is a name in one machine's models.toml)."""
+        found = {grp: {"size": g["size"], "sources": dict.fromkeys(g["sources"], 0), "settled": g["played"]}
+                 for grp, g in self.groups(group).items()}
         stamps: dict[str, dict[str, set[str]]] = {}
         rows = self.db.execute(
-            f"""SELECT s.grp, s.rollout_of, s.meta, {_CLOSED}, sc.row FROM episodes e JOIN segments s ON s.seg = e.seg
-                LEFT JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
-                WHERE s.grp {'= ?' if group else 'IS NOT NULL'} ORDER BY e.rowid""", (profile, *([group] if group else [])))
-        for grp, source, meta, closed, row in rows.fetchall():
-            g = found.setdefault(grp, {"size": json.loads(meta)["group_size"], "sources": {}})
-            g["sources"].setdefault(source, 0)
-            if closed and row:
-                g["sources"][source] += 1
-                for stamp in json.loads(row).get("judges", []):
-                    stamps.setdefault(grp, {}).setdefault(stamp["use"], set()).add(json.dumps(stamp, sort_keys=True))
+            f"""SELECT s.grp, s.rollout_of, sc.row FROM episodes e JOIN segments s ON s.seg = e.seg
+                JOIN scores sc ON sc.ep_id = e.ep_id AND sc.profile = ? AND sc.final AND {_current("sc")}
+                WHERE s.grp {'= ?' if group else 'IS NOT NULL'} AND {_CLOSED}""", (judging, *([group] if group else [])))
+        for grp, source, row in rows.fetchall():
+            found[grp]["sources"][source] += 1
+            for stamp in json.loads(row).get("judges", []):
+                stamps.setdefault(grp, {}).setdefault(stamp["use"], set()).add(json.dumps(stamp, sort_keys=True))
         for grp, g in found.items():
-            g["settled"] = (all(n == g["size"] for n in g["sources"].values())
+            g["settled"] = (g["settled"] and all(n == g["size"] for n in g["sources"].values())
                             and all(len(judges) == 1 for judges in stamps.get(grp, {}).values()))
         return found
 

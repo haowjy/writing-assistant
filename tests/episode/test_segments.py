@@ -143,9 +143,11 @@ def test_rows_from_two_judges_under_one_profile_name_do_not_settle_a_group_toget
             ep.meta = {"group_size": 2}
         store.close(*members)
         store.put_scores("eval", [_row("s@0.g.0", "1", judges=[stamp("here")]), _row("s@0.g.1", "1", judges=[stamp("there")])])
-        assert store.groups("eval") == {"g": {"size": 2, "sources": {"s": 2}, "settled": False}}
+        assert store.groups() == {"g": {"size": 2, "sources": {"s": 2}, "played": True}}
+        assert store.settled("none")["g"] == {"size": 2, "sources": {"s": 0}, "settled": False}
+        assert store.settled("eval") == {"g": {"size": 2, "sources": {"s": 2}, "settled": False}}
         store.put_scores("eval", [_row("s@0.g.1", "2", judges=[stamp("here")])])
-        assert store.groups("eval")["g"]["settled"]
+        assert store.settled("eval")["g"]["settled"]
 
 
 def test_a_format_1_store_is_brought_up_to_date_by_a_writer_and_refused_by_a_reader(tmp_path):

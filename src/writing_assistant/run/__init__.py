@@ -312,7 +312,7 @@ class Runner:
         rolled out `n` times each are one group of 2n): another size under the same round
         is refused, since readers tell a whole group from a short one by it."""
         group = group_id(self.run_id, self.round, source, at)
-        asked = self.store.groups(self.profile, group).get(group)
+        asked = self.store.groups(group).get(group)
         if asked and asked["size"] != n:
             raise ValueError(f"group {group} (this run's rollouts of {source.baseline_of or source.ep_id}@{at} in round "
                              f"{self.round!r}) was asked for with {asked['size']} rollouts per episode, not {n}; a "

@@ -203,10 +203,13 @@ the model and the rules, `design/branch-store.md` and `design/buildout.md` in th
   each is the matched pair. A group's size is fixed by the first command that asks for it,
   per source episode (`meta["group_size"]`; a base and its twin rolled out N times each are
   2N members saying N); another size under the same round is refused, and more rollouts are
-  another round. A group is **settled** (`Store.groups(profile)`) when every source episode
-  in it has that many closed members whose row is not an `error`, and no two of those rows
-  were scored by different judges for one use. It reads the store alone, so a base whose
-  twin's rollouts never arrived at all reads as a settled group of the base. A rollout has no twin: it
+  another round. A group is **played** (`Store.groups()`, which reads no score) when every
+  source episode in it has that many closed members: that is all a runner, the controller
+  or the master asks. It is **settled** under one judging (`Store.settled(judging)`, the
+  only one of the two that reads `scores`) when it is played, every member's row is not an
+  `error`, and no two of those rows were scored by different judges for one use. Both read
+  the store alone, so a base whose twin's rollouts never arrived at all reads as a played
+  group of the base. A rollout has no twin: it
   carries its own metrics only and gets no `net_*` (its source's twin had another
   conversation, so subtracting it would not be a matched counterfactual). A twin can be
   rolled out too: its rollout carries its own metrics and is the baseline of nothing
@@ -272,7 +275,7 @@ and by which judges (`judges`: use, endpoint, model, prompt version). Rows are o
 added: every scoring of an episode adds a row (`run`, `score`; one at a time, so a `score`
 killed part-way keeps what it finished), and copying between stores adds the rows the other
 store lacks. All readers take one row per episode and profile by one rule
-(`segments._current`, behind `Store.scores`, `judgments` and `groups`): the newest row that
+(`segments._current`, behind `Store.scores`, `judgments` and `settled`): the newest row that
 is not an `error`, or the newest of all when every row is one. A row with `error` means the
 scorer raised, which is what a judge that was down leaves; `score --pending` scores those
 episodes again. So a re-score that fails hides no good row and unsettles no group, and the

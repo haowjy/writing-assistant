@@ -136,7 +136,7 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
     rollouts = _entries(suite, judges, by, _summarise(run_dir, judges, by, where, rollouts=True)[1], passed,
                         _summarise(baseline, judges, ["rollout_of", *keys], where, rollouts=True)[1] if baseline else None,
                         base_keys=["rollout_of", *keys])
-    stored = read_run(run_dir, lambda store: store.groups(judges), {})
+    stored = read_run(run_dir, lambda store: store.settled(judges), {})
     for entry in rollouts:
         g = stored[entry["key"]["group"]]
         entry["group"] = {"size": g["size"], "final": g["sources"][entry["key"]["rollout_of"].rpartition("@")[0]],
