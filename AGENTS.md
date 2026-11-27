@@ -280,12 +280,28 @@ across conditions. Every metric that depends on a model judge reads "ungated" in
 until that judge's human-label gate passes (`[gates] passed` in `models.toml`), and is left
 out of `report --baseline`.
 
-Score rows live in the run's `store.db`, per judge profile, each with the judge items behind
+A suite's scoring is split into **rubrics** (`Suite.rubrics`: rubric name -> the task kinds
+it is run on by default; a task row may list others in `payload["rubrics"]`), and an
+episode has one score row per **judging**: a judge profile and a rubric, stored as
+`<profile>/<rubric>`. Suites 1a and 3 have one unnamed rubric whose judging is the bare
+profile, so their stored rows are as they were. `episode.segments.judging` and
+`split_judging` are the only code that joins or splits that name (`/` is refused in either
+part); every command takes `--judges PROFILE [--rubric NAME]`, and with no `--rubric`
+`score` runs each episode's listed rubrics, `score --pending` covers every rubric the
+profile has rows for, and `report` and the page's API cover every such rubric (a block
+each; the API reads the first and lists the rest under `others`). A listed name the suite
+has no rubric for is reported by `score` and stops nothing. `Suite.score(ep, services,
+tallies)` is handed one `Tally` per rubric wanted and returns each one's metrics, so two
+rubrics may share one judge call (`Tally.found` records several findings from one call, or
+findings no judge was asked for). A gate stays per judge use (`<profile>.<use>`). The
+page's front end has not been rebuilt for rubrics: it shows the profile's first.
+
+Score rows live in the run's `store.db`, per judging, each with the judge items behind
 it in `label_ui.py`'s format; a row says which code scored it (`code`), when (`scored_at`)
 and by which judges (`judges`: use, endpoint, model, prompt version). Rows are only ever
 added: every scoring of an episode adds a row (`run`, `score`; one at a time, so a `score`
 killed part-way keeps what it finished), and copying between stores adds the rows the other
-store lacks. All readers take one row per episode and profile by one rule
+store lacks. All readers take one row per episode and judging by one rule
 (`segments._current`, behind `Store.scores`, `judgments` and `settled`): the newest row that
 is not an `error`, or the newest of all when every row is one. A row with `error` means the
 scorer raised, which is what a judge that was down leaves; `score --pending` scores those

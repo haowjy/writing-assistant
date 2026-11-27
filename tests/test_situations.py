@@ -25,6 +25,7 @@ class Notes:
     about: dict = {}
     metric_about: dict = {}
     text_fields: dict = {}
+    rubrics = {"words": ("note",)}
 
     def __init__(self) -> None:
         self.first_replies: dict[str, str] = {}  # ep_id -> the reply its first step was given
@@ -50,8 +51,8 @@ class Notes:
             return "reviewer", "Say what you think of draft.md."
         return one_message(ep, "writer", lambda ep: "Add a line to draft.md.")
 
-    async def score(self, ep, services, tally, twin=None):
-        return {"draft_words": float(len(ep.files.get("draft.md", "").split()))}
+    async def score(self, ep, services, tallies, twin=None):
+        return {"words": {"draft_words": float(len(ep.files.get("draft.md", "").split()))}}
 
 
 @pytest.fixture
@@ -156,10 +157,10 @@ def test_a_start_is_played_only_as_a_rollout_and_no_reader_of_played_episodes_me
     assert "open episodes to continue" not in out and "to score first" not in out
     [member] = rolled(notes.out, name)
     with Store(notes.out / "store.db", readonly=True) as store:
-        assert store.load(member).status == "completed" and store.profiles() == []  # `run` plays a situation and scores nothing
+        assert store.load(member).status == "completed" and store.judgings() == []  # `run` plays a situation and scores nothing
     assert "1 episodes, 1 scored" in notes("score", "--run", str(notes.out), "--judges", "none")
     with Store(notes.out / "store.db", readonly=True) as store:
-        assert store.names() == list(store.scores("none")) == [member]
+        assert store.names() == list(store.scores("none/words")) == [member] and store.judgings() == ["none/words"]
         assert store.load(member).status == "completed"
 
 

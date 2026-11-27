@@ -1,8 +1,8 @@
 """A made-up conversation (placeholder suite; the benchmark's new task kinds will replace it).
 
 One kind, `converse`: seats talk in turn about a request, on whatever files the position
-holds, until the turn budget, a seat or the script ends it. It is scored on what needs no
-judge. A row holds no book text, so the suite declares no `text_fields`.
+holds, until the turn budget, a seat or the script ends it. Its one rubric, `counts`, scores
+what needs no judge. A row holds no book text, so the suite declares no `text_fields`.
 
     payload = {
         "request": str,                 # the opening line
@@ -56,6 +56,7 @@ class Situations:
     about = ABOUT
     metric_about = METRIC_ABOUT
     text_fields: dict[str, list[str]] = {}
+    rubrics = {"counts": ("converse",)}
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("situations", split, where)
@@ -83,13 +84,20 @@ class Situations:
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
         return await converse.converse(ep, last_reply, hears=_hears)
 
-    async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
-        conv = ep.state["converse"]
-        mine = [e.data["text"] for e in ep.events if e.kind == "say" and ep.actors[e.actor] == SUBJECT]
-        ended = "seat" if conv["ended"] in conv["seats"] else conv["ended"]
-        return {"turns": float(conv["turns"]), "subject_lines": float(len(mine)),
-                "subject_words": float(sum(len(text.split()) for text in mine))} | {
-            f"ended_by_{how}": float(ended == how) for how in ("seat", "turn_budget", "script", "silence")}
+    async def score(self, ep: Episode, services, tallies, twin: Episode | None = None) -> dict[str, dict[str, float]]:
+        return {rubric: RUBRICS[rubric](ep) for rubric in tallies}
+
+
+def _counts(ep: Episode) -> dict[str, float]:
+    conv = ep.state["converse"]
+    mine = [e.data["text"] for e in ep.events if e.kind == "say" and ep.actors[e.actor] == SUBJECT]
+    ended = "seat" if conv["ended"] in conv["seats"] else conv["ended"]
+    return {"turns": float(conv["turns"]), "subject_lines": float(len(mine)),
+            "subject_words": float(sum(len(text.split()) for text in mine))} | {
+        f"ended_by_{how}": float(ended == how) for how in ("seat", "turn_budget", "script", "silence")}
+
+
+RUBRICS = {"counts": _counts}
 
 
 def _hears(ep: Episode, speaker: str) -> list[str]:

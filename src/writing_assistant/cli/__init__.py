@@ -91,6 +91,14 @@ judging is its own pass (`score`), which nothing that plays or grows a world cal
 has added the rows it finished and left the other episodes with the rows they had.
 `score --pending` re-scores only the episodes with no row but ones saying the scorer raised
 (`error`), which is what a judge that was down leaves.
+
+A suite's scoring is split into **rubrics**, and an episode has one row per **judging**: a
+judge profile and a rubric (`episode.segments.judging`; suites 1a and 3 have one unnamed
+rubric, stored under the bare profile). Commands take `--judges PROFILE [--rubric NAME]`,
+never a joined name. With no `--rubric`, `score` scores each episode under the rubrics its
+task lists (the kind's defaults, or the row's `payload["rubrics"]`), `score --pending`
+covers every rubric the profile has rows for, and `report` prints every such rubric as a
+block of its own.
 """
 
 from __future__ import annotations
@@ -116,13 +124,13 @@ from writing_assistant.corpus.collect import collect
 from writing_assistant.corpus.release import PERMISSIVE, export_public, stage_sync
 from writing_assistant.drivers import DRIVERS
 from writing_assistant.episode import Episode
-from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, has_store
+from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, has_store, judging, split_judging
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
 from writing_assistant.run import ROOT, Runner, cast_from, code_version, resolved, run_info, situate, situated
 from writing_assistant.run import now as _now
-from writing_assistant.run.scoring import score_into
+from writing_assistant.run.scoring import score_into, wanted
 from writing_assistant.suites import SUITES, Services
 
 LOCK_FILE = "run.lock"
@@ -244,17 +252,21 @@ async def cmd_run(args: argparse.Namespace) -> int:
     counts = runner.counts  # this command adds what its scoring did to what the runner played
     scoring = asyncio.Semaphore(args.concurrency)
 
-    async def score(eps: list[Episode], only: set[str] | None = None) -> None:
-        """Score closed episodes (all of them, or the ep_ids in `only`, twins paired over all)
-        into the store. A rollout of a situation is left to `wa-bench score`."""
+    def listed(eps: list[Episode]) -> dict[str, list[str]]:
+        """ep_id -> the rubrics this command scores it under: its task's listed ones. A
+        rollout of a situation is left to `wa-bench score`."""
+        return wanted(suite, [ep for ep in eps if not situated(ep)])[0]
+
+    async def score(eps: list[Episode], want: dict[str, list[str]]) -> None:
+        """Score closed episodes into the store (twins paired over all of `eps`)."""
         async with scoring:
-            rows = await score_into(store, args.judges, suite, eps, services, len(eps) or 1, only)
+            rows = await score_into(store, args.judges, suite, eps, services, len(eps) or 1, want)
         counts["score_errors"] += sum("error" in row for row in rows)
 
     async def play(name: str, begin: Callable[[], list[Episode]]) -> None:
         eps = await runner.play(name, begin)
-        if eps and not args.no_score and not situated(eps[0]):
-            await score(eps)
+        if eps and not args.no_score:
+            await score(eps, listed(eps))
 
     # Held shared for as long as this run lives (the kernel drops it when the process dies).
     # Getting it exclusively first means no other run is alive in this directory.
@@ -286,8 +298,11 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
                 | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts, "round": args.round}
                    if args.source else {}))
-        unscored = ({ep.ep_id for ep in closed if not situated(ep)} - store.scores(args.judges).keys()
-                    if alone and not args.no_score else set())
+        unscored: dict[str, list[str]] = {}  # closed episode -> its listed rubrics with no row yet
+        if alone and not args.no_score:
+            have = {split_judging(name)[1]: store.scores(name).keys() for name in store.judgings(args.judges)}
+            unscored = {ep_id: missing for ep_id, rubrics in listed(closed).items()
+                        if (missing := [r for r in rubrics if ep_id not in have.get(r, ())])}
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
               + ", ".join([f"{len(done)} tasks already stored"]
                           + [f"{sum(map(len, unfinished.values()))} open episodes to continue"] * bool(unfinished)
@@ -372,21 +387,52 @@ async def cmd_score(args: argparse.Namespace) -> int:
     services = services_for(args.models, args.judges)
     with Store(run_dir / STORE_FILE) as store:
         episodes = list(store.episodes())
-        only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
-        if args.pending:
-            pending = {ep_id for ep_id, row in store.scores(args.judges).items() if "error" in row}
-            only = pending if only is None else only & pending
+        chosen = [ep for ep in episodes if matches(episode_row(ep), args.where)] if args.where else episodes
+        want, unknown = to_score(store, suite, chosen, args.judges, args.rubric, args.pending)
         try:
-            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, only)
+            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, want)
         except* AccountError as group:
             sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are "
                      "stored, the others are as they were")
         finally:
             await close(services)
     record_usage(run_dir, services)
+    return scored(str(run_dir), args, info["suite"], rows, unknown, services)
+
+
+def to_score(store: Store, suite: Any, episodes: list[Episode], profile: str, rubric: str | None,
+             pending: bool) -> tuple[dict[str, list[str]], dict[str, int]]:
+    """What `score` scores (`run.scoring.wanted`): each episode's listed rubrics, or the one
+    `--rubric` names. With `--pending`, only the rows saying the scorer raised, of every
+    rubric the profile has rows for or of the one named."""
+    try:
+        judging(profile, rubric or "")
+    except ValueError as e:
+        sys.exit(str(e))
+    if rubric is not None and rubric not in suite.rubrics:
+        sys.exit(f"--rubric {rubric}: the suite has no rubric of that name; it has "
+                 f"{', '.join(repr(r) for r in suite.rubrics)}")
+    if not pending:
+        return wanted(suite, episodes, rubric)
+    raised: dict[str, list[str]] = {}
+    for name in store.judgings(profile):
+        _, r = split_judging(name)
+        if r in suite.rubrics and rubric in (None, r):
+            for ep_id, row in store.scores(name).items():
+                if "error" in row:
+                    raised.setdefault(ep_id, []).append(r)
+    return {ep.ep_id: raised[ep.ep_id] for ep in episodes if ep.ep_id in raised}, {}
+
+
+def scored(where: str, args: argparse.Namespace, suite: str, rows: list[dict], unknown: dict[str, int], services: Services) -> int:
+    """`score`'s closing lines and exit code."""
     errors = sum("error" in r for r in rows)
-    print(f"{run_dir}, judges {args.judges}: {len(rows)} episodes, {sum('metrics' in r for r in rows)} scored, "
+    rubrics = sorted({r["rubric"] for r in rows if "rubric" in r})
+    print(f"{where}, judges {args.judges}{', rubrics ' + ', '.join(rubrics) if rubrics else ''}: "
+          f"{len({r['ep_id'] for r in rows})} episodes, {sum('metrics' in r for r in rows)} scored, "
           f"{errors} scorer errors; spent ${sum(services.llm.spent.values()):.4f}")
+    for name, n in sorted(unknown.items()):
+        print(f"  rubric {name!r}: listed by {n} episodes, and suite {suite} has no rubric of that name; nothing was scored under it")
     return 1 if errors else 0
 
 
@@ -478,14 +524,18 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired)")
     s.add_argument("--run", required=True)
     s.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
+    s.add_argument("--rubric", help="one of the suite's rubrics; default: every rubric (score: each episode's listed "
+                                             "ones; report: every one the profile has rows for)")
     s.add_argument("--where", help="key=value[,key=value]: the episode's row fields and its condition, as in report")
     s.add_argument("--pending", action="store_true",
-                   help="only the episodes whose row says the scorer raised (a judge that was down)")
+                   help="only the rows saying the scorer raised (a judge that was down), of every rubric or the one named")
     s.add_argument("--concurrency", type=int, default=8)
 
     rp = sub.add_parser("report", help="metrics per group, with gates, refusals and baseline deltas")
     rp.add_argument("--run", required=True)
     rp.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
+    rp.add_argument("--rubric", help="one of the suite's rubrics; default: every rubric (score: each episode's listed "
+                                             "ones; report: every one the profile has rows for)")
     rp.add_argument("--group-by", help="comma-separated row fields (kind, k, mode, author, condition, ...)")
     rp.add_argument("--where")
     rp.add_argument("--baseline")

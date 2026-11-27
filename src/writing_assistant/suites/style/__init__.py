@@ -17,6 +17,7 @@ class Style:
     about = tasks.ABOUT
     metric_about = score.ABOUT
     text_fields = tasks.TEXT_FIELDS
+    rubrics = {"": tuple(tasks.ABOUT)}  # one, unnamed: rows under the bare judge profile
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("3", split, where)
@@ -27,8 +28,8 @@ class Style:
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
         return tasks.next_delivery(ep)
 
-    async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
-        return await score.score(ep, services, tally, twin)
+    async def score(self, ep: Episode, services, tallies, twin: Episode | None = None) -> dict[str, dict[str, float]]:
+        return {"": await score.score(ep, services, tallies[""], twin)}
 
 
 suite = Style()

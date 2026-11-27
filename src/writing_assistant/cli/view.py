@@ -43,7 +43,7 @@ from urllib.parse import parse_qs, urlsplit
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
-from writing_assistant.episode.segments import STORE_FILE, closed_episodes, open_episodes, read_run
+from writing_assistant.episode.segments import STORE_FILE, closed_episodes, judging, open_episodes, read_run, split_judging
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, task_rows
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.run import ERRORS_FILE, row_meta
@@ -85,14 +85,28 @@ class Run:
         return self._cached("info", lambda: json.loads((self.path / RUN_FILE).read_text())
                             if (self.path / RUN_FILE).exists() else {})
 
+    def judgings(self) -> list[str]:
+        """The judgings the run has score rows under: `<profile>` or `<profile>/<rubric>`."""
+        return self._cached("judgings", lambda: read_run(self.path, lambda store: store.judgings(), []))
+
     def profiles(self) -> list[str]:
         """Judge profiles the run has score rows under, `eval` first."""
-        names = self._cached("profiles", lambda: read_run(self.path, lambda store: store.profiles(), []))
-        return sorted(names, key=lambda n: (n != "eval", n))
+        return sorted({split_judging(name)[0] for name in self.judgings()}, key=lambda n: (n != "eval", n))
 
     def profile(self, asked: str | None) -> str:
         have = self.profiles()
         return asked if asked in have else (have[0] if have else "eval")
+
+    def rubrics(self, profile: str) -> list[str]:
+        """The rubrics the run has rows for under a profile, the unnamed one first; the
+        unnamed one alone when it has none."""
+        return [r for p, r in map(split_judging, self.judgings()) if p == profile] or [""]
+
+    def judging(self, profile: str, asked: str | None = None) -> str:
+        """The judging to read: the rubric asked for when the profile has rows for it, else
+        its first."""
+        rubrics = self.rubrics(profile)
+        return judging(profile, asked if asked in rubrics else rubrics[0])
 
     def closed(self) -> list[Episode]:
         return self._cached("closed", lambda: closed_episodes(self.path))
@@ -110,24 +124,25 @@ class Run:
         return self._cached("twins", lambda: {ep.baseline_of: ep for ep in self.episodes().values()
                                               if ep.baseline_of in self.episodes()})
 
-    def scores(self, profile: str) -> dict[str, dict]:
-        return self._cached(("scores", profile), lambda: read_run(self.path, lambda store: store.scores(profile), {}))
+    def scores(self, name: str) -> dict[str, dict]:
+        """ep_id -> its row under the judging `name`."""
+        return self._cached(("scores", name), lambda: read_run(self.path, lambda store: store.scores(name), {}))
 
-    def judgments(self, profile: str) -> dict[str, list[dict]] | None:
+    def judgments(self, name: str) -> dict[str, list[dict]] | None:
         """Scored ep_id -> its judge items in the order asked; None when the run was never
-        scored under the profile."""
+        scored under the judging."""
         def make() -> dict[str, list[dict]] | None:
-            if profile not in self.profiles():
+            if name not in self.judgings():
                 return None
             out: dict[str, list[dict]] = defaultdict(list)
-            for j in read_run(self.path, lambda store: store.judgments(profile), []):
+            for j in read_run(self.path, lambda store: store.judgments(name), []):
                 out[j["scored"]].append(j)
             return out
-        return self._cached(("judgments", profile), make)
+        return self._cached(("judgments", name), make)
 
-    def report(self, profile: str) -> dict[str, Any]:
-        return self._cached(("report", profile),
-                            lambda: build_report(self.path, profile, ["kind", "condition"], None, None, self.passed))
+    def report(self, profile: str, rubric: str = "") -> dict[str, Any]:
+        return self._cached(("report", profile, rubric), lambda: build_report(
+            self.path, profile, ["kind", "condition"], None, None, self.passed, rubric))
 
     def summary(self) -> dict[str, Any]:
         info = self.info()
@@ -355,11 +370,11 @@ def _kind(ep: Episode) -> str:
     return ep.state.get("kind") or ep.meta.get("row", {}).get("kind") or "?"
 
 
-def episode_list(run: Run, profile: str, rollouts: bool = False) -> list[dict[str, Any]]:
+def episode_list(run: Run, name: str, rollouts: bool = False) -> list[dict[str, Any]]:
     """The run's scored task episodes, or its rollouts, each of which also says what it is a
     rollout of."""
     twin_ids = {t.ep_id for t in run.twins().values()}
-    scores = run.scores(profile)
+    scores = run.scores(name)
     out = []
     for ep in (run.rollouts() if rollouts else run.episodes()).values():
         if ep.ep_id in twin_ids:
@@ -376,7 +391,7 @@ def episode_list(run: Run, profile: str, rollouts: bool = False) -> list[dict[st
     return out
 
 
-def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> dict[str, Any] | None:
+def episode_family(run: Run, ep_id: str, name: str, runs: dict[str, Run]) -> dict[str, Any] | None:
     """The episode's task as played in this run: every arm with its twin, each with what it was
     shown, what it wrote, how (turns and calls), its scores and the judge items behind them.
     A rollout is shown alone: it is no part of the run's play of its task."""
@@ -394,7 +409,7 @@ def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> 
             if ep.ep_id in twins and twins[ep.ep_id] in family:
                 ordered.append(twins[ep.ep_id])
     ordered += [ep for ep in family if ep not in ordered]
-    scores, judgments = run.scores(profile), run.judgments(profile)
+    scores, judgments = run.scores(name), run.judgments(name)
     arms = [ep for ep in ordered if ep.ep_id not in twin_of]
     out = []
     for ep in ordered:
@@ -421,7 +436,7 @@ def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> 
                          "diff": diff_lines(edit.get("original", ""), ep.files[edit["path"]])}
         out.append(v)
     first = eps[ep_id]
-    return {"run": run.summary(), "profile": profile, "profiles": run.profiles(), "task_id": task_id,
+    return {"run": run.summary(), "task_id": task_id,
             "kind": _kind(first), "row": _row_fields(first), "split": first.split, "episodes": out,
             "elsewhere": [n for n, r in runs.items() if n != run.name and r.info() and
                           any(e.task_id == task_id for e in r.episodes().values())]}
@@ -438,7 +453,7 @@ def compare(runs: dict[str, Run], task_id: str, asked: dict[str, str]) -> list[d
         if not family:
             continue
         profile = run.profile(asked.get(name))
-        scores, judgments = run.scores(profile), run.judgments(profile) or {}
+        scores, judgments = run.scores(run.judging(profile)), run.judgments(run.judging(profile)) or {}
         twin_of = {t.ep_id: p for p, t in run.twins().items()}
         eps = []
         for ep in family:
@@ -646,7 +661,7 @@ def _kind_scored(task: Task, runs: dict[str, Run]) -> dict[str, Any] | None:
     for name, run in runs.items():
         if not run.info() or run.info()["suite"] != task.suite:
             continue
-        scores = run.scores(run.profile(None))
+        scores = run.scores(run.judging(run.profile(None)))
         by_condition: dict[str, set[str]] = defaultdict(set)
         for ep in run.episodes().values():
             if _kind(ep) == task.kind:
@@ -667,7 +682,7 @@ def _scored_in(task: Task, runs: dict[str, Run]) -> list[dict[str, Any]]:
         if not mine:
             continue
         profile = run.profile(None)
-        scores, judgments = run.scores(profile), run.judgments(profile) or {}
+        scores, judgments = run.scores(run.judging(profile)), run.judgments(run.judging(profile)) or {}
         eps = []
         for ep in mine:
             asked = {(j["metric"], j["question"], j.get("ep_id") != ep.ep_id): None for j in judgments.get(ep.ep_id, [])}
@@ -718,15 +733,22 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
             run = runs.get(q.get("run", ""))
             if run is None or not run.info():
                 return self._send(404, b"no such run", "text/plain")
+            # What is read: `judges` and `rubric` name a judging. With no `rubric` the profile's
+            # first is read (the unnamed one, for suites 1a and 3), and a report lists the rest.
             profile = run.profile(q.get("judges"))
+            name = run.judging(profile, q.get("rubric"))
+            rubric, rubrics = split_judging(name)[1], run.rubrics(profile)
+            read = {"profile": profile, "profiles": run.profiles(), "rubric": rubric, "rubrics": rubrics}
             if url.path == "/api/report":
-                return self._json(run.report(profile) | {"profile": profile, "profiles": run.profiles()})
+                others = [{"rubric": r} | {k: run.report(profile, r)[k] for k in ("groups", "rollouts")}
+                          for r in rubrics if r != rubric and "rubric" not in q]
+                return self._json(run.report(profile, rubric) | read | {"others": others})
             if url.path == "/api/episodes":
-                return self._json({"profile": profile, "episodes": episode_list(run, profile),
-                                   "rollouts": episode_list(run, profile, rollouts=True)})
+                return self._json({"profile": profile, "rubric": rubric, "episodes": episode_list(run, name),
+                                   "rollouts": episode_list(run, name, rollouts=True)})
             if url.path == "/api/episode":
-                fam = episode_family(run, q.get("ep", ""), profile, runs)
-                return self._json(fam) if fam else self._send(404, b"no such episode", "text/plain")
+                fam = episode_family(run, q.get("ep", ""), name, runs)
+                return self._json(fam | read) if fam else self._send(404, b"no such episode", "text/plain")
             self._send(404, b"not found", "text/plain")
 
         def _static(self, path: str) -> None:

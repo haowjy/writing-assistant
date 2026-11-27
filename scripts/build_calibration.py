@@ -66,7 +66,8 @@ def run_items(run: Path, use: str, profile: str) -> list[dict]:
     # fill the file with one task.
     rollouts = {ep.ep_id for ep in episodes if ep.rollout_of}
     out = []
-    for j in read_run(run, lambda store: store.judgments(profile), []):
+    # Every rubric the profile has rows for: a suite's unnamed one, and `<profile>/<rubric>`.
+    for j in read_run(run, lambda store: [j for name in store.judgings(profile) for j in store.judgments(name)], []):
         if j["judge"]["use"] != use or j["model"] is None or j["scored"] in rollouts:
             continue
         item = {k: j[k] for k in ("question", "evidence", "a", "b", "context") if k in j}

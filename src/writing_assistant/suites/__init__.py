@@ -22,6 +22,13 @@ of seats) is shared by every suite package and imports none.
   counterfactual. `Episode.parent` says only what an episode is stored after. A twin is a
   baseline, never scored on its own: the `score()` of the episode it names judges it once,
   writes its rate as `twin_<metric>` and subtracts it in the `net_*` metric.
+- A suite's scoring is split into **rubrics**, each with its own focus and its own score
+  row per episode (stored under the judging `<profile>/<rubric>`). `rubrics` names them and
+  the task kinds each is run on by default; a task row may list others
+  (`payload["rubrics"]`, `listed_rubrics`). Suites 1a and 3 have one, with an empty name,
+  whose rows are stored under the bare profile. `score` is handed a `Tally` per rubric the
+  pass wants and returns each one's metrics, so whether two rubrics share a judge call is
+  the suite's choice.
 - `judged_by` maps each metric to the judge use it depends on; `wa-bench report` marks a
   metric ungated until that use's human-label gate has passed. Metrics not listed are
   deterministic.
@@ -30,7 +37,7 @@ of seats) is shared by every suite package and imports none.
   and a kind that asks for a length passes that length to `reply_output` (a floor below it);
   with none, those functions raise `NoOutput` and the scorer writes no outcome metric, only
   `n_no_output.<reason>`. Bookkeeping metrics (tool calls, rejections) read the log and are
-  written whenever the episode ran. A failed episode is never scored (`run.score_episode` skips it).
+  written whenever the episode ran. A failed episode is never scored (`run.scoring.score_episode` skips it).
 """
 
 from __future__ import annotations
@@ -94,6 +101,9 @@ class Suite(Protocol):
     # task kind -> the payload fields that carry work text ("passage.text", "exemplars[].text",
     # "files.*"): what corpus/release.py hashes when a work is not permissive
     text_fields: dict[str, list[str]]
+    # rubric name -> the task kinds it is run on when a task's row lists none. Every rubric
+    # `score` answers to is a key; "" is the one rubric of a suite that names none.
+    rubrics: dict[str, tuple[str, ...]]
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]: ...
 
@@ -122,11 +132,24 @@ class Suite(Protocol):
         ...
 
     async def score(
-        self, ep: Episode, services: Services, tally: Tally, twin: Episode | None = None
-    ) -> dict[str, float]:
-        """Pure over a frozen episode; a failed episode is never scored. Every judge call
-        goes through `tally.ask`, which the caller turns into counts and stored judgments."""
+        self, ep: Episode, services: Services, tallies: dict[str, Tally], twin: Episode | None = None
+    ) -> dict[str, dict[str, float]]:
+        """Each rubric's metrics, for the rubrics `tallies` names (one `Tally` each). Pure
+        over a frozen episode; a failed episode is never scored. Every judge call goes
+        through a tally, which the caller turns into counts and stored judgments: one call
+        may fill several (`Tally.found`)."""
         ...
+
+
+def listed_rubrics(suite: Suite, ep: Episode) -> list[str]:
+    """The rubrics `ep`'s task lists: its row's `payload["rubrics"]` (a situation keeps its
+    row in `state["task"]`), else the suite's defaults for its kind. Names only: a listed
+    name the suite has no rubric for is for the judging pass to report."""
+    task = ep.state.get("task", {})
+    if (listed := task.get("payload", {}).get("rubrics")) is not None:
+        return list(listed)
+    kind = task.get("kind") or ep.meta.get("row", {}).get("kind")
+    return [rubric for rubric, kinds in suite.rubrics.items() if kind in kinds]
 
 
 async def play(suite: Suite, eps: list[Episode], turn: Turn) -> None:
@@ -158,7 +181,14 @@ class Tally:
     evidence or a/b/context, the judge's stamp, answer or unscored reason, and replies);
     `about` names the episode whose text was judged when it is not the one being scored.
     `stamps` holds the stamp of every judge asked, by use: what a score row says it was
-    judged by."""
+    judged by.
+
+    A rubric that reads a whole rollout records **findings** instead (`found`): several
+    from one judge call, or ones no judge was asked for. A finding is a dict with `covers`
+    ("task" or {"turn": n}), `seat`, `dimension` ("output" or "thinking"), `criterion`,
+    `value` (0, 1 or 2) or `unscored` (why it has none), `cites` and `evidence` (references,
+    not text). Its metric is `<dimension>.<criterion>`, and `rates()` gives each one's mean
+    on 0 to 1."""
 
     judged: Counter[str] = field(default_factory=Counter)
     unscored: Counter[tuple[str, str]] = field(default_factory=Counter)
@@ -182,6 +212,30 @@ class Tally:
             return None
         self.judged[metric] += 1
         return j.value
+
+    def found(self, findings: list[dict[str, Any]], judge: Judge | None = None, replies: list[str] | None = None,
+              by_seat: bool = False) -> None:
+        """Record findings in the order given. With `judge`, all of them came from one call
+        of it: each carries its stamp and `replies`. With none, nobody was asked: each says
+        why in `unscored` (`no_thinking`, `not_applicable`). `by_seat` keeps a metric per
+        seat (`<dimension>.<criterion>.<seat>`), for a rollout whose subject holds several."""
+        if judge:
+            self.stamps[judge.stamp["use"]] = judge.stamp
+        for finding in findings:
+            metric = ".".join([finding["dimension"], finding["criterion"], *([finding["seat"]] if by_seat else [])])
+            self.judgments.append({"metric": metric, **finding, **({"judge": judge.stamp, "replies": replies or []} if judge else {})})
+            if finding.get("unscored"):
+                self.unscored[(metric, finding["unscored"])] += 1
+            else:
+                self.judged[metric] += 1
+
+    def rates(self) -> dict[str, float]:
+        """Each finding metric's mean value on 0 to 1; a metric with no scored finding is absent."""
+        values: dict[str, list[int]] = {}
+        for j in self.judgments:
+            if "criterion" in j and not j.get("unscored"):
+                values.setdefault(j["metric"], []).append(j["value"])
+        return {metric: sum(vs) / (2 * len(vs)) for metric, vs in values.items()}
 
     def into(self, out: dict[str, float]) -> dict[str, float]:
         out |= {f"n_judged.{m}": float(n) for m, n in self.judged.items()}

@@ -39,8 +39,11 @@ What the caller owes the store:
 A store also holds the **score rows** of its episodes, each with the judge items behind it
 (`put_scores`), so an episode travels with its scores: `copy` carries a segment, its
 ancestors, its listing and its rows in one transaction. Rows are only ever added, like
-checkpoints: scoring an episode again adds a row. Every reader takes one row of an episode
-under a judge profile, by one rule (`_current`): the newest that does not say the scorer
+checkpoints: scoring an episode again adds a row. Rows are kept per **judging**: a judge
+profile and a rubric, written `<profile>/<rubric>`, or the bare profile for a suite's one
+unnamed rubric (`judging`, `split_judging`: the only two places the name is put together
+or taken apart; the column is still called `profile`). Every reader takes one row of an
+episode under a judging, by one rule (`_current`): the newest that does not say the scorer
 raised (`error`), or the newest of all when every one does. So a re-score that failed (a
 judge was down) hides no good row, and which row is read never depends on the order rows
 arrived in. The row read may therefore be older than the last attempt; it says which code
@@ -126,9 +129,25 @@ _SEGMENT = ("seg, parent, parent_events, parent_calls, ep_id, task_id, suite, sp
             "rollout_of, rollout_at, meta, grp")
 
 
+def judging(profile: str, rubric: str = "") -> str:
+    """The name score rows of `rubric` judged by `profile` are stored under."""
+    if not profile:
+        raise ValueError("a judging needs a judge profile")
+    for what, name in (("judge profile", profile), ("rubric", rubric)):
+        if "/" in name:
+            raise ValueError(f"{what} {name!r} holds '/', which is what separates the two in a judging's name")
+    return f"{profile}/{rubric}" if rubric else profile
+
+
+def split_judging(name: str) -> tuple[str, str]:
+    """(judge profile, rubric) of a judging; the rubric is "" for a bare profile."""
+    profile, _, rubric = name.partition("/")
+    return profile, rubric
+
+
 def _current(s: str) -> str:
     """SQL: of the score rows the alias `s` ranges over, the one readers take for its
-    episode under its profile. Final before not, then the later; two rows of one time are
+    episode under its judging. Final before not, then the later; two rows of one time are
     told apart by id, so every reader on every machine takes the same one."""
     return (f"{s}.id = (SELECT id FROM scores WHERE ep_id = {s}.ep_id AND profile = {s}.profile "
             "ORDER BY final DESC, scored_at DESC, id DESC LIMIT 1)")
@@ -461,10 +480,10 @@ class Store:
                 listed = self.db.execute("SELECT ep_id, start FROM episodes WHERE seg = ?", (self._seg(name),)).fetchone()
                 self._copy_chain(name, into, listed)
                 if listed:
-                    for profile, row, items in self.db.execute(
+                    for judging_, row, items in self.db.execute(
                             "SELECT s.profile, s.row, j.body FROM scores s LEFT JOIN judgments j ON j.score = s.id "
                             "WHERE s.ep_id = ? ORDER BY s.rowid", listed[:1]).fetchall():
-                        into._add_score(profile, row, items)
+                        into._add_score(judging_, row, items)
 
     def rollouts(self, source: str, at: int | None = None, group: str | None = None) -> list[str]:
         """`ep_id` of the stored rollouts of the episode named `source`, open ones included:
@@ -478,8 +497,8 @@ class Store:
 
     # -- score rows ------------------------------------------------------------------------
 
-    def put_scores(self, profile: str, rows: list[dict[str, Any]], judgments: list[dict[str, Any]] = ()) -> None:
-        """Add score rows under a judge profile, each with the judge items that count in it
+    def put_scores(self, judging: str, rows: list[dict[str, Any]], judgments: list[dict[str, Any]] = ()) -> None:
+        """Add score rows under a judging, each with the judge items that count in it
         (`judgments` whose `scored` is the row's `ep_id`, in the order given), all in one
         transaction. A row carries `ep_id` and `scored_at`. Nothing is replaced: the rows an
         episode had stay, and `_current` says which is read."""
@@ -489,37 +508,39 @@ class Store:
         with self._write():
             for row in rows:
                 items = behind.get(row["ep_id"])
-                self._add_score(profile, json.dumps(row, ensure_ascii=False), _pack(items) if items else None)
+                self._add_score(judging, json.dumps(row, ensure_ascii=False), _pack(items) if items else None)
 
-    def _add_score(self, profile: str, text: str, items: bytes | None) -> None:
+    def _add_score(self, judging: str, text: str, items: bytes | None) -> None:
         """One row arriving, as its JSON text, with its judge items packed (None: it has
         none). Its id, episode, time and whether it is final are worked out from the text
         here, never taken from the file it came from, and a row already held is skipped with
         its items."""
         row = json.loads(text)
-        id_ = hashlib.sha256(f"{profile}\0{text}".encode()).hexdigest()[:32]
+        id_ = hashlib.sha256(f"{judging}\0{text}".encode()).hexdigest()[:32]
         added = self.db.execute(
             "INSERT OR IGNORE INTO scores (id, ep_id, profile, final, scored_at, row) VALUES (?, ?, ?, ?, ?, ?)",
-            (id_, row["ep_id"], profile, "error" not in row, row["scored_at"], text))
+            (id_, row["ep_id"], judging, "error" not in row, row["scored_at"], text))
         if added.rowcount and items:
             self.db.execute("INSERT INTO judgments (score, body) VALUES (?, ?)", (id_, items))
 
-    def profiles(self) -> list[str]:
-        """The judge profiles this store holds score rows under."""
-        return [r[0] for r in self.db.execute("SELECT DISTINCT profile FROM scores ORDER BY profile").fetchall()]
+    def judgings(self, profile: str | None = None) -> list[str]:
+        """The judgings this store holds score rows under: all of them, or those of one
+        judge profile (its unnamed rubric first)."""
+        names = [r[0] for r in self.db.execute("SELECT DISTINCT profile FROM scores ORDER BY profile").fetchall()]
+        return [n for n in names if profile is None or split_judging(n)[0] == profile]
 
-    def scores(self, profile: str) -> dict[str, dict[str, Any]]:
-        """`ep_id` -> its score row under `profile` (`_current`)."""
+    def scores(self, judging: str) -> dict[str, dict[str, Any]]:
+        """`ep_id` -> its score row under `judging` (`_current`)."""
         rows = self.db.execute(f"SELECT s.ep_id, s.row FROM scores s WHERE s.profile = ? AND {_current('s')} ORDER BY s.rowid",
-                               (profile,))
+                               (judging,))
         return {ep_id: json.loads(row) for ep_id, row in rows.fetchall()}
 
-    def judgments(self, profile: str | None = None, scored: str | None = None, superseded: bool = False) -> list[dict[str, Any]]:
+    def judgments(self, judging: str | None = None, scored: str | None = None, superseded: bool = False) -> list[dict[str, Any]]:
         """The judge items behind the score rows readers take (`_current`), in the order they
-        were asked within a row: under one profile or every one, of every episode or of the
+        were asked within a row: under one judging or every one, of every episode or of the
         one named `scored`. `superseded` gives the items of an episode's other rows as
         well: everything `copy` would carry."""
-        tests = {"s.profile": profile, "s.ep_id": scored}
+        tests = {"s.profile": judging, "s.ep_id": scored}
         rows = self.db.execute(
             "SELECT j.body FROM judgments j JOIN scores s ON s.id = j.score WHERE " + ("1" if superseded else _current("s"))
             + "".join(f" AND {c} = ?" for c, v in tests.items() if v is not None) + " ORDER BY s.rowid",

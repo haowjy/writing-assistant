@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from writing_assistant.cli import episode_row
-from writing_assistant.episode.segments import closed_episodes, open_episodes, read_run
+from writing_assistant.episode.segments import closed_episodes, open_episodes, judging, read_run, split_judging
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
 from writing_assistant.run import ERRORS_FILE
@@ -28,9 +28,9 @@ from writing_assistant.suites import SUBJECT, SUITES, mean
 FAMILIARITY_GAP = ("discriminator_fool_rate", "verifier_match", "pairwise_craft_win", "score_100_endings", "restraint_score")
 
 
-def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
+def _summarise(run_dir: Path, scored_under: str, keys: list[str], where: str | None,
                rollouts: bool = False) -> tuple[dict, dict, Counter]:
-    """(run.json, groups, scoring codes): groups maps a key (the episode's values for `keys`)
+    """(run.json, groups, scoring codes), reading the rows of the judging `scored_under`: groups maps a key (the episode's values for `keys`)
     to {metric: [values]} plus counts; the codes count the score rows read per scoring code.
     The run's task episodes, or with
     `rollouts` its rollouts instead: the two are never summed. Twins are baselines inside
@@ -38,7 +38,7 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
     field, and so is a rollout's `rollout_of`."""
     info = json.loads((run_dir / RUN_FILE).read_text())
     episodes = [ep for ep in closed_episodes(run_dir) if ep.baseline_of is None and (ep.rollout_of is not None) == rollouts]
-    scores = read_run(run_dir, lambda store: store.scores(profile), {})
+    scores = read_run(run_dir, lambda store: store.scores(scored_under), {})
     groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "unflagged": defaultdict(list),
                                                               "familiarity": defaultdict(list), "counts": Counter(),
                                                               "judges": defaultdict(set)})
@@ -97,24 +97,25 @@ def guardrails_line(path: Path) -> str:
 
 
 def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None, baseline: Path | None,
-                 passed: set[str]) -> dict[str, Any]:
-    """A run's report as data: `header` lines, then one entry per group with its counts, the
+                 passed: set[str], rubric: str = "") -> dict[str, Any]:
+    """A run's report under one judging (the judge profile `judges` and `rubric`) as data: `header` lines, then one entry per group with its counts, the
     episodes missing an artefact, the metric rows (numbers unformatted, `refused` None when no
     item was judged), the ungated metrics left out of a baseline comparison and the metrics
     every item of which went unscored. `groups` are the run's task episodes and its headline
     numbers; `rollouts` holds the same entries for the rollouts stored beside them, grouped
     first by the checkpoint they were forked from and the group they were made in, each
     with `group`: its size, how many of this checkpoint's members are closed with a final
-    row, and whether the group is settled (`Store.groups`). An entry's `mixed` names the
+    row, and whether the group is settled (`Store.settled`). An entry's `mixed` names the
     judge uses whose rows were scored by more than one judge: a profile is a name in one
     machine's models.toml, and the metrics such a use judges are then no one judge's.
     `cmd_report` prints it; `wa-bench view` renders it."""
-    info, groups, scored_by = _summarise(run_dir, judges, keys, where)
+    name = judging(judges, rubric)
+    info, groups, scored_by = _summarise(run_dir, name, keys, where)
     suite = SUITES[info["suite"]]
     codes = sorted({i["code"] for i in info.get("invocations", [])} or {info.get("code", "unknown")})
     header = [f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
               f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
-              f"split {info['split']}, played by code {', '.join(codes)}, judges {judges}"]
+              f"split {info['split']}, played by code {', '.join(codes)}, judges {judges}"]  # the rubric is each block's
     if still_open := len(open_episodes(run_dir)):
         header.append(f"{'1 episode is' if still_open == 1 else f'{still_open} episodes are'} open and in no number below: "
                       "a run is still playing, or was killed. Running the same `wa-bench run` command again continues "
@@ -133,17 +134,17 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
         header.append(f"task errors: {len(errors)} (see {ERRORS_FILE})")
     by = ["rollout_of", "group", *keys]
     # A group is one run's, so the baseline's rollouts of a checkpoint are matched whatever group they are in.
-    rollouts = _entries(suite, judges, by, _summarise(run_dir, judges, by, where, rollouts=True)[1], passed,
-                        _summarise(baseline, judges, ["rollout_of", *keys], where, rollouts=True)[1] if baseline else None,
+    rollouts = _entries(suite, judges, by, _summarise(run_dir, name, by, where, rollouts=True)[1], passed,
+                        _summarise(baseline, name, ["rollout_of", *keys], where, rollouts=True)[1] if baseline else None,
                         base_keys=["rollout_of", *keys])
-    stored = read_run(run_dir, lambda store: store.settled(judges), {})
+    stored = read_run(run_dir, lambda store: store.settled(name), {})
     for entry in rollouts:
         g = stored[entry["key"]["group"]]
         entry["group"] = {"size": g["size"], "final": g["sources"][entry["key"]["rollout_of"].rpartition("@")[0]],
                           "settled": g["settled"]}
     return {"info": info, "header": header, "rollouts": rollouts,
             "groups": _entries(suite, judges, keys, groups, passed,
-                               _summarise(baseline, judges, keys, where)[1] if baseline else None)}
+                               _summarise(baseline, name, keys, where)[1] if baseline else None)}
 
 
 def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set[str], base: dict | None,
@@ -183,8 +184,10 @@ def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set
             rows.append({"metric": name, "mean": mean(vals), "n": len(vals), "unflagged": mean(g["unflagged"].get(name, [])),
                          "refused": unscored.get("refusal", 0) / total if total else None, "ungated": ungated, "notes": notes})
         # metrics every item of which went unscored: absent from the rows, never 0.0
-        absent = [{"metric": k.split(".")[1], "reason": k.split(".")[2], "n": int(g["counts"][k])}
-                  for k in sorted(g["counts"]) if k.startswith("n_unscored.") and k.split(".")[1] not in g["values"]]
+        # (a rubric's metric names hold a dot, `output.<criterion>`: the reason is what follows the last one)
+        absent = [{"metric": metric, "reason": reason, "n": int(g["counts"][k])}
+                  for k in sorted(g["counts"]) if k.startswith("n_unscored.")
+                  for metric, reason in [k.removeprefix("n_unscored.").rsplit(".", 1)] if metric not in g["values"]]
         out.append({"key": dict(zip(keys, key, strict=True)),
                     "counts": {k: int(v) for k, v in sorted(g["counts"].items()) if not k.startswith("n_")},
                     "missing": missing, "rows": rows, "left_out": left_out, "absent": absent,
@@ -207,16 +210,31 @@ def cmd_report(args: argparse.Namespace) -> int:
             sys.exit(f"{run_dir} and {args.baseline} were played with different casts: " + "; ".join(
                 f"{name} is {', '.join(sorted(a))} here and {', '.join(sorted(b))} there" for name, (a, b) in sorted(differ.items()))
                 + ". The other seats differ, so the runs do not compare their subjects")
-    report = build_report(run_dir, args.judges, keys, args.where, Path(args.baseline) if args.baseline else None, passed)
-    print("\n".join(report["header"]))
-    for g in report["groups"]:
-        _print_group(g)
-    if report["rollouts"]:
-        print("\nrollouts, by the checkpoint each was forked from and the group it was made in; none of them is in "
-              "the groups above")
-        for g in report["rollouts"]:
+    try:
+        rubrics = [args.rubric] if args.rubric is not None else rubrics_scored(run_dir, args.judges)
+        judging(args.judges, rubrics[0])
+    except ValueError as e:
+        sys.exit(str(e))
+    for n, rubric in enumerate(rubrics):
+        report = build_report(run_dir, args.judges, keys, args.where, Path(args.baseline) if args.baseline else None, passed, rubric)
+        if n == 0:
+            print("\n".join(report["header"]))
+        if rubric:  # a suite's one unnamed rubric needs no heading
+            print(f"\n#### rubric {rubric}")
+        for g in report["groups"]:
             _print_group(g)
+        if report["rollouts"]:
+            print("\nrollouts, by the checkpoint each was forked from and the group it was made in; none of them is in "
+                  "the groups above")
+            for g in report["rollouts"]:
+                _print_group(g)
     return 0
+
+
+def rubrics_scored(run_dir: Path, judges: str) -> list[str]:
+    """The rubrics a run has rows for under a judge profile, the unnamed one first; the
+    unnamed one alone when it has none, so a run nobody scored still reports its episodes."""
+    return [split_judging(name)[1] for name in read_run(run_dir, lambda store: store.judgings(judges), [])] or [""]
 
 
 def _print_group(g: dict[str, Any]) -> None:

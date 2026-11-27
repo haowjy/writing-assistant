@@ -147,7 +147,7 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
                                corpus=SimpleNamespace(overlap=lambda text, ep: {}, flag=lambda o: False))
     for ep in eps:
         ep.complete()
-    scores = await suite_1a.score(full, services, Tally(), full_twin)
+    scores = (await suite_1a.score(full, services, {"": Tally()}, full_twin))[""]
     assert (scores["pov_leak"], scores["twin_pov_leak"], scores["net_pov_leak"], scores["permitted_fact_recall"]) == (1.0, 0.0, 1.0, 1.0)
 
 

@@ -167,8 +167,8 @@ async def test_another_seat_cut_off_fails_the_episode_so_the_subject_is_not_scor
                      converse.TOOLS, CAST, max_tokens=64)
     ep = await played(talk(seats, 50, lines=10), turn)
     assert (ep.status, ep.failure_reason) == ("failed", "critic: critic was cut off at max_tokens=64")
-    row, _ = await score_episode(suite, ep, None, None)
-    assert row["skipped"] == ep.failure_reason and "metrics" not in row
+    [(row, _)] = (await score_episode(suite, ep, None, None, ["counts"])).values()
+    assert row["skipped"] == ep.failure_reason and row["rubric"] == "counts" and "metrics" not in row
 
 
 async def test_a_conversation_of_eight_saved_at_any_delivery_goes_on_as_the_original_did(fake_turn, tmp_path):
