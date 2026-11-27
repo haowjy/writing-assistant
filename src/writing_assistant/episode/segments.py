@@ -552,6 +552,23 @@ class Store:
         names = [r[0] for r in self.db.execute("SELECT DISTINCT profile FROM scores ORDER BY profile").fetchall()]
         return [n for n in names if profile is None or split_judging(n)[0] == profile]
 
+    def judged(self, profile: str) -> dict[str, tuple[str, str | None, dict[str, bool]]]:
+        """Every closed episode some run played, in the order first saved -> (its suite, the
+        episode it is a rollout of, rubric -> whether it has a final row) under one judge
+        profile. A rubric with rows that all say the scorer raised is there as False; one
+        never scored is absent. One query over the tables: no episode is loaded, which is
+        what lets a judging pass find the little it has to do in a large world."""
+        rows = self.db.execute(
+            f"""SELECT e.ep_id, s.suite, s.rollout_of, sc.profile, MAX(sc.final)
+                FROM episodes e JOIN segments s ON s.seg = e.seg LEFT JOIN scores sc ON sc.ep_id = e.ep_id
+                WHERE {_PLAYED} AND {_CLOSED} GROUP BY e.ep_id, sc.profile ORDER BY MIN(e.rowid)""")
+        out: dict[str, tuple[str, str | None, dict[str, bool]]] = {}
+        for ep_id, suite, source, name, final in rows.fetchall():
+            has = out.setdefault(ep_id, (suite, source, {}))[2]
+            if name is not None and split_judging(name)[0] == profile:
+                has[split_judging(name)[1]] = bool(final)
+        return out
+
     def scores(self, judging: str) -> dict[str, dict[str, Any]]:
         """`ep_id` -> its score row under `judging` (`_current`)."""
         rows = self.db.execute(f"SELECT s.ep_id, s.row FROM scores s WHERE s.profile = ? AND {_current('s')} ORDER BY s.rowid",

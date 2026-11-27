@@ -1,8 +1,15 @@
 """A made-up conversation (placeholder suite; the benchmark's new task kinds will replace it).
 
 One kind, `converse`: seats talk in turn about a request, on whatever files the position
-holds, until the turn budget, a seat or the script ends it. Its one rubric, `counts`, scores
-what needs no judge. A row holds no book text, so the suite declares no `text_fields`.
+holds, until the turn budget, a seat or the script ends it. A row holds no book text, so
+the suite declares no `text_fields`.
+
+Rubrics. `counts` scores what needs no judge and is the kind's default. The others are
+scored by a judge that reads the stored rollout (`READS`; the judge use of the same name,
+`judges/findings.py`) and run only on a row that lists them (`payload["rubrics"]`). Each
+is asked once per seat the subject held, about the whole task or about each of that seat's
+turns, on that seat's view of the rollout (`episode.rollout_evidence`); its row's metrics
+are `<dimension>.<criterion>` on 0 to 1, per seat (`.<seat>`) when the subject held several.
 
     payload = {
         "request": str,                 # the opening line
@@ -27,12 +34,15 @@ place (`wa-bench run --suite situations`) starts with no files.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterable
+from dataclasses import dataclass
 
-from writing_assistant.episode import Episode
+from writing_assistant.episode import Episode, rollout_evidence
 from writing_assistant.episode.store import Task, task_rows
 from writing_assistant.episode.tools import WORKSPACE_TOOLS
-from writing_assistant.suites import SUBJECT, KindAbout, converse, script
+from writing_assistant.judges.findings import render
+from writing_assistant.suites import SUBJECT, KindAbout, Services, Tally, converse, script
 
 ABOUT = {"converse": KindAbout(
     title="A conversation among seats",
@@ -50,13 +60,35 @@ METRIC_ABOUT = {
 }
 
 
+@dataclass(frozen=True)
+class Reads:
+    """A rubric a judge scores by reading the rollout: what each call covers ("task", or
+    "turn": one call per turn of the seat) and the (dimension, criterion) pairs it answers."""
+
+    covers: str
+    criteria: tuple[tuple[str, str], ...]
+
+
+READS = {
+    "world_coherence": Reads("task", (("output", "continuity"), ("output", "visibility"))),
+    "character_voice_consistency": Reads("task", (("output", "voice_consistency"),)),
+    "thinking_about_prose": Reads("turn", (("thinking", "writing_decision"),)),
+}
+METRIC_ABOUT |= {
+    "output.continuity": "World coherence: the work carries the established facts and the requested changes through (0 to 1).",
+    "output.visibility": "World coherence: the seat acted only on what it could know (0 to 1).",
+    "output.voice_consistency": "The seat's character stays recognisable across its turns (0 to 1).",
+    "thinking.writing_decision": "Per turn: the recorded thinking makes a writing decision the prose carries through (0 to 1).",
+}
+
+
 class Situations:
     tools = converse.TOOLS
-    judged_by: dict[str, str] = {}
+    judged_by = {f"{dimension}.{criterion}": rubric for rubric, reads in READS.items() for dimension, criterion in reads.criteria}
     about = ABOUT
     metric_about = METRIC_ABOUT
     text_fields: dict[str, list[str]] = {}
-    rubrics = {"counts": ("converse",)}
+    rubrics: dict[str, tuple[str, ...]] = {"counts": ("converse",)} | dict.fromkeys(READS, ())
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("situations", split, where)
@@ -85,7 +117,39 @@ class Situations:
         return await converse.converse(ep, last_reply, hears=_hears)
 
     async def score(self, ep: Episode, services, tallies, twin: Episode | None = None) -> dict[str, dict[str, float]]:
-        return {rubric: RUBRICS[rubric](ep) for rubric in tallies}
+        read = [rubric for rubric in tallies if rubric in READS]
+        await asyncio.gather(*(_read(ep, services, rubric, tallies[rubric]) for rubric in read))
+        return {rubric: tallies[rubric].rates() if rubric in READS else COUNTED[rubric](ep) for rubric in tallies}
+
+
+async def _read(ep: Episode, services: Services, rubric: str, tally: Tally) -> None:
+    """Ask the rubric's judge about each seat the subject held and record its findings, one
+    per criterion and call, in an order that depends on the rollout alone. A criterion about
+    thinking is not asked where none was recorded (`no_thinking`), and a call with nothing
+    left to ask is not made. Whatever the judge returns, a finding is about the seat and the
+    scope it was asked about; a criterion it left out is `unparseable`."""
+    reads, judge = READS[rubric], services.judges.findings[rubric]
+    seats = [seat for seat, cast in ep.actors.items() if cast == SUBJECT]
+    said = ep.meta.get("cast", {}).get(SUBJECT, {}).get("thinking")  # what this endpoint's thinking is, when known
+    calls = []
+    for seat in seats:
+        ev = rollout_evidence(ep, seat)
+        own = [t for t in ev.turns if not t.inherited]
+        for turn in [None] if reads.covers == "task" else [t.turn_idx for t in own]:
+            thought = any(t.thinking for t in own if turn in (None, t.turn_idx))
+            ask = [(d, c) for d, c in reads.criteria if d == "output" or thought]
+            calls.append((seat, turn, ask, judge.judge(render(ev, turn, said)) if ask else None))
+    answers = await asyncio.gather(*(call or asyncio.sleep(0) for *_, call in calls))
+    for (seat, turn, ask, _), j in zip(calls, answers, strict=True):
+        about = {"covers": "task" if turn is None else {"turn": turn}, "seat": seat}
+        empty = about | {"cites": [], "evidence": []}
+        if j:
+            got = {} if j.unscored else {(f["dimension"], f["criterion"]): f for f in j.value if f.get("seat", seat) == seat}
+            tally.found([got[d, c] | about if (d, c) in got else
+                         empty | {"dimension": d, "criterion": c, "unscored": j.unscored or "unparseable"} for d, c in ask],
+                        judge, j.replies, by_seat=len(seats) > 1)
+        tally.found([empty | {"dimension": d, "criterion": c, "unscored": "no_thinking"} for d, c in reads.criteria if (d, c) not in ask],
+                    by_seat=len(seats) > 1)
 
 
 def _counts(ep: Episode) -> dict[str, float]:
@@ -97,7 +161,7 @@ def _counts(ep: Episode) -> dict[str, float]:
         f"ended_by_{how}": float(ended == how) for how in ("seat", "turn_budget", "script", "silence")}
 
 
-RUBRICS = {"counts": _counts}
+COUNTED = {"counts": _counts}
 
 
 def _hears(ep: Episode, speaker: str) -> list[str]:

@@ -160,7 +160,8 @@ def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set
                    if (m := {k.removeprefix(prefix): int(v) for k, v in sorted(g["counts"].items()) if k.startswith(prefix)})}
         rows, left_out = [], []
         for name in sorted(g["values"]):
-            use = suite.judged_by.get(name)
+            # A finding's metric may end in the seat it is about: `output.continuity.clerk`.
+            use = suite.judged_by.get(name) or suite.judged_by.get(name.rpartition(".")[0])
             ungated = bool(use) and f"{judges}.{use}" not in passed
             if ungated and base is not None:  # an ungated number never enters a comparison
                 left_out.append(name)

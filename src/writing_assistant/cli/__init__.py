@@ -362,6 +362,8 @@ def cmd_situate(args: argparse.Namespace) -> int:
 # -- score ---------------------------------------------------------------------------------
 
 async def cmd_score(args: argparse.Namespace) -> int:
+    if args.world:
+        return await score_world(args)
     run_dir = Path(args.run)
     info = played_here(run_dir)
     suite = SUITES[info["suite"]]
@@ -509,8 +511,11 @@ def parser() -> argparse.ArgumentParser:
     st.add_argument("--from-run", help="the run directory whose store holds --at's episode (default: --run's own)")
     st.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml, for what the suite's setup asks of the corpus")
 
-    s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired)")
-    s.add_argument("--run", required=True)
+    s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired), or judge a world's rollouts")
+    scored_where = s.add_mutually_exclusive_group(required=True)
+    scored_where.add_argument("--run", help="a run directory: every closed episode is scored again")
+    scored_where.add_argument("--world", help="a library world: each closed rollout is scored under the rubrics it lists "
+                                              "(or --rubric) that have no final row yet; the rows go into the world file")
     s.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     s.add_argument("--rubric", help="one of the suite's rubrics; default: every rubric (score: each episode's listed "
                                              "ones; report: every one the profile has rows for)")
@@ -559,7 +564,7 @@ from writing_assistant.cli.library import add_parser as add_library_parser  # no
 from writing_assistant.cli.library import cmd_library  # noqa: E402
 from writing_assistant.cli.report import cmd_report  # noqa: E402  (needs the helpers above)
 from writing_assistant.cli.view import cmd_view  # noqa: E402
-from writing_assistant.cli.world import run_world  # noqa: E402
+from writing_assistant.cli.world import run_world, score_world  # noqa: E402
 
 COMMANDS = {"run": cmd_run, "situate": cmd_situate, "score": cmd_score, "report": cmd_report, "guardrails": cmd_guardrails,
             "collect": cmd_collect, "export": cmd_export, "sync": cmd_sync, "view": cmd_view, "library": cmd_library}
