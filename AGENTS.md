@@ -332,7 +332,9 @@ position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--ro
   `names()` (1.2 s), so per-group callers name the group.
 - **The judging pass** finds what to score with one query (`Store.judged(profile)`: each
   closed rollout's suite, source and which rubrics have a final row) and one loaded rollout
-  per situation, for its listing; rollouts to be scored are loaded a batch at a time. It
+  per situation, for its listing (1.6 s and 0.9 s on the 100,000-rollout world with 2,000
+  situations: what a pass with nothing to do costs); rollouts to be scored are loaded a
+  batch at a time. It
   holds the world's lock shared and may run beside a `run --world`: it scores what is
   closed when it looks, and the next pass scores the rest. `score --run` re-scores every
   episode it is pointed at; `score --world` scores only what has no final row.
