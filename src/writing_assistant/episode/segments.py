@@ -84,7 +84,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from writing_assistant.episode.model import CallRecord, Episode, Event
+from writing_assistant.episode.model import CallRecord, Episode, Event, files_at
 from writing_assistant.episode.store import LOCAL_DEV
 
 STORE_FILE = "store.db"  # in a run directory, beside run.json
@@ -309,7 +309,7 @@ class Store:
                 raise ValueError(f"{self.path}: {ep.ep_id} is closed; nothing is appended to a closed episode")
             raise ValueError(f"{self.path}: {ep.ep_id} is stored here, and this is not the Episode this process loaded "
                              "at its last checkpoint: it cannot be appended to (fork it to play on from an earlier one)")
-        files = _files_at(ep, ep.parent[1] if ep.parent else 0)
+        files = files_at(ep, ep.parent[1] if ep.parent else 0)
         replaced: dict[str, list] = {}
         if ep.parent:
             seg, n_events, n_calls = ep.parent
@@ -326,7 +326,7 @@ class Store:
                                  f"calls, past the {events} events and {calls} calls stored of it; checkpoint the "
                                  "parent first, or fork one of its stored checkpoints")
             if ep.forked_from is not None:
-                was_events, was_files = ep.forked_from.events[:n_events], _files_at(ep.forked_from, n_events)
+                was_events, was_files = ep.forked_from.events[:n_events], files_at(ep.forked_from, n_events)
             else:
                 was_events, _, was_files = self._rebuild(seg, cut=(n_events, n_calls))[:3]
             replaced = {str(i): _event_out(e) for i, (e, was) in enumerate(zip(ep.events[:n_events], was_events, strict=True))
@@ -666,20 +666,6 @@ def _calls_out(calls: list[CallRecord], start: int) -> list[dict[str, Any]]:
 def _messages_before(calls: list[CallRecord], i: int, actor: str) -> list[dict[str, Any]]:
     """The messages of `actor`'s last call before `calls[i]`; [] when it has none."""
     return next((calls[j].messages for j in range(i - 1, -1, -1) if calls[j].actor == actor), [])
-
-
-def _files_at(ep: Episode, n_events: int) -> dict[str, list]:
-    """path -> [text, rev] as the episode's files stood when it held `n_events` events: its
-    files now, with every later `file_write` undone."""
-    files = {path: [text, ep.file_revs[path]] for path, text in ep.files.items()}
-    for event in reversed(ep.events[n_events:]):
-        if event.kind == "file_write":
-            data = event.data
-            if data["before"] is None:
-                del files[data["path"]]
-            else:
-                files[data["path"]] = [data["before"], data["rev"] - 1]
-    return files
 
 
 def _diff(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:

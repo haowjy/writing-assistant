@@ -7,8 +7,10 @@ from itertools import count
 
 import pytest
 
+from writing_assistant.episode import Episode, rollout_evidence
 from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import Task
+from writing_assistant.run import situate
 from writing_assistant.run.scoring import score_episode
 from writing_assistant.suites import SUBJECT, converse, play
 from writing_assistant.suites.situations import suite
@@ -204,3 +206,67 @@ async def test_a_conversation_of_eight_saved_at_any_delivery_goes_on_as_the_orig
             await finish(store, reopened, resumed)
             assert [r["messages"] for r in resumed.llm.requests] == [r["messages"] for r in turn.llm.requests[answered:]]
             assert reopened == ep and store.load(ep.ep_id) == ep
+
+
+async def test_a_stored_rollouts_evidence_is_one_seats_turns_with_the_whole_record_beside_them(fake_turn, tmp_path):
+    """`rollout_evidence` over rollouts reloaded read-only: a situation set up where an earlier
+    session ended, played by eight seats, then forked after its third delivery. ana writes
+    a file, thinks twice and replies in every turn; the other endpoint returns no thinking."""
+    def subject(messages, tools, endpoint):
+        seat, n = messages[0]["content"].split()[2].rstrip("."), sum(m["role"] == "user" for m in messages)
+        if seat != "ana":
+            return f"{seat} speaks"
+        if messages[-1]["role"] == "user":
+            return {"text": f"<think>ana thinks {n}</think>", "tool_calls": [
+                {"name": "episode_write", "arguments": {"path": f"ana-{n}.md", "rev": 0, "text": f"note {n}"}}]}
+        return f"<think>ana decides {n}</think>ana says {n}"
+
+    async def play_out(store, ep):
+        turn = fake_turn({"subject-endpoint": [subject] * 80, "other-endpoint": ["the other speaks"] * 40}, converse.TOOLS, CAST)
+
+        async def saved(ep, actor, message):
+            await turn(ep, actor, message)
+            store.append(ep)
+
+        store.append(ep)
+        await play(suite, [ep], saved)
+        ep.complete()
+        store.close(ep)
+
+    seats = EIGHT | {"ana": {"cast": SUBJECT, "reads": ["secret.md"]}}
+    task = talk(seats, 20, lines=40)
+    with Store(tmp_path / "store.db") as store:
+        root = Episode(ep_id="sel", task_id="sel", suite="situations", split="dev", files={"kb.md": "Sel.", "secret.md": "Orin."},
+                       file_revs={"kb.md": 1, "secret.md": 1}, state={"file_acl": {"secret.md": ["gm"]}})
+        store.add_starts(root)
+        earlier = store.load("sel", at=0).rollout(0, 0, "old")  # the position: a session that said and wrote things
+        earlier.log("old-seat", "say", {"text": "an earlier session"}, {"*": "full"})
+        earlier.write_file("old-seat", "draft.md", "From before.")
+        store.close(earlier)
+        [situation] = situate(store, None, "situations", "converse", task.payload, earlier.ep_id, name="sel/table")
+        whole = store.load("sel/table", at=0).rollout(0, 0, "g")
+        await play_out(store, whole)
+        forked = store.load(whole.ep_id, at=3).rollout(3, 0, "h")
+        await play_out(store, forked)
+    with Store(tmp_path / "store.db", readonly=True) as store:
+        whole, forked, at_fork = store.load(whole.ep_id), store.load(forked.ep_id), store.load(whole.ep_id, at=3)
+        situation = store.load("sel/table")
+    ana, bo = rollout_evidence(whole, "ana"), rollout_evidence(whole, "bo")
+    assert (ana.brief, ana.task["task_id"], ana.task["payload"], ana.status) == ("You are ana.", "sel/table", task.payload, "completed")
+    to_ana = [(e.data["turn_idx"], e.data["message"]) for e in whole.events if e.kind == "deliver" and e.actor == "ana"]
+    assert [(t.turn_idx, t.heard) for t in ana.turns] == to_ana and len(to_ana) == len(set(to_ana)) == 3
+    for n, t in enumerate(ana.turns, 1):
+        assert [c.finish_reason for c in t.calls] == ["tool_calls", "stop"] and not t.inherited
+        assert (t.thinking, t.reply) == (f"ana thinks {n}\n\nana decides {n}", f"ana says {n}")
+        assert t.results == [{"ok": True, "path": f"ana-{n}.md", "rev": 1}] and t.changes == [(f"ana-{n}.md", 1, None, f"note {n}")]
+    assert [(t.thinking, t.changes, len(t.calls), t.reply) for t in bo.turns] == [(None, [], 1, "the other speaks")] * len(bo.turns)
+    start = {"kb.md": ("Sel.", 1), "secret.md": ("Orin.", 1), "draft.md": ("From before.", 1)}
+    assert ana.files_at_start == start == {p: (t, situation.file_revs[p]) for p, t in situation.files.items()}
+    assert ana.files_at_end == start | {f"ana-{n}.md": (f"note {n}", 1) for n in (1, 2, 3)} == bo.files_at_end
+    assert "secret.md" in ana.visible and "secret.md" not in bo.visible and "kb.md" in bo.visible
+    assert ana.events == whole.events and not any(e.actor == "old-seat" for e in ana.events)  # nothing of the position's earlier play
+    # Forked after the third delivery (to ana, bo and dee): each one's first turn is inherited, no later one.
+    for seat in ("ana", "bo", "dee", "eli"):
+        ev = rollout_evidence(forked, seat)
+        assert [t.inherited for t in ev.turns] == [seat != "eli"] + [False] * (len(ev.turns) - 1) and len(ev.turns) > 1
+        assert ev.files_at_start == {p: (t, at_fork.file_revs[p]) for p, t in at_fork.files.items()} == start | {"ana-1.md": ("note 1", 1)}
