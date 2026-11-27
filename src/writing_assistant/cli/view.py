@@ -202,9 +202,10 @@ def _tool_result(content: Any) -> dict[str, Any]:
 
 def _turns(ep: Episode) -> list[dict[str, Any]]:
     """Each delivery with the calls that served it; calls outside a delivery come last."""
-    by_id = {m.get("tool_call_id"): m.get("content") for c in ep.calls for m in c.messages if m.get("role") == "tool"}
-    # A call's results reach the record in the next call's messages, so the last call's do not:
-    # those come from the tool events, paired in order when every call has its event.
+    # A seat's tool events are its results in the order it called (`rollout_evidence` pairs them
+    # so too). A call id says nothing across seats, or across one seat's turns: hosts repeat them.
+    # A record with an event missing falls back to the results the seat's next call was sent.
+    by_id = {(c.actor, m.get("tool_call_id")): m.get("content") for c in ep.calls for m in c.messages if m.get("role") == "tool"}
     events = defaultdict(list)
     for e in ep.events:
         if e.kind == "tool":
@@ -219,10 +220,10 @@ def _turns(ep: Episode) -> list[dict[str, Any]]:
         for t in c.tool_calls:
             k = seen[c.actor]
             seen[c.actor] += 1
-            if t.get("id") in by_id:
-                result = _tool_result(by_id[t["id"]])
-            elif made[c.actor] == len(events[c.actor]):
+            if made[c.actor] == len(events[c.actor]):
                 result = _tool_result(events[c.actor][k])
+            elif (c.actor, t.get("id")) in by_id:
+                result = _tool_result(by_id[c.actor, t["id"]])
             else:
                 result = None
             tools.append({"name": t.get("name"), "arguments": t.get("arguments"), "result": result})
