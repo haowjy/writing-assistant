@@ -32,6 +32,12 @@ Jimmy's approval; free usage does not.
 Do not write code for rare edge cases. Make every run recoverable instead (a killed or
 failed run restarts from saved state) and log what it does, so a failure can be traced.
 
+## Messages and prompts
+
+Start every message and prompt minimal: a command's output and errors, a judge or seat
+prompt, a brief. Add text only when a real failure shows it is needed. Delete text that
+does not help its reader.
+
 ## Google services
 
 Use Google's CLIs through their skills, or a Google-hosted MCP server if connected:
