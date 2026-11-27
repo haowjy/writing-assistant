@@ -59,7 +59,7 @@ def _said(mine: list[dict]) -> tuple[list[str], bool]:
     did = Counter(e["event"] for e in mine[1:] if e["event"] != "finished")
     results = Counter(e["result"] for e in mine if e["event"] == "judged")
     out = [f"`{start['cmd']}`{' (' + asked + ')' if asked else ''} started {start['at']}: {end}",
-           "  " + (", ".join(f"{n} {event}" for event, n in did.items()) or "no event")
+           "  " + (", ".join(f"{n} {event}" for event, n in did.items()) or "nothing to do")
            + (f" ({', '.join(f'{n} {r}' for r, n in results.items())})" if results else "")
            + (f"; last: {last['event']} {last.get('ep_id') or last.get('name') or ''} at {last['at']}"
               if last["event"] not in ("started", "finished") else "")]
