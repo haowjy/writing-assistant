@@ -492,7 +492,9 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--concurrency", type=int, default=8)
 
     rp = sub.add_parser("report", help="metrics per group, with gates, refusals and baseline deltas")
-    rp.add_argument("--run", required=True)
+    reported = rp.add_mutually_exclusive_group(required=True)
+    reported.add_argument("--run", help="a run directory")
+    reported.add_argument("--world", help="a library world: its rollouts per situation and group, from the world file")
     rp.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     rp.add_argument("--rubric", help="one of the suite's rubrics; default: every rubric (score: each episode's listed "
                                              "ones; report: every one the profile has rows for)")
