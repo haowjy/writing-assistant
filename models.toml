@@ -159,6 +159,11 @@ embed_semantic = "qwen3-embed-mini"
 # The resolved cast is part of a run's identity, and `report --baseline` compares two runs
 # only when the names their episodes used resolve to the same endpoint and model.
 
+[judges.practice]       # practice run 1 (work item plan/practice-run.md): any local judge, uncalibrated
+world_coherence = "qwen3-14b-mini"
+character_voice_consistency = "qwen3-14b-mini"
+thinking_about_prose = "qwen3-14b-mini"
+
 [cast.bench]            # benchmark: the other seats are the same model for every subject
 counterpart = "qwen3-32b-mini"
 
