@@ -15,6 +15,7 @@ import sys
 from itertools import batched
 from pathlib import Path
 
+from writing_assistant.cli.common import close, episode_row, scored, selected
 from writing_assistant.episode.library import Busy, Library
 from writing_assistant.episode.store import matches
 from writing_assistant.llm.client import AccountError
@@ -27,8 +28,6 @@ from writing_assistant.suites import SUITES
 async def run_world(args: argparse.Namespace) -> int:
     """`run --world NAME --endpoint E [--cast C] --rollouts N [--round R] [--where kind=…]`.
     `--where` tests a situation's name (`task_id`) and its row's scalar fields."""
-    from writing_assistant.cli import episode_row
-
     lib = Library()
     try:
         with lib.open(args.world) as home, home.reading():
@@ -72,8 +71,6 @@ async def score_world(args: argparse.Namespace) -> int:
     beyond that, a batch at a time. The world's lock is held shared throughout, so a
     restore waits for the pass, and a second pass under the same profile is refused while
     this one runs (`Library.judging`)."""
-    from writing_assistant.cli import close, scored, selected
-
     if args.where:
         sys.exit("--where chooses a run directory's episodes; a world is judged whole (--rubric narrows what is scored)")
     services = services_for(args.models, args.judges)
@@ -96,6 +93,6 @@ async def score_world(args: argparse.Namespace) -> int:
                      "the world, and the same command scores the rest")
         finally:
             await close(services)
-    except (LookupError, Busy) as e:
+    except (LookupError, Busy, sqlite3.Error) as e:  # no such world, a pass already running, a file that will not open
         sys.exit(f"--world {args.world}: {e}")
     return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, unknown, services)

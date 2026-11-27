@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
-from writing_assistant.cli import episode_row, played_here
+from writing_assistant.cli.common import episode_row, played_here
 from writing_assistant.episode.segments import closed_episodes, open_episodes, judging, read_run, split_judging
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
