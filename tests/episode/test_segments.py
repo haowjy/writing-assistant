@@ -162,7 +162,7 @@ def test_a_format_1_store_is_brought_up_to_date_by_a_writer_and_refused_by_a_rea
         for undo in ("ALTER TABLE episodes DROP COLUMN start", "DROP TABLE judgments", "DROP TABLE scores",
                      "DROP INDEX segments_rollout", "ALTER TABLE segments DROP COLUMN grp", "PRAGMA user_version = 1"):  # format 1, as it was written
             store.db.execute(undo)
-    with pytest.raises(Unreadable, match="store format 1.*Opening it once for writing"):
+    with pytest.raises(Unreadable, match="store format 1.*upgrades it in place"):
         Store(path, readonly=True)
 
     together, failed = threading.Barrier(2), []

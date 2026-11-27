@@ -83,6 +83,24 @@ async def test_groups_are_played_into_the_world_reaching_no_judge_and_no_score(w
     assert await play_groups(world, work, world.settings) == groups and len(world.llm.requests) == calls
 
 
+async def test_the_run_log_has_a_line_per_closed_rollout_and_is_read_after_a_write_cut_short(world, capsys):
+    """What `status` and a person tracing a failure read: every rollout that closed is a
+    line naming it, and a writer killed mid-line costs that line only."""
+    groups = await play_groups(world, [Work("sel", "sel/s1", 3)], world.settings)
+    [run_dir] = world.settings.runs.iterdir()
+    for path in (run_dir / "log.jsonl", world.log_path("sel")):
+        events = episode_store.read_jsonl(path)
+        assert [e["event"] for e in events][0] == "started" and events[-1]["event"] == "finished"
+        assert {e["ep_id"] for e in events if e["event"] == "closed"} == set(members(world, "sel", *groups.values()))
+    with (run_dir / "log.jsonl").open("a") as f:
+        f.write('{"at": "2026-11-27T00:00:00.000Z", "pid": 1, "event": "ope')  # killed here
+    assert len(episode_store.read_jsonl(run_dir / "log.jsonl")) == len(events)
+    assert cli.main(["--models", str(MODELS_TOML), "status", "--world", "sel"]) == 0
+    assert "3 closed, 3 pushed" in capsys.readouterr().out
+    await play_groups(world, [Work("sel", "sel/s1", 3)], world.settings)  # the next writer starts on a new line
+    assert [e["event"] for e in episode_store.read_jsonl(run_dir / "log.jsonl")][len(events):] == ["started", "finished"]
+
+
 async def test_a_member_that_raises_once_is_played_by_the_second_pass(world):
     world.llm.replies["gemma-4-26b"][1:1] = [lambda *a: 1 / 0]
     [(w, group)] = (await play_groups(world, [Work("sel", "sel/s1", 3)], world.settings)).items()

@@ -139,6 +139,10 @@ class Library:
                 out.append(World(found.stem, _root(store)[1], found))
         return out
 
+    def log_path(self, world: str) -> Path:
+        """Where what happens to the world is logged (`run.Log`)."""
+        return self.worlds_dir / f"{world}.log.jsonl"
+
     @contextmanager
     def open(self, world: str) -> Iterator[Store]:
         """The world's store, read-only, with the world's lock held shared until the block
@@ -164,8 +168,7 @@ class Library:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise Busy(f"another judging pass is alive on {world} under the profile {profile!r} ({lock.name} is "
-                           "locked); this one would pay the judge for the same rollouts. Run it again when that one ends") from None
+                raise Busy(f"another judging pass is alive on {world} under {profile!r}; run this again when it ends") from None
             yield store
 
     # -- in and out --------------------------------------------------------------------------
@@ -194,15 +197,13 @@ class Library:
                 return Counter()
             # Asked of each name, not of the whole listing: a run pushes each rollout as it closes.
             if still_open := [n for n in names if not src.is_closed(n)]:
-                raise ValueError(f"{src.path}: {', '.join(still_open)} cannot be pushed: only a closed episode this store "
-                                 "lists goes to the library, and nothing there is ever continued")
+                raise ValueError(f"{src.path}: {', '.join(still_open)} cannot be pushed: not a closed episode of this store")
             roots = {name: src.chain(name)[0] for name in names}
             world = src.root_of(names[0])
             with self.writing(world) as store:
                 root = _root(store)[0]
                 if foreign := [name for name, seg in roots.items() if seg != root]:
-                    raise ValueError(f"{', '.join(foreign)}: not of the world {world!r} (another root); one push goes to "
-                                     "one world")
+                    raise ValueError(f"{', '.join(foreign)}: not of the world {world!r}; one push goes to one world")
                 return src.copy(names, store, scores)
 
     # -- keeping a world whole ---------------------------------------------------------------

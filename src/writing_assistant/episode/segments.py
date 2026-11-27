@@ -193,13 +193,10 @@ class Store:
                     if "readonly" not in str(e):
                         raise
                     # SQLite must roll the dead writer's journal back before anything can be read.
-                    raise Unreadable(f"{self.path}: a writer died in the middle of a checkpoint, and a reader may not "
-                                       "repair the file; the next writer does (`wa-bench run` on this directory)") from e
+                    raise Unreadable(f"{self.path}: a writer died mid-checkpoint; `wa-bench run` on this directory repairs it") from e
                 if version < FORMAT:
-                    raise Unreadable(
-                        f"{self.path}: store format {version}; this build reads format {FORMAT}, and a reader changes no "
-                        "file. Opening it once for writing brings it up to date in place: `wa-bench score --run` on its "
-                        "directory, or `wa-bench run` on it")
+                    raise Unreadable(f"{self.path}: store format {version}, and this build reads {FORMAT}; `wa-bench score "
+                                     "--run` or `wa-bench run` on its directory upgrades it in place")
             else:
                 # The version is read inside the write transaction: of two writers opening an
                 # old file together, the second waits and then finds nothing left to add.
@@ -213,8 +210,7 @@ class Store:
                     if version < FORMAT:
                         self.db.execute(f"PRAGMA user_version = {FORMAT}")
             if version > FORMAT:
-                raise Unreadable(f"{self.path}: store format {version}, written by a later build; this one reads and "
-                                   f"writes format {FORMAT}")
+                raise Unreadable(f"{self.path}: store format {version}, from a later build; this one reads {FORMAT}")
         except BaseException:
             self.db.close()
             raise
@@ -749,9 +745,8 @@ def has_store(run_dir: str | Path) -> bool:
     is not an empty run, and a store made beside its file would be a second run in it."""
     run_dir = Path(run_dir)
     if (run_dir / JSONL_FILE).exists():
-        raise Unreadable(f"{run_dir}: holds {JSONL_FILE}: this run directory predates the episode store ({STORE_FILE}), "
-                         "and this build has no reader for it. It is not resumed, scored, reported, viewed or synced; "
-                         "play its tasks again into a new directory.")
+        raise Unreadable(f"{run_dir}: holds {JSONL_FILE}, from before the episode store; this build does not read it. "
+                         "Play its tasks again into a new directory.")
     return (run_dir / STORE_FILE).exists()
 
 

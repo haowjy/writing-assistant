@@ -37,6 +37,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 import traceback
 import uuid
 from collections import Counter
@@ -58,6 +59,7 @@ from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, play
 
 ROOT = Path(__file__).resolve().parents[3]
 ERRORS_FILE = "errors.jsonl"
+LOG_FILE = "log.jsonl"
 
 
 def resolved(endpoints: dict[str, dict[str, Any]], cast: dict[str, str]) -> dict[str, dict[str, str]]:
@@ -73,6 +75,26 @@ def resolved(endpoints: dict[str, dict[str, Any]], cast: dict[str, str]) -> dict
 
 def now() -> str:
     return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class Log:
+    """The run log: one appended JSON line per event (`at`, `pid`, `event`, then names that
+    find the thing in the store), in `log.jsonl` of a run directory and, for what happens
+    to a world, `<world>.log.jsonl` beside the world file. A line is written whole and at
+    once, so a killed process leaves every event up to its last, and `wa-bench status`
+    reads it. Events: started, opened, resumed, closed, failed, pushed, judged, finished.
+    No line holds episode text: names, counts, statuses and error types only."""
+
+    def __init__(self, *paths: Path) -> None:
+        self.paths, self.began = paths, time.monotonic()
+
+    def __call__(self, event: str, **names: Any) -> None:
+        line = {"at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")[:-4] + "Z", "pid": os.getpid(), "event": event} | names
+        for path in self.paths:
+            append_jsonl(path, [line])
+
+    def finished(self, **names: Any) -> None:
+        self("finished", seconds=round(time.monotonic() - self.began, 1), **names)
 
 
 def group_id(run_id: str, round: str, source: Episode, at: int) -> str:
@@ -129,8 +151,7 @@ def cast_from(config: dict[str, Any], name: str) -> dict[str, str]:
         raise ValueError(f"no [cast.{name}] in models.toml; it has {sorted(tables)}")
     cast = tables[name]
     if reserved := sorted({SUBJECT, "scripted"} & cast.keys()):
-        raise ValueError(f"[cast.{name}] defines {', '.join(reserved)}: `{SUBJECT}` is the run's --endpoint and "
-                         "`scripted` is a seat the suite speaks for, so a cast names neither")
+        raise ValueError(f"[cast.{name}] may not name {', '.join(reserved)}: `{SUBJECT}` is --endpoint, `scripted` the suite's")
     if unknown := {n: e for n, e in cast.items() if e not in config["endpoints"]}:
         raise ValueError(f"[cast.{name}] names endpoints models.toml does not have: {unknown}")
     return dict(cast)
@@ -210,8 +231,7 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
             path = norm_path(path)
             ep.files[path], ep.file_revs[path] = text, ep.file_revs.get(path, 0) + 1
         if missing := sorted(set(payload.get("requires", [])) - ep.files.keys()):
-            raise ValueError(f"the row requires {', '.join(missing)}, and the files at {at} are {', '.join(sorted(ep.files))}; "
-                             "`--files DIR` lays a folder's files over the position's, or --at names a position that holds them")
+            raise ValueError(f"the row requires {', '.join(missing)}; {at} has {', '.join(sorted(ep.files))}. `--files DIR` adds files")
         ep.state["task"] = asdict(task)
         ep.meta["row"] = row_meta(task)
     if home:
@@ -238,8 +258,9 @@ class Runner:
 
     def __init__(self, suite: Suite, services: Services, store: Store, run_dir: Path, *, run_id: str, endpoint: str,
                  driver: str, max_tokens: int, concurrency: int, cast: dict[str, str] | None = None,
-                 round: str = "0") -> None:
+                 round: str = "0", log: Log | None = None) -> None:
         self.suite, self.services, self.store, self.run_dir = suite, services, store, run_dir
+        self.log = log or Log(run_dir / LOG_FILE)
         self.run_id, self.round = run_id, round
         self.cast = {SUBJECT: endpoint} | (cast or {})
         self.binding = Binding(self.cast, DRIVERS[driver](services.llm, suite.tools, max_tokens=max_tokens),
@@ -260,8 +281,8 @@ class Runner:
         for ep in eps:
             for seat, name in ep.actors.items():
                 if name != "scripted" and name not in self.cast:
-                    raise ValueError(f"{ep.ep_id}: seat {seat!r} is played by {name!r}, and this run's cast names only "
-                                     f"{', '.join(sorted(self.cast))} (--cast picks a [cast.<name>] table of models.toml)")
+                    raise ValueError(f"{ep.ep_id}: seat {seat!r} is played by {name!r}; the cast has "
+                                     f"{', '.join(sorted(self.cast))} (--cast picks a [cast.<name>] table)")
             ep.meta |= self.meta
         return eps
 
@@ -287,9 +308,8 @@ class Runner:
         group = group_id(self.run_id, self.round, source, at)
         asked = self.store.groups(group).get(group)
         if asked and asked["size"] != n:
-            raise ValueError(f"group {group} (this run's rollouts of {source.baseline_of or source.ep_id}@{at} in round "
-                             f"{self.round!r}) was asked for with {asked['size']} rollouts per episode, not {n}; a "
-                             "group's size is fixed, and more rollouts are another round (--round)")
+            raise ValueError(f"group {group} ({source.baseline_of or source.ep_id}@{at}, round {self.round!r}) has "
+                             f"{asked['size']} rollouts, not {n}; another --round plays more")
         stored = set(self.store.rollouts(source.ep_id, at, group))
         members = [source.rollout(at, i, group) for i in range(n)]
         for ep in members:  # one run's rollouts of two episodes of one name share a name, never a segment
@@ -321,10 +341,13 @@ class Runner:
         An `AccountError` is recorded the same way and then raised."""
         async with self.sem:
             eps: list[Episode] = []
-            phase = "setup"
+            phase, private = "setup", False
             try:
                 eps = begin()
-                with local_only(any(ep.split == LOCAL_DEV for ep in eps)):
+                private = any(ep.split == LOCAL_DEV for ep in eps)
+                for ep in eps:
+                    self.log("resumed" if ep.calls else "opened", ep_id=ep.ep_id, **({"group": ep.group} if ep.group else {}))
+                with local_only(private):
                     self.store.append(*eps)
                     phase = "play"
                     await play(self.suite, eps, self._turn)
@@ -334,6 +357,8 @@ class Runner:
                                                            "error": f"{type(e).__name__}: {e}",
                                                            "trace": traceback.format_exc(limit=-4)}])
                 print(f"  {name}: {phase} error: {type(e).__name__}: {str(e)[:200]}", flush=True)
+                # An error's message may quote what was being read: not logged for local_dev text.
+                self.log("failed", name=name, phase=phase, error=type(e).__name__ if private else f"{type(e).__name__}: {str(e)[:200]}")
                 if isinstance(e, AccountError):
                     raise
                 return None
@@ -343,6 +368,8 @@ class Runner:
                 ep.complete()
                 self.counts[ep.status] += 1
             self.store.close(*eps)
+            for ep in eps:
+                self.log("closed", ep_id=ep.ep_id, status=ep.status)
             print(f"  {name}: " + ", ".join(f"{ep.condition}={ep.status}" for ep in eps), flush=True)
             return eps
 

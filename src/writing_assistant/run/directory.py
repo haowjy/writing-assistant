@@ -54,9 +54,8 @@ def identity(services: Services, *, suite: str, driver: str, endpoint: str, spli
         raise Refused(f"unknown endpoint {endpoint!r}; models.toml has {sorted(endpoints)}")
     hosted = [e for e in (endpoint, *cast.values()) if not endpoints[e].get("local")]
     if split == LOCAL_DEV and hosted:
-        raise Refused(f"the local_dev split plays personal text, which may reach only an endpoint with `local = true`; "
-                      f"{', '.join(map(repr, hosted))} is hosted. Local endpoints: "
-                      f"{sorted(n for n, e in endpoints.items() if e.get('local'))}")
+        raise Refused(f"local_dev text may reach only an endpoint with `local = true`; {', '.join(map(repr, hosted))} is "
+                      f"hosted. Local endpoints: {sorted(n for n, e in endpoints.items() if e.get('local'))}")
     return {"suite": suite, "driver": driver, "endpoint": endpoint, "model": endpoints[endpoint]["model"], "split": split,
             "max_tokens": max_tokens, "cast": resolved(endpoints, cast), "world": world}
 
@@ -85,8 +84,7 @@ def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = F
     run alive in it is refused, and none can start. Without it several runs may share a
     directory (`alone` says whether one was there), each holding the lock shared."""
     if identity["split"] == "test" and not held_out_test:
-        raise Refused("this run plays the held-out test split, which is never used to choose anything; pass "
-                      f"--held-out-test to run it, and the run is logged in {TEST_USES}")
+        raise Refused(f"this run plays the held-out test split: pass --held-out-test to run it (logged in {TEST_USES})")
     run_dir.mkdir(parents=True, exist_ok=True)
     with run_info(run_dir) as info:
         if not info:
@@ -105,7 +103,7 @@ def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = F
     if exclusive and not alone:
         store.db.close()
         lock.close()
-        raise Refused(f"{run_dir}: another run is alive here, and its open episodes are its own. Run this again when that one ends")
+        raise Refused(f"{run_dir}: another run is alive here; run this again when it ends")
     if identity["split"] == "test":  # after every refusal: a call that plays nothing used nothing
         append_jsonl(TEST_USES, [identity | {"at": now(), "run": str(run_dir.resolve()), "code": code_version()} | (note or {})])
     if not exclusive:  # the change to shared is not atomic (flock(2)), which is why a run that must be alone keeps it

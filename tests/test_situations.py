@@ -227,10 +227,10 @@ def test_one_situation_is_played_by_whichever_cast_the_run_names_and_says_who_pl
 
 def test_a_seat_the_cast_does_not_name_stops_the_run_before_any_call(notes, monkeypatch):
     [name] = notes.situate("sel", payload={"review": True})
-    with pytest.raises(SystemExit, match="seat 'reviewer' is played by 'counterpart', and this run's cast names only subject"):
+    with pytest.raises(SystemExit, match="seat 'reviewer' is played by 'counterpart'; the cast has subject"):
         notes.play(f"{name}@0")
     monkeypatch.setitem(notes.llm.config["cast"], "mine", {"counterpart": "qwen3-32b-mini", "subject": "qwen3.5-9b"})
-    with pytest.raises(SystemExit, match=r"\[cast.mine\] defines subject"):
+    with pytest.raises(SystemExit, match=r"\[cast.mine\] may not name subject"):
         notes.play(f"{name}@0", notes.out, "--cast", "mine")
     assert notes.llm.requests == [] and rolled(notes.out, name) == []
 

@@ -286,8 +286,7 @@ def _report_world(args: argparse.Namespace, keys: list[str], passed: set[str]) -
     """`report --world NAME --judges P [--rubric R]`: what `report --run` says of a run
     directory's rollouts, read from the world file, where `score --world` puts the rows."""
     if args.baseline:
-        sys.exit("--baseline compares two run directories; a world's groups are compared by reading them side by side "
-                 "(each says who played it)")
+        sys.exit("--baseline does not go with --world")
     lib = Library()
     try:
         with lib.open(args.world) as store:
@@ -300,11 +299,10 @@ def _report_world(args: argparse.Namespace, keys: list[str], passed: set[str]) -
         sys.exit(f"--world {args.world}: {e}")
     _print_reports(iter(reports))
     if not reports[0]["rollouts"]:
-        print(f"\nno closed rollout in the world yet; `wa-bench run --world {args.world} --endpoint E` plays its situations")
+        print(f"\nno closed rollouts; `wa-bench run --world {args.world} --endpoint E` plays them")
     elif not rubrics:
-        print(f"\nno row under the judge profile {args.judges!r}, so every rollout above is unscored. "
-              + (f"The world has rows under {', '.join(every)}" if every else "Nothing in the world is scored yet")
-              + f"; `wa-bench score --world {args.world} --judges {args.judges}` scores it under this profile")
+        print(f"\nno rows under {args.judges!r}" + (f" (the world has {', '.join(every)})" if every else "")
+              + f"; `wa-bench score --world {args.world} --judges {args.judges}` scores it")
     return 0
 
 
