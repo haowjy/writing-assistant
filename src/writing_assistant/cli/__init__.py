@@ -1,114 +1,11 @@
-"""`wa-bench`: run, situate, score, report, view, guardrails, collect, export, sync.
+"""`wa-bench`: run, situate, score, report, status, view, guardrails, collect, export, sync.
 
 The commands parse arguments, open a run directory and choose what is played; the play
-itself (bind, deliver, save, close, score) is `run.Runner`, which other callers use too.
+itself is `run.Runner`, which other callers use too. What a run directory holds, how a run
+resumes, groups, situations and scoring are in the repository's `AGENTS.md`.
 
-A run directory (`runs/<suite>-<endpoint>-<UTC time>/` unless `--out` names one):
-
-    run.json            what was run: suite, driver, endpoint, model, split, max_tokens, cast (each
-                        cast name but `subject` with its endpoint and model); `id`,
-                        random, minted when the directory is claimed (the run's identity in
-                        every group it makes); one
-                        entry per invocation (time, code version, where, limit); the USD the
-                        hosts reported; `served`, every build that answered each endpoint (the
-                        response's model and system_fingerprint: on a local llama.cpp server,
-                        the weights file and engine build). Each episode's meta has its own temperature, max_tokens
-                        and code version, so a run resumed after a code change says which is which
-    store.db            the episodes and their score rows (`episode/segments.py`). Each episode
-                        is saved before play, again every time a delivery returns, and closed
-                        when its task's play ends. Readers (`score`, `report`, `view`, `sync`)
-                        see closed episodes only. Score rows are kept per judge profile
-                        (`--judges`, a `[judges.<profile>]` table in models.toml; `none` names
-                        no judge, so a run with no judge served plays and scores what needs no
-                        model now and is re-scored later with `score --judges eval`). One row
-                        per episode: metrics, or why it was not scored (`skipped`: the episode
-                        failed; `error`: the scorer raised), the `code` version that scored it,
-                        when (`scored_at`) and by which judges (`judges`); a twin's row says
-                        only whose baseline it is (`baseline_of`). With each row are the judge
-                        items behind it, in label_ui.py's shape (question, evidence or
-                        a/b/context, `model` the judge's answer or null) plus `scored` (the row
-                        it counts in), `ep_id` (whose text was judged), `metric`, `unscored`,
-                        `judge` and `replies`. Rows are only added: `wa-bench score` adds a
-                        row for each episode it scores, as it is made. Every reader takes an
-                        episode's newest row that is not an `error`, or its newest when all
-                        are, so the row shown may be older than the last attempt
-    errors.jsonl        tasks that raised in setup (a resume sets them up again) or in play
-                        (their episodes stay open, and a resume continues them)
-    run.lock            empty; every live `run` holds a lock on it, which is how one starting
-                        up tells episodes a dead run left open from those another is playing
-    guardrails.json     from `wa-bench guardrails --run`
-
-`run` resumes a directory that already has a run.json for the same suite, driver, endpoint,
-model, split, max_tokens and cast (anything else is refused, and of two runs starting together in a
-new directory one claims it: `run.run_info`): tasks with stored episodes are
-skipped (`--where` may differ between invocations), closed episodes with no scores row are
-scored first, and every open episode (a run killed mid-task, a task whose play raised) is
-continued from its last turn checkpoint through the same loop as a fresh one, so a killed
-run loses at most the deliveries in flight. A continued episode keeps the `meta` it started
-with. Several `run`s may share a directory when they choose different tasks (`--where`,
-`--from`): each appends to the one store, and only a `run` that finds no other alive there
-continues the open episodes. One task that raises, or one episode whose scoring raises, is recorded and the
-run goes on, but the command then exits 1. An account-level refusal from a host (HTTP 401,
-402, 403: `llm.client.AccountError`) stops the run at once, exit 1; what was saved stays
-resumable. `local_dev` rows are set up, played and
-scored inside `episode.store.local_only()`, and only against a `local = true` endpoint.
-
-`run --from <ep_id>@<n> --rollouts N` plays no task rows: it forks turn checkpoint `n` of a
-stored episode N times and plays each fork on from there against `--endpoint`. `n` counts
-that episode's own checkpoints (0: its start; a rollout's start is where it was forked), so
-for an episode `run` set up it is the number of deliveries that had returned. The episode is read from this run's store, or from
-`--from-run`'s, whose chain is first copied into this run's store so the store stays
-self-contained. The N rollouts are a **group**: what this run made of this checkpoint in this
-`--round` (default `0`). The group's id is 12 hex digits derived from run.json's `id`, the
-round, the episode's name (its base's, for a twin: rollout `i` of each is then in one group)
-and `n`, so a resumed run works it out again and makes only the members still missing.
-Member `i` is named `<ep_id>@<n>.<group>.<i>` and records what it is a rollout of
-(`Episode.rollout_of`, `Episode.group`), so each samples with its own seed and no two runs
-make the same name. A group's size is fixed by the first command that asks for it (N per
-episode rolled out; every member carries it in `meta["group_size"]`): asking again with
-another N is refused, and more rollouts of the checkpoint are another `--round`. A rollout
-has no twin: it is scored on its own metrics and gets no `net_*`. A twin
-can be rolled out like any episode, and its rollouts are baselines of nothing. A rollout is
-played by this run's cast, whatever played its source: a seat names a cast name (`subject`,
-or one `--cast`'s table maps), so another `--endpoint` changes who plays the subject's seats
-and nothing else. A seat whose name the cast lacks stops the command before play. `report`,
-`view` and calibration sampling keep rollouts out of the run's own numbers; `report` lists
-them per group and says which groups are settled (`Store.groups`).
-
-`situate --run DIR --at <ep_id> --row task.json` sets a new task up on the files a closed
-episode ended with and stores it in DIR's store as a **situation** (`run.situate`,
-`Episode.begin`): the task takes the files and their revisions, not the transcript, and a
-file some seats could not read stays closed to every new seat until the task's `setup`
-grants it. The row file is one JSON object, `suite`, `kind` and `payload` (and `task_id` to
-name the situation; otherwise `<root episode's name>/<12 random hex>`); the split and works
-are the position's. `--files FOLDER` lays a folder's files over the position's in the new
-situation (its own file change), and a row's `payload.requires` lists paths the situation
-must hold, so a task is not set up on files its author did not mean. `--from-run` names the
-run whose store holds the position when DIR's does not. A situation is stored closed and is never played in place, scored or reported:
-`run --from '<situation>@0' --rollouts N` plays a group of it, in a directory whose run is
-of the situation's suite and split. `run` plays those rollouts and does not score them:
-judging is its own pass (`score`), which nothing that plays or grows a world calls.
-
-A library world (`wa-bench library`, `cli/library.py`) is played and judged by two commands
-(`cli/world.py`): `run --world NAME --endpoint E [--cast C] --rollouts N` plays a group of
-each of the world's situations into it through the controller and scores nothing, and
-`score --world NAME --judges P` scores each closed rollout under the rubrics its situation
-lists.
-
-`score` scores closed episodes into their store, row by row: one killed part-way has added
-the rows it finished and left the other episodes with the rows they had. It scores an
-episode under a rubric only where no row stands (`run.scoring.to_score`: none yet, a scorer
-error, or a row scored by other judges than the profile names now), so run twice it adds
-nothing; `--all` scores everything again and `--pending` only the rows saying the scorer
-raised (`error`), which is what a judge that was down leaves.
-
-A suite's scoring is split into **rubrics**, and an episode has one row per **judging**: a
-judge profile and a rubric (`episode.segments.judging`; suites 1a and 3 have one unnamed
-rubric, stored under the bare profile). Commands take `--judges PROFILE [--rubric NAME]`,
-never a joined name. With no `--rubric`, `score` scores each episode under the rubrics its
-task lists (the kind's defaults, or the row's `payload["rubrics"]`), `score --pending`
-covers every rubric the profile has rows for, and `report` prints every such rubric as a
-block of its own.
+One task that raises, or one episode whose scoring raises, is recorded (`errors.jsonl`,
+the run log) and the run goes on; the command then exits 1.
 """
 
 from __future__ import annotations
