@@ -25,9 +25,12 @@ would have (`suites/__init__.py`).
 
 `run/` sits between `suites`/`drivers` and `cli` (it is not in that plan's table). It holds
 the play itself: `Runner.play` takes a group of episodes, saves them before play and each
-time a delivery returns, and closes them together. `cli` parses arguments, opens
-the run directory and chooses what is played; anything else that needs episodes played (a
-generation loop, a trainer) calls `run`, never `cli`.
+time a delivery returns, and closes them together. `run/directory.py` is the one way a run
+directory is claimed (`identity`, `open_run`: the identity in run.json, the `test`-split
+check and its log line, the store, `run.lock`) and where `services_for` and `record_usage`
+live; `run/control.py` is the controller (below). `cli` parses arguments and chooses what
+is played; anything else that needs episodes played (a generation loop, a trainer) calls
+`run`, never `cli`.
 
 **Judging is a separate pass that nothing growing a world imports.** `Runner` plays and
 closes and does nothing else; scoring is `run/scoring.py` (`score_episode`, `score_into`),
@@ -37,6 +40,20 @@ and the module that holds `Runner`, `run/control.py` and `master/` import neithe
 task row is in `state["task"]`) is never scored by `run`, only by `wa-bench score`. So a
 run killed between a close and its scoring leaves a closed episode with no row, which the
 same command scores first when it is run again.
+
+**The controller** (`run/control.py`) is how groups get played into a library world:
+`play_groups(lib, [Work(world, situation, rollouts, round)], Settings(...))` returns each
+group's id once every group is played in the library and raises `Unplayed`, naming the
+short groups and their open members, otherwise. It keeps a run directory per world, suite
+and run identity under `Settings.runs`, named from them, so the same work asked for again
+after a kill finds the run's id, the same groups and what is open, and plays only what is
+missing. It checks the situations out unlisted, pushes each rollout as it closes and
+everything closed once more on the way out, and makes one second pass (with the store
+reopened) over what a first pass left unplayed. It never mints a round. A second call for
+the same world and identity while one is alive is refused. Its pushes read no score row
+(`Library.push(..., scores=False)`) and its `Services` are on the `none` judge profile.
+Losing a controller run directory loses the run's id: the same work then plays as new
+groups (the world keeps the old ones).
 
 Two rules live in `run/`:
 
@@ -243,7 +260,8 @@ the model and the rules, `design/branch-store.md` and `design/buildout.md` in th
   given `""`; the earlier conversation is one link away, in the parent segment. `begin`
   keeps `state["file_acl"]` with every restricted path readable by nobody, and `setup`
   must grant the new seats what they may read: a path the list does not cover is open to
-  everyone. Play of a situation is always `run --from '<situation>@0'`. `Store.names` and
+  everyone. Play of a situation is always a group of rollouts: `run --from '<situation>@0'` in a run
+  directory, `run --world` in a library world. `Store.names` and
   `episodes` leave starts out, so no reader of played episodes (a run's resume and its
   scoring of what has no row, `score`, `report`, `view`, calibration sampling) meets one;
   `Store.starts()` and `situations()` list them, `Store.copy` carries the mark, and `sync`
@@ -273,6 +291,56 @@ the model and the rules, `design/branch-store.md` and `design/buildout.md` in th
   in the work item; it reproduces `report`, the page's API and calibration sampling exactly).
   No run directory is committed.
 
+## The library
+
+A **world** is one store file, `<library>/worlds/<name>.db` (`episode/library.py`; the
+library is the folder `WA_LIBRARY` names, default `/cold/writing-assistant/library`, and
+tests and scratch checks always set it). Its root is a start with no parent holding the
+world's files; everything in it descends from that root and has its split. There is no
+registry: `Library.worlds()` reads the files. `wa-bench library create NAME --files DIR
+[--split S] [--closed PATH ...]` makes one (a closed file is read by no seat until a task's
+row grants it with `reads`), `situate --world NAME --at POS --row FILE` sets a task up at a
+position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--round R]
+[--where ...]` hands a group of each situation to the controller and scores nothing, and
+`score --world NAME --judges P [--rubric R] [--pending]` is the judging pass.
+
+- **In and out.** `checkout` copies chains into a worker's store unlisted and without score
+  rows, so a position is never read there as an episode that run played. `push` adds closed
+  episodes with their chains, listings and score rows in one transaction; it refuses an open
+  episode and a segment of another root by name, and a checkpoint the world holds with
+  another body (two stores continued one episode) is refused with nothing copied. A push
+  repeated, or cut short and repeated, changes nothing or completes. Everything is added;
+  nothing in a world is ever continued or rewritten.
+- **World files use SQLite's write-ahead log**, run directories the rollback journal.
+  Measured on a 100,000-rollout world (4.7 GB): in rollback mode `verify` held a push for
+  44 s and `snapshot` for 55 s of the 60 s busy timeout; with the log a push started during
+  either lands in about 20 ms. So a world has `-wal` and `-shm` files beside it while open;
+  a snapshot is stored in rollback mode as one file, and `restore` puts the log back.
+- **Keeping it whole.** `verify` runs SQLite's integrity check and loads every listed
+  episode (the check alone, 3 s on that world, cannot see an altered checkpoint body; the
+  whole takes 43 s). `snapshot` verifies, copies with SQLite's backup, verifies the copy and
+  keeps the two newest under `snapshots/`. `restore` takes the world's lock exclusively,
+  puts the newest snapshot that verifies in the world's place and keeps the file that was
+  there beside it (`.damaged-<time>`); what was pushed after that snapshot is pushed again
+  from the run directories that hold it (`library push --run DIR`). `<world>.lock` is held
+  shared by every writer and exclusively by a restore; `<world>.master.lock` is for the one
+  generation loop a world may have.
+- **Costs at depth** (50 generations, on `/cold`): a checkout of the deepest situation is
+  25 ms and 2.6 MB whether the world holds 1,000 or 100,000 rollouts; a push of one rollout
+  0.1 to 0.3 s, of a group of 50 about 0.2 s. `Store.groups(one)` 6 ms, `settled(.., one)`
+  19 ms; asked of every group they walk the file (1.3 s and 2.9 s at 100,000), as does
+  `names()` (1.2 s), so per-group callers name the group.
+- **The judging pass** finds what to score with one query (`Store.judged(profile)`: each
+  closed rollout's suite, source and which rubrics have a final row) and one loaded rollout
+  per situation, for its listing; rollouts to be scored are loaded a batch at a time. It
+  holds the world's lock shared and may run beside a `run --world`: it scores what is
+  closed when it looks, and the next pass scores the rest. `score --run` re-scores every
+  episode it is pointed at; `score --world` scores only what has no final row.
+- The library has no rule for splits or personal text: a `local_dev` world is a file on this
+  machine, a hosted subject is refused for it by `run.directory.identity`, and a hosted
+  judge leaves its findings `local_only` without being called. Nothing copies a world off
+  this machine (`sync` stages run directories only).
+
 ## Scoring
 
 Scoring reads each task kind's artefact, never `Episode.status`: an episode with
@@ -300,6 +368,27 @@ rubrics may share one judge call (`Tally.found` records several findings from on
 findings no judge was asked for). A gate stays per judge use (`<profile>.<use>`). The
 page's front end has not been rebuilt for rubrics: it shows the profile's first.
 
+**A rubric a judge scores by reading the rollout** (`judges/findings.py`): one judge use
+per prompt file in `judges/rubrics/` (the file name is the use; the prompt version is a
+hash of the text, so editing a prompt starts a new version). The prompt is the system
+message; the next message is the stored rollout rendered for one seat
+(`episode.rollout_evidence` then `judges.findings.render`: task, brief, start files with
+the ones the seat could not read marked, each of its turns with what it heard, thought,
+called, replied and wrote, and the end files; or the same cut after one target turn). The
+reply is a JSON `findings` array, and a reply in any other shape is unscored, never read
+leniently. A finding is stored as `covers` (`"task"` or `{"turn": n}`), `seat`,
+`dimension` (`output` or `thinking`), `criterion`, `value` 0/1/2 or `unscored` with the
+reason, `cites` and `evidence` references: no text of the rollout, since the record can be
+rendered again. The situations suite registers three (`READS` in
+`suites/situations/__init__.py`): `world_coherence` and `character_voice_consistency`
+cover the task, `thinking_about_prose` each turn. Each is asked once per seat the subject
+held, on that seat's view, and its row's metrics are `<dimension>.<criterion>` on 0 to 1,
+with `.<seat>` when the subject held several seats. A criterion about thinking is not
+asked where none was recorded and is stored as `no_thinking`. They run only on a row that
+lists them (`payload["rubrics"]`); `counts` is the `converse` kind's default. A profile
+names an endpoint for each use like any other (`[judges.<profile>] world_coherence = ...`);
+none does yet, so under `eval` their findings are `unavailable`.
+
 Score rows live in the run's `store.db`, per judging, each with the judge items behind
 it in `label_ui.py`'s format; a row says which code scored it (`code`), when (`scored_at`)
 and by which judges (`judges`: use, endpoint, model, prompt version). Rows are only ever
@@ -323,7 +412,11 @@ A judge's calibration file is drawn from those stored judgments by
 $WA_DATA/calibration/<file>` (balanced across the judge's answers, metrics, subjects and
 templates; `--build-checks` adds the `1a` build's later-event `fact` checks). `add-judge
 --endpoint <name>` adds another judge's answers to the same items, and `label_ui.py
---agreement --judge <model>` scores them against the same labels. Label files are not
+--agreement --judge <model>` scores them against the same labels. For a judge that reads a
+rollout, `sample --use <rubric> --worlds NAME [--runs DIR]` turns each scored finding into
+a yes/no item: the question states the judge's score and what it cited, the evidence is
+the record the judge read, rendered again from the stored rollout, and "yes" agrees with
+the score. So label files hold the text and stored findings do not. Label files are not
 committed.
 
 Project knowledge lives in the Meridian KB, not in this repo: run `meridian context --name kb`

@@ -87,7 +87,13 @@ does not. A situation is stored closed and is never played in place, scored or r
 of the situation's suite and split. `run` plays those rollouts and does not score them:
 judging is its own pass (`score`), which nothing that plays or grows a world calls.
 
-`score` re-scores a run's closed episodes into its store, row by row: one killed part-way
+A library world (`wa-bench library`, `cli/library.py`) is played and judged by two commands
+(`cli/world.py`): `run --world NAME --endpoint E [--cast C] --rollouts N` plays a group of
+each of the world's situations into it through the controller and scores nothing, and
+`score --world NAME --judges P` scores each closed rollout under the rubrics its situation
+lists that have no final row yet.
+
+`score --run` re-scores a run's closed episodes into its store, row by row: one killed part-way
 has added the rows it finished and left the other episodes with the rows they had.
 `score --pending` re-scores only the episodes with no row but ones saying the scorer raised
 (`error`), which is what a judge that was down leaves.
