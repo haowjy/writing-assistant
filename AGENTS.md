@@ -406,9 +406,10 @@ rubric for every episode. A use the profile names no endpoint for is stamped wit
 endpoint, and that stamp stands while the profile still names none: suites 1a and 3 under
 `--judges none` are scored once. Where the rubric needs the judge (`Suite.needs`) such a
 row never stands (an earlier build wrote some; they stay in the file and are superseded),
-so the pass is refused until the endpoint is named. Known limit: the stamp covers the prompt text, not the code that renders the record
-a judge reads (`judges/findings.render`); a change there re-judges nothing by itself and a
-row's `code` is the only trace, so run `score --all` after one. `score` ends with how many
+so the pass is refused until the endpoint is named. Known limit: the stamp covers the prompt text, and neither the code that renders
+the record a judge reads (`judges/findings.render`) nor the scoring code (a suite's
+`score`, the measures); a change to either re-scores nothing by itself and a row's `code`
+is the only trace, so after a scorer fix run `score --run DIR --all` (or `--world`). `score` ends with how many
 rows it wrote and how many of them scored nothing (every item unscored, with the reasons).
 
 Score rows live in the run's `store.db`, per judging, each with the judge items behind
