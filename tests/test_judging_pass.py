@@ -127,7 +127,7 @@ def test_each_rollout_gets_its_situations_rubrics_once_and_findings_of_a_task_an
     assert all("tide turns at six" not in json.dumps(j) and "We sail at dawn" not in json.dumps(j) for j in items)
     # A second pass has nothing to do: no row and no judge call.
     before, calls = all_rows(world), len(world.llm.requests)
-    assert ": 0 episodes" in world.score()
+    assert ": nothing to score" in world.score()
     assert all_rows(world) == before and len(world.llm.requests) == calls
 
 
@@ -164,7 +164,7 @@ def test_a_judge_that_is_down_leaves_pending_rows_which_pending_scores_again(wor
     assert "2 episodes" in out and all("metrics" in r for found in rows.values() for r in found.values())
     with world.open("sel") as home:
         assert home.settled(judging("j", "world_coherence"))[world.groups["judged"]]["settled"]
-    assert ": 0 episodes" in world.score("--pending") and ": 0 episodes" in world.score()
+    assert ": nothing to score" in world.score("--pending") and ": nothing to score" in world.score()
 
 
 def test_a_pass_beside_a_run_that_is_pushing_scores_what_is_closed_and_the_next_scores_the_rest(world):
@@ -195,7 +195,7 @@ def test_a_pass_beside_a_run_that_is_pushing_scores_what_is_closed_and_the_next_
         assert len(state) == 15 and all(has and None not in has.values() for _, _, has in state.values())
         assert all(len(rows) == len(set(ep for ep, *_ in rows)) for rows in
                    [home.db.execute("SELECT ep_id FROM scores WHERE profile = ?", (name,)).fetchall() for name in home.judgings("j")])
-    assert ": 0 episodes" in world.score()
+    assert ": nothing to score" in world.score()
 
 
 class Shared:
@@ -281,14 +281,14 @@ def test_a_row_stands_only_while_its_judges_are_the_ones_the_profile_names_now(w
         store.put_scores(judging("j", "character_voice_consistency"), stale)
     out = world.score("--rubric", "character_voice_consistency")
     assert "6 episodes" in out and stored(world)["character_voice_consistency"][judged[0]]["metrics"]["output.voice_consistency"] == 0.0
-    assert ": 0 episodes" in world.score() and ": 0 episodes" in world.score("--rubric", "character_voice_consistency")
+    assert ": nothing to score" in world.score() and ": nothing to score" in world.score("--rubric", "character_voice_consistency")
 
     monkeypatch.setitem(PROMPTS, "world_coherence", PROMPTS["world_coherence"] + "\nBe strict.")
     calls = len(world.llm.requests)
     out = world.score()
     assert "2 episodes" in out and "rubrics world_coherence:" in out and len(world.llm.requests) == calls + 2
     assert {r["judges"][0]["prompt"] for r in stored(world)["world_coherence"].values()} == {version("world_coherence")}
-    assert ": 0 episodes" in world.score()
+    assert ": nothing to score" in world.score()
 
     world.llm.config["judges"]["j"]["thinking_about_prose"] = "qwen3-32b-mini"  # another judge under the same profile name
     world.llm.replies["qwen3-32b-mini"] = [judge] * 20
@@ -336,4 +336,4 @@ def test_a_second_pass_on_one_world_and_profile_is_refused_while_the_first_runs(
     world.llm.config["judges"]["k"] = world.llm.config["judges"]["j"]
     second.clear()
     assert cli.main(["--models", str(MODELS_TOML), "score", "--world", "sel", "--judges", "k", "--rubric", "counts"]) == 0
-    assert ": 0 episodes" in world.score()
+    assert ": nothing to score" in world.score()

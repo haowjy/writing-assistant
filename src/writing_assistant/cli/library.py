@@ -21,7 +21,7 @@ from pathlib import Path
 
 from writing_assistant.cli.common import folder_files
 from writing_assistant.episode import Episode
-from writing_assistant.episode.library import Damaged, Library
+from writing_assistant.episode.library import DEFAULT_ROOT, Damaged, Library
 from writing_assistant.episode.segments import STORE_FILE, Store, has_store
 from writing_assistant.episode.store import LOCAL_DEV, SPLITS
 
@@ -65,7 +65,12 @@ def _create(lib: Library, args: argparse.Namespace) -> int:
 
 
 def _list(lib: Library, args: argparse.Namespace) -> int:
-    for world in lib.worlds():
+    worlds = lib.worlds()
+    if not worlds:
+        print(f"{lib.root}: no world there" + ("" if lib.root.is_dir() else " (no such folder)") + ". The library is the folder "
+              f"WA_LIBRARY names (`export WA_LIBRARY=/path/to/library`; unset, it is {DEFAULT_ROOT}), and "
+              "`wa-bench library create NAME --files DIR` makes a world in it")
+    for world in worlds:
         with lib.open(world.name) as store:
             groups = store.groups()
             print(f"{world.name}\t{world.split}\t{len(store.situations())} situations, {len(store.names())} played episodes, "

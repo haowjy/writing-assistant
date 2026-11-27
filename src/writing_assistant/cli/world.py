@@ -18,6 +18,7 @@ from pathlib import Path
 
 from writing_assistant.cli.common import close, episode_row, scored, selected
 from writing_assistant.episode.library import Busy, Library
+from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import matches
 from writing_assistant.llm.client import AccountError
 from writing_assistant.run.control import Settings, Unplayed, Work, play_groups
@@ -32,14 +33,15 @@ async def run_world(args: argparse.Namespace) -> int:
     lib = Library()
     try:
         with lib.open(args.world) as home, home.reading():
-            names = home.situations()
+            names = every = home.situations()
             if args.where:  # a row's fields are in the situation, so each is loaded: only when asked
                 names = [name for name in names if matches({"task_id": name} | episode_row(home.load(name)), args.where)]
     except (LookupError, sqlite3.Error) as e:
         sys.exit(f"--world {args.world}: {e}")
     if not names:
-        sys.exit(f"--world {args.world}: no situation" + (f" matches --where {args.where}" if args.where else
-                                                         " in it yet (`wa-bench situate --world` sets a task up at a position)"))
+        sys.exit(f"--world {args.world}: no situation" + (
+            f" matches --where {args.where}; it has {', '.join(every)} (--where tests `task_id`, the whole name, and the "
+            "row's scalar fields)" if every else " in it yet (`wa-bench situate --world` sets a task up at a position)"))
     work = [Work(args.world, name, args.rollouts, args.round) for name in names]
     settings = Settings(endpoint=args.endpoint, cast=args.cast, max_tokens=args.max_tokens, concurrency=args.concurrency,
                         driver=args.driver, models=args.models, runs=Path(args.out or "runs"), held_out_test=args.held_out_test)
@@ -78,6 +80,7 @@ async def score_world(args: argparse.Namespace) -> int:
     rows: list[dict] = []
     unknown: dict[str, int] = {}
     suites: set[str] = set()
+    nothing = ""
     try:
         try:
             with ExitStack() as held:
@@ -86,6 +89,8 @@ async def score_world(args: argparse.Namespace) -> int:
                 except (LookupError, Busy) as e:  # no such world, a pass already running
                     sys.exit(f"--world {args.world}: {e}")
                 want, unknown, suites = selected(args, store, services)
+                if not want:
+                    nothing = _nothing_to_score(args, store)
                 if args.rubric is not None and not any(args.rubric in SUITES[suite].rubrics for suite in suites):
                     sys.exit(f"--rubric {args.rubric}: no suite played in {args.world} ({', '.join(sorted(suites)) or 'none yet'}) "
                              "has a rubric of that name")
@@ -100,4 +105,21 @@ async def score_world(args: argparse.Namespace) -> int:
             await close(services)
     except sqlite3.Error as e:  # a file that will not open
         sys.exit(f"--world {args.world}: {e}")
-    return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, unknown, services)
+    return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, unknown, services, nothing)
+
+
+def _nothing_to_score(args: argparse.Namespace, store: Store) -> str:
+    """Why a judging pass found no work, in a sentence: an empty result is otherwise read
+    as a pass that did not look."""
+    rollouts = len(store.judged(args.judges))
+    if not rollouts:
+        return (f"nothing to score: no closed rollout in the world yet. `wa-bench run --world {args.world} --endpoint E` "
+                "plays its situations")
+    if args.pending:
+        return f"nothing to score: no row of its {rollouts} closed rollouts says the scorer raised"
+    if args.rubric:
+        return (f"nothing to score: each of its {rollouts} closed rollouts has a row under {args.judges}/{args.rubric} by the "
+                "judges the profile names now. `--all` scores them again")
+    return (f"nothing to score: each of its {rollouts} closed rollouts has a row, by the judges the profile names now, under "
+            f"every rubric its situation lists (judgings in the world: {', '.join(store.judgings(args.judges)) or 'none'}). "
+            "`--all` scores them again, `--rubric R` scores every rollout under one rubric")

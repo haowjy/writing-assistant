@@ -135,9 +135,12 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
                                      concurrency=settings.concurrency, cast=cast, round=round)
                        for round in {w.round for w in sources}}
             short = _missing(store, sources, groups, runners)
+            asked, left = sum(w.rollouts for w in sources), sum(map(len, short.values()))
+            if not attempt and not short:
+                print(f"{run_dir}: nothing to play: the {asked} rollouts asked for ({len(sources)} groups) are closed here "
+                      "already. Another --round plays a new group of each", flush=True)
             if not short or attempt == 2:
                 break
-            asked, left = sum(w.rollouts for w in sources), sum(map(len, short.values()))
             print(f"{run_dir}: {left} rollouts to play in {len(short)} groups ({asked - left} of the {asked} asked for are "
                   "closed here)", flush=True)
 

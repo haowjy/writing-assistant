@@ -69,17 +69,19 @@ def selected(args: argparse.Namespace, store: Store, services: Services, **kw: A
     return to_score(store, args.judges, services.judges, rubric=args.rubric, pending=args.pending, again=args.all, **kw)
 
 
-def scored(where: str, args: argparse.Namespace, suite: str, rows: list[dict], unknown: dict[str, int], services: Services) -> int:
+def scored(where: str, args: argparse.Namespace, suite: str, rows: list[dict], unknown: dict[str, int], services: Services,
+           nothing: str = "") -> int:
     """`score`'s closing lines and exit code. A row whose every item went unscored (no
-    thinking was recorded, the judge refused) is a row, and is not counted as scored."""
+    thinking was recorded, the judge refused) is a row, and is not counted as scored.
+    `nothing` says why there was no work, in place of a line of zeros."""
     errors = sum("error" in r for r in rows)
     rubrics = sorted({r["rubric"] for r in rows if "rubric" in r})
     empty = [r["metrics"] for r in rows if "metrics" in r and all(k.startswith("n_unscored.") for k in r["metrics"])]
     why = sorted({k.rsplit(".", 1)[1] for metrics in empty for k in metrics})
-    print(f"{where}, judges {args.judges}{', rubrics ' + ', '.join(rubrics) if rubrics else ''}: "
-          f"{len({r['ep_id'] for r in rows})} episodes, {len(rows)} rows: {sum('metrics' in r for r in rows) - len(empty)} scored, "
-          f"{len(empty)} with nothing scored{' (' + ', '.join(why) + ')' if why else ''}, "
-          f"{errors} scorer errors; spent ${sum(services.llm.spent.values()):.4f}")
+    print(f"{where}, judges {args.judges}{', rubrics ' + ', '.join(rubrics) if rubrics else ''}: " + (nothing or (
+        f"{len({r['ep_id'] for r in rows})} episodes, {len(rows)} rows: {sum('metrics' in r for r in rows) - len(empty)} scored, "
+        f"{len(empty)} with nothing scored{' (' + ', '.join(why) + ')' if why else ''}, "
+        f"{errors} scorer errors; spent ${sum(services.llm.spent.values()):.4f}")))
     for name, n in sorted(unknown.items()):
         print(f"  rubric {name!r}: listed by {n} episodes, and suite {suite} has no rubric of that name; nothing was scored under it")
     return 1 if errors else 0
