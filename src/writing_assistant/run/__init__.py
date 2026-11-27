@@ -253,11 +253,14 @@ class Runner:
         return eps
 
     def fresh(self, task: Task) -> list[Episode]:
-        """A task row's episodes, bound to this run and stamped with the row's fields."""
+        """A task row's episodes, bound to this run and stamped with the row's fields, and
+        with the rubrics it lists when it lists any (`suites.listed_rubrics` reads them)."""
         with local_only(task.split == LOCAL_DEV):
             eps = self.bind(self.suite.setup(task, self.services))
         for ep in eps:
             ep.meta["row"] = row_meta(task)
+            if "rubrics" in task.payload:
+                ep.meta["rubrics"] = list(task.payload["rubrics"])
         return eps
 
     def rollouts(self, source: Episode, at: int, n: int) -> list[Episode]:

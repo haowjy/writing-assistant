@@ -156,9 +156,11 @@ def rubrics_of(suite: Suite, kind: str | None, payload: dict[str, Any]) -> list[
 
 def listed_rubrics(suite: Suite, ep: Episode) -> list[str]:
     """The rubrics `ep`'s task lists (`rubrics_of`). A situation keeps its row in
-    `state["task"]`; an episode a run set up from a row keeps the row's kind in `meta`."""
-    task = ep.state.get("task", {})
-    return rubrics_of(suite, task.get("kind") or ep.meta.get("row", {}).get("kind"), task.get("payload", {}))
+    `state["task"]`; an episode a run set up from a row keeps the row's kind in
+    `meta["row"]` and its list, when it has one, in `meta["rubrics"]`."""
+    if task := ep.state.get("task"):
+        return rubrics_of(suite, task["kind"], task["payload"])
+    return rubrics_of(suite, ep.meta.get("row", {}).get("kind"), {k: ep.meta[k] for k in ("rubrics",) if k in ep.meta})
 
 
 async def play(suite: Suite, eps: list[Episode], turn: Turn) -> None:

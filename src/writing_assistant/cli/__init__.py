@@ -247,18 +247,20 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 tasks, rollouts = [], _rollouts(args, runner, home, *source)
             else:
                 tasks, rollouts = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit], []
-        if not args.no_score:  # a rubric this profile has no judge for stops the run before it plays, not after
-            refuse(suite, {r for t in tasks for r in rubrics_of(suite, t.kind, t.payload)}, services.judges, args.judges)
-        with run_info(run_dir) as info:  # every refusal is behind: this invocation plays
-            info.setdefault("invocations", []).append(
-                {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
-                | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts, "round": args.round}
-                   if args.source else {}))
         unscored: dict[str, list[str]] = {}  # closed episode -> its listed rubrics with no row yet
         if alone and not args.no_score:
             have = {split_judging(name)[1]: store.scores(name).keys() for name in store.judgings(args.judges)}
             unscored = {ep_id: missing for ep_id, rubrics in listed(closed).items()
                         if (missing := [r for r in rubrics if ep_id not in have.get(r, ())])}
+        if not args.no_score:  # a rubric this profile has no judge for stops the run before it plays, not after
+            to_play = listed([ep for eps in unfinished.values() for ep in eps]).values()
+            refuse(suite, {r for t in tasks for r in rubrics_of(suite, t.kind, t.payload)}
+                   | {r for rubrics in [*unscored.values(), *to_play] for r in rubrics}, services.judges, args.judges)
+        with run_info(run_dir) as info:  # every refusal is behind: this invocation plays
+            info.setdefault("invocations", []).append(
+                {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
+                | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts, "round": args.round}
+                   if args.source else {}))
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
               + ", ".join([f"{len(done)} tasks already stored"]
                           + [f"{sum(map(len, unfinished.values()))} open episodes to continue"] * bool(unfinished)
