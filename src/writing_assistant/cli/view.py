@@ -1,6 +1,7 @@
 """`wa-bench view`: a local, read-only page for reading task rows and runs.
 
-    uv run wa-bench view [--run runs/base-1a-qwen3.5-9b runs/base-1a-gemma-4-26b ...] [--port 8766] [--host 127.0.0.1]
+    uv run wa-bench view [--run runs/base-1a-qwen3.5-9b runs/base-1a-gemma-4-26b ...] [--world NAME ...]
+                         [--port 8766] [--host 127.0.0.1]
 
 Serves the page built from `viewer/` (React; `bun run build` there writes `view_dist/` beside
 this file) and a JSON API under `/api/`. The page asks for one thing at a time (a run's
@@ -18,6 +19,11 @@ and show as "not recorded". A task row is shown by running the suite's own `setu
 delivered messages are the ones a run would make. Held-out `test` rows are served only when
 the page asks for them by name (`test=held-out`); `local_dev` rows never are.
 
+A library world (`--world NAME`, from the library `WA_LIBRARY` names) has its own screen:
+its situations, each one's groups of rollouts with what every rubric scored, and a rollout
+opened on the episode screen with every judge's findings (`World`, `world_view`,
+`world_episode`). A world's rollouts are in no run's lists or comparisons.
+
 Read-only: only GET is served and nothing is written. Bound to loopback by default, and
 then only Host headers naming loopback are answered (a page elsewhere cannot rebind a name
 onto this server and read book text); `--host` binds another address (the tailnet one),
@@ -32,6 +38,7 @@ import asyncio
 import difflib
 import json
 import mimetypes
+import sqlite3
 from dataclasses import asdict
 import sys
 from collections import defaultdict
@@ -40,14 +47,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from writing_assistant.cli import ERRORS_FILE, row_meta
 from writing_assistant.cli.report import build_report, guardrails_line
 from writing_assistant.corpus import Corpus
 from writing_assistant.episode import Episode, strings
-from writing_assistant.episode.segments import STORE_FILE, closed_episodes, open_episodes
-from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, read_jsonl, task_rows
+from writing_assistant.episode.library import Library
+from writing_assistant.episode.segments import STORE_FILE, closed_episodes, judging, open_episodes, read_run, split_judging
+from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, SPLITS, Task, task_rows
 from writing_assistant.llm.client import LLMClient
-from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, play
+from writing_assistant.run import ERRORS_FILE, row_meta
+from writing_assistant.suites import PROSE_ABOUT, SUITES, Services, listed_rubrics, play
 
 # The built page; any path that is not an API call or a built file is the page's own route.
 DIST = Path(__file__).with_name("view_dist")
@@ -74,7 +82,6 @@ class Run:
         # The files the page reads, by name: these are only ever replaced whole or appended to.
         # A live run's journal and `.tmp` files come and go between a listing and a stat.
         files = [self.path / name for name in (RUN_FILE, STORE_FILE, ERRORS_FILE, "guardrails.json")]
-        files += sorted(p for pattern in ("scores-*.jsonl", "judgments-*.jsonl") for p in self.path.glob(pattern))
         sig = tuple((p.name, stat.st_mtime_ns, stat.st_size) for p in files if p.exists() for stat in [p.stat()])
         if sig != self._sig:
             self._sig, self._cache = sig, {}
@@ -86,14 +93,28 @@ class Run:
         return self._cached("info", lambda: json.loads((self.path / RUN_FILE).read_text())
                             if (self.path / RUN_FILE).exists() else {})
 
+    def judgings(self) -> list[str]:
+        """The judgings the run has score rows under: `<profile>` or `<profile>/<rubric>`."""
+        return self._cached("judgings", lambda: read_run(self.path, lambda store: store.judgings(), []))
+
     def profiles(self) -> list[str]:
-        """Judge profiles with a scores file, `eval` first."""
-        names = [p.name.removeprefix("scores-").removesuffix(".jsonl") for p in self.path.glob("scores-*.jsonl")]
-        return sorted(names, key=lambda n: (n != "eval", n))
+        """Judge profiles the run has score rows under, `eval` first."""
+        return sorted({split_judging(name)[0] for name in self.judgings()}, key=lambda n: (n != "eval", n))
 
     def profile(self, asked: str | None) -> str:
         have = self.profiles()
         return asked if asked in have else (have[0] if have else "eval")
+
+    def rubrics(self, profile: str) -> list[str]:
+        """The rubrics the run has rows for under a profile, the unnamed one first; the
+        unnamed one alone when it has none."""
+        return [r for p, r in map(split_judging, self.judgings()) if p == profile] or [""]
+
+    def judging(self, profile: str, asked: str | None = None) -> str:
+        """The judging to read: the rubric asked for when the profile has rows for it, else
+        its first."""
+        rubrics = self.rubrics(profile)
+        return judging(profile, asked if asked in rubrics else rubrics[0])
 
     def closed(self) -> list[Episode]:
         return self._cached("closed", lambda: closed_episodes(self.path))
@@ -111,25 +132,25 @@ class Run:
         return self._cached("twins", lambda: {ep.baseline_of: ep for ep in self.episodes().values()
                                               if ep.baseline_of in self.episodes()})
 
-    def scores(self, profile: str) -> dict[str, dict]:
-        return self._cached(("scores", profile),
-                            lambda: {r["ep_id"]: r for r in read_jsonl(self.path / f"scores-{profile}.jsonl")})
+    def scores(self, name: str) -> dict[str, dict]:
+        """ep_id -> its row under the judging `name`."""
+        return self._cached(("scores", name), lambda: read_run(self.path, lambda store: store.scores(name), {}))
 
-    def judgments(self, profile: str) -> dict[str, list[dict]] | None:
-        """Scored ep_id -> its judge items in the order asked; None when the run stored none."""
+    def judgments(self, name: str) -> dict[str, list[dict]] | None:
+        """Scored ep_id -> its judge items in the order asked; None when the run was never
+        scored under the judging."""
         def make() -> dict[str, list[dict]] | None:
-            path = self.path / f"judgments-{profile}.jsonl"
-            if not path.exists():
+            if name not in self.judgings():
                 return None
             out: dict[str, list[dict]] = defaultdict(list)
-            for j in read_jsonl(path):
+            for j in read_run(self.path, lambda store: store.judgments(name), []):
                 out[j["scored"]].append(j)
             return out
-        return self._cached(("judgments", profile), make)
+        return self._cached(("judgments", name), make)
 
-    def report(self, profile: str) -> dict[str, Any]:
-        return self._cached(("report", profile),
-                            lambda: build_report(self.path, profile, ["kind", "condition"], None, None, self.passed))
+    def report(self, profile: str, rubric: str = "") -> dict[str, Any]:
+        return self._cached(("report", profile, rubric), lambda: build_report(
+            self.path, profile, ["kind", "condition"], None, None, self.passed, rubric))
 
     def summary(self) -> dict[str, Any]:
         info = self.info()
@@ -162,7 +183,8 @@ def written(ep: Episode) -> list[dict[str, str]]:
     for actor, turn in turns:
         calls = [c for c in ep.calls if c.actor == actor and c.turn_idx == turn]
         if calls and calls[-1].response.strip():
-            out.append({"label": f"turn {turn + 1}" if len(turns) > 1 else "reply", "text": calls[-1].response})
+            label = f"turn {turn + 1}" if len(turns) > 1 else "reply"
+            out.append({"label": f"{actor}, {label}" if len(models) > 1 else label, "text": calls[-1].response})
     return out
 
 
@@ -180,9 +202,10 @@ def _tool_result(content: Any) -> dict[str, Any]:
 
 def _turns(ep: Episode) -> list[dict[str, Any]]:
     """Each delivery with the calls that served it; calls outside a delivery come last."""
-    by_id = {m.get("tool_call_id"): m.get("content") for c in ep.calls for m in c.messages if m.get("role") == "tool"}
-    # A call's results reach the record in the next call's messages, so the last call's do not:
-    # those come from the tool events, paired in order when every call has its event.
+    # A seat's tool events are its results in the order it called (`rollout_evidence` pairs them
+    # so too). A call id says nothing across seats, or across one seat's turns: hosts repeat them.
+    # A record with an event missing falls back to the results the seat's next call was sent.
+    by_id = {(c.actor, m.get("tool_call_id")): m.get("content") for c in ep.calls for m in c.messages if m.get("role") == "tool"}
     events = defaultdict(list)
     for e in ep.events:
         if e.kind == "tool":
@@ -197,10 +220,10 @@ def _turns(ep: Episode) -> list[dict[str, Any]]:
         for t in c.tool_calls:
             k = seen[c.actor]
             seen[c.actor] += 1
-            if t.get("id") in by_id:
-                result = _tool_result(by_id[t["id"]])
-            elif made[c.actor] == len(events[c.actor]):
+            if made[c.actor] == len(events[c.actor]):
                 result = _tool_result(events[c.actor][k])
+            elif (c.actor, t.get("id")) in by_id:
+                result = _tool_result(by_id[c.actor, t["id"]])
             else:
                 result = None
             tools.append({"name": t.get("name"), "arguments": t.get("arguments"), "result": result})
@@ -357,11 +380,11 @@ def _kind(ep: Episode) -> str:
     return ep.state.get("kind") or ep.meta.get("row", {}).get("kind") or "?"
 
 
-def episode_list(run: Run, profile: str, rollouts: bool = False) -> list[dict[str, Any]]:
+def episode_list(run: Run, name: str, rollouts: bool = False) -> list[dict[str, Any]]:
     """The run's scored task episodes, or its rollouts, each of which also says what it is a
     rollout of."""
     twin_ids = {t.ep_id for t in run.twins().values()}
-    scores = run.scores(profile)
+    scores = run.scores(name)
     out = []
     for ep in (run.rollouts() if rollouts else run.episodes()).values():
         if ep.ep_id in twin_ids:
@@ -373,11 +396,32 @@ def episode_list(run: Run, profile: str, rollouts: bool = False) -> list[dict[st
                     "metrics": sc.get("metrics", {}), "not_scored": sc.get("not_scored"),
                     "no_output": [k.split(".", 1)[1] for k in counts if k.startswith("n_no_output.")],
                     "words": sum(len(w["text"].split()) for w in written(ep))}
-                   | ({"rollout_of": {"ep_id": ep.rollout_of[0], "checkpoint": ep.rollout_of[1]}} if rollouts else {}))
+                   | ({"rollout_of": {"ep_id": ep.rollout_of[0], "checkpoint": ep.rollout_of[1]}, "group": ep.group}
+                      if rollouts else {}))
     return out
 
 
-def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> dict[str, Any] | None:
+def _episode_view(ep: Episode, twin_of: str | None, score: dict[str, Any], judgments: list[dict] | None,
+                  against: Episode | None) -> dict[str, Any]:
+    """One episode as the episode screen reads it: what it was shown, what it wrote, how
+    (turns and calls), its files, its scores and the judge items behind them."""
+    scene = ep.state.get("scene", {}) if isinstance(ep.state.get("scene"), dict) else {}
+    v = {"ep_id": ep.ep_id, "condition": ep.condition, "twin_of": twin_of, "status": ep.status,
+         "failure": ep.failure_reason, "actors": ep.actors, "meta": {k: ep.meta.get(k) for k in
+                                                                    ("temperature", "max_tokens", "code", "harness")},
+         "system": _system(ep), "written": written(ep), "turns": _turns(ep), "files": _files(ep),
+         "events": [{"idx": e.idx, "actor": e.actor, "kind": e.kind, "text": _event_text(e),
+                     "seen_by": sorted(e.visible_to)} for e in ep.events],
+         "score": score, "judgments": judgments, "shown": _shown(ep, against)}
+    if scene:
+        v["scene"] = {k: scene[k] for k in ("mode", "k", "exemplars", "y_star", "beat_sheet") if k in scene}
+    if isinstance(edit := ep.state.get("edit"), dict) and edit.get("path") in ep.files:
+        v["edit"] = {"path": edit["path"], "objection": edit.get("objection"),
+                     "diff": diff_lines(edit.get("original", ""), ep.files[edit["path"]])}
+    return v
+
+
+def episode_family(run: Run, ep_id: str, name: str, runs: dict[str, Run]) -> dict[str, Any] | None:
     """The episode's task as played in this run: every arm with its twin, each with what it was
     shown, what it wrote, how (turns and calls), its scores and the judge items behind them.
     A rollout is shown alone: it is no part of the run's play of its task."""
@@ -395,7 +439,7 @@ def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> 
             if ep.ep_id in twins and twins[ep.ep_id] in family:
                 ordered.append(twins[ep.ep_id])
     ordered += [ep for ep in family if ep not in ordered]
-    scores, judgments = run.scores(profile), run.judgments(profile)
+    scores, judgments = run.scores(name), run.judgments(name)
     arms = [ep for ep in ordered if ep.ep_id not in twin_of]
     out = []
     for ep in ordered:
@@ -406,23 +450,12 @@ def episode_family(run: Run, ep_id: str, profile: str, runs: dict[str, Run]) -> 
         about = {ep.ep_id: (ep, "this episode's output")}
         if ep.ep_id in twins:
             about[twins[ep.ep_id].ep_id] = (twins[ep.ep_id], "the twin's output")
-        v = {"ep_id": ep.ep_id, "condition": ep.condition, "twin_of": parent, "status": ep.status,
-             "failure": ep.failure_reason, "actors": ep.actors, "meta": {k: ep.meta.get(k) for k in
-                                                                        ("temperature", "max_tokens", "code", "harness")},
-             "system": _system(ep), "written": written(ep), "turns": _turns(ep), "files": _files(ep),
-             "events": [{"idx": e.idx, "actor": e.actor, "kind": e.kind, "text": _event_text(e),
-                         "seen_by": sorted(e.visible_to)} for e in ep.events],
-             "score": {} if parent else _score_view(scores.get(ep.ep_id)),
-             "judgments": None if judgments is None or parent else _judgments(judgments.get(ep.ep_id, []), about, scene),
-             "shown": _shown(ep, eps[against] if against else None)}
-        if scene:
-            v["scene"] = {k: scene[k] for k in ("mode", "k", "exemplars", "y_star", "beat_sheet") if k in scene}
-        if isinstance(edit := ep.state.get("edit"), dict) and edit.get("path") in ep.files:
-            v["edit"] = {"path": edit["path"], "objection": edit.get("objection"),
-                         "diff": diff_lines(edit.get("original", ""), ep.files[edit["path"]])}
-        out.append(v)
+        out.append(_episode_view(
+            ep, parent, {} if parent else _score_view(scores.get(ep.ep_id)),
+            None if judgments is None or parent else _judgments(judgments.get(ep.ep_id, []), about, scene),
+            eps[against] if against else None))
     first = eps[ep_id]
-    return {"run": run.summary(), "profile": profile, "profiles": run.profiles(), "task_id": task_id,
+    return {"run": run.summary(), "task_id": task_id,
             "kind": _kind(first), "row": _row_fields(first), "split": first.split, "episodes": out,
             "elsewhere": [n for n, r in runs.items() if n != run.name and r.info() and
                           any(e.task_id == task_id for e in r.episodes().values())]}
@@ -439,7 +472,7 @@ def compare(runs: dict[str, Run], task_id: str, asked: dict[str, str]) -> list[d
         if not family:
             continue
         profile = run.profile(asked.get(name))
-        scores, judgments = run.scores(profile), run.judgments(profile) or {}
+        scores, judgments = run.scores(run.judging(profile)), run.judgments(run.judging(profile)) or {}
         twin_of = {t.ep_id: p for p, t in run.twins().items()}
         eps = []
         for ep in family:
@@ -454,6 +487,134 @@ def compare(runs: dict[str, Run], task_id: str, asked: dict[str, str]) -> list[d
         out.append({"run": name, "endpoint": info["endpoint"], "model": info["model"], "profile": profile,
                     "episodes": eps})
     return out
+
+
+# -- a library world ---------------------------------------------------------------------------
+
+class World:
+    """One library world: its situations and their rollouts, read from the world file and
+    cached until the file changes. Every rollout is loaded to list them, which suits a
+    world a person reads; a world of many thousands wants a list made from the tables."""
+
+    def __init__(self, lib: Library, name: str) -> None:
+        self.lib, self.name, self.path = lib, name, lib.path(name)
+        self._sig: tuple = ()
+        self._cache: dict[Any, Any] = {}
+
+    def _read(self, key: Any, read: Any) -> Any:
+        # A world keeps a log beside it: a push or a judging pass moves that file first.
+        files = [self.path, self.path.with_name(self.path.name + "-wal")]
+        sig = tuple((p.name, stat.st_mtime_ns, stat.st_size) for p in files if p.exists() for stat in [p.stat()])
+        if sig != self._sig:
+            self._sig, self._cache = sig, {}
+        if key not in self._cache:
+            with self.lib.open(self.name) as store:
+                self._cache[key] = read(store)
+        return self._cache[key]
+
+    def situations(self) -> dict[str, Episode]:
+        return self._read("situations", lambda store: {name: store.load(name) for name in store.situations()})
+
+    def rollouts(self) -> dict[str, Episode]:
+        return self._read("rollouts", lambda store: {ep.ep_id: ep for ep in store.episodes()})
+
+    def profiles(self) -> list[str]:
+        return sorted({split_judging(name)[0] for name in self.judgings()})
+
+    def judgings(self) -> list[str]:
+        return self._read("judgings", lambda store: store.judgings())
+
+    def rubrics(self, profile: str) -> list[str]:
+        return [r for p, r in map(split_judging, self.judgings()) if p == profile]
+
+    def scores(self, name: str) -> dict[str, dict]:
+        return self._read(("scores", name), lambda store: store.scores(name))
+
+    def judgments(self, name: str, ep_id: str) -> list[dict]:
+        return self._read(("judgments", name, ep_id), lambda store: store.judgments(name, scored=ep_id))
+
+    def profile(self, asked: str | None) -> str:
+        have = self.profiles()
+        return asked if asked in have else (have[0] if have else "")
+
+    def summary(self) -> dict[str, Any]:
+        split = next((ep.split for ep in self.situations().values()), None)
+        return {"name": self.name, "split": split, "situations": len(self.situations()), "rollouts": len(self.rollouts()),
+                "profiles": self.profiles()}
+
+
+def _rubric_scores(world: World, profile: str, ep_id: str) -> dict[str, dict[str, Any]]:
+    """rubric -> the episode's row under it as the page shows it, for the rubrics it has a row under."""
+    return {rubric or "(unnamed)": _score_view(row) for rubric in world.rubrics(profile)
+            if (row := world.scores(judging(profile, rubric)).get(ep_id)) is not None}
+
+
+def world_view(world: World, asked: str | None) -> dict[str, Any]:
+    """A world's situations, each with its groups of rollouts and what each rollout scored
+    under every rubric the profile has rows for."""
+    profile = world.profile(asked)
+    by_source: dict[str, dict[str, list[Episode]]] = defaultdict(lambda: defaultdict(list))
+    for ep in world.rollouts().values():
+        if ep.rollout_of and ep.group:
+            by_source[ep.rollout_of[0]][ep.group].append(ep)
+    out = []
+    for name, sit in world.situations().items():
+        task = sit.state.get("task", {})
+        groups = []
+        for group, eps in by_source.get(name, {}).items():
+            first = eps[0]
+            groups.append({"group": group, "size": first.meta.get("group_size"), "round": first.meta.get("round"),
+                           "endpoint": first.meta.get("endpoint"), "model": first.meta.get("model"), "run": first.meta.get("run"),
+                           "rollouts": [{"ep_id": ep.ep_id, "status": ep.status, "failure": ep.failure_reason,
+                                         "words": sum(len(w["text"].split()) for w in written(ep)),
+                                         "scores": {rubric: {"metrics": sc.get("metrics", {}), "not_scored": sc.get("not_scored")}
+                                                    for rubric, sc in _rubric_scores(world, profile, ep.ep_id).items()}}
+                                        for ep in sorted(eps, key=lambda ep: ep.ep_id)]})
+        out.append({"name": name, "suite": sit.suite, "kind": task.get("kind") or _kind(sit),
+                    "request": task.get("payload", {}).get("request"), "seats": sit.actors,
+                    "rubrics": listed_rubrics(SUITES[sit.suite], sit) if sit.suite in SUITES else [],
+                    "files": sorted(sit.files), "groups": groups})
+    return world.summary() | {"profile": profile, "rubrics": world.rubrics(profile), "situations": out}
+
+
+def _finding(j: dict[str, Any], rubric: str) -> dict[str, Any]:
+    """A stored judge item as the episode screen's verdict: a finding of a rubric-reading
+    judge (a value on a criterion, with the turns it cites) or a question a judge answered."""
+    v = {k: j.get(k) for k in ("id", "metric", "question", "model", "unscored", "judge", "replies")} | {"about": j.get("ep_id")}
+    if "criterion" in j:
+        covers = j.get("covers")
+        where = f"turn {covers['turn']}" if isinstance(covers, dict) and "turn" in covers else "the whole task"
+        v |= {"id": f"{rubric}:{j['id']}", "model": j.get("value"), "metric": f"{rubric}: {j.get('metric')}",  # as the score names it
+              "question": f"{j['criterion']}, of {where}" + (f", seat {j['seat']}" if j.get("seat") else ""),
+              "cites": [f"turn {c.get('turn')}: {c.get('note', '')}" for c in j.get("cites", [])]
+                       + [f"file {e.get('path')} (revision {e.get('revision')})" for e in j.get("evidence", []) if isinstance(e, dict)]}
+    return v
+
+
+def world_episode(world: World, ep_id: str, asked: str | None) -> dict[str, Any] | None:
+    """One rollout of a world in the episode screen's shape (`episode_family`'s): its
+    metrics of every rubric the profile has a row under, named `<rubric>: <metric>`, and
+    every judge's findings."""
+    ep = world.rollouts().get(ep_id)
+    if ep is None:
+        return None
+    profile = world.profile(asked)
+    scores = _rubric_scores(world, profile, ep_id)
+    score: dict[str, Any] = {"metrics": {}, "prose": {}, "counts": {}}
+    for rubric, sc in scores.items():
+        # What no judge scored (the counts) is folded with the other measures, below the findings' metrics.
+        judged = bool(world.scores(judging(profile, "" if rubric == "(unnamed)" else rubric))[ep_id].get("judges"))
+        for part in ("metrics", "prose", "counts"):
+            score[part if judged or part != "metrics" else "prose"] |= {f"{rubric}: {k}": v for k, v in sc.get(part, {}).items()}
+        if sc.get("not_scored"):
+            score["not_scored"] = f"{rubric}: {sc['not_scored']}"
+    if not scores:
+        score = {"not_scored": f"no score row under the judge profile {profile!r}" if profile else "not scored yet"}
+    judgments = [_finding(j, rubric or "(unnamed)") for rubric in world.rubrics(profile)
+                 for j in world.judgments(judging(profile, rubric), ep_id)]
+    return {"run": {"name": world.name}, "task_id": ep.task_id, "kind": _kind(ep), "row": _row_fields(ep), "split": ep.split,
+            "episodes": [_episode_view(ep, None, score, judgments, None)], "elsewhere": [],
+            "profile": profile, "profiles": world.profiles()}
 
 
 # -- task rows, with no run --------------------------------------------------------------------
@@ -647,7 +808,7 @@ def _kind_scored(task: Task, runs: dict[str, Run]) -> dict[str, Any] | None:
     for name, run in runs.items():
         if not run.info() or run.info()["suite"] != task.suite:
             continue
-        scores = run.scores(run.profile(None))
+        scores = run.scores(run.judging(run.profile(None)))
         by_condition: dict[str, set[str]] = defaultdict(set)
         for ep in run.episodes().values():
             if _kind(ep) == task.kind:
@@ -668,7 +829,7 @@ def _scored_in(task: Task, runs: dict[str, Run]) -> list[dict[str, Any]]:
         if not mine:
             continue
         profile = run.profile(None)
-        scores, judgments = run.scores(profile), run.judgments(profile) or {}
+        scores, judgments = run.scores(run.judging(profile)), run.judgments(run.judging(profile)) or {}
         eps = []
         for ep in mine:
             asked = {(j["metric"], j["question"], j.get("ep_id") != ep.ep_id): None for j in judgments.get(ep.ep_id, [])}
@@ -681,7 +842,8 @@ def _scored_in(task: Task, runs: dict[str, Run]) -> list[dict[str, Any]]:
 
 # -- the server -------------------------------------------------------------------------------
 
-def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHandler]:
+def make_handler(runs: dict[str, Run], loopback: bool, worlds: dict[str, World] | None = None) -> type[BaseHTTPRequestHandler]:
+    worlds = worlds or {}
     tasks = Tasks()
 
     class Handler(BaseHTTPRequestHandler):
@@ -697,6 +859,18 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
                 return self._json(sorted(SUITES))
             if url.path == "/api/runs":
                 return self._json([r.summary() for r in runs.values()])
+            if url.path == "/api/worlds":
+                return self._json([w.summary() for w in worlds.values()])
+            if "world" in q:
+                world = worlds.get(q["world"])
+                if world is None:
+                    return self._send(404, b"no such world", "text/plain")
+                if url.path == "/api/world":
+                    return self._json(world_view(world, q.get("judges")))
+                if url.path == "/api/episode":
+                    fam = world_episode(world, q.get("ep", ""), q.get("judges"))
+                    return self._json(fam) if fam else self._send(404, b"no such rollout", "text/plain")
+                return self._send(404, b"not found", "text/plain")
             if url.path == "/api/kinds":
                 suite = q.get("suite", "")
                 if suite not in SUITES:
@@ -719,15 +893,22 @@ def make_handler(runs: dict[str, Run], loopback: bool) -> type[BaseHTTPRequestHa
             run = runs.get(q.get("run", ""))
             if run is None or not run.info():
                 return self._send(404, b"no such run", "text/plain")
+            # What is read: `judges` and `rubric` name a judging. With no `rubric` the profile's
+            # first is read (the unnamed one, for suites 1a and 3), and a report lists the rest.
             profile = run.profile(q.get("judges"))
+            name = run.judging(profile, q.get("rubric"))
+            rubric, rubrics = split_judging(name)[1], run.rubrics(profile)
+            read = {"profile": profile, "profiles": run.profiles(), "rubric": rubric, "rubrics": rubrics}
             if url.path == "/api/report":
-                return self._json(run.report(profile) | {"profile": profile, "profiles": run.profiles()})
+                others = [{"rubric": r} | {k: run.report(profile, r)[k] for k in ("groups", "rollouts")}
+                          for r in rubrics if r != rubric and "rubric" not in q]
+                return self._json(run.report(profile, rubric) | read | {"others": others})
             if url.path == "/api/episodes":
-                return self._json({"profile": profile, "episodes": episode_list(run, profile),
-                                   "rollouts": episode_list(run, profile, rollouts=True)})
+                return self._json({"profile": profile, "rubric": rubric, "episodes": episode_list(run, name),
+                                   "rollouts": episode_list(run, name, rollouts=True)})
             if url.path == "/api/episode":
-                fam = episode_family(run, q.get("ep", ""), profile, runs)
-                return self._json(fam) if fam else self._send(404, b"no such episode", "text/plain")
+                fam = episode_family(run, q.get("ep", ""), name, runs)
+                return self._json(fam | read) if fam else self._send(404, b"no such episode", "text/plain")
             self._send(404, b"not found", "text/plain")
 
         def _static(self, path: str) -> None:
@@ -780,20 +961,30 @@ def cmd_view(args: argparse.Namespace) -> int:
         raise SystemExit(f"the page is not built: {BUILD}")
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
     runs = load_runs([Path(p) for p in args.run], passed)
+    lib = Library()
+    worlds = {name: World(lib, name) for name in args.world}
+    try:
+        for world in worlds.values():  # read once before the page is served, as the runs are
+            world.summary()
+    except (LookupError, ValueError, sqlite3.Error) as e:
+        raise SystemExit(f"--world: {e}") from None
     # Every run is read once before the page is served: one this build does not read is
     # refused here, not on the first click. (The first screen lists them all anyway.)
     private = [r.name for r in runs.values() if r.info() and (any(e.split == LOCAL_DEV for e in r.closed())
                                                               or r.info().get("split") == LOCAL_DEV)]
+    private += [w.name for w in worlds.values() if w.summary()["split"] == LOCAL_DEV]
     loopback = args.host in LOOPBACK
     if private and not loopback:
         raise SystemExit(f"{', '.join(private)} hold{'s' * (len(private) == 1)} local_dev text: "
                          f"serve {'it' if len(private) == 1 else 'them'} on loopback only")
-    server = HTTPServer((args.host, args.port), make_handler(runs, loopback))
+    server = HTTPServer((args.host, args.port), make_handler(runs, loopback, worlds))
     shown = "localhost" if loopback else args.host
     # The URL opens the first run's own suite and split (a `local_dev` run is on no other
-    # screen); the page's picker lists every suite and split the loaded runs have.
-    scope = next((f"{i['suite']}/{i['split']}" for r in runs.values() if (i := r.info())), "")
-    print(f"viewing {len(runs)} run{'s' * (len(runs) > 1)} at http://{shown}:{server.server_address[1]}/{scope}", flush=True)
+    # screen), or the first world when no run is loaded; the page's sidebar lists the rest.
+    scope = next((f"{i['suite']}/{i['split']}" for r in runs.values() if (i := r.info())),
+                 f"world/{next(iter(worlds))}" if worlds else "")
+    what = [f"{len(n)} {word}{'s' * (len(n) != 1)}" for n, word in ((runs, "run"), (worlds, "world")) if n]
+    print(f"viewing {' and '.join(what) or '0 runs'} at http://{shown}:{server.server_address[1]}/{scope}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

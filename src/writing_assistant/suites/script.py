@@ -1,9 +1,11 @@
-"""The scripted author: a reply/pivot table in `ep.state["script"]`.
+"""What scripted seats say: a table of lines in `ep.state["script"]`, shared by every suite.
 
-Scripted actors never go through `Turn`; the suite's step asks this table what the author
+Scripted seats never go through `Turn`; the suite's step asks this table what the author
 (or a scripted player) says next, and that line is delivered to the model. The table and
 its position are all the step knows of where it is, and they are in `state`: a fork, or an
 episode reopened after a delivery, faces exactly the turns its original would have faced.
+One table serves every scripted seat of an episode: entries are taken in the order the
+seats come to speak.
 
     state["script"] = {
         "pos": 0,                       # next entry
@@ -15,7 +17,7 @@ An entry is `{"say": str}` plus, per task, what happens before the line is deliv
 `decision` (a pivot: `{superseded, adopted}`), `edit` (a collaborative edit:
 `{find, text}`), `scope` (the paragraphs a request covers), `as` (the character speaking),
 `dm` (a scripted DM's tool calls and narration). This module only walks the table; each
-task applies its own entry keys.
+task applies its own entry keys. `remaining` says when it has run out.
 """
 
 from __future__ import annotations

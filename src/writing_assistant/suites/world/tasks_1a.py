@@ -1,8 +1,8 @@
 """Suite 1a tasks: `setup` builds the episodes a task row describes, `next_delivery` steps one.
 
-Every model-driven actor is mapped to the endpoint placeholder `suites.SUBJECT`; cli.py
-replaces it with the endpoint under test. Files a task mounts are written straight into `ep.files`
-at rev 1 with no event, which is how the record says the benchmark wrote them.
+Every model-driven actor is the model under test's (the cast name `suites.SUBJECT`).
+Files a task mounts are written straight into `ep.files` at rev 1 with no event, which is
+how the record says the benchmark wrote them.
 
 A twin is forked from the episode it is the baseline of (`fork(..., baseline=True)`), so it
 names that episode in `baseline_of`: both POV arms have a `twin_swap`, and the name is what
@@ -49,7 +49,8 @@ import json
 from writing_assistant.episode import Episode, Event, norm_path, strings
 from writing_assistant.episode.tools import dispatch_tool
 from writing_assistant.suites import SUBJECT, KindAbout, one_message, paragraphs
-from writing_assistant.suites.world import author, srd
+from writing_assistant.suites import script
+from writing_assistant.suites.world import srd
 
 WRITER, AUTHOR, DM = "writer", "author", srd.DM
 WORKSPACE = ["episode_read", "episode_write", "episode_edit", "episode_grep", "episode_list"]
@@ -96,10 +97,10 @@ def setup_pivot(task, services) -> list[Episode]:
     clean = ep.fork("clean_b", baseline=True)
     final = [{"say": line} for line in p["final"]]
     topics = p.get("topics", {})
-    ep.state["script"] = author.script(
+    ep.state["script"] = script.script(
         [{"say": line} for line in p["direction_a"]]
         + [{"say": f"{p['pivot']}\n\n{p['direction_b']}", "decision": p["decision"]}] + final, topics)
-    clean.state["script"] = author.script([{"say": p["direction_b"]}] + final, topics)
+    clean.state["script"] = script.script([{"say": p["direction_b"]}] + final, topics)
     return [ep, clean]
 
 
@@ -117,7 +118,7 @@ def setup_collab(task, services) -> list[Episode]:
     _mount(ep, p.get("files", {}) | {path: p["text"]})
     _writer(ep, f"You are co-writing a story with its author in a shared project folder; they edit the files too.\n\n{p['brief']}", WORKSPACE)
     ep.state["collab"] = {"path": path, "initial": p["text"]}
-    ep.state["script"] = author.script([
+    ep.state["script"] = script.script([
         {"say": r["request"], "scope": r["scope"], **({"edit": r["edit"]} if "edit" in r else {})} for r in p["rounds"]
     ])
     return [ep]
@@ -150,7 +151,7 @@ def setup_rule_bend(task, services) -> list[Episode]:
                 f"{p['rules_path']} states how this story departs from it, and it overrides the source.", WORKSPACE)
     ep.state["rule_bend"] = {"out_path": norm_path(p["out_path"]), "canon_probes": p["canon_probes"],
                              "bent_probes": p["bent_probes"]}
-    ep.state["script"] = author.script([{"say": p["request"]}])
+    ep.state["script"] = script.script([{"say": p["request"]}])
     twin = ep.fork("twin_swap", baseline=True)
     _mount(ep, {p["rules_path"]: p["bent_rules"]})
     _mount(twin, {p["rules_path"]: p["kept_rules"]})
@@ -160,9 +161,9 @@ def setup_rule_bend(task, services) -> list[Episode]:
 # -- the scripted-author conversation (pivot, collab, rule_bend) ---------------------------
 
 async def next_line(ep: Episode, last_reply: str, apply=None) -> tuple[str, str] | None:
-    if not author.remaining(ep.state) or ep.status != "running":
+    if not script.remaining(ep.state) or ep.status != "running":
         return None
-    entry = author.next_entry(ep.state, last_reply)
+    entry = script.next_entry(ep.state, last_reply)
     if apply:
         apply(ep, entry)
     return WRITER, entry["say"]
@@ -180,7 +181,7 @@ def setup_dm(task, services) -> list[Episode]:
     if scripted and len(p["dm_script"]) != len(p["turns"]):
         raise ValueError(f"{task.task_id}: dm_script has {len(p['dm_script'])} entries for {len(p['turns'])} turns")
     turns = [t | ({"dm": p["dm_script"][i]} if scripted else {}) for i, t in enumerate(p["turns"])]
-    ep.state["script"] = author.script(turns, p.get("topics", {}))
+    ep.state["script"] = script.script(turns, p.get("topics", {}))
     ep.actors = {DM: "scripted" if scripted else SUBJECT} | {c: "scripted" for c in world["party"]}
     ep.actor_tools[DM] = list(srd.TOOLS)
     ep.state["system_prompts"] = {DM: dm_prompt(p["brief"], world)}
@@ -204,14 +205,14 @@ async def next_dm(ep: Episode, last_reply: str) -> tuple[str, str] | None:
     one step and no delivery."""
     world = ep.state["world"]
     while True:
-        answered = author.previous(ep.state)
+        answered = script.previous(ep.state)
         if answered:
             # The narration answers the speaker: whoever is with them now hears it.
             location = world["characters"][answered["as"]]["location"]
             ep.log(DM, "say", {"text": last_reply}, srd.sees(world, location))
-        if not author.remaining(ep.state) or ep.status != "running":
+        if not script.remaining(ep.state) or ep.status != "running":
             return None
-        entry = author.next_entry(ep.state, last_reply)
+        entry = script.next_entry(ep.state, last_reply)
         speaker = world["characters"][entry["as"]]
         line = f"{speaker['name']}: {entry['say']}"
         ep.log(entry["as"], "say", {"text": line}, srd.sees(world, speaker["location"]))

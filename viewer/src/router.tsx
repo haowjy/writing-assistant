@@ -11,10 +11,11 @@ import {
 } from "@tanstack/react-router"
 
 import { Frame } from "@/components/frame"
-import { episodesQuery, runsQuery } from "@/lib/api"
+import { episodesQuery, runsQuery, worldsQuery } from "@/lib/api"
 import { KindTasks } from "@/screens/kind-tasks"
 import { Overview } from "@/screens/overview"
 import { TaskView } from "@/screens/task"
+import { WorldScreen } from "@/screens/world"
 import { NotFound } from "@/screens/not-found"
 
 export const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 30_000, retry: 1 } } })
@@ -35,6 +36,11 @@ const index = createRoute({
   beforeLoad: async ({ context }) => {
     const runs = await context.queryClient.ensureQueryData(runsQuery)
     const first = runs.find((r) => r.suite && r.split)
+    if (!first) {
+      // no run loaded: a world, when the page was started on one
+      const worlds = await context.queryClient.ensureQueryData(worldsQuery)
+      if (worlds.length) throw redirect({ to: "/world/$world", params: { world: worlds[0].name } })
+    }
     throw redirect({ to: "/$suite/$split", params: { suite: first?.suite ?? "1a", split: first?.split ?? "dev" } })
   },
 })
@@ -110,7 +116,16 @@ export const taskArmRoute = createRoute({
   component: TaskView,
 })
 
-const tree = root.addChildren([index, scope.addChildren([overviewRoute, kind, kindTasksRoute, task, taskArmRoute])])
+// A library world: its situations and their rollouts; `?ep=` opens one rollout, `?verdict=` a finding.
+export type WorldSearch = { ep?: string; verdict?: string }
+export const worldRoute = createRoute({
+  getParentRoute: () => root,
+  path: "world/$world",
+  validateSearch: (s: Record<string, unknown>): WorldSearch => ({ ep: str(s.ep), verdict: str(s.verdict) }),
+  component: WorldScreen,
+})
+
+const tree = root.addChildren([index, worldRoute, scope.addChildren([overviewRoute, kind, kindTasksRoute, task, taskArmRoute])])
 
 export const router = createRouter({ routeTree: tree, context: { queryClient }, defaultPreload: "intent", scrollRestoration: true })
 

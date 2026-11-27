@@ -3,7 +3,10 @@
 # kind: "openai" (chat completions), "openai-embeddings", "anthropic".
 # Optional per endpoint: local = true (may receive local_dev text; absent means hosted),
 # cutoff (training cutoff, for post-cutoff familiarity at report time), timeout (s),
-# concurrency (requests in flight, default 16), params (extra request-body fields).
+# concurrency (requests in flight, default 16), params (extra request-body fields),
+# thinking ("trace" when the reasoning the host returns is the model's own, "summary" when
+# it is the host's summary of it; absent when it returns none or nobody has looked). It is
+# stamped on every episode the endpoint plays a seat of (`meta["cast"]`), for judges.
 # Keys come from the environment; `wa-bench` loads `.env` from the working directory.
 
 # -- subjects: local on the RTX 3090 (DECISIONS #13) ---------------------------------------
@@ -149,6 +152,20 @@ embed_semantic = "qwen3-embed-mini"
 
 # "<profile>.<use>" entries whose human-label gate has passed (benchmark.md, judge stack).
 # `wa-bench report` marks every metric that depends on any other model judge as ungated.
+# -- casts ----------------------------------------------------------------------------------
+# `wa-bench run --cast <name>`: who plays each model seat that is not the subject's. A seat
+# names a cast name (`counterpart`, ...) and the run maps it to an endpoint here;
+# `subject` is always the run's --endpoint and `scripted` is no model, so neither is defined.
+# The resolved cast is part of a run's identity, and `report --baseline` compares two runs
+# only when the names their episodes used resolve to the same endpoint and model.
+
+[cast.bench]            # benchmark: the other seats are the same model for every subject
+counterpart = "qwen3-32b-mini"
+
+[cast.self]             # training: one served model in every seat (the subject's server)
+counterpart = "gemma-4-26b"
+
+
 [gates]
 passed = []
 

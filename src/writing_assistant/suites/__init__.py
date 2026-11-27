@@ -3,14 +3,18 @@
 A suite keeps no state outside the episode. Its `next_delivery()` is one step of the turn
 schedule: given the reply to the last delivery, it does what that reply calls for and names
 the next delivery. `play()` here is the only loop over it, and makes each delivery through
-`Turn`; cli.py binds a `Driver` to that, so suites never import drivers. Because the step
+`Turn`; `run.Binding` binds the drivers to that, so suites never import drivers. Because the step
 reads its place from the episode (`ep.state`, the log), an episode copied when a delivery
 returns continues, through the same `play()`, exactly as the original would have. A suite
-package never imports another suite package.
+package never imports another suite package; a module file directly in this directory
+(`script.py`, the scripted seats' table; `converse.py`, the conversation step for any number
+of seats) is shared by every suite package and imports none.
 
-- `setup()` maps every model-driven actor to the placeholder `SUBJECT`; cli.py replaces it
-  with the endpoint under test before `play()`, and its Turn binding refuses to call a
-  placeholder.
+- A seat (an entry in `Episode.actors`) is `scripted`, which the suite's step speaks for,
+  or names who plays it by a cast name: `SUBJECT` for the model under test, any other name
+  (`counterpart`, ...) for another model. `setup()` writes those names and
+  nothing overwrites them: the run's cast maps each to an endpoint when the seat is first
+  called (`run.Binding`), so one stored episode is played by any cast.
 - Twins: the twin of an episode is the one whose `baseline_of` is that episode's `ep_id`;
   `setup()` makes it with `fork(..., baseline=True)`. An episode nothing names is scored
   without a twin. A rollout (`Episode.rollout_of`) has none and gets no `net_*`: its
@@ -18,6 +22,13 @@ package never imports another suite package.
   counterfactual. `Episode.parent` says only what an episode is stored after. A twin is a
   baseline, never scored on its own: the `score()` of the episode it names judges it once,
   writes its rate as `twin_<metric>` and subtracts it in the `net_*` metric.
+- A suite's scoring is split into **rubrics**, each with its own focus and its own score
+  row per episode (stored under the judging `<profile>/<rubric>`). `rubrics` names them and
+  the task kinds each is run on by default; a task row may list others
+  (`payload["rubrics"]`, `listed_rubrics`). Suites 1a and 3 have one, with an empty name,
+  whose rows are stored under the bare profile. `score` is handed a `Tally` per rubric the
+  pass wants and returns each one's metrics, so whether two rubrics share a judge call is
+  the suite's choice.
 - `judged_by` maps each metric to the judge use it depends on; `wa-bench report` marks a
   metric ungated until that use's human-label gate has passed. Metrics not listed are
   deterministic.
@@ -26,7 +37,7 @@ package never imports another suite package.
   and a kind that asks for a length passes that length to `reply_output` (a floor below it);
   with none, those functions raise `NoOutput` and the scorer writes no outcome metric, only
   `n_no_output.<reason>`. Bookkeeping metrics (tool calls, rejections) read the log and are
-  written whenever the episode ran. A failed episode is never scored (cli.py skips it).
+  written whenever the episode ran. A failed episode is never scored (`run.scoring.score_episode` skips it).
 """
 
 from __future__ import annotations
@@ -48,12 +59,12 @@ if TYPE_CHECKING:
     from writing_assistant.llm.client import LLMClient
     from writing_assistant.search.gateway import SearchGateway
 
-# (episode, actor, message): one delivery, made and answered. The binding in cli.py appends
+# (episode, actor, message): one delivery, made and answered. `run.Binding` appends
 # the `deliver` event (`Episode.deliver`) before the driver runs, so every delivery is on the
 # record; the reply is read back from the episode (`Episode.last_reply`), never returned.
 Turn = Callable[[Episode, str, str], Awaitable[None]]
 
-SUBJECT = "subject"  # endpoint placeholder for the model under test; cli.py replaces it
+SUBJECT = "subject"  # the cast name of the model under test: the run's endpoint
 
 
 @dataclass(frozen=True)
@@ -83,20 +94,34 @@ class KindAbout:
 
 
 class Suite(Protocol):
-    tools: ToolTable  # the suite's static tool table; cli.py hands it to the driver
+    tools: ToolTable  # the suite's static tool table; `run.Runner` hands it to the drivers
     judged_by: dict[str, str]  # metric -> judge use it depends on
     about: dict[str, KindAbout]  # task kind -> what it is, in plain words
     metric_about: dict[str, str]  # metric -> what a value means, in a sentence
     # task kind -> the payload fields that carry work text ("passage.text", "exemplars[].text",
     # "files.*"): what corpus/release.py hashes when a work is not permissive
     text_fields: dict[str, list[str]]
+    # rubric name -> the task kinds it is run on when a task's row lists none. Every rubric
+    # `score` answers to is a key; "" is the one rubric of a suite that names none.
+    rubrics: dict[str, tuple[str, ...]]
+    # rubric name -> the judge uses it is nothing without. Scoring is refused, and no row
+    # written, under a profile that names no endpoint for one (`run.scoring.refuse`). A
+    # rubric absent here scores what it can and counts the rest as unscored.
+    needs: dict[str, tuple[str, ...]]
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]: ...
 
-    def setup(self, task: Task, services: Services) -> list[Episode]:
+    def setup(self, task: Task, services: Services, at: Episode | None = None) -> list[Episode]:
         """Resolve task.work_ids through services.corpus, stamp ep.state["work_ids"] and the
         task kind's sampling temperature in ep.meta["temperature"]; files, state, actors,
-        actor_tools; fork every twin here: each episode is then played on its own."""
+        actor_tools; fork every twin here: each episode is then played on its own.
+
+        With `at` (a position: a closed episode as last saved) the task is set up on that
+        episode's files: the first episode is `at.begin(...)`, and `setup` writes the task
+        into it, grants the new seats the restricted files they may read (`begin` leaves
+        each readable by nobody) and copies from `at.state` what the kind carries across.
+        `run.situate` stores what is returned; play is then a rollout of it. A suite whose
+        tasks stand on their row alone (1a, 3) is never given one."""
         ...
 
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
@@ -111,11 +136,31 @@ class Suite(Protocol):
         ...
 
     async def score(
-        self, ep: Episode, services: Services, tally: Tally, twin: Episode | None = None
-    ) -> dict[str, float]:
-        """Pure over a frozen episode; a failed episode is never scored. Every judge call
-        goes through `tally.ask`, which the caller turns into counts and stored judgments."""
+        self, ep: Episode, services: Services, tallies: dict[str, Tally], twin: Episode | None = None
+    ) -> dict[str, dict[str, float]]:
+        """Each rubric's metrics, for the rubrics `tallies` names (one `Tally` each). Pure
+        over a frozen episode; a failed episode is never scored. Every judge call goes
+        through a tally, which the caller turns into counts and stored judgments: one call
+        may fill several (`Tally.found`)."""
         ...
+
+
+def rubrics_of(suite: Suite, kind: str | None, payload: dict[str, Any]) -> list[str]:
+    """The rubrics a task row lists: its `payload["rubrics"]`, else the suite's defaults for
+    its kind. Names only: a listed name the suite has no rubric for is for whoever scores
+    to report."""
+    if (listed := payload.get("rubrics")) is not None:
+        return list(listed)
+    return [rubric for rubric, kinds in suite.rubrics.items() if kind in kinds]
+
+
+def listed_rubrics(suite: Suite, ep: Episode) -> list[str]:
+    """The rubrics `ep`'s task lists (`rubrics_of`). A situation keeps its row in
+    `state["task"]`; an episode a run set up from a row keeps the row's kind in
+    `meta["row"]` and its list, when it has one, in `meta["rubrics"]`."""
+    if task := ep.state.get("task"):
+        return rubrics_of(suite, task["kind"], task["payload"])
+    return rubrics_of(suite, ep.meta.get("row", {}).get("kind"), {k: ep.meta[k] for k in ("rubrics",) if k in ep.meta})
 
 
 async def play(suite: Suite, eps: list[Episode], turn: Turn) -> None:
@@ -145,16 +190,27 @@ class Tally:
     metrics, so a report can give the refused rate beside each metric. A metric with no
     judged item is absent, never 0.0. `judgments` holds every labelable item (question,
     evidence or a/b/context, the judge's stamp, answer or unscored reason, and replies);
-    `about` names the episode whose text was judged when it is not the one being scored."""
+    `about` names the episode whose text was judged when it is not the one being scored.
+    `stamps` holds the stamp of every judge asked, by use: what a score row says it was
+    judged by.
+
+    A rubric that reads a whole rollout records **findings** instead (`found`): several
+    from one judge call, or ones no judge was asked for. A finding is a dict with `covers`
+    ("task" or {"turn": n}), `seat`, `dimension` ("output" or "thinking"), `criterion`,
+    `value` (0, 1 or 2) or `unscored` (why it has none), `cites` and `evidence` (references,
+    not text). Its metric is `<dimension>.<criterion>`, and `rates()` gives each one's mean
+    on 0 to 1."""
 
     judged: Counter[str] = field(default_factory=Counter)
     unscored: Counter[tuple[str, str]] = field(default_factory=Counter)
     judgments: list[dict[str, Any]] = field(default_factory=list)
+    stamps: dict[str, dict[str, str]] = field(default_factory=dict)
 
     async def ask(self, metric: str, judge: Judge, *args: Any, about: str | None = None) -> Any:
         # The slot is taken before the await: judgments keep the order the items were asked
         # in, not the order the judge answered, so a stored id (`<ep_id>#<n>`) names the
         # same item when the run is re-scored.
+        self.stamps[judge.stamp["use"]] = judge.stamp
         item = judge.item(*args)
         if item:
             slot = {"metric": metric, **({"ep_id": about} if about else {}), **item}
@@ -167,6 +223,30 @@ class Tally:
             return None
         self.judged[metric] += 1
         return j.value
+
+    def found(self, findings: list[dict[str, Any]], judge: Judge | None = None, replies: list[str] | None = None,
+              by_seat: bool = False) -> None:
+        """Record findings in the order given. With `judge`, all of them came from one call
+        of it: each carries its stamp and `replies`. With none, nobody was asked: each says
+        why in `unscored` (`no_thinking`, `not_applicable`). `by_seat` keeps a metric per
+        seat (`<dimension>.<criterion>.<seat>`), for a rollout whose subject holds several."""
+        if judge:
+            self.stamps[judge.stamp["use"]] = judge.stamp
+        for finding in findings:
+            metric = ".".join([finding["dimension"], finding["criterion"], *([finding["seat"]] if by_seat else [])])
+            self.judgments.append({"metric": metric, **finding, **({"judge": judge.stamp, "replies": replies or []} if judge else {})})
+            if finding.get("unscored"):
+                self.unscored[(metric, finding["unscored"])] += 1
+            else:
+                self.judged[metric] += 1
+
+    def rates(self) -> dict[str, float]:
+        """Each finding metric's mean value on 0 to 1; a metric with no scored finding is absent."""
+        values: dict[str, list[int]] = {}
+        for j in self.judgments:
+            if "criterion" in j and not j.get("unscored"):
+                values.setdefault(j["metric"], []).append(j["value"])
+        return {metric: sum(vs) / (2 * len(vs)) for metric, vs in values.items()}
 
     def into(self, out: dict[str, float]) -> dict[str, float]:
         out |= {f"n_judged.{m}": float(n) for m, n in self.judged.items()}
@@ -283,7 +363,7 @@ def file_output(ep: Episode, actor: str, path: str) -> str:
 
 
 # Last, so suite packages can import SUBJECT, Tally and one_message from here.
-from writing_assistant.suites import style  # noqa: E402
+from writing_assistant.suites import situations, style  # noqa: E402
 from writing_assistant.suites.world import suite_1a  # noqa: E402
 
-SUITES: dict[str, Suite] = {"1a": suite_1a, "3": style.suite}
+SUITES: dict[str, Suite] = {"1a": suite_1a, "3": style.suite, "situations": situations.suite}

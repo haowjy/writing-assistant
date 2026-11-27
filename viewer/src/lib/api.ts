@@ -86,6 +86,8 @@ export type Judgment = {
   b?: string
   a_is?: string | null
   b_is?: string | null
+  /** a finding of a judge that read the whole rollout: the turns and files it cites */
+  cites?: string[]
 }
 
 export type ToolCall = {
@@ -264,3 +266,47 @@ export type CompareRun = {
 
 export const compareQuery = (task: string) =>
   queryOptions({ queryKey: ["compare", task], queryFn: () => get<CompareRun[]>("compare", { task }) })
+
+// -- a library world: its situations, their groups of rollouts, and one rollout ------------------
+
+export type WorldSummary = { name: string; split: string | null; situations: number; rollouts: number; profiles: string[] }
+
+export type WorldRollout = {
+  ep_id: string
+  status: string
+  failure: string | null
+  words: number
+  /** rubric -> what the rollout scored under it */
+  scores: Record<string, { metrics: Record<string, number>; not_scored: string | null }>
+}
+
+export type WorldGroup = {
+  group: string
+  size: number | null
+  round: string | null
+  endpoint: string | null
+  model: string | null
+  run: string | null
+  rollouts: WorldRollout[]
+}
+
+export type WorldSituation = {
+  name: string
+  suite: string
+  kind: string
+  request: string | null
+  seats: Record<string, string>
+  rubrics: string[]
+  files: string[]
+  groups: WorldGroup[]
+}
+
+export type World = WorldSummary & { profile: string; rubrics: string[]; situations: WorldSituation[] }
+
+export const worldsQuery = queryOptions({ queryKey: ["worlds"], queryFn: () => get<WorldSummary[]>("worlds", {}) })
+
+export const worldQuery = (world: string, judges?: string) =>
+  queryOptions({ queryKey: ["world", world, judges], queryFn: () => get<World>("world", { world, judges }) })
+
+export const rolloutQuery = (world: string, ep: string, judges?: string) =>
+  queryOptions({ queryKey: ["rollout", world, ep, judges], queryFn: () => get<Family>("episode", { world, ep, judges }) })

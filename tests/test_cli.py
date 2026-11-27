@@ -1,5 +1,5 @@
 """`wa-bench run`, `score` and `report` end to end over a scripted model: what reaches the
-scores file and what the report prints."""
+store's score rows and what the report prints."""
 
 import copy
 import json
@@ -10,6 +10,7 @@ from contextlib import suppress
 import pytest
 
 from writing_assistant import cli
+from writing_assistant.run import directory
 from writing_assistant.episode import store
 from writing_assistant.episode.segments import Store
 
@@ -55,7 +56,7 @@ def bench(tmp_path, monkeypatch, fake_llm):
         (tmp_path / "tasks" / "1a.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
         reply = writer if callable(writer) else lambda m, t, e: writer
         llm = fake_llm({"gemma-4-26b": [reply] * 100, "qwen3-14b-mini": [fact_judge] * 400})
-        monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+        monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
         return tmp_path / "run"
 
     return setup
@@ -66,8 +67,14 @@ def run_and_score(capsys, out, *argv):
     capsys.readouterr()
 
 
+def settled(out, profile="eval") -> dict:
+    with Store(out / "store.db", readonly=True) as stored:
+        return stored.settled(profile)
+
+
 def score_rows(out) -> list[dict]:
-    return [json.loads(line) for line in (out / "scores-eval.jsonl").read_text().splitlines()]
+    with Store(out / "store.db", readonly=True) as stored:
+        return list(stored.scores("eval").values())
 
 
 @pytest.mark.parametrize("writer", [{"text": "<think>The chapter should open on", "finish": "length"},
@@ -98,22 +105,12 @@ def test_score_where_keeps_the_scores_of_episodes_it_did_not_select(bench, capsy
     out = bench([POV_ROW, other], chapter("Mira turned the glove over."))
     run_and_score(capsys, out)
     before = {r["ep_id"] for r in score_rows(out)}
-    cli.main(["score", "--run", str(out), "--where", "task_id=pov-2"])
+    cli.main(["score", "--run", str(out), "--where", "task_id=pov-2", "--all"])
     assert {r["ep_id"] for r in score_rows(out)} == before
 
 
-def test_report_warns_about_any_scores_row_without_the_scoring_code(bench, capsys):
-    out = bench([POV_ROW], chapter("Mira turned the glove over."))
-    run_and_score(capsys, out)
-    rows = score_rows(out)
-    rows[0].pop("code", None)
-    (out / "scores-eval.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
-    cli.main(["report", "--run", str(out)])
-    assert "1 scores row written before the scoring code was stamped" in capsys.readouterr().out
-
-
 def test_rollouts_carry_their_own_metrics_and_stay_out_of_the_runs_numbers(bench, capsys):
-    """A rollout says which checkpoint it replays, so rollouts of two checkpoints are all made.
+    """A rollout says which checkpoint it replays and which group it is of, so rollouts of two checkpoints are all made.
     It has no twin: it gets its own metrics and no `net_*`, with no twin counted as missing.
     A twin's rollout is one more rollout, scored itself and the baseline of nothing. The
     report of the run's own episodes is the same with the rollouts stored beside them, which
@@ -127,7 +124,10 @@ def test_rollouts_carry_their_own_metrics_and_stay_out_of_the_runs_numbers(bench
     run_and_score(capsys, out, "--from", "pov-1~full_view~twin_swap@0", "--rollouts", "2")
     rows = {r["ep_id"]: r for r in score_rows(out)}
     assert len(rows) == 10 and "net_pov_leak" in rows["pov-1~full_view"]["metrics"]
-    for row in (rows[f"pov-1~full_view{twin}@{at}.{i}"] for twin, at in (("", 0), ("", 1), ("~twin_swap", 0)) for i in (0, 1)):
+    rolled = [r for r in rows.values() if "group" in r]
+    assert [r["ep_id"] for r in rolled] == [f"pov-1~full_view{twin}@{at}.{r['group']}.{i}" for r, (twin, at, i) in zip(
+        rolled, [(twin, at, i) for twin, at in (("", 0), ("", 1), ("~twin_swap", 0)) for i in (0, 1)])]
+    for row in rolled:
         assert row["twin"] is None and row["metrics"]["pov_leak"] == 0.0
         assert not [m for m in row["metrics"] if "twin" in m or m.startswith("net_")], row
     cli.main(["report", "--run", str(out)])
@@ -135,8 +135,9 @@ def test_rollouts_carry_their_own_metrics_and_stay_out_of_the_runs_numbers(bench
     head, _, apart = report.partition("\nrollouts, by the checkpoint each was forked from")
     assert head == before, report
     assert [g.split(":")[0] for g in apart.splitlines() if g.startswith("== ")] == [
-        "== rollout_of=pov-1~full_view@0, condition=full_view", "== rollout_of=pov-1~full_view@1, condition=full_view",
-        "== rollout_of=pov-1~full_view~twin_swap@0, condition=twin_swap"], report
+        f"== rollout_of=pov-1~full_view@0, group={rolled[0]['group']}, condition=full_view",
+        f"== rollout_of=pov-1~full_view@1, group={rolled[2]['group']}, condition=full_view",
+        f"== rollout_of=pov-1~full_view~twin_swap@0, group={rolled[0]['group']}, condition=twin_swap"], report
     assert "twin had no artefact" not in apart, report
 
 
@@ -146,7 +147,7 @@ def test_of_two_first_invocations_one_claims_the_directory_and_the_other_is_refu
     stores an episode, so the directory never holds two models' episodes under one run."""
     out = bench([POV_ROW | {"task_id": "one"}, POV_ROW | {"task_id": "two"}], "draft")
     llm = fake_llm(["draft"] * 40)
-    monkeypatch.setattr(cli, "LLMClient", lambda models: llm)
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
     both, now, seen = threading.Barrier(2), cli._now, threading.local()
 
     def together() -> str:
@@ -198,3 +199,108 @@ def test_a_collab_round_the_writer_skips_loses_its_metrics_and_keeps_the_earlier
     [scores] = score_rows(out)
     assert scores["metrics"] == scores["metrics"] | {"in_scope_rounds": 1.0, "out_of_scope_edits": 0.0,
                                                      "n_no_output.empty_output": 1.0}, scores
+
+
+def test_re_scoring_a_stored_run_reproduces_its_rows(bench, capsys):
+    out = bench([POV_ROW], lambda m, t, e: chapter("Orin is the heir, Mira thought." if "heir" in _last_user(m)
+                                                   else "Mira turned the glove over."))
+    run_and_score(capsys, out)
+    with Store(out / "store.db", readonly=True) as stored:
+        before, items = stored.scores("eval"), stored.judgments("eval")
+    cli.main(["score", "--run", str(out), "--all"])
+    with Store(out / "store.db", readonly=True) as stored:
+        after = stored.scores("eval")
+        assert stored.judgments("eval") == items and len(items) > 0
+    assert all(after[ep]["scored_at"] > row["scored_at"] for ep, row in before.items())
+    assert [r | {"scored_at": ""} for r in after.values()] == [r | {"scored_at": ""} for r in before.values()]
+    # Under a profile that names no judge, the rows scored without one stand: a second score adds none.
+    counts = []
+    for _ in range(2):
+        cli.main(["score", "--run", str(out), "--judges", "none"])
+        with Store(out / "store.db", readonly=True) as stored:
+            counts.append(stored.db.execute("SELECT count(*) FROM scores WHERE profile LIKE 'none%'").fetchone()[0])
+    assert counts[0] == counts[1] > 0
+
+
+def test_a_score_killed_between_episodes_leaves_the_earlier_rows_and_no_partial_one(bench, capsys, monkeypatch, fake_llm, killed):
+    other = copy.deepcopy(POV_ROW) | {"task_id": "pov-2"}
+    other["payload"]["permitted_probes"] = ["Does the chapter mention the wind?"]
+    out = bench([POV_ROW, other], chapter("Mira turned the glove over."))
+    run_and_score(capsys, out, "--no-score")
+
+    def dies_at_the_second_task(messages, tools, endpoint):
+        if "wind" in _last_user(messages).split("Question:")[1]:
+            raise killed.Killed
+        return fact_judge(messages, tools, endpoint)
+
+    llm = fake_llm({"qwen3-14b-mini": [dies_at_the_second_task] * 400})
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
+    killed("score", "--run", str(out), "--concurrency", "1")
+    with Store(out / "store.db", readonly=True) as stored:
+        rows, items = stored.scores("eval"), stored.judgments("eval")
+    assert {ep for ep, row in rows.items() if "metrics" in row} == {"pov-1~full_view", "pov-1~pov_view"}
+    assert not {ep for ep in rows if ep.startswith("pov-2") and "baseline_of" not in rows[ep]}
+    assert {j["scored"] for j in items} == {"pov-1~full_view", "pov-1~pov_view"}
+    assert all(sum(v for k, v in rows[ep]["metrics"].items() if k.startswith(("n_judged.", "n_unscored.")))
+               == sum(j["scored"] == ep for j in items) for ep in ("pov-1~full_view", "pov-1~pov_view"))
+
+
+def test_two_runs_rolling_out_one_checkpoint_make_two_groups_whose_members_never_share_a_name(bench, capsys, tmp_path):
+    """And one run rolling a checkpoint out in two rounds makes two groups. The group is in
+    each member's name, so the rollouts of all of them can meet in one store."""
+    out = bench([POV_ROW], chapter("Mira turned the glove over."))
+    run_and_score(capsys, out)
+    source = ["--from", "pov-1~full_view@0", "--rollouts", "2"]
+    for other in ("a", "b"):
+        run_and_score(capsys, tmp_path / other, *source, "--from-run", str(out))
+    run_and_score(capsys, tmp_path / "a", *source, "--from-run", str(out), "--round", "1")
+    a, b = settled(tmp_path / "a"), settled(tmp_path / "b")
+    assert len(a) == 2 and len(b) == 1 and not a.keys() & b.keys()
+    assert all(g == {"size": 2, "sources": {"pov-1~full_view": 2}, "settled": True} for g in (a | b).values())
+    with Store(tmp_path / "a" / "store.db", readonly=True) as one, Store(tmp_path / "b" / "store.db", readonly=True) as two, \
+            Store(tmp_path / "both.db") as both:
+        one.copy(one.names(), both)
+        two.copy(two.names(), both)
+        assert len(both.names()) == 6 and both.settled("eval") == a | b
+
+
+def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_its_size(bench, capsys, monkeypatch, fake_llm, killed):
+    """A run killed while it plays a group leaves it short: one member closed, two open, one
+    never made. The group is not settled, though the base's half is whole. The same command
+    again works the group id out again, scores the member that had closed (play does not
+    score: the command does, after it), continues the open members and makes only the
+    missing one. No judge is named for the use these rows need (`unavailable`), which the
+    same profile would say again: such a row is final, and the group settles."""
+    out = bench([POV_ROW], chapter("Mira turned the glove over."))
+    judges = ["--judges", "none"]
+    run_and_score(capsys, out, *judges)
+    run_and_score(capsys, out, "--from", "pov-1~full_view@0", "--rollouts", "4", *judges)
+    [(group, whole)] = settled(out, "none").items()
+    assert whole == {"size": 4, "sources": {"pov-1~full_view": 4}, "settled": True}
+    with Store(out / "store.db", readonly=True) as stored:
+        assert all(row["metrics"]["n_unscored.pov_leak.unavailable"] for row in stored.scores("none").values() if "group" in row)
+
+    def dies_at_its_second_call(m, t, e, calls=iter(range(100))):
+        if next(calls) == 1:
+            raise killed.Killed
+        return chapter("Mira waited.")
+
+    llm = fake_llm({"gemma-4-26b": [dies_at_its_second_call] * 100})
+    monkeypatch.setattr(directory, "LLMClient", lambda models: llm)
+    twin, names = "pov-1~full_view~twin_swap", [f"pov-1~full_view~twin_swap@0.{group}.{i}" for i in range(4)]
+    again = ["run", "--suite", "1a", "--endpoint", "gemma-4-26b", "--out", str(out), "--from", f"{twin}@0", "--concurrency", "1", *judges]
+    killed(*again, "--rollouts", "4")
+    with Store(out / "store.db", readonly=True) as stored:
+        assert stored.groups() == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 1}, "played": False}}
+        assert (stored.names(closed=False), stored.rollouts(twin, 0, group)) == (names[1:3], names[:3])
+    capsys.readouterr()
+    cli.main([*again, "--rollouts", "4"])
+    assert ("1 rollouts of pov-1~full_view~twin_swap@0 to run (1 tasks already stored, 2 open episodes to continue, "
+            "1 closed episodes to score first)") in capsys.readouterr().out
+    assert settled(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 4}, "settled": True}}
+    with Store(out / "store.db", readonly=True) as stored:
+        members = [stored.load(name) for name in stored.rollouts(twin, 0)]
+    assert [ep.ep_id for ep in members] == names
+    assert [(ep.group, ep.meta["group"], ep.meta["group_size"], ep.meta["round"]) for ep in members] == [(group, group, 4, "0")] * 4
+    with pytest.raises(SystemExit, match="a group's size is fixed"):
+        cli.main([*again, "--rollouts", "2"])

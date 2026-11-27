@@ -3,40 +3,57 @@
 A metric whose judge has not passed its human-label gate (`[gates] passed` in models.toml,
 `Suite.judged_by`) prints marked "ungated" in a run's own report and is left out of a
 `--baseline` comparison (DECISIONS #12): looking at it calibrates the gate, comparing
-models on it would not be a result."""
+models on it would not be a result. `--baseline` is also refused when a cast name other than
+`subject` that both runs' episodes used was played by different models: the two subjects
+then met different partners, and the difference is not the subjects'."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import sqlite3
+import sys
 from collections import Counter, defaultdict
+from collections.abc import Callable, Iterator
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
-from writing_assistant.cli import ERRORS_FILE, episode_row
-from writing_assistant.episode.segments import closed_episodes, open_episodes
+from writing_assistant.cli.common import episode_row, played_here
+from writing_assistant.episode.library import Library
+from writing_assistant.episode.segments import Store, closed_episodes, judging, open_episodes, read_run, split_judging
 from writing_assistant.episode.store import RUN_FILE, matches, read_jsonl
 from writing_assistant.llm.client import LLMClient
-from writing_assistant.suites import SUITES, mean
+from writing_assistant.run import ERRORS_FILE
+from writing_assistant.suites import SUBJECT, SUITES, listed_rubrics, mean
 
 # The five metrics that get a familiarity gap column (benchmark.md, "The Corpus").
 FAMILIARITY_GAP = ("discriminator_fool_rate", "verifier_match", "pairwise_craft_win", "score_100_endings", "restraint_score")
 
 
-def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
-               rollouts: bool = False) -> tuple[dict, dict, Counter]:
-    """(run.json, groups, scoring codes): groups maps a key (the episode's values for `keys`)
-    to {metric: [values]} plus counts; the codes count the scores rows read per scoring code
-    (None: a row written before rows were stamped). The run's task episodes, or with
+class Reader(Protocol):
+    """What a report is read from: `read(fn, empty)` gives `fn(store)` of a run directory's
+    store or a world's, opened read-only, or `empty` when there is no store yet."""
+
+    def __call__[T](self, read: Callable[[Store], T], empty: T) -> T: ...
+
+
+def _summarise(read: Reader, scored_under: str, keys: list[str], where: str | None,
+               rollouts: bool = False, suite: str | None = None) -> tuple[dict, Counter]:
+    """(groups, scoring codes), reading the rows of the judging `scored_under`: groups maps a key (the episode's values for `keys`)
+    to {metric: [values]} plus counts; the codes count the score rows read per scoring code.
+    The store's task episodes, or with
     `rollouts` its rollouts instead: the two are never summed. Twins are baselines inside
     their parent's net_* and are left out; `condition` is matched and grouped on like a row
-    field, and so is a rollout's `rollout_of`."""
-    info = json.loads((run_dir / RUN_FILE).read_text())
-    episodes = [ep for ep in closed_episodes(run_dir) if ep.baseline_of is None and (ep.rollout_of is not None) == rollouts]
-    scores = {r["ep_id"]: r for r in read_jsonl(run_dir / f"scores-{profile}.jsonl")}
+    field, and so is a rollout's `rollout_of`. `suite` keeps to one suite's episodes: a
+    world may hold situations of several."""
+    episodes = [ep for ep in read(lambda store: list(store.episodes()), [])
+                if ep.baseline_of is None and (ep.rollout_of is not None) == rollouts and suite in (None, ep.suite)]
+    scores = read(lambda store: store.scores(scored_under), {})
     groups: dict[tuple, dict[str, Any]] = defaultdict(lambda: {"values": defaultdict(list), "unflagged": defaultdict(list),
-                                                              "familiarity": defaultdict(list), "counts": Counter()})
+                                                              "familiarity": defaultdict(list), "counts": Counter(),
+                                                              "judges": defaultdict(set)})
     codes: Counter = Counter()
     for ep in episodes:
         row = episode_row(ep)
@@ -50,7 +67,9 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
         if sc is None:
             g["counts"]["unscored:missing"] += 1
             continue
-        codes[sc.get("code")] += 1
+        codes[sc["code"]] += 1
+        for stamp in sc.get("judges", []):
+            g["judges"][stamp["use"]].add(f"{stamp['model']} ({stamp['endpoint']}, {stamp['prompt']})")
         if "error" in sc:
             g["counts"]["unscored:scorer_error"] += 1
             continue
@@ -65,7 +84,18 @@ def _summarise(run_dir: Path, profile: str, keys: list[str], where: str | None,
                     g["unflagged"][name].append(value)
                 if name in FAMILIARITY_GAP and row.get("familiarity") is not None:
                     g["familiarity"][name].append((float(row["familiarity"]), value))
-    return info, groups, codes
+    return groups, codes
+
+
+def other_cast(run_dir: Path) -> dict[str, set[str]]:
+    """Cast name -> who played it (`endpoint (model)`, as each episode was stamped) over the
+    run's closed episodes, for the names their seats use other than the subject's."""
+    played: dict[str, set[str]] = defaultdict(set)
+    for ep in closed_episodes(run_dir):
+        for name in set(ep.actors.values()) - {SUBJECT}:
+            if stamp := ep.meta.get("cast", {}).get(name):
+                played[name].add(f"{stamp['endpoint']} ({stamp['model']})")
+    return played
 
 
 def _fmt(x: float | None) -> str:
@@ -79,29 +109,33 @@ def guardrails_line(path: Path) -> str:
 
 
 def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None, baseline: Path | None,
-                 passed: set[str]) -> dict[str, Any]:
-    """A run's report as data: `header` lines, then one entry per group with its counts, the
+                 passed: set[str], rubric: str = "") -> dict[str, Any]:
+    """A run's report under one judging (the judge profile `judges` and `rubric`) as data: `header` lines, then one entry per group with its counts, the
     episodes missing an artefact, the metric rows (numbers unformatted, `refused` None when no
     item was judged), the ungated metrics left out of a baseline comparison and the metrics
     every item of which went unscored. `groups` are the run's task episodes and its headline
     numbers; `rollouts` holds the same entries for the rollouts stored beside them, grouped
-    first by the checkpoint they were forked from. `cmd_report` prints it; `wa-bench view`
-    renders it."""
-    info, groups, scored_by = _summarise(run_dir, judges, keys, where)
+    first by the checkpoint they were forked from and the group they were made in, each
+    with `group`: its size, how many of this checkpoint's members are closed with a final
+    row, and whether the group is settled (`Store.settled`). An entry's `mixed` names the
+    judge uses whose rows were scored by more than one judge: a profile is a name in one
+    machine's models.toml, and the metrics such a use judges are then no one judge's.
+    `cmd_report` prints it; `wa-bench view` renders it."""
+    name = judging(judges, rubric)
+    read, read_base = partial(read_run, run_dir), partial(read_run, baseline) if baseline else None
+    info = json.loads((run_dir / RUN_FILE).read_text())
+    groups, scored_by = _summarise(read, name, keys, where)
     suite = SUITES[info["suite"]]
     codes = sorted({i["code"] for i in info.get("invocations", [])} or {info.get("code", "unknown")})
     header = [f"run {run_dir.name}: suite {info['suite']}, endpoint {info['endpoint']} ({info['model']}), "
               f"driver {info['driver']}{' (direct: reported apart from harness runs)' if info.get('reported_apart') else ''}, "
-              f"split {info['split']}, played by code {', '.join(codes)}, judges {judges}"]
+              f"split {info['split']}, played by code {', '.join(codes)}, judges {judges}"]  # the rubric is each block's
     if still_open := len(open_episodes(run_dir)):
         header.append(f"{'1 episode is' if still_open == 1 else f'{still_open} episodes are'} open and in no number below: "
                       "a run is still playing, or was killed. Running the same `wa-bench run` command again continues "
                       "each from its last saved turn")
-    if stamped := sorted(c for c in scored_by if c):
-        header.append(f"scored by code {', '.join(stamped)}")
-    if old := scored_by[None]:
-        header.append(f"{old} scores row{'s' if old > 1 else ''} written before the scoring code was stamped (before the "
-                      f"artefact and twin rules): re-score with `wa-bench score --run {run_dir} --judges {judges}`")
+    if scored_by:
+        header.append(f"scored by code {', '.join(sorted(scored_by))}")
     if spent := info.get("spent_usd"):
         header.append(f"spent: ${sum(spent.values()):.4f} ({', '.join(f'{k} ${v:.4f}' for k, v in spent.items())}); "
                       "counts only the chat-call cost a host reports (DeepInfra's estimated_cost): embedding calls "
@@ -112,16 +146,69 @@ def build_report(run_dir: Path, judges: str, keys: list[str], where: str | None,
         header.append(guardrails_line(run_dir / "guardrails.json"))
     if errors := read_jsonl(run_dir / ERRORS_FILE):
         header.append(f"task errors: {len(errors)} (see {ERRORS_FILE})")
-    return {"info": info, "header": header,
+    return {"info": info, "header": header, "rubric": rubric, "rollouts": _rollouts(read, suite, judges, name, keys, where, passed, read_base),
             "groups": _entries(suite, judges, keys, groups, passed,
-                               _summarise(baseline, judges, keys, where)[1] if baseline else None),
-            "rollouts": _entries(suite, judges, ["rollout_of", *keys],
-                                 _summarise(run_dir, judges, ["rollout_of", *keys], where, rollouts=True)[1], passed,
-                                 _summarise(baseline, judges, ["rollout_of", *keys], where, rollouts=True)[1] if baseline else None)}
+                               _summarise(read_base, name, keys, where)[0] if read_base else None)}
 
 
-def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set[str], base: dict | None) -> list[dict[str, Any]]:
-    """`build_report`'s entry for each of `_summarise`'s groups; `base` is the baseline run's groups."""
+def _rollouts(read: Reader, suite: Any, judges: str, name: str, keys: list[str], where: str | None, passed: set[str],
+              read_base: Reader | None = None, only: str | None = None) -> list[dict[str, Any]]:
+    """A store's rollouts under the judging `name`, as `build_report`'s `rollouts` entries;
+    `only` keeps to the rollouts of the suite of that name."""
+    by = ["rollout_of", "group", *keys]
+    # A group is one run's, so the baseline's rollouts of a checkpoint are matched whatever group they are in.
+    rollouts = _entries(suite, judges, by, _summarise(read, name, by, where, rollouts=True, suite=only)[0], passed,
+                        _summarise(read_base, name, ["rollout_of", *keys], where, rollouts=True)[0] if read_base else None,
+                        base_keys=["rollout_of", *keys])
+    stored = read(lambda store: store.settled(name), {})
+    for entry in rollouts:
+        g = stored[entry["key"]["group"]]
+        entry["group"] = {"size": g["size"], "final": g["sources"][entry["key"]["rollout_of"].rpartition("@")[0]],
+                          "settled": g["settled"]}
+    return rollouts
+
+
+def build_world_report(lib: Library, world: str, judges: str, keys: list[str], where: str | None, passed: set[str],
+                       rubric: str = "") -> dict[str, Any]:
+    """A library world's report under one judging: `build_report`'s `header` and `rollouts`.
+    A world holds no task episode played in place, so it has no `groups`; each entry also
+    says who played its group (`played_by`), since one world holds many runs' rollouts."""
+    name = judging(judges, rubric)
+
+    def read[T](fn: Callable[[Store], T], empty: T) -> T:
+        with lib.open(world) as store:
+            return fn(store)
+
+    def seen(store: Store) -> tuple[list[str], dict[str, set[str]], dict[str, set[str]], dict[str, list[str]], Counter]:
+        suites: dict[str, set[str]] = defaultdict(set)  # suite -> its rollouts
+        played: dict[str, set[str]] = defaultdict(set)  # group -> who played it
+        lists: dict[str, list[str]] = {}  # `<situation>@<n>` -> the rubrics its row lists
+        for ep in store.episodes():
+            suites[ep.suite].add(ep.ep_id)
+            if ep.group:
+                played[ep.group].add(f"{ep.meta.get('endpoint')} ({ep.meta.get('model')}), run {ep.meta.get('run')}")
+                lists.setdefault("{}@{}".format(*ep.rollout_of), listed_rubrics(SUITES[ep.suite], ep))
+        return store.situations(), suites, played, lists, Counter(row["code"] for row in store.scores(name).values())
+
+    situations, suites, played, lists, codes = read(seen, ([], {}, {}, {}, Counter()))
+    header = [f"world {world}: {len(situations)} situations, {sum(map(len, suites.values()))} closed rollouts in "
+              f"{len(played)} groups, judges {judges}"]
+    if codes:
+        header.append(f"scored by code {', '.join(sorted(codes))}")
+    # Under a rubric a situation does not list, its groups have no row and are owed none: they are left out.
+    rollouts = [entry for suite in sorted(suites)
+                for entry in _rollouts(read, SUITES[suite], judges, name, keys, where, passed, only=suite)
+                if not rubric or rubric in lists[entry["key"]["rollout_of"]]
+                or entry["counts"].get("unscored:missing", 0) < sum(v for k, v in entry["counts"].items() if k.startswith("status:"))]
+    for entry in rollouts:
+        entry["played_by"] = sorted(played[entry["key"]["group"]])
+    return {"header": header, "rubric": rubric, "rollouts": rollouts, "groups": []}
+
+
+def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set[str], base: dict | None,
+             base_keys: list[str] | None = None) -> list[dict[str, Any]]:
+    """`build_report`'s entry for each of `_summarise`'s groups; `base` is the baseline run's
+    groups, keyed by `base_keys` when those are fewer than `keys`."""
     out = []
     for key in sorted(groups):
         g = groups[key]
@@ -131,7 +218,8 @@ def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set
                    if (m := {k.removeprefix(prefix): int(v) for k, v in sorted(g["counts"].items()) if k.startswith(prefix)})}
         rows, left_out = [], []
         for name in sorted(g["values"]):
-            use = suite.judged_by.get(name)
+            # A finding's metric may end in the seat it is about: `output.continuity.clerk`.
+            use = suite.judged_by.get(name) or suite.judged_by.get(name.rpartition(".")[0])
             ungated = bool(use) and f"{judges}.{use}" not in passed
             if ungated and base is not None:  # an ungated number never enters a comparison
                 left_out.append(name)
@@ -144,7 +232,8 @@ def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set
             if other := {k: int(v) for k, v in unscored.items() if k != "refusal"}:
                 notes.append(f"unscored {other}")
             if base is not None:
-                b = mean(base.get(key, {}).get("values", {}).get(name, []))
+                theirs = tuple(v for k, v in zip(keys, key, strict=True) if k in (base_keys or keys))
+                b = mean(base.get(theirs, {}).get("values", {}).get(name, []))
                 notes.append(f"Δ {_fmt(mean(vals) - b) if b is not None else '-'} vs baseline")
             fam = sorted(g["familiarity"].get(name, []))
             if len(fam) >= 3:
@@ -154,37 +243,103 @@ def _entries(suite: Any, judges: str, keys: list[str], groups: dict, passed: set
             rows.append({"metric": name, "mean": mean(vals), "n": len(vals), "unflagged": mean(g["unflagged"].get(name, [])),
                          "refused": unscored.get("refusal", 0) / total if total else None, "ungated": ungated, "notes": notes})
         # metrics every item of which went unscored: absent from the rows, never 0.0
-        absent = [{"metric": k.split(".")[1], "reason": k.split(".")[2], "n": int(g["counts"][k])}
-                  for k in sorted(g["counts"]) if k.startswith("n_unscored.") and k.split(".")[1] not in g["values"]]
+        # (a rubric's metric names hold a dot, `output.<criterion>`: the reason is what follows the last one)
+        absent = [{"metric": metric, "reason": reason, "n": int(g["counts"][k])}
+                  for k in sorted(g["counts"]) if k.startswith("n_unscored.")
+                  for metric, reason in [k.removeprefix("n_unscored.").rsplit(".", 1)] if metric not in g["values"]]
         out.append({"key": dict(zip(keys, key, strict=True)),
                     "counts": {k: int(v) for k, v in sorted(g["counts"].items()) if not k.startswith("n_")},
-                    "missing": missing, "rows": rows, "left_out": left_out, "absent": absent})
+                    "missing": missing, "rows": rows, "left_out": left_out, "absent": absent,
+                    "mixed": {use: sorted(by) for use, by in sorted(g["judges"].items()) if len(by) > 1}})
     return out
 
 
 def cmd_report(args: argparse.Namespace) -> int:
-    run_dir = Path(args.run)
-    if not (run_dir / RUN_FILE).exists() and (run_dir / "guardrails.json").exists():
-        print(guardrails_line(run_dir / "guardrails.json"))  # a `wa-bench guardrails` directory
-        return 0
     group_by = [g for g in (args.group_by or "").split(",") if g]
     # Conditions are arms (full_view and pov_view measure different things): never averaged.
     keys = group_by + ([] if "condition" in group_by else ["condition"])
     passed = set(LLMClient(args.models).config.get("gates", {}).get("passed", []))
-    report = build_report(run_dir, args.judges, keys, args.where, Path(args.baseline) if args.baseline else None, passed)
-    print("\n".join(report["header"]))
-    for g in report["groups"]:
-        _print_group(g)
-    if report["rollouts"]:
-        print("\nrollouts, by the checkpoint each was forked from; none of them is in the groups above")
-        for g in report["rollouts"]:
-            _print_group(g)
+    if args.world:
+        return _report_world(args, keys, passed)
+    run_dir = Path(args.run)
+    if not (run_dir / RUN_FILE).exists() and (run_dir / "guardrails.json").exists():
+        print(guardrails_line(run_dir / "guardrails.json"))  # a `wa-bench guardrails` directory
+        return 0
+    played_here(run_dir)
+    if args.baseline:
+        ours, theirs = other_cast(run_dir), other_cast(Path(args.baseline))
+        if differ := {name: (ours[name], theirs[name]) for name in ours.keys() & theirs.keys() if ours[name] != theirs[name]}:
+            sys.exit(f"{run_dir} and {args.baseline} were played with different casts: " + "; ".join(
+                f"{name} is {', '.join(sorted(a))} here and {', '.join(sorted(b))} there" for name, (a, b) in sorted(differ.items()))
+                + ". The other seats differ, so the runs do not compare their subjects")
+    try:
+        rubrics = [args.rubric] if args.rubric is not None else rubrics_scored(run_dir, args.judges)
+        judging(args.judges, rubrics[0])
+    except ValueError as e:
+        sys.exit(str(e))
+    _print_reports(build_report(run_dir, args.judges, keys, args.where, Path(args.baseline) if args.baseline else None, passed,
+                                rubric) for rubric in rubrics)
     return 0
+
+
+def _report_world(args: argparse.Namespace, keys: list[str], passed: set[str]) -> int:
+    """`report --world NAME --judges P [--rubric R]`: what `report --run` says of a run
+    directory's rollouts, read from the world file, where `score --world` puts the rows."""
+    if args.baseline:
+        sys.exit("--baseline compares two run directories; a world's groups are compared by reading them side by side "
+                 "(each says who played it)")
+    lib = Library()
+    try:
+        with lib.open(args.world) as store:
+            every, rubrics = store.judgings(), [split_judging(name)[1] for name in store.judgings(args.judges)]
+        if args.rubric is not None:
+            rubrics = [args.rubric]
+        judging(args.judges, (rubrics or [""])[0])
+        reports = [build_world_report(lib, args.world, args.judges, keys, args.where, passed, rubric) for rubric in rubrics or [""]]
+    except (LookupError, ValueError, sqlite3.Error) as e:
+        sys.exit(f"--world {args.world}: {e}")
+    _print_reports(iter(reports))
+    if not reports[0]["rollouts"]:
+        print(f"\nno closed rollout in the world yet; `wa-bench run --world {args.world} --endpoint E` plays its situations")
+    elif not rubrics:
+        print(f"\nno row under the judge profile {args.judges!r}, so every rollout above is unscored. "
+              + (f"The world has rows under {', '.join(every)}" if every else "Nothing in the world is scored yet")
+              + f"; `wa-bench score --world {args.world} --judges {args.judges}` scores it under this profile")
+    return 0
+
+
+def _print_reports(reports: Iterator[dict[str, Any]]) -> None:
+    """One report per rubric, in order: the first one's header, then each rubric's blocks."""
+    for n, report in enumerate(reports):
+        if n == 0:
+            print("\n".join(report["header"]))
+        if rubric := report["rubric"]:  # a suite's one unnamed rubric needs no heading
+            print(f"\n#### rubric {rubric}")
+        for g in report["groups"]:
+            _print_group(g)
+        if report["rollouts"]:
+            print("\nrollouts, by the checkpoint each was forked from and the group it was made in"
+                  + ("; none of them is in the groups above" if "info" in report else ""))
+            for g in report["rollouts"]:
+                _print_group(g)
+
+
+def rubrics_scored(run_dir: Path, judges: str) -> list[str]:
+    """The rubrics a run has rows for under a judge profile, the unnamed one first; the
+    unnamed one alone when it has none, so a run nobody scored still reports its episodes."""
+    return [split_judging(name)[1] for name in read_run(run_dir, lambda store: store.judgings(judges), [])] or [""]
 
 
 def _print_group(g: dict[str, Any]) -> None:
     label = ", ".join(f"{k}={v}" for k, v in g["key"].items())
     print(f"\n== {label}: " + ", ".join(f"{k} {v}" for k, v in g["counts"].items()))
+    if group := g.get("group"):
+        print(f"  group of {group['size']} per episode: {group['final']} closed with a final row here; "
+              + ("settled" if group["settled"] else "not settled"))
+    for who in g.get("played_by", []):
+        print(f"  played by {who}")
+    for use, by in g["mixed"].items():
+        print(f"  rows scored by {len(by)} different {use} judges ({'; '.join(by)}): the metrics it judges mix them")
     for what, missing in g["missing"].items():
         print(f"  {what}: " + ", ".join(f"{reason} {n}" for reason, n in missing.items()))
     print(f"  {'metric':40} {'mean':>8} {'n':>4} {'w/o flag':>8} {'refused':>8}  notes")

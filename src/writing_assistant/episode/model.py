@@ -10,6 +10,9 @@ Conventions other packages rely on:
   the listed actors (the longest matching key wins); uncovered paths are open to everyone.
 - `state["system_prompts"]`: `{actor: prompt}`, read by drivers at `open()`.
 - An event's `data["redacted"]`, when present, is what a `redacted` perceiver sees.
+- `rollout_evidence(ep, seat)` is what a judge is given of a stored rollout: one seat's
+  turns (what it heard, its calls, thinking, results, reply and file changes) with the whole
+  record beside them. It reads the loaded episode and nothing else.
 - Who wrote a text is on the record: a `deliver` event's message and a file's content before
   its first `file_write` came from the benchmark; `file_write` events and `tool` events
   carry the actor that caused them.
@@ -106,13 +109,16 @@ class Episode:
     # (ep_id, turn checkpoint) of the stored episode this one replays from: set by `rollout()`.
     # Readers keep rollouts apart from a run's task episodes.
     rollout_of: tuple[str, int] | None = None
+    # The group a rollout is a member of: the rollouts one run made of one checkpoint in one
+    # round (the id is `run.group_id`'s). None on anything that is not a rollout.
+    group: str | None = None
     condition: str = "base"
     meta: dict[str, Any] = field(default_factory=dict)
     events: list[Event] = field(default_factory=list)
     files: dict[str, str] = field(default_factory=dict)
     file_revs: dict[str, int] = field(default_factory=dict)
     state: dict[str, Any] = field(default_factory=dict)
-    actors: dict[str, str] = field(default_factory=dict)  # actor -> endpoint name or "scripted"
+    actors: dict[str, str] = field(default_factory=dict)  # seat -> "scripted" or a cast name (the run maps it to an endpoint)
     actor_tools: dict[str, list[str]] = field(default_factory=dict)
     calls: list[CallRecord] = field(default_factory=list)
     status: Literal["running", "completed", "truncated", "failed"] = "running"
@@ -232,14 +238,31 @@ class Episode:
             _deep_merge(child.state, copy.deepcopy(swap.get("state", {})))
         return child
 
-    def rollout(self, at: int, i: int) -> Episode:
-        """Rollout `i` of this episode as the store loaded it at its turn checkpoint `at`: a
-        fork under the same condition to play on from there, named `<ep_id>@<at>.<i>`, so
-        rollouts of different checkpoints never share a name and each samples with its own
-        seed. It has no twin and is scored on its own metrics only. A twin's rollout is the
-        same thing: it replays the control checkpoint and is the baseline of nothing."""
+    def begin(self, ep_id: str, task_id: str, suite: str) -> Episode:
+        """A new episode on this one's files: what a new task set up at this position (a
+        closed, stored episode) starts as. It takes the files, their revisions and the
+        split, and nothing of the session: no events, calls, actors or meta, so its seats
+        start new conversations whatever they are named. It is stored after this episode's
+        start (`parent`), so its own start holds only the files this episode's play changed.
+
+        Its state is empty but for the file access list, kept with every restricted path
+        readable by nobody: the list names the old task's seats, and a path it does not
+        cover is open to everyone, so dropping it would open every restricted file to every
+        new seat. The new task's `setup` grants its seats what they may read."""
+        closed = {path: [] for path in self.state.get("file_acl", {})}
+        return Episode(ep_id=ep_id, task_id=task_id, suite=suite, split=self.split, parent=(self.seg, 0, 0),
+                       files=dict(self.files), file_revs=dict(self.file_revs),
+                       state={"file_acl": closed} if closed else {})
+
+    def rollout(self, at: int, i: int, group: str) -> Episode:
+        """Member `i` of the group `group` of rollouts of this episode as the store loaded it
+        at its turn checkpoint `at`: a fork under the same condition to play on from there,
+        named `<ep_id>@<at>.<group>.<i>`. A group belongs to one run, so two runs' rollouts
+        of one checkpoint never share a name, and each samples with its own seed. It has no
+        twin and is scored on its own metrics only. A twin's rollout is the same thing: it
+        replays the control checkpoint and is the baseline of nothing."""
         child = self.fork(self.condition)
-        child.ep_id, child.rollout_of = f"{self.ep_id}@{at}.{i}", (self.ep_id, at)
+        child.ep_id, child.rollout_of, child.group = f"{self.ep_id}@{at}.{group}.{i}", (self.ep_id, at), group
         return child
 
     def fail(self, reason: str) -> None:
@@ -264,6 +287,95 @@ class Episode:
                 return
         if self.status == "running":
             self.status = "completed"
+
+
+def files_at(ep: Episode, n_events: int) -> dict[str, list]:
+    """path -> [text, rev] as the episode's files stood when it held `n_events` events: its
+    files now, with every later `file_write` undone."""
+    files = {path: [text, ep.file_revs[path]] for path, text in ep.files.items()}
+    for event in reversed(ep.events[n_events:]):
+        if event.kind == "file_write":
+            data = event.data
+            if data["before"] is None:
+                del files[data["path"]]
+            else:
+                files[data["path"]] = [data["before"], data["rev"] - 1]
+    return files
+
+
+# -- what a judge is given -------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Turn:
+    """One delivery to a seat and what the seat did with it."""
+
+    turn_idx: int
+    inherited: bool  # played before this rollout was forked: context, never scored
+    heard: str  # what the seat was delivered
+    thinking: str | None  # the reasoning recorded for the turn's calls; None when the host returned none
+    calls: list[CallRecord]  # every call of the turn, with its tool calls
+    results: list[dict[str, Any]]  # each tool call's recorded result, in order
+    reply: str
+    changes: list[tuple[str, int, str | None, str]]  # (path, revision, before, after) of each file the seat wrote this turn
+
+
+@dataclass(frozen=True)
+class RolloutEvidence:
+    """A stored rollout as one seat's judge is given it: that seat's view (`brief`, `turns`,
+    `visible`) and the whole record beside it (`events`, `state`, the files)."""
+
+    seat: str
+    brief: str  # the seat's system prompt
+    task: dict[str, Any]  # the task row
+    turns: list[Turn]  # the whole transcript as this seat saw it, in order
+    files_at_start: dict[str, tuple[str, int]]  # path -> (text, revision) when the rollout began
+    files_at_end: dict[str, tuple[str, int]]
+    visible: set[str]  # the paths this seat could read
+    events: list[Event]  # the whole log, every seat's lines and world events, each with who could perceive it
+    state: dict[str, Any]  # the suite's state as the rollout ended
+    status: str
+    failure_reason: str | None
+    thinking: str | None  # what the recorded thinking of this seat's endpoint is (`trace`, `summary`), when its cast stamp says
+
+
+def rollout_evidence(ep: Episode, seat: str) -> RolloutEvidence:
+    """Everything a judge's prompt for `seat` is built from, read from the episode as a store
+    loaded it and from nothing else, so a finding can be checked or made again from the
+    record. Each piece and where it comes from:
+
+    - brief, task: `state["system_prompts"][seat]`, `state["task"]` (what `situate` kept).
+    - a turn: one `deliver` event to the seat. Its calls are the ones stamped with the seat
+      and the turn; its results the seat's `tool` events, and its changes the seat's
+      `file_write` events, up to the next delivery to anyone. So a file the step wrote for
+      a scripted seat belongs to no turn.
+    - inherited: the delivery is in the part of the log this episode took from its parent
+      (`Episode.parent`). A rollout of a situation has none; one forked in the middle of a
+      conversation has its source's first turns, and `files_at_start` is then the files at
+      the fork, those turns' writes included.
+    - visible: the file access list as the episode ended.
+    - thinking: the cast stamp of the seat's cast name (`meta["cast"]`, from models.toml)."""
+    began = ep.parent[1] if ep.parent else 0
+    delivered = [e for e in ep.events if e.kind == "deliver"]
+    turns = []
+    for n, sent in enumerate(delivered):
+        if sent.actor != seat:
+            continue
+        until = delivered[n + 1].idx if n + 1 < len(delivered) else len(ep.events)
+        mine = [e for e in ep.events[sent.idx:until] if e.actor == seat]
+        calls = [c for c in ep.calls if c.actor == seat and c.turn_idx == sent.data["turn_idx"]]
+        turns.append(Turn(
+            turn_idx=sent.data["turn_idx"], inherited=sent.idx < began, heard=sent.data["message"],
+            thinking="\n\n".join(c.reasoning for c in calls if c.reasoning) or None,
+            calls=calls, results=[e.data["result"] for e in mine if e.kind == "tool"],
+            reply=calls[-1].response if calls else "",
+            changes=[(e.data["path"], e.data["rev"], e.data["before"], e.data["after"]) for e in mine if e.kind == "file_write"]))
+    return RolloutEvidence(
+        seat=seat, brief=ep.state.get("system_prompts", {}).get(seat, ""), task=ep.state.get("task", {}), turns=turns,
+        files_at_start={path: (text, rev) for path, (text, rev) in files_at(ep, began).items()},
+        files_at_end={path: (text, ep.file_revs[path]) for path, text in ep.files.items()},
+        visible={path for path in ep.files if ep.readable(seat, path)},
+        events=list(ep.events), state=ep.state, status=ep.status, failure_reason=ep.failure_reason,
+        thinking=ep.meta.get("cast", {}).get(ep.actors.get(seat, ""), {}).get("thinking"))
 
 
 def strings(value: Any) -> list[str]:

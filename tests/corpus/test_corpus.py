@@ -249,11 +249,12 @@ def test_sync_holds_back_an_episode_when_any_segment_of_its_chain_may_not_leave(
         store.append(middle)
         middle.state = {"work_ids": [free], "note": ""}
         store.close(middle)
+        names = ["free", "free~fork", "ancestor~clean", "middle"]
+        store.put_scores("eval", [{"ep_id": i, "scored_at": "t"} for i in names],
+                         [{"id": f"{i}#0", "scored": i, "ep_id": i} for i in names])
     with Store(runs / "mine" / "store.db") as store:
         store.close(ep("personal", split="local_dev", note="HELD PERSONAL"))  # names no work at all
-    for run, ids in (("r", ["free", "free~fork", "ancestor~clean", "middle"]), ("mine", ["personal"])):
-        (runs / run / "scores-eval.jsonl").write_text("".join(json.dumps({"ep_id": i}) + "\n" for i in ids))
-        (runs / run / "judgments-eval.jsonl").write_text("".join(json.dumps({"ep_id": i, "scored": i}) + "\n" for i in ids))
+        store.put_scores("eval", [{"ep_id": "personal", "scored_at": "t"}], [{"id": "personal#0", "scored": "personal", "ep_id": "personal"}])
 
     counts = stage_sync(tmp_path / "stage", runs, corpus, {})
 
@@ -264,8 +265,7 @@ def test_sync_holds_back_an_episode_when_any_segment_of_its_chain_may_not_leave(
         with Store(staged / run / "store.db", readonly=True) as store:
             assert [e.ep_id for e in store.episodes()] == names
             text += b"".join(zlib.decompress(body) for (body,) in store.db.execute("SELECT body FROM checkpoints"))
-        for file in ("scores-eval.jsonl", "judgments-eval.jsonl"):
-            assert [json.loads(line)["ep_id"] for line in (staged / run / file).read_text().splitlines()] == names
+            assert list(store.scores("eval")) == names and [j["ep_id"] for j in store.judgments("eval")] == names
     text += b"".join(p.read_bytes() for p in (tmp_path / "stage").rglob("*") if p.is_file())
     assert b"FREE TEXT" in text and b"HELD" not in text
 
@@ -286,14 +286,14 @@ def test_sync_stages_nothing_an_open_ancestor_gained_after_its_release_check(tmp
         writer.close(parent.fork("done"))
         writer.db.execute("PRAGMA busy_timeout = 100")  # this writer gives up at once where a run would wait
         parent.state = {"work_ids": ["gutenberg:1", "gutenberg:2"], "note": "HELD TEXT"}
-        copy_chain = Store.copy_chain
+        copy = Store.copy
 
-        def a_run_writes_first(self, name, into, **kw):
+        def a_run_writes_first(self, names, into):
             with suppress(sqlite3.OperationalError):  # locked out: its write waits for the copy
                 writer.append(parent)
-            return copy_chain(self, name, into, **kw)
+            return copy(self, names, into)
 
-        monkeypatch.setattr(Store, "copy_chain", a_run_writes_first)
+        monkeypatch.setattr(Store, "copy", a_run_writes_first)
         counts = stage_sync(tmp_path / "stage", tmp_path / "runs", corpus, {})
 
     assert dict(counts) == {"episodes": 1, "episodes_left_out": 0}

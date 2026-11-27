@@ -14,7 +14,8 @@ ALLOWED = {
     "corpus": {"episode", "llm", "search", "judges"},
     "suites": {"episode", "llm", "search", "judges", "corpus"},
     "drivers": {"episode", "llm"},
-    "cli": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers"},
+    "run": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers"},
+    "cli": {"episode", "llm", "search", "judges", "corpus", "suites", "drivers", "run"},
     "label_ui": set(),
 }
 # Leaves inside a layer: a module only its layer's entry point imports. `cli/view.py` reads
@@ -42,6 +43,22 @@ def _imports(path: Path) -> list[tuple[str, ...]]:
     return [m[1:] for m in out if m[:1] == ("writing_assistant",) and len(m) > 1]
 
 
+# Judging is apart from play: what plays episodes or grows a world imports no judge and no
+# scoring code, so nothing it reaches can score or read a score row. `run/__init__` holds
+# `Runner`; the other two are covered from the day they exist.
+PLAYS = ("run/__init__", "run/control", "master/")
+JUDGING = (("judges",), ("run", "scoring"))
+
+
+def test_what_plays_or_grows_a_world_imports_no_judging():
+    bad = []
+    for path in sorted(PKG.rglob("*.py")):
+        src = "/".join(path.relative_to(PKG).with_suffix("").parts)
+        if any(src == name or (name.endswith("/") and src.startswith(name)) for name in PLAYS):
+            bad += [f"{src} -> {'.'.join(target)}" for target in _imports(path) if any(target[:len(j)] == j for j in JUDGING)]
+    assert not bad, "play importing judging:\n" + "\n".join(bad)
+
+
 def test_imports_point_down():
     bad = []
     for path in sorted(PKG.rglob("*.py")):
@@ -51,7 +68,10 @@ def test_imports_point_down():
         for target in _imports(path):
             if target[0] == layer:
                 # Within a layer: suites/<a> never imports suites/<b>; no provider imports gateway.
-                if layer == "suites" and len(src) > 2 and len(target) > 1 and target[1] != src[1]:
+                # A module file directly under suites/ is shared: every suite package may
+                # import it, and it imports no suite package (`__init__` registers them all).
+                if layer == "suites" and len(target) > 1 and target[1] != src[1] and src[1] != "__init__" \
+                        and (PKG / "suites" / target[1]).is_dir():
                     bad.append(f"{'/'.join(src)} -> {'.'.join(target)}")
                 if src[:2] == ("search", "providers") and target[:2] == ("search", "gateway"):
                     bad.append(f"{'/'.join(src)} -> {'.'.join(target)}")

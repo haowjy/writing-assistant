@@ -147,7 +147,7 @@ async def test_pov_write_projects_the_log_and_swaps_only_the_hidden_event(fake_t
                                corpus=SimpleNamespace(overlap=lambda text, ep: {}, flag=lambda o: False))
     for ep in eps:
         ep.complete()
-    scores = await suite_1a.score(full, services, Tally(), full_twin)
+    scores = (await suite_1a.score(full, services, {"": Tally()}, full_twin))[""]
     assert (scores["pov_leak"], scores["twin_pov_leak"], scores["net_pov_leak"], scores["permitted_fact_recall"]) == (1.0, 0.0, 1.0, 1.0)
 
 
@@ -232,7 +232,7 @@ async def test_a_stored_episode_reopened_at_any_turn_checkpoint_continues_as_the
             assert [r["messages"] for r in resumed.llm.requests] == rest
             assert reopened == ep and store.load(ep.ep_id) == ep
         with Store(path) as store:
-            rollout = store.load(ep.ep_id, at=n).rollout(n, 0)
+            rollout = store.load(ep.ep_id, at=n).rollout(n, 0, "g")
             forked = fake_turn(replies[answered:], srd.TOOLS)
             await finish(store, rollout, forked)
             assert [r["messages"] for r in forked.llm.requests] == rest

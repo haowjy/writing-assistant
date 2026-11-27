@@ -17,18 +17,20 @@ class World1a:
     about = tasks_1a.ABOUT
     metric_about = score_1a.ABOUT
     text_fields = tasks_1a.TEXT_FIELDS
+    rubrics = {"": tuple(tasks_1a.ABOUT)}  # one, unnamed: rows under the bare judge profile
+    needs: dict[str, tuple[str, ...]] = {}  # each metric degrades on its own: `--judges none` scores what needs no judge
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("1a", split, where)
 
-    def setup(self, task: Task, services) -> list[Episode]:
+    def setup(self, task: Task, services, at: Episode | None = None) -> list[Episode]:
         return tasks_1a.setup(task, services)
 
     async def next_delivery(self, ep: Episode, last_reply: str) -> tuple[str, str] | None:
         return await tasks_1a.next_delivery(ep, last_reply)
 
-    async def score(self, ep: Episode, services, tally, twin: Episode | None = None) -> dict[str, float]:
-        return await score_1a.score(ep, services, tally, twin)
+    async def score(self, ep: Episode, services, tallies, twin: Episode | None = None) -> dict[str, dict[str, float]]:
+        return {"": await score_1a.score(ep, services, tallies[""], twin)}
 
 
 suite_1a = World1a()

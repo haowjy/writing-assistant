@@ -1,8 +1,9 @@
 """Drivers: one harness session per (episode, actor). Drivers know nothing about suites.
 
-A driver is constructed by cli.py with the model client and the suite's tool table; `open`
+A driver is constructed by `run.Runner` with the model client and the suite's tool table; `open`
 gets the episode, so everything per-episode (actor tools, the actor's system prompt in
-`ep.state["system_prompts"][actor]`, the sampling temperature in `ep.meta["temperature"]`)
+`ep.state["system_prompts"][actor]`, the task kind's sampling temperature in
+`ep.meta["temperature"]`, what the episode fixes for the actor in `ep.state["sampling"][actor]`)
 is read from it, and so is the conversation so far when the episode is already under way: a
 driver keeps nothing between turns that it could not rebuild from the episode.
 """
@@ -37,5 +38,5 @@ class Driver(Protocol):
 
 from writing_assistant.drivers.direct import DirectDriver  # noqa: E402  (needs Session above)
 
-# name -> constructor; cli.py builds the chosen one with the client and the suite's tools.
+# name -> constructor; `run.Runner` builds the chosen one with the client and the suite's tools.
 DRIVERS: dict[str, Callable[..., Driver]] = {"direct": DirectDriver}

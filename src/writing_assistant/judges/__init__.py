@@ -10,6 +10,9 @@ default it. Each model field is a `Judge` whose `stamp` ({use, endpoint, model, 
 what a stored judgment is traced to: `await judge(*args)` gives the value, and
 `await judge.judge(*args)` a `Judgment` with the replies behind it and, for the uses a
 human can label, the item in `label_ui.py`'s shape (question, evidence or a/b/context).
+
+`Judges.findings` holds the judges that read a whole stored rollout (`judges/findings.py`):
+one use per prompt file in `judges/rubrics/`, each answering with a list of findings.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from writing_assistant.episode.store import LocalOnly
 from writing_assistant.judges import readability
 from writing_assistant.judges.embed import ReferenceIndex, cosine, embed
 from writing_assistant.judges.extract import FACT, OUTLINE, outline, yes_no
+from writing_assistant.judges.findings import PROMPTS, findings, version
 from writing_assistant.judges.generate import FORECAST, forecasts
 from writing_assistant.judges.pairwise import AUTHOR, CRAFT, EDIT, SECRET, ab
 from writing_assistant.judges.reply import Unscored
@@ -47,6 +51,18 @@ class Judges:
     embed_style: Judge
     forecast: Judge  # (prefix, n) -> n short ending forecasts
     readability: Measure  # pure spaCy + wordfreq, no model
+    findings: dict[str, Judge]  # use -> (a rendered rollout) -> findings; one per prompt in judges/rubrics/ (judges/findings.py)
+
+    def stamps(self) -> dict[str, dict[str, str]]:
+        """use -> the stamp a row scored now would carry. A use the profile names no
+        endpoint for has one too (endpoint ""), so a row scored without it stands for as
+        long as the profile still names none."""
+        return {f.name: getattr(self, f.name).stamp for f in fields(self) if f.name != "findings"} | {
+            use: j.stamp for use, j in self.findings.items()}
+
+    def named(self, use: str) -> bool:
+        """Whether this profile can answer `use`: it names an endpoint for it."""
+        return bool(self.stamps()[use]["endpoint"])
 
 
 @dataclass(frozen=True)
@@ -98,7 +114,7 @@ PASSAGE_BREAK = "\n\n* * *\n\n"
 
 def judges_from(client: LLMClient, profile: str) -> Judges:
     uses: dict[str, str] = client.config["judges"][profile]
-    model_uses = {f.name for f in fields(Judges)} - {"readability"}
+    model_uses = {f.name for f in fields(Judges)} - {"readability", "findings"} | PROMPTS.keys()
     if unknown := uses.keys() - model_uses:
         raise KeyError(f"[judges.{profile}] names unknown uses {sorted(unknown)}")
 
@@ -136,6 +152,7 @@ def judges_from(client: LLMClient, profile: str) -> Judges:
             readability.profile,
             {"use": "readability", "endpoint": "", "model": readability.SPACY_MODEL, "prompt": readability.VERSION},
         ),
+        findings={use: judge(use, version(use), lambda ep, record, use=use: findings(client, ep, use, record)) for use in PROMPTS},
     )
 
 

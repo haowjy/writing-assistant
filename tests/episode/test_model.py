@@ -101,12 +101,12 @@ async def test_fork_tool_calls_never_reach_parent():
     assert parent == before
     assert (child.condition, child.ep_id, child.baseline_of) == ("twin", "e~twin", None)
     assert child.parent == (parent.seg, len(parent.events), len(parent.calls)) and child.seg != parent.seg
-    assert [(r.ep_id, r.rollout_of, r.condition) for r in (parent.rollout(3, 0), parent.rollout(3, 1))] == [
-        ("e@3.0", ("e", 3), "base"), ("e@3.1", ("e", 3), "base")]
+    assert [(r.ep_id, r.rollout_of, r.condition) for r in (parent.rollout(3, 0, "g"), parent.rollout(3, 1, "g"))] == [
+        ("e@3.g.0", ("e", 3), "base"), ("e@3.g.1", ("e", 3), "base")]
     twin = parent.fork("twin", baseline=True)
     assert twin.baseline_of == "e"
-    again = twin.rollout(0, 0)  # a twin's rollout is the baseline of nothing
-    assert (again.ep_id, again.rollout_of, again.condition, again.baseline_of) == ("e~twin@0.0", ("e~twin", 0), "twin", None)
+    again = twin.rollout(0, 0, "g")  # a twin's rollout is the baseline of nothing
+    assert (again.ep_id, again.rollout_of, again.condition, again.baseline_of) == ("e~twin@0.g.0", ("e~twin", 0), "twin", None)
 
 
 def test_fork_swap_replaces_one_leaf_and_refuses_perceived_events():

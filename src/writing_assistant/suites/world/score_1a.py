@@ -23,7 +23,8 @@ import asyncio
 
 from writing_assistant.episode import Episode
 from writing_assistant.suites import NoOutput, Tally, file_output, mean, norm, paragraphs, prose_metrics, reply_output
-from writing_assistant.suites.world import author, srd
+from writing_assistant.suites import script
+from writing_assistant.suites.world import srd
 from writing_assistant.suites.world.tasks_1a import AUTHOR, DM, POV_WORDS, WRITER, render_log
 
 CONTRADICTION_Q = "Does the narration state anything that contradicts the recorded world events?"
@@ -78,7 +79,7 @@ def _put(out: dict[str, float], name: str, value: float | None) -> None:
 # -- the artefact each task kind's outcome metrics read --------------------------------------
 
 def _script_done(ep: Episode) -> None:
-    if author.remaining(ep.state):
+    if script.remaining(ep.state):
         raise NoOutput("truncated")
 
 
@@ -199,7 +200,7 @@ def _collab(ep: Episode) -> dict[str, float]:
     wrote = False
     n = 0
     counted: list[int] = []  # turn_idx of each round with an artefact
-    missing: dict[str, float] = {"n_no_output.truncated": float(author.remaining(ep.state))}
+    missing: dict[str, float] = {"n_no_output.truncated": float(script.remaining(ep.state))}
 
     def close() -> None:
         nonlocal out_of_scope, in_scope_rounds, open_turn

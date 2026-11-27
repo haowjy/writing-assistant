@@ -1,9 +1,13 @@
 """In-process tool loop over `LLMClient.chat`: the driver for 1-2 turn tasks, scripted actors
 and tests. The session holds the conversation while it is open, and `open()` rebuilds it
 from the episode, so a session opened on an episode already under way (a fork, or one
-reopened after a delivery) goes on with what the actor was last sent. The
-sampling temperature is the episode's (`ep.meta["temperature"]`, set by the suite's
-`setup()`); `max_tokens` and `max_steps` are the run's."""
+reopened after a delivery) goes on with what the actor was last sent.
+
+What a seat samples with is the episode's when it says: `ep.state["sampling"][actor]` may fix
+`temperature`, `max_tokens` and `max_steps`, so a seat that is not the model under test keeps
+them whatever run plays the episode. Otherwise the temperature is the task kind's
+(`ep.meta["temperature"]`, set by the suite's `setup()`) or `TEMPERATURE`, and the two
+limits are the run's."""
 
 from __future__ import annotations
 
@@ -18,12 +22,17 @@ from writing_assistant.episode.tools import WORKSPACE_TOOLS, ToolTable, dispatch
 from writing_assistant.llm.client import LLMClient, assistant_message
 
 
+TEMPERATURE = 0.7  # when neither the seat nor the task kind names one
+
+
 @dataclass
 class _Conversation:
     ep: Episode
     endpoint: str
     seed: int
     temperature: float
+    max_tokens: int
+    max_steps: int
     messages: list[dict[str, Any]]
 
 
@@ -42,7 +51,10 @@ class DirectDriver:
     async def open(self, ep: Episode, actor: str, endpoint: str) -> Session:
         # Seeded by the episode and actor, so a rerun of the same episode samples the same way.
         seed = int.from_bytes(hashlib.sha256(f"{ep.ep_id}\0{actor}".encode()).digest()[:4], "big") >> 1
-        conv = _Conversation(ep, endpoint, seed, ep.meta["temperature"], _conversation(ep, actor))
+        limits = ep.state.get("sampling", {}).get(actor, {})
+        conv = _Conversation(ep, endpoint, seed, limits.get("temperature", ep.meta.get("temperature", TEMPERATURE)),
+                             limits.get("max_tokens", self.max_tokens), limits.get("max_steps", self.max_steps),
+                             _conversation(ep, actor))
         return Session(slot="", ep_id=ep.ep_id, actor=actor, handle=conv)
 
     async def turn(self, session: Session, message: str) -> None:
@@ -56,13 +68,13 @@ class DirectDriver:
         table = WORKSPACE_TOOLS | self.tools
         schemas = [table[name][0] for name in ep.actor_tools.get(actor, []) if name in table]
         conv.messages.append({"role": "user", "content": message})
-        for _ in range(self.max_steps):
+        for _ in range(conv.max_steps):
             rec = await self.client.chat(
                 conv.messages,
                 schemas or None,
                 endpoint=conv.endpoint,
                 temperature=conv.temperature,
-                max_tokens=self.max_tokens,
+                max_tokens=conv.max_tokens,
                 seed=conv.seed,
             )
             rec = replace(rec, actor=actor, turn_idx=turn_idx, at_event=len(ep.events))
@@ -70,14 +82,14 @@ class DirectDriver:
             conv.messages.append(assistant_message(rec))
             if not rec.tool_calls:
                 if rec.finish_reason == "length":
-                    _truncate(ep, f"{actor} was cut off at max_tokens={self.max_tokens}")
+                    _truncate(ep, f"{actor} was cut off at max_tokens={conv.max_tokens}")
                 elif rec.finish_reason == "unparseable_tool_call":
                     _truncate(ep, f"{actor} made a tool call whose arguments were not valid JSON")
                 return
             for call in rec.tool_calls:
                 result = await dispatch_tool(ep, actor, call["name"], call["arguments"], self.tools)
                 conv.messages.append(_tool_message(call, result))
-        _truncate(ep, f"{actor} exceeded {self.max_steps} model calls in one turn")
+        _truncate(ep, f"{actor} exceeded {conv.max_steps} model calls in one turn")
 
     async def close(self, session: Session) -> None:
         session.handle.messages.clear()
