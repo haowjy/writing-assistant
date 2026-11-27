@@ -12,18 +12,16 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
-from collections import Counter
 from itertools import batched
 from pathlib import Path
 
 from writing_assistant.episode.library import Library
-from writing_assistant.episode.segments import judging
 from writing_assistant.episode.store import matches
 from writing_assistant.llm.client import AccountError
 from writing_assistant.run.control import Settings, Unplayed, Work, play_groups
 from writing_assistant.run.directory import services_for
 from writing_assistant.run.scoring import score_into
-from writing_assistant.suites import SUITES, listed_rubrics
+from writing_assistant.suites import SUITES
 
 
 async def run_world(args: argparse.Namespace) -> int:
@@ -62,47 +60,29 @@ async def run_world(args: argparse.Namespace) -> int:
 
 
 async def score_world(args: argparse.Namespace) -> int:
-    """`score --world NAME --judges P [--rubric R] [--pending]`: the judging pass. Each closed
-    rollout of the world is scored under the rubrics its situation lists (or under `R`) that
-    have no final row for this profile, and the rows are added to the world file, so a
-    second pass adds nothing and a pass beside a `run --world` scores what is closed when it
-    looks. `--pending`: only the rubrics whose rows all say the scorer raised.
+    """`score --world NAME --judges P [--rubric R] [--pending] [--all]`: the judging pass. Each
+    closed rollout of the world is scored under the rubrics its situation lists (or under
+    `R`) where no row by the profile's present judges stands (`run.scoring.to_score`), and
+    the rows are added to the world file. So a second pass adds nothing, a pass beside a
+    `run --world` scores what is closed when it looks, and a prompt edit or another judge
+    under the same profile name is a pass's work again.
 
-    What is missing is found by one query over the world's tables (`Store.judged`) and one
+    What is to do is found by one query over the world's tables (`Store.judged`) and one
     loaded rollout per situation, for its listing; only rollouts to be scored are loaded
     beyond that, a batch at a time. The world's lock is held shared throughout, so a
     restore waits for the pass."""
-    from writing_assistant.cli import close, scored
+    from writing_assistant.cli import close, scored, selected
 
-    try:
-        judging(args.judges, args.rubric or "")
-    except ValueError as e:
-        sys.exit(str(e))
     if args.where:
         sys.exit("--where chooses a run directory's episodes; a world is judged whole (--rubric narrows what is scored)")
     services = services_for(args.models, args.judges)
     rows: list[dict] = []
-    unknown: Counter[str] = Counter()
+    unknown: dict[str, int] = {}
     suites: set[str] = set()
     try:
         try:
             with Library().writing(args.world) as store:
-                listed: dict[str, list[str]] = {}  # a situation's rollouts list what it lists
-                want: dict[str, dict[str, list[str]]] = {}  # suite -> ep_id -> rubrics
-                for ep_id, (suite, source, has) in store.judged(args.judges).items():
-                    suites.add(suite)
-                    rubrics = SUITES[suite].rubrics
-                    if args.pending:
-                        names = [r for r, final in has.items() if not final and args.rubric in (None, r)]
-                    elif args.rubric is not None:
-                        names = [args.rubric]
-                    else:
-                        if (source or ep_id) not in listed:
-                            listed[source or ep_id] = listed_rubrics(SUITES[suite], store.load(ep_id))
-                        names = listed[source or ep_id]
-                        unknown.update(set(names) - rubrics.keys())
-                    if missing := [r for r in names if r in rubrics and not has.get(r)]:
-                        want.setdefault(suite, {})[ep_id] = missing
+                want, unknown, suites = selected(args, store, services)
                 if args.rubric is not None and not any(args.rubric in SUITES[suite].rubrics for suite in suites):
                     sys.exit(f"--rubric {args.rubric}: no suite played in {args.world} ({', '.join(sorted(suites)) or 'none yet'}) "
                              "has a rubric of that name")
@@ -117,4 +97,4 @@ async def score_world(args: argparse.Namespace) -> int:
             await close(services)
     except LookupError as e:
         sys.exit(f"--world {args.world}: {e}")
-    return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, dict(unknown), services)
+    return scored(f"world {args.world}", args, ", ".join(sorted(suites)), rows, unknown, services)

@@ -127,7 +127,7 @@ def test_each_rollout_gets_its_situations_rubrics_once_and_findings_of_a_task_an
     assert all("tide turns at six" not in json.dumps(j) and "We sail at dawn" not in json.dumps(j) for j in items)
     # A second pass has nothing to do: no row and no judge call.
     before, calls = all_rows(world), len(world.llm.requests)
-    assert ": 0 episodes, 0 scored" in world.score()
+    assert ": 0 episodes" in world.score()
     assert all_rows(world) == before and len(world.llm.requests) == calls
 
 
@@ -135,7 +135,7 @@ def test_another_rubric_run_over_a_judged_world_adds_its_rows_and_changes_none(w
     world.score()
     before = all_rows(world)
     reading = stored(world)
-    assert "6 episodes, 6 scored" in world.score("--rubric", "character_voice_consistency")
+    assert "6 episodes, 6 rows: 6 scored" in world.score("--rubric", "character_voice_consistency")
     after = stored(world)
     assert set(before) < set(all_rows(world)) and len(all_rows(world)) == len(before) + 6
     assert {k: v for k, v in after.items() if k != "character_voice_consistency"} == reading
@@ -156,7 +156,7 @@ def test_a_judge_that_is_down_leaves_pending_rows_which_pending_scores_again(wor
     rows = stored(world)
     assert all("error" in r for r in rows["world_coherence"].values()) and all("metrics" in r for r in rows["counts"].values())
     with world.open("sel") as home:
-        assert home.judged("j")[next(iter(rows["world_coherence"]))][2]["world_coherence"] is False
+        assert home.judged("j")[next(iter(rows["world_coherence"]))][2]["world_coherence"] is None
         assert not home.settled(judging("j", "world_coherence"))[world.groups["judged"]]["settled"]
     world.llm.replies[JUDGE] = [judge] * 50
     out = world.score("--pending")
@@ -192,7 +192,7 @@ def test_a_pass_beside_a_run_that_is_pushing_scores_what_is_closed_and_the_next_
     world.score()
     with world.open("sel") as home:
         state = home.judged("j")
-        assert len(state) == 15 and all(has and all(has.values()) for _, _, has in state.values())
+        assert len(state) == 15 and all(has and None not in has.values() for _, _, has in state.values())
         assert all(len(rows) == len(set(ep for ep, *_ in rows)) for rows in
                    [home.db.execute("SELECT ep_id FROM scores WHERE profile = ?", (name,)).fetchall() for name in home.judgings("j")])
     assert ": 0 episodes" in world.score()
@@ -203,6 +203,7 @@ class Shared:
     between them by what each covers."""
 
     rubrics = {"whole": (), "turns": ()}
+    needs: dict = {}
 
     async def score(self, ep, services, tallies, twin=None):
         judge_ = services.judges.findings["world_coherence"]
@@ -250,3 +251,54 @@ def test_a_label_file_holds_the_record_the_judge_read_and_the_labelling_page_sho
     # A turn's finding is shown the record up to that turn and no further.
     first = min(per_turn, key=lambda item: len(item["evidence"]))
     assert "Target: turn" in first["evidence"] and "# Files when the rollout ended" not in first["evidence"]
+
+
+def test_a_profile_that_names_no_judge_for_a_listed_rubric_is_refused_before_any_row_is_written(world):
+    world.llm.config["judges"]["half"] = {"thinking_about_prose": JUDGE}
+    with pytest.raises(SystemExit, match="world_coherence.*no endpoint|no endpoint.*world_coherence"):
+        cli.main(["--models", str(MODELS_TOML), "score", "--world", "sel", "--judges", "half"])
+    with world.open("sel") as home:
+        assert home.judgings("half") == []
+    # What needs no such judge can still be asked for by name.
+    assert cli.main(["--models", str(MODELS_TOML), "score", "--world", "sel", "--judges", "half", "--rubric", "counts"]) == 0
+    with world.open("sel") as home:
+        assert home.judgings("half") == ["half/counts"]
+
+
+def test_a_row_stands_only_while_its_judges_are_the_ones_the_profile_names_now(world, monkeypatch):
+    """Already judged is the row's stamp against today's: a prompt edit, another endpoint, and
+    a row an earlier build wrote with no judge configured are each judged again, once."""
+    from writing_assistant.judges.findings import PROMPTS, version
+
+    world.score()
+    with world.open("sel") as home:
+        judged = sorted(home.scores(judging("j", "world_coherence")))
+        # What a pass left before it refused an unconfigured profile: a final row, nothing scored, no endpoint.
+        stale = [{"ep_id": ep_id, "rubric": "character_voice_consistency", "scored_at": "2026-11-26T10:00:00.000000Z",
+                  "metrics": {"n_unscored.output.voice_consistency.unavailable": 1.0},
+                  "judges": [{"use": "character_voice_consistency", "endpoint": "", "model": "", "prompt": "x"}]} for ep_id in judged]
+    with world.writing("sel") as store:
+        store.put_scores(judging("j", "character_voice_consistency"), stale)
+    out = world.score("--rubric", "character_voice_consistency")
+    assert "6 episodes" in out and stored(world)["character_voice_consistency"][judged[0]]["metrics"]["output.voice_consistency"] == 0.0
+    assert ": 0 episodes" in world.score() and ": 0 episodes" in world.score("--rubric", "character_voice_consistency")
+
+    monkeypatch.setitem(PROMPTS, "world_coherence", PROMPTS["world_coherence"] + "\nBe strict.")
+    calls = len(world.llm.requests)
+    out = world.score()
+    assert "2 episodes" in out and "rubrics world_coherence:" in out and len(world.llm.requests) == calls + 2
+    assert {r["judges"][0]["prompt"] for r in stored(world)["world_coherence"].values()} == {version("world_coherence")}
+    assert ": 0 episodes" in world.score()
+
+    world.llm.config["judges"]["j"]["thinking_about_prose"] = "qwen3-32b-mini"  # another judge under the same profile name
+    world.llm.replies["qwen3-32b-mini"] = [judge] * 20
+    out = world.score()
+    assert "2 episodes" in out and "rubrics thinking_about_prose:" in out  # `quiet` asked no judge, so its rows stand
+    # --all scores everything listed again, whatever stands.
+    assert "6 episodes" in world.score("--all")
+
+
+def test_the_closing_line_counts_a_row_in_which_nothing_was_scored_apart(world):
+    out = world.score()
+    # plain: counts (2 rows); judged: 2 rubrics x 2; quiet: 2 rows holding only `no_thinking`.
+    assert "6 episodes, 8 rows: 6 scored, 2 with nothing scored (no_thinking), 0 scorer errors" in out

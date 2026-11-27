@@ -91,12 +91,14 @@ A library world (`wa-bench library`, `cli/library.py`) is played and judged by t
 (`cli/world.py`): `run --world NAME --endpoint E [--cast C] --rollouts N` plays a group of
 each of the world's situations into it through the controller and scores nothing, and
 `score --world NAME --judges P` scores each closed rollout under the rubrics its situation
-lists that have no final row yet.
+lists.
 
-`score --run` re-scores a run's closed episodes into its store, row by row: one killed part-way
-has added the rows it finished and left the other episodes with the rows they had.
-`score --pending` re-scores only the episodes with no row but ones saying the scorer raised
-(`error`), which is what a judge that was down leaves.
+`score` scores closed episodes into their store, row by row: one killed part-way has added
+the rows it finished and left the other episodes with the rows they had. It scores an
+episode under a rubric only where no row stands (`run.scoring.to_score`: none yet, a scorer
+error, or a row scored by other judges than the profile names now), so run twice it adds
+nothing; `--all` scores everything again and `--pending` only the rows saying the scorer
+raised (`error`), which is what a judge that was down leaves.
 
 A suite's scoring is split into **rubrics**, and an episode has one row per **judging**: a
 judge profile and a rubric (`episode.segments.judging`; suites 1a and 3 have one unnamed
@@ -136,8 +138,8 @@ from writing_assistant.run import ROOT, Runner, cast_from, code_version, run_inf
 from writing_assistant.run import now as _now
 from writing_assistant.run.directory import Refused, open_run, record_usage, services_for
 from writing_assistant.run.directory import identity as run_identity
-from writing_assistant.run.scoring import score_into, wanted
-from writing_assistant.suites import SUITES, Services
+from writing_assistant.run.scoring import refuse, score_into, to_score
+from writing_assistant.suites import SUITES, Services, listed_rubrics, rubrics_of
 
 # task kind -> payload fields that carry work text (the licence rule in corpus/release.py)
 TEXT_FIELDS = {name: suite.text_fields for name, suite in SUITES.items()}  # what export and sync may release
@@ -243,7 +245,7 @@ async def cmd_run(args: argparse.Namespace) -> int:
     def listed(eps: list[Episode]) -> dict[str, list[str]]:
         """ep_id -> the rubrics this command scores it under: its task's listed ones. A
         rollout of a situation is left to `wa-bench score`."""
-        return wanted(suite, [ep for ep in eps if not situated(ep)])[0]
+        return {ep.ep_id: [r for r in listed_rubrics(suite, ep) if r in suite.rubrics] for ep in eps if not situated(ep)}
 
     async def score(eps: list[Episode], want: dict[str, list[str]]) -> None:
         """Score closed episodes into the store (twins paired over all of `eps`)."""
@@ -271,6 +273,8 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 tasks, rollouts = [], _rollouts(args, runner, home, *source)
             else:
                 tasks, rollouts = [t for t in suite.tasks(args.split, args.where) if t.task_id not in done][: args.limit], []
+        if not args.no_score:  # a rubric this profile has no judge for stops the run before it plays, not after
+            refuse(suite, {r for t in tasks for r in rubrics_of(suite, t.kind, t.payload)}, services.judges, args.judges)
         with run_info(run_dir) as info:  # every refusal is behind: this invocation plays
             info.setdefault("invocations", []).append(
                 {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
@@ -378,10 +382,13 @@ async def cmd_score(args: argparse.Namespace) -> int:
     services = services_for(args.models, args.judges)
     with Store(run_dir / STORE_FILE) as store:
         episodes = list(store.episodes())
-        chosen = [ep for ep in episodes if matches(episode_row(ep), args.where)] if args.where else episodes
-        want, unknown = to_score(store, suite, chosen, args.judges, args.rubric, args.pending)
+        if args.rubric is not None and args.rubric not in suite.rubrics:
+            sys.exit(f"--rubric {args.rubric}: the suite has no rubric of that name; it has "
+                     f"{', '.join(repr(r) for r in suite.rubrics)}")
+        only = {ep.ep_id for ep in episodes if matches(episode_row(ep), args.where)} if args.where else None
+        want, unknown, _ = selected(args, store, services, only=only, loaded={ep.ep_id: ep for ep in episodes})
         try:
-            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, want)
+            rows = await score_into(store, args.judges, suite, episodes, services, args.concurrency, want.get(info["suite"], {}))
         except* AccountError as group:
             sys.exit(f"stopped: the host refused the account ({group.exceptions[0]}); the rows scored before it are "
                      "stored, the others are as they were")
@@ -391,36 +398,26 @@ async def cmd_score(args: argparse.Namespace) -> int:
     return scored(str(run_dir), args, info["suite"], rows, unknown, services)
 
 
-def to_score(store: Store, suite: Any, episodes: list[Episode], profile: str, rubric: str | None,
-             pending: bool) -> tuple[dict[str, list[str]], dict[str, int]]:
-    """What `score` scores (`run.scoring.wanted`): each episode's listed rubrics, or the one
-    `--rubric` names. With `--pending`, only the rows saying the scorer raised, of every
-    rubric the profile has rows for or of the one named."""
+def selected(args: argparse.Namespace, store: Store, services: Services, **kw: Any) -> tuple[dict[str, dict[str, list[str]]], dict[str, int], set[str]]:
+    """What this `score` has to do in `store`, by the one rule both of its forms share
+    (`run.scoring.to_score`): the flags are `--judges`, `--rubric`, `--pending` and `--all`."""
     try:
-        judging(profile, rubric or "")
+        judging(args.judges, args.rubric or "")
     except ValueError as e:
         sys.exit(str(e))
-    if rubric is not None and rubric not in suite.rubrics:
-        sys.exit(f"--rubric {rubric}: the suite has no rubric of that name; it has "
-                 f"{', '.join(repr(r) for r in suite.rubrics)}")
-    if not pending:
-        return wanted(suite, episodes, rubric)
-    raised: dict[str, list[str]] = {}
-    for name in store.judgings(profile):
-        _, r = split_judging(name)
-        if r in suite.rubrics and rubric in (None, r):
-            for ep_id, row in store.scores(name).items():
-                if "error" in row:
-                    raised.setdefault(ep_id, []).append(r)
-    return {ep.ep_id: raised[ep.ep_id] for ep in episodes if ep.ep_id in raised}, {}
+    return to_score(store, args.judges, services.judges, rubric=args.rubric, pending=args.pending, again=args.all, **kw)
 
 
 def scored(where: str, args: argparse.Namespace, suite: str, rows: list[dict], unknown: dict[str, int], services: Services) -> int:
-    """`score`'s closing lines and exit code."""
+    """`score`'s closing lines and exit code. A row whose every item went unscored (no
+    thinking was recorded, the judge refused) is a row, and is not counted as scored."""
     errors = sum("error" in r for r in rows)
     rubrics = sorted({r["rubric"] for r in rows if "rubric" in r})
+    empty = [r["metrics"] for r in rows if "metrics" in r and all(k.startswith("n_unscored.") for k in r["metrics"])]
+    why = sorted({k.rsplit(".", 1)[1] for metrics in empty for k in metrics})
     print(f"{where}, judges {args.judges}{', rubrics ' + ', '.join(rubrics) if rubrics else ''}: "
-          f"{len({r['ep_id'] for r in rows})} episodes, {sum('metrics' in r for r in rows)} scored, "
+          f"{len({r['ep_id'] for r in rows})} episodes, {len(rows)} rows: {sum('metrics' in r for r in rows) - len(empty)} scored, "
+          f"{len(empty)} with nothing scored{' (' + ', '.join(why) + ')' if why else ''}, "
           f"{errors} scorer errors; spent ${sum(services.llm.spent.values()):.4f}")
     for name, n in sorted(unknown.items()):
         print(f"  rubric {name!r}: listed by {n} episodes, and suite {suite} has no rubric of that name; nothing was scored under it")
@@ -517,15 +514,18 @@ def parser() -> argparse.ArgumentParser:
     st.add_argument("--from-run", help="the run directory whose store holds --at's episode (default: --run's own)")
     st.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml, for what the suite's setup asks of the corpus")
 
-    s = sub.add_parser("score", help="re-score a saved run's episodes (twins re-paired), or judge a world's rollouts")
+    s = sub.add_parser("score", help="score a run's or a world's closed episodes under the rubrics they list, where no "
+                                     "row by the profile's present judges stands (twins re-paired)")
     scored_where = s.add_mutually_exclusive_group(required=True)
-    scored_where.add_argument("--run", help="a run directory: every closed episode is scored again")
-    scored_where.add_argument("--world", help="a library world: each closed rollout is scored under the rubrics it lists "
-                                              "(or --rubric) that have no final row yet; the rows go into the world file")
+    scored_where.add_argument("--run", help="a run directory")
+    scored_where.add_argument("--world", help="a library world; the rows go into the world file")
     s.add_argument("--judges", default="eval", help="[judges.<profile>] in models.toml; `none` scores only what needs no model judge")
     s.add_argument("--rubric", help="one of the suite's rubrics; default: every rubric (score: each episode's listed "
                                              "ones; report: every one the profile has rows for)")
     s.add_argument("--where", help="key=value[,key=value]: the episode's row fields and its condition, as in report")
+    s.add_argument("--all", action="store_true",
+                   help="score every listed rubric again; default: only what has no row that stands (none, a scorer "
+                        "error, or a row scored by other judges than the profile names now)")
     s.add_argument("--pending", action="store_true",
                    help="only the rows saying the scorer raised (a judge that was down), of every rubric or the one named")
     s.add_argument("--concurrency", type=int, default=8)

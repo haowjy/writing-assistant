@@ -104,6 +104,10 @@ class Suite(Protocol):
     # rubric name -> the task kinds it is run on when a task's row lists none. Every rubric
     # `score` answers to is a key; "" is the one rubric of a suite that names none.
     rubrics: dict[str, tuple[str, ...]]
+    # rubric name -> the judge uses it is nothing without. Scoring is refused, and no row
+    # written, under a profile that names no endpoint for one (`run.scoring.refuse`). A
+    # rubric absent here scores what it can and counts the rest as unscored.
+    needs: dict[str, tuple[str, ...]]
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]: ...
 
@@ -141,15 +145,20 @@ class Suite(Protocol):
         ...
 
 
-def listed_rubrics(suite: Suite, ep: Episode) -> list[str]:
-    """The rubrics `ep`'s task lists: its row's `payload["rubrics"]` (a situation keeps its
-    row in `state["task"]`), else the suite's defaults for its kind. Names only: a listed
-    name the suite has no rubric for is for the judging pass to report."""
-    task = ep.state.get("task", {})
-    if (listed := task.get("payload", {}).get("rubrics")) is not None:
+def rubrics_of(suite: Suite, kind: str | None, payload: dict[str, Any]) -> list[str]:
+    """The rubrics a task row lists: its `payload["rubrics"]`, else the suite's defaults for
+    its kind. Names only: a listed name the suite has no rubric for is for whoever scores
+    to report."""
+    if (listed := payload.get("rubrics")) is not None:
         return list(listed)
-    kind = task.get("kind") or ep.meta.get("row", {}).get("kind")
     return [rubric for rubric, kinds in suite.rubrics.items() if kind in kinds]
+
+
+def listed_rubrics(suite: Suite, ep: Episode) -> list[str]:
+    """The rubrics `ep`'s task lists (`rubrics_of`). A situation keeps its row in
+    `state["task"]`; an episode a run set up from a row keeps the row's kind in `meta`."""
+    task = ep.state.get("task", {})
+    return rubrics_of(suite, task.get("kind") or ep.meta.get("row", {}).get("kind"), task.get("payload", {}))
 
 
 async def play(suite: Suite, eps: list[Episode], turn: Turn) -> None:

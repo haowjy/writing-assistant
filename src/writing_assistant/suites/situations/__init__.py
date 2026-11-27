@@ -89,6 +89,7 @@ class Situations:
     metric_about = METRIC_ABOUT
     text_fields: dict[str, list[str]] = {}
     rubrics: dict[str, tuple[str, ...]] = {"counts": ("converse",)} | dict.fromkeys(READS, ())
+    needs = {rubric: (rubric,) for rubric in READS}  # each is its judge's findings and nothing else
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("situations", split, where)

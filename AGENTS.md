@@ -142,7 +142,7 @@ llmpick start gemma-4-26b-qat                        # serve the subject first
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b [--where kind=pov_write] [--limit N] [--judges none]
 uv run wa-bench run --suite 1a --endpoint gemma-4-26b --from '<ep_id>@<n>' --from-run runs/<id> --rollouts N [--round R] [--cast bench] --out runs/<new>   # a group of N rollouts of a stored turn; omit --from-run only when --out already holds the episode; no --where or --limit
 uv run wa-bench situate --run runs/<id> --at '<closed ep_id>' --row task.json [--from-run runs/<other>]   # store a new task (suite, kind, payload) on that episode's final files; play it with run --from '<name>@0'
-uv run wa-bench score --run runs/<id> --judges eval|train [--pending]   # re-score saved episodes; --pending: only those whose scorer raised
+uv run wa-bench score --run runs/<id> --judges eval|train [--all|--pending]   # score what no row stands for; --all: everything again; --pending: only where the scorer raised
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
 uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges
@@ -331,13 +331,12 @@ position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--ro
   19 ms; asked of every group they walk the file (1.3 s and 2.9 s at 100,000), as does
   `names()` (1.2 s), so per-group callers name the group.
 - **The judging pass** finds what to score with one query (`Store.judged(profile)`: each
-  closed rollout's suite, source and which rubrics have a final row) and one loaded rollout
+  closed rollout's suite, source and the judges' stamps of each rubric's row) and one loaded rollout
   per situation, for its listing (1.6 s and 0.9 s on the 100,000-rollout world with 2,000
   situations: what a pass with nothing to do costs); rollouts to be scored are loaded a
   batch at a time. It
   holds the world's lock shared and may run beside a `run --world`: it scores what is
-  closed when it looks, and the next pass scores the rest. `score --run` re-scores every
-  episode it is pointed at; `score --world` scores only what has no final row.
+  closed when it looks, and the next pass scores the rest.
 - The library has no rule for splits or personal text: a `local_dev` world is a file on this
   machine, a hosted subject is refused for it by `run.directory.identity`, and a hosted
   judge leaves its findings `local_only` without being called. Nothing copies a world off
@@ -361,7 +360,7 @@ episode has one score row per **judging**: a judge profile and a rubric, stored 
 profile, so their stored rows are as they were. `episode.segments.judging` and
 `split_judging` are the only code that joins or splits that name (`/` is refused in either
 part); every command takes `--judges PROFILE [--rubric NAME]`, and with no `--rubric`
-`score` runs each episode's listed rubrics, `score --pending` covers every rubric the
+`score` covers each episode's listed rubrics, `score --pending` every rubric the
 profile has rows for, and `report` and the page's API cover every such rubric (a block
 each; the API reads the first and lists the rest under `others`). A listed name the suite
 has no rubric for is reported by `score` and stops nothing. `Suite.score(ep, services,
@@ -389,7 +388,23 @@ with `.<seat>` when the subject held several seats. A criterion about thinking i
 asked where none was recorded and is stored as `no_thinking`. They run only on a row that
 lists them (`payload["rubrics"]`); `counts` is the `converse` kind's default. A profile
 names an endpoint for each use like any other (`[judges.<profile>] world_coherence = ...`);
-none does yet, so under `eval` their findings are `unavailable`.
+none does yet, and scoring one of these rubrics under a profile that names no endpoint for
+it is refused before any row is written (`Suite.needs`, `run.scoring.refuse`).
+
+**What `score` scores** is decided in one place for a run directory and a world
+(`run.scoring.to_score`). An episode's rubric is scored when its row does not **stand**:
+there is none, it says the scorer raised, or a judge stamped on it (use, endpoint, model,
+prompt version) is not the one the profile names now (`Judges.stamps()`). So a second
+`score` adds nothing, and an edited prompt, another endpoint under the same profile name,
+or a row an earlier build wrote with no judge configured (rows whose stamp has an empty
+endpoint; they stay in the file and are superseded) is scored again, once. `--all` scores
+every listed rubric again, `--pending` only rows that say the scorer raised, `--rubric`
+one rubric for every episode. A use the profile names no endpoint for never matches, so
+suites 1a and 3 under `--judges none` are scored again by every `score`, as they always
+were. Known limit: the stamp covers the prompt text, not the code that renders the record
+a judge reads (`judges/findings.render`); a change there re-judges nothing by itself and a
+row's `code` is the only trace, so run `score --all` after one. `score` ends with how many
+rows it wrote and how many of them scored nothing (every item unscored, with the reasons).
 
 Score rows live in the run's `store.db`, per judging, each with the judge items behind
 it in `label_ui.py`'s format; a row says which code scored it (`code`), when (`scored_at`)

@@ -552,21 +552,26 @@ class Store:
         names = [r[0] for r in self.db.execute("SELECT DISTINCT profile FROM scores ORDER BY profile").fetchall()]
         return [n for n in names if profile is None or split_judging(n)[0] == profile]
 
-    def judged(self, profile: str) -> dict[str, tuple[str, str | None, dict[str, bool]]]:
+    def judged(self, profile: str) -> dict[str, tuple[str, str | None, dict[str, list[dict[str, str]] | None]]]:
         """Every closed episode some run played, in the order first saved -> (its suite, the
-        episode it is a rollout of, rubric -> whether it has a final row) under one judge
-        profile. A rubric with rows that all say the scorer raised is there as False; one
-        never scored is absent. One query over the tables: no episode is loaded, which is
-        what lets a judging pass find the little it has to do in a large world."""
+        episode it is a rollout of, rubric -> the judges' stamps of the row readers take)
+        under one judge profile. A rubric whose row says the scorer raised is there as None,
+        one never scored is absent, and a row no judge was asked for has no stamps. One
+        query in one read state, with no episode loaded: what lets a judging pass find the
+        little it has to do in a large world."""
         rows = self.db.execute(
-            f"""SELECT e.ep_id, s.suite, s.rollout_of, sc.profile, MAX(sc.final)
-                FROM episodes e JOIN segments s ON s.seg = e.seg LEFT JOIN scores sc ON sc.ep_id = e.ep_id
-                WHERE {_PLAYED} AND {_CLOSED} GROUP BY e.ep_id, sc.profile ORDER BY MIN(e.rowid)""")
-        out: dict[str, tuple[str, str | None, dict[str, bool]]] = {}
-        for ep_id, suite, source, name, final in rows.fetchall():
+            f"""SELECT e.ep_id, s.suite, s.rollout_of, sc.profile, sc.final, json_extract(sc.row, '$.judges')
+                FROM episodes e JOIN segments s ON s.seg = e.seg
+                LEFT JOIN scores sc ON sc.ep_id = e.ep_id AND {_current("sc")}
+                WHERE {_PLAYED} AND {_CLOSED} ORDER BY e.rowid""")
+        out: dict[str, tuple[str, str | None, dict[str, list[dict[str, str]] | None]]] = {}
+        parsed: dict[str | None, list[dict[str, str]]] = {None: []}  # a world's rows carry few distinct stamps
+        for ep_id, suite, source, name, final, stamps in rows.fetchall():
             has = out.setdefault(ep_id, (suite, source, {}))[2]
             if name is not None and split_judging(name)[0] == profile:
-                has[split_judging(name)[1]] = bool(final)
+                if stamps not in parsed:
+                    parsed[stamps] = json.loads(stamps)
+                has[split_judging(name)[1]] = parsed[stamps] if final else None
         return out
 
     def scores(self, judging: str) -> dict[str, dict[str, Any]]:

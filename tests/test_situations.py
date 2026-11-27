@@ -27,6 +27,7 @@ class Notes:
     metric_about: dict = {}
     text_fields: dict = {}
     rubrics = {"words": ("note",)}
+    needs: dict = {}
 
     def __init__(self) -> None:
         self.first_replies: dict[str, str] = {}  # ep_id -> the reply its first step was given
@@ -159,7 +160,7 @@ def test_a_start_is_played_only_as_a_rollout_and_no_reader_of_played_episodes_me
     [member] = rolled(notes.out, name)
     with Store(notes.out / "store.db", readonly=True) as store:
         assert store.load(member).status == "completed" and store.judgings() == []  # `run` plays a situation and scores nothing
-    assert "1 episodes, 1 scored" in notes("score", "--run", str(notes.out), "--judges", "none")
+    assert "1 episodes, 1 rows: 1 scored" in notes("score", "--run", str(notes.out), "--judges", "none")
     with Store(notes.out / "store.db", readonly=True) as store:
         assert store.names() == list(store.scores("none/words")) == [member] and store.judgings() == ["none/words"]
         assert store.load(member).status == "completed"

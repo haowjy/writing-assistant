@@ -18,6 +18,7 @@ class World1a:
     metric_about = score_1a.ABOUT
     text_fields = tasks_1a.TEXT_FIELDS
     rubrics = {"": tuple(tasks_1a.ABOUT)}  # one, unnamed: rows under the bare judge profile
+    needs: dict[str, tuple[str, ...]] = {}  # each metric degrades on its own: `--judges none` scores what needs no judge
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
         return task_rows("1a", split, where)

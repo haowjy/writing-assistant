@@ -105,7 +105,7 @@ def test_score_where_keeps_the_scores_of_episodes_it_did_not_select(bench, capsy
     out = bench([POV_ROW, other], chapter("Mira turned the glove over."))
     run_and_score(capsys, out)
     before = {r["ep_id"] for r in score_rows(out)}
-    cli.main(["score", "--run", str(out), "--where", "task_id=pov-2"])
+    cli.main(["score", "--run", str(out), "--where", "task_id=pov-2", "--all"])
     assert {r["ep_id"] for r in score_rows(out)} == before
 
 
@@ -207,7 +207,7 @@ def test_re_scoring_a_stored_run_reproduces_its_rows(bench, capsys):
     run_and_score(capsys, out)
     with Store(out / "store.db", readonly=True) as stored:
         before, items = stored.scores("eval"), stored.judgments("eval")
-    cli.main(["score", "--run", str(out)])
+    cli.main(["score", "--run", str(out), "--all"])
     with Store(out / "store.db", readonly=True) as stored:
         after = stored.scores("eval")
         assert stored.judgments("eval") == items and len(items) > 0

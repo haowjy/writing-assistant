@@ -53,6 +53,13 @@ class Judges:
     readability: Measure  # pure spaCy + wordfreq, no model
     findings: dict[str, Judge]  # use -> (a rendered rollout) -> findings; one per prompt in judges/rubrics/ (judges/findings.py)
 
+    def stamps(self) -> dict[str, dict[str, str]]:
+        """use -> the stamp a row scored now would carry, for every use this profile can
+        answer: the ones it names an endpoint for, and the measures that need none. A use
+        it names none for is absent, so no stored stamp ever equals it."""
+        judges = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "findings"} | self.findings
+        return {use: j.stamp for use, j in judges.items() if isinstance(j, Measure) or j.stamp["endpoint"]}
+
 
 @dataclass(frozen=True)
 class Judgment:
