@@ -12,7 +12,7 @@ of seats) is shared by every suite package and imports none.
 
 - A seat (an entry in `Episode.actors`) is `scripted`, which the suite's step speaks for,
   or names who plays it by a cast name: `SUBJECT` for the model under test, any other name
-  (`counterpart`, `master`, ...) for another model. `setup()` writes those names and
+  (`counterpart`, ...) for another model. `setup()` writes those names and
   nothing overwrites them: the run's cast maps each to an endpoint when the seat is first
   called (`run.Binding`), so one stored episode is played by any cast.
 - Twins: the twin of an episode is the one whose `baseline_of` is that episode's `ep_id`;

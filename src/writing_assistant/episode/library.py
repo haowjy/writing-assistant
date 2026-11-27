@@ -2,8 +2,8 @@
 
     <root>/                                 /cold/writing-assistant/library; WA_LIBRARY overrides
       worlds/<world>.db                     the world: a store (`episode/segments.py`)
-      worlds/<world>.lock, <world>.master   empty files that are locked, never read
-      worlds/<world>.judging-<profile>.lock the same, for the one judging pass per world and judge profile (`judging`)
+      worlds/<world>.lock                   an empty file that is locked, never read
+      worlds/<world>.judging-<profile>.lock the same, for the one judging pass per world and judge profile
       snapshots/<world>.<utc>-<4 hex>.db    verified copies; the two newest of a world are kept
 
 A **world** is the tree under one root episode: the root (a start with no parent, whose
@@ -32,8 +32,9 @@ Two file locks per world, both dropped by the kernel when their holder dies:
   `worlds`, `push`, `checkout`, `verify`, `snapshot`), and exclusively by `restore`. There
   is no way to open a world without it: a connection opened while the file is being
   replaced would read the old file through side files the restored one then inherits.
-- `<world>.master` is held exclusively by a world's master while it lives (`master_lock`).
-  It guards cost (two masters spending on one world), not correctness.
+- `<world>.judging-<profile>.lock` is held exclusively by a judging pass (`judging`), and a
+  second pass under that profile is refused at once. It guards cost (two passes paying one
+  judge for the same rollouts), not correctness.
 
 This module knows files, locks and the copy. It knows no suite, licence, model, split rule
 or personal text: what may leave the machine is `corpus/release.py`'s to decide.
@@ -88,7 +89,7 @@ class Library:
             raise ValueError(f"{world!r} is no world's name: letters, digits, '-' and '_', starting with a letter or digit")
         return self.worlds_dir / f"{world}.db"
 
-    # -- the two locks -----------------------------------------------------------------------
+    # -- the locks ---------------------------------------------------------------------------
 
     @contextmanager
     def _locked(self, world: str, exclusive: bool = False) -> Iterator[Path]:
@@ -100,19 +101,6 @@ class Library:
         with open(path.with_suffix(".lock"), "a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
             yield path
-
-    @contextmanager
-    def master_lock(self, world: str) -> Iterator[None]:
-        """Held by the one master working on a world. A second one is refused at once."""
-        path = self.path(world)
-        if not path.exists():
-            raise LookupError(f"{self.root}: no world named {world!r}")
-        with open(path.with_suffix(".master"), "a") as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise RuntimeError(f"{world}: another master is alive on this world ({lock.name} is locked)") from None
-            yield
 
     # -- worlds ------------------------------------------------------------------------------
 

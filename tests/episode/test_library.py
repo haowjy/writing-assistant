@@ -379,14 +379,3 @@ def test_a_restore_waits_for_a_push_and_for_a_reader_and_nobody_opens_the_world_
         for thread in arrived:
             thread.join()
         assert sorted(seen, key=str) == [2, ["sel"]]
-
-
-def test_one_master_per_world(lib):
-    with lib.master_lock("sel"):
-        with pytest.raises(RuntimeError, match="another master is alive on this world"):
-            with lib.master_lock("sel"):
-                pass
-    with lib.master_lock("sel"):
-        pass
-    with pytest.raises(LookupError, match="no world named 'nowhere'"):
-        lib.verify("nowhere")

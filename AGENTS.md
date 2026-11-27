@@ -59,7 +59,7 @@ Two rules live in `run/`:
 
 - A **seat** is an entry in `Episode.actors`. `setup` gives it `scripted` (the suite's step
   speaks for it) or a **cast name**: `subject`, the model under test, or any other name the
-  task uses (`counterpart`, `master`, ...). Nothing writes an endpoint there. The run's
+  task uses (`counterpart`, ...). Nothing writes an endpoint there. The run's
   **cast** maps names to endpoints: `subject` is `--endpoint`, the rest come from the
   `[cast.<name>]` table `--cast` picks in `models.toml` (a table defining `subject` or
   `scripted` is refused). `run.Binding` looks a seat up when it is first called, so one
@@ -325,8 +325,7 @@ position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--ro
   from the run directories that hold it (`library push --run DIR`). `<world>.lock` is held
   shared by every reader and writer for as long as its connection is open
   (`Library.open`, `Library.writing`: there is no other way in) and exclusively by a
-  restore, so keep a `with lib.open(...)` block as short as the reading;
-  `<world>.master.lock` is for the one generation loop a world may have.
+  restore, so keep a `with lib.open(...)` block as short as the reading.
 - **Costs at depth** (50 generations, on `/cold`): a checkout of the deepest situation is
   25 ms and 2.6 MB whether the world holds 1,000 or 100,000 rollouts; a push of one rollout
   0.1 to 0.3 s, of a group of 50 about 0.2 s. `Store.groups(one)` 6 ms, `settled(.., one)`
