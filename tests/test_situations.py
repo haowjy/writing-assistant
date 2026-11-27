@@ -16,9 +16,9 @@ KB = "The harbour town of Sel. " * 400
 
 class Notes:
     """A suite for these tests: a writer (the subject) is sent one message, set up at a
-    position. The payload may grant the writer restricted files (`grant`), ask for a twin
-    (`twin`) and seat a reviewer played by the cast's `counterpart`, with limits of its own,
-    who is sent one message after the writer has answered (`review`)."""
+    position. The payload may grant the writer restricted files (`grant`) and seat a reviewer
+    played by the cast's `counterpart`, with limits of its own, who is sent one message
+    after the writer has answered (`review`)."""
 
     tools: dict = {}
     judged_by: dict = {}
@@ -41,7 +41,7 @@ class Notes:
         if task.payload.get("review"):
             ep.actors["reviewer"] = "counterpart"
             ep.state["sampling"] = {"reviewer": {"max_tokens": 300, "temperature": 0.2}}
-        return [ep] + ([ep.fork("twin", baseline=True)] if task.payload.get("twin") else [])
+        return [ep]
 
     async def next_delivery(self, ep, last_reply):
         self.first_replies.setdefault(ep.ep_id, last_reply)
@@ -147,15 +147,14 @@ def test_a_start_is_played_only_as_a_rollout_and_no_reader_of_played_episodes_me
     """Readers (`run`'s scoring of what has no row, its resume, `score`, `report`, the page
     and calibration sampling) list episodes through `Store.names`; a start is closed and
     nobody played it, so it must not be there to be scored or continued."""
-    [base, twin] = notes.situate("sel", payload={"twin": True})
+    [name] = notes.situate("sel")
     with Store(notes.out / "store.db") as store:
-        assert store.load(twin).baseline_of == base
-        assert (store.starts(), store.situations(), store.names(), store.names(closed=False)) == (["sel", base, twin], [base, twin], [], [])
+        assert (store.starts(), store.situations(), store.names(), store.names(closed=False)) == (["sel", name], [name], [], [])
         with pytest.raises(ValueError, match="is closed; nothing is appended"):
-            store.append(store.load(base))
-    out = notes.play(f"{twin}@0")
+            store.append(store.load(name))
+    out = notes.play(f"{name}@0")
     assert "open episodes to continue" not in out and "to score first" not in out
-    [member] = rolled(notes.out, twin)
+    [member] = rolled(notes.out, name)
     assert "1 episodes, 1 scored" in notes("score", "--run", str(notes.out), "--judges", "none")
     with Store(notes.out / "store.db", readonly=True) as store:
         assert store.names() == list(store.scores("none")) == [member]
