@@ -303,6 +303,10 @@ def _rollouts(args: argparse.Namespace, runner: Runner, home: Store | None, name
             if (source.suite, source.split) != (args.suite, args.split):
                 sys.exit(f"--from {args.source} is a suite {source.suite} episode of the {source.split} split; "
                          f"this run is suite {args.suite}, split {args.split}")
+            if name in home.starts() and not situated(source):  # as the controller refuses it: its state holds no task
+                sys.exit(f"--from {args.source}: {name} is a position, files with no task set up on them, so there is "
+                         f"nothing to play from it. `wa-bench situate --at {name} --row task.json` sets a task up "
+                         "there and prints the name --from takes")
             rollouts = runner.rollouts(source, at, args.rollouts)
             if home is not runner.store:
                 home.copy_chain(name, runner.store)
