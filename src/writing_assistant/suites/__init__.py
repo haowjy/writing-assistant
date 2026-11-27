@@ -298,7 +298,7 @@ def file_output(ep: Episode, actor: str, path: str) -> str:
 
 
 # Last, so suite packages can import SUBJECT, Tally and one_message from here.
-from writing_assistant.suites import madeup, style  # noqa: E402
+from writing_assistant.suites import situations, style  # noqa: E402
 from writing_assistant.suites.world import suite_1a  # noqa: E402
 
-SUITES: dict[str, Suite] = {"1a": suite_1a, "3": style.suite, "madeup": madeup.suite}
+SUITES: dict[str, Suite] = {"1a": suite_1a, "3": style.suite, "situations": situations.suite}

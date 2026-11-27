@@ -11,7 +11,7 @@ from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import Task
 from writing_assistant.run import score_episode
 from writing_assistant.suites import SUBJECT, converse, play
-from writing_assistant.suites.madeup import suite
+from writing_assistant.suites.situations import suite
 
 CAST = {"counterpart": "other-endpoint"}
 
@@ -19,7 +19,7 @@ CAST = {"counterpart": "other-endpoint"}
 def talk(seats: dict[str, dict], max_turns: int, lines: int = 0) -> Task:
     """A `converse` row: `seats` maps seat -> its cast name, or a dict with more of its fields."""
     seats = {name: {"brief": f"You are {name}."} | (s if isinstance(s, dict) else {"cast": s}) for name, s in seats.items()}
-    return Task("talk", "madeup", "converse", "dev", [], {
+    return Task("talk", "situations", "converse", "dev", [], {
         "request": "Plan the crossing.", "max_turns": max_turns, "seats": seats,
         "script": [{"say": f"scripted line {n}"} for n in range(lines)]})
 

@@ -70,7 +70,7 @@ besides being said are not. Suite 1a keeps its own two schedules (`tasks_1a.next
 `next_dm`) until it goes. A module file directly under `suites/` is shared by every suite
 package and imports none (`tests/test_layering.py`).
 
-`suites/madeup/` is a placeholder suite with one kind, `converse`, built on that step
+`suites/situations/` is a placeholder suite with one kind, `converse`, built on that step
 (seats, each with a cast name, a brief, who hears it, the restricted files it may read; a
 request; a turn budget; scored with no judge on turns, the subject's lines and words, and how
 it ended). It is what later phases play until the benchmark's new kinds exist; its rows

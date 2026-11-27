@@ -21,7 +21,7 @@ judge. A row holds no book text, so the suite declares no `text_fields`.
 
 Set up at a position (`wa-bench situate`), the seats work on that episode's files; a
 restricted file stays closed to every seat `reads` does not name. A task row played in
-place (`wa-bench run --suite madeup`) starts with no files.
+place (`wa-bench run --suite situations`) starts with no files.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ METRIC_ABOUT = {
 }
 
 
-class MadeUp:
+class Situations:
     tools = converse.TOOLS
     judged_by: dict[str, str] = {}
     about = ABOUT
@@ -57,7 +57,7 @@ class MadeUp:
     text_fields: dict[str, list[str]] = {}
 
     def tasks(self, split: str, where: str | None = None) -> Iterable[Task]:
-        return task_rows("madeup", split, where)
+        return task_rows("situations", split, where)
 
     def setup(self, task: Task, services, at: Episode | None = None) -> list[Episode]:
         p = task.payload
@@ -95,4 +95,4 @@ def _hears(ep: Episode, speaker: str) -> list[str]:
     return ep.state["heard_by"].get(speaker, ep.state["converse"]["seats"])
 
 
-suite = MadeUp()
+suite = Situations()
