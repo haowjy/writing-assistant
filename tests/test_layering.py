@@ -43,6 +43,22 @@ def _imports(path: Path) -> list[tuple[str, ...]]:
     return [m[1:] for m in out if m[:1] == ("writing_assistant",) and len(m) > 1]
 
 
+# Judging is apart from play: what plays episodes or grows a world imports no judge and no
+# scoring code, so nothing it reaches can score or read a score row. `run/__init__` holds
+# `Runner`; the other two are covered from the day they exist.
+PLAYS = ("run/__init__", "run/control", "master/")
+JUDGING = (("judges",), ("run", "scoring"))
+
+
+def test_what_plays_or_grows_a_world_imports_no_judging():
+    bad = []
+    for path in sorted(PKG.rglob("*.py")):
+        src = "/".join(path.relative_to(PKG).with_suffix("").parts)
+        if any(src == name or (name.endswith("/") and src.startswith(name)) for name in PLAYS):
+            bad += [f"{src} -> {'.'.join(target)}" for target in _imports(path) if any(target[:len(j)] == j for j in JUDGING)]
+    assert not bad, "play importing judging:\n" + "\n".join(bad)
+
+
 def test_imports_point_down():
     bad = []
     for path in sorted(PKG.rglob("*.py")):

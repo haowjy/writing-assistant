@@ -25,9 +25,20 @@ would have (`suites/__init__.py`).
 
 `run/` sits between `suites`/`drivers` and `cli` (it is not in that plan's table). It holds
 the play itself: `Runner.play` takes a group of episodes, saves them before play and each
-time a delivery returns, closes them together and scores them. `cli` parses arguments, opens
+time a delivery returns, and closes them together. `cli` parses arguments, opens
 the run directory and chooses what is played; anything else that needs episodes played (a
-generation loop, a trainer) calls `run`, never `cli`. Two rules live there:
+generation loop, a trainer) calls `run`, never `cli`.
+
+**Judging is a separate pass that nothing growing a world imports.** `Runner` plays and
+closes and does nothing else; scoring is `run/scoring.py` (`score_episode`, `score_into`),
+and the module that holds `Runner`, `run/control.py` and `master/` import neither it nor
+`judges` (`tests/test_layering.py`). `wa-bench run` scores what it played for suites 1a and
+3, after the play, as a step of the command; a rollout of a situation (`run.situated`: its
+task row is in `state["task"]`) is never scored by `run`, only by `wa-bench score`. So a
+run killed between a close and its scoring leaves a closed episode with no row, which the
+same command scores first when it is run again.
+
+Two rules live in `run/`:
 
 - A **seat** is an entry in `Episode.actors`. `setup` gives it `scripted` (the suite's step
   speaks for it) or a **cast name**: `subject`, the model under test, or any other name the

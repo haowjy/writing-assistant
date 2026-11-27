@@ -84,7 +84,8 @@ name the situation; otherwise `<root episode's name>/<12 random hex>`); the spli
 are the position's. `--from-run` names the run whose store holds the position when DIR's
 does not. A situation is stored closed and is never played in place, scored or reported:
 `run --from '<situation>@0' --rollouts N` plays a group of it, in a directory whose run is
-of the situation's suite and split.
+of the situation's suite and split. `run` plays those rollouts and does not score them:
+judging is its own pass (`score`), which nothing that plays or grows a world calls.
 
 `score` re-scores a run's closed episodes into its store, row by row: one killed part-way
 has added the rows it finished and left the other episodes with the rows they had.
@@ -105,6 +106,7 @@ import sqlite3
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
@@ -118,8 +120,9 @@ from writing_assistant.episode.segments import STORE_FILE, Store, Unreadable, ha
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, TEST_USES, append_jsonl, local_only, matches
 from writing_assistant.judges import judges_from
 from writing_assistant.llm.client import AccountError, LLMClient
-from writing_assistant.run import ROOT, Runner, cast_from, code_version, resolved, run_info, score_into, situate
+from writing_assistant.run import ROOT, Runner, cast_from, code_version, resolved, run_info, situate, situated
 from writing_assistant.run import now as _now
+from writing_assistant.run.scoring import score_into
 from writing_assistant.suites import SUITES, Services
 
 LOCK_FILE = "run.lock"
@@ -236,9 +239,22 @@ async def cmd_run(args: argparse.Namespace) -> int:
                                              "where": args.where, "limit": args.limit}])
 
     runner = Runner(suite, services, store, run_dir, run_id=run_id, endpoint=args.endpoint, driver=args.driver,
-                    max_tokens=args.max_tokens, profile=args.judges, concurrency=args.concurrency, cast=cast,
-                    round=args.round, score=not args.no_score)
+                    max_tokens=args.max_tokens, concurrency=args.concurrency, cast=cast, round=args.round)
     stopped: AccountError | None = None
+    counts = runner.counts  # this command adds what its scoring did to what the runner played
+    scoring = asyncio.Semaphore(args.concurrency)
+
+    async def score(eps: list[Episode], only: set[str] | None = None) -> None:
+        """Score closed episodes (all of them, or the ep_ids in `only`, twins paired over all)
+        into the store. A rollout of a situation is left to `wa-bench score`."""
+        async with scoring:
+            rows = await score_into(store, args.judges, suite, eps, services, len(eps) or 1, only)
+        counts["score_errors"] += sum("error" in row for row in rows)
+
+    async def play(name: str, begin: Callable[[], list[Episode]]) -> None:
+        eps = await runner.play(name, begin)
+        if eps and not args.no_score and not situated(eps[0]):
+            await score(eps)
 
     # Held shared for as long as this run lives (the kernel drops it when the process dies).
     # Getting it exclusively first means no other run is alive in this directory.
@@ -270,7 +286,8 @@ async def cmd_run(args: argparse.Namespace) -> int:
                 {"at": _now(), "code": code, "where": args.where, "limit": args.limit}
                 | ({"from": args.source, "from_run": args.from_run, "rollouts": args.rollouts, "round": args.round}
                    if args.source else {}))
-        unscored = {ep.ep_id for ep in closed} - store.scores(args.judges).keys() if alone and not args.no_score else set()
+        unscored = ({ep.ep_id for ep in closed if not situated(ep)} - store.scores(args.judges).keys()
+                    if alone and not args.no_score else set())
         print(f"{run_dir}: " + (f"{len(rollouts)} rollouts of {args.source}" if args.source else f"{len(tasks)} tasks") + " to run ("
               + ", ".join([f"{len(done)} tasks already stored"]
                           + [f"{sum(map(len, unfinished.values()))} open episodes to continue"] * bool(unfinished)
@@ -279,24 +296,24 @@ async def cmd_run(args: argparse.Namespace) -> int:
         try:
             async with asyncio.TaskGroup() as tg:  # an AccountError in one task cancels the rest
                 if unscored:
-                    tg.create_task(runner.score(closed, unscored))
+                    tg.create_task(score(closed, unscored))
                 for task_id, eps in unfinished.items():
-                    tg.create_task(runner.play(task_id, lambda eps=eps: eps))
+                    tg.create_task(play(task_id, lambda eps=eps: eps))
                 for t in tasks:
-                    tg.create_task(runner.play(t.task_id, lambda t=t: runner.fresh(t)))
+                    tg.create_task(play(t.task_id, lambda t=t: runner.fresh(t)))
                 for ep in rollouts:
-                    tg.create_task(runner.play(ep.ep_id, lambda ep=ep: [ep]))
+                    tg.create_task(play(ep.ep_id, lambda ep=ep: [ep]))
         except* AccountError as group:
             stopped = group.exceptions[0]
         finally:
             record_usage(run_dir, services)
             await close(services)
-    print(f"{run_dir}: {dict(runner.counts)}; spent ${sum(services.llm.spent.values()):.4f} "
+    print(f"{run_dir}: {dict(counts)}; spent ${sum(services.llm.spent.values()):.4f} "
           f"({', '.join(f'{k} ${v:.4f}' for k, v in services.llm.spent.items())})")
     if stopped:
         print(f"stopped: the host refused the account ({stopped}); nothing more can run until that is fixed. "
               f"Saved episodes stay; rerun the same command to resume.", file=sys.stderr)
-    if stopped or runner.counts["task_errors"] or runner.counts["score_errors"]:
+    if stopped or counts["task_errors"] or counts["score_errors"]:
         return 1
     return 0
 

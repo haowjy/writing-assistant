@@ -155,6 +155,8 @@ def test_a_start_is_played_only_as_a_rollout_and_no_reader_of_played_episodes_me
     out = notes.play(f"{name}@0")
     assert "open episodes to continue" not in out and "to score first" not in out
     [member] = rolled(notes.out, name)
+    with Store(notes.out / "store.db", readonly=True) as store:
+        assert store.load(member).status == "completed" and store.profiles() == []  # `run` plays a situation and scores nothing
     assert "1 episodes, 1 scored" in notes("score", "--run", str(notes.out), "--judges", "none")
     with Store(notes.out / "store.db", readonly=True) as store:
         assert store.names() == list(store.scores("none")) == [member]
@@ -210,7 +212,8 @@ def test_one_situation_is_played_by_whichever_cast_the_run_names_and_says_who_pl
     asked = {(r["endpoint"], r["max_tokens"], r["temperature"]) for r in notes.llm.requests}
     assert asked == {("gemma-4-26b", 1000, 0.7), ("qwen3.5-9b", 2000, 0.7), ("qwen3-32b-mini", 300, 0.2),
                      ("gemma-4-26b", 16384, 0.7), ("gemma-4-26b", 300, 0.2)}
-    capsys.readouterr()
+    for run in (a, b, own):
+        notes("score", "--run", str(run), "--judges", "none")
     cli.main(["report", "--run", str(b), "--judges", "none", "--baseline", str(a)])
     assert "draft_words" in (out := capsys.readouterr().out) and "Δ 0.000 vs baseline" in out, out
     with pytest.raises(SystemExit, match=r"different casts: counterpart is gemma-4-26b \(.*\) here and qwen3-32b-mini"):

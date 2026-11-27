@@ -9,7 +9,7 @@ import pytest
 
 from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import Task
-from writing_assistant.run import score_episode
+from writing_assistant.run.scoring import score_episode
 from writing_assistant.suites import SUBJECT, converse, play
 from writing_assistant.suites.situations import suite
 

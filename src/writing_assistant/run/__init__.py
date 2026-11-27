@@ -1,8 +1,10 @@
-"""Run: play episodes against endpoints, save them, close them and score them.
+"""Run: play episodes against endpoints, save them and close them.
 
 What a command, and later a generation loop or a trainer, calls to get episodes played; it
 parses no arguments and chooses no tasks. A caller opens the run directory and its store,
-builds one `Runner` and hands it groups of episodes.
+builds one `Runner` and hands it groups of episodes. Nothing here scores: judging is a
+separate pass over closed episodes (`run/scoring.py`), which this module does not import
+(`tests/test_layering.py`).
 
 - A **seat** is an entry in `Episode.actors`; its value is `scripted` or a **cast name**:
   `subject` (the model under test) or any other name the task uses. The run's **cast** maps
@@ -16,15 +18,13 @@ builds one `Runner` and hands it groups of episodes.
   through the run's driver; every other model seat goes through `direct`, so it is the
   same whatever harness the subject is run through (its limits in `state["sampling"]`).
 - `Runner.play` is the one way episodes are played: saved before play and each time a
-  delivery returns, closed together, then scored. A task's episodes are played as one
+  delivery returns, then closed together. A task's episodes are played as one
   (they close together, so a reader never sees an arm without its twin); a rollout alone.
 - A **group** is the rollouts one run made of one turn checkpoint in one round
   (`group_id`, `Runner.rollouts`). Its id is derived, so a resumed run finds it again with
   nothing saved, and it is in each member's name, so two runs never make the same name.
 - `situate` sets a task up at a position (a closed episode) and stores what the suite's
   `setup` returns as situations: starts, played only as rollouts (`Runner.rollouts`).
-- Score rows go into the store beside the episodes, each as soon as it is made
-  (`score_into`), so a scoring cut short keeps the rows it finished.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ from writing_assistant.episode import Episode
 from writing_assistant.episode.segments import Store
 from writing_assistant.episode.store import LOCAL_DEV, RUN_FILE, Task, append_jsonl, local_only
 from writing_assistant.llm.client import AccountError
-from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, Tally, play
+from writing_assistant.suites import SUBJECT, SUITES, Services, Suite, play
 
 ROOT = Path(__file__).resolve().parents[3]
 ERRORS_FILE = "errors.jsonl"
@@ -158,60 +158,6 @@ class Binding:
             await driver.close(session)
 
 
-# -- scoring -------------------------------------------------------------------------------
-
-async def score_episode(suite: Suite, ep: Episode, twin: Episode | None, services: Services) -> tuple[dict, list[dict]]:
-    """(score row, the judgments behind it). A row with `error` says the scorer raised,
-    which is what a judge that is down leaves: the episode is pending until it has a row
-    without one (`score --pending`). Every other row is final, a judge's refusal and a use
-    the profile names no endpoint for (`unavailable`) included: the same profile would say
-    the same again."""
-    row = {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
-           "twin": twin.ep_id if twin else None} | ({"group": ep.group} if ep.group else {})
-    if ep.status == "failed":
-        return row | {"skipped": ep.failure_reason}, []
-    tally = Tally()
-    try:
-        with local_only(ep.split == LOCAL_DEV):
-            metrics = await suite.score(ep, services, tally, twin)
-    except AccountError:
-        raise
-    except Exception as e:  # one episode's scorer failing must not stop the others
-        return row | {"error": f"{type(e).__name__}: {e}"}, []
-    judgments = [{"id": f"{ep.ep_id}#{n}", "scored": ep.ep_id, "ep_id": ep.ep_id} | j
-                 for n, j in enumerate(tally.judgments)]
-    return row | {"metrics": tally.into(metrics), "judges": [tally.stamps[use] for use in sorted(tally.stamps)]}, judgments
-
-
-async def score_into(store: Store, profile: str, suite: Suite, episodes: list[Episode], services: Services,
-                     concurrency: int, only: set[str] | None = None) -> list[dict]:
-    """Score every episode, or the ep_ids in `only`, and add each row to the store under
-    `profile` with its judgments as soon as it is made; the rows are returned. Each is
-    stamped with the scoring code, the time and the judges asked. The rows an episode had
-    stay in the store, and readers take the new one unless it says the scorer raised and an
-    older one does not. A twin is a baseline,
-    judged only through the `score()` of the episode it names: its row says whose it is.
-    Twins are paired over all of `episodes`; a rollout is the baseline of nothing and has
-    none."""
-    twins = {ep.baseline_of: ep for ep in episodes if ep.baseline_of is not None}
-    sem = asyncio.Semaphore(concurrency)
-    code = code_version()
-
-    async def one(ep: Episode) -> dict:
-        if ep.baseline_of is not None:
-            row, judgments = {"ep_id": ep.ep_id, "task_id": ep.task_id, "condition": ep.condition, "status": ep.status,
-                              "baseline_of": ep.baseline_of}, []
-        else:
-            async with sem:
-                row, judgments = await score_episode(suite, ep, twins.get(ep.ep_id), services)
-        # To the microsecond: readers take the later of two rows, and one scored again at once must be it.
-        row |= {"code": code, "scored_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")}
-        store.put_scores(profile, [row], judgments)
-        return row
-
-    return list(await asyncio.gather(*(one(ep) for ep in episodes if only is None or ep.ep_id in only)))
-
-
 # -- the runner ----------------------------------------------------------------------------
 
 def row_meta(task: Task) -> dict[str, Any]:
@@ -256,21 +202,27 @@ def situate(store: Store, services: Services, suite: str, kind: str, payload: di
     return eps
 
 
+def situated(ep: Episode) -> bool:
+    """Whether `ep` plays a task set up at a position (`situate` keeps the row in
+    `state["task"]`, and every rollout inherits it). Such a rollout is judged by the
+    judging pass alone, never by the command that played it."""
+    return "task" in ep.state
+
+
 class Runner:
     """One run's play: a suite, the endpoint under test and the endpoints of the other cast
-    names (`cast`), the store the episodes and their score rows go to, and the run
-    directory (its name, and where errors are recorded).
+    names (`cast`), the store the episodes go to, and the run directory (its name, and
+    where errors are recorded). It plays and closes and does nothing else.
     `run_id` is the run's identity (run.json `id`) and `round` the caller's name for this
     pass over a checkpoint (a trainer's policy step): the two name the groups this runner
-    makes. `profile` names the judges `services` was built with (the rows are stored under
-    it); `score=False` plays and saves only. `counts` adds up what happened (episode
-    statuses, `task_errors`, `score_errors`) for the caller to report."""
+    makes. `counts` adds up what happened (episode statuses, `task_errors`) for the caller
+    to report."""
 
     def __init__(self, suite: Suite, services: Services, store: Store, run_dir: Path, *, run_id: str, endpoint: str,
-                 driver: str, max_tokens: int, profile: str, concurrency: int, cast: dict[str, str] | None = None,
-                 round: str = "0", score: bool = True) -> None:
+                 driver: str, max_tokens: int, concurrency: int, cast: dict[str, str] | None = None,
+                 round: str = "0") -> None:
         self.suite, self.services, self.store, self.run_dir = suite, services, store, run_dir
-        self.profile, self.scoring, self.run_id, self.round = profile, score, run_id, round
+        self.run_id, self.round = run_id, round
         self.cast = {SUBJECT: endpoint} | (cast or {})
         self.binding = Binding(self.cast, DRIVERS[driver](services.llm, suite.tools, max_tokens=max_tokens),
                                DirectDriver(services.llm, suite.tools, max_tokens=max_tokens))
@@ -340,8 +292,7 @@ class Runner:
         return out
 
     async def play(self, name: str, begin: Callable[[], list[Episode]]) -> list[Episode] | None:
-        """Play episodes to the end together, close them together and score them, and
-        return them. `begin` gives them once a slot is free: a task's episodes set up there
+        """Play episodes to the end together, close them together and return them. `begin` gives them once a slot is free: a task's episodes set up there
         and then (`fresh`), or ones already made or stored, to go on with.
 
         If `begin` or the play raises, that is recorded under `name` in the errors file and
@@ -371,17 +322,9 @@ class Runner:
                 ep.complete()
                 self.counts[ep.status] += 1
             self.store.close(*eps)
-            if self.scoring:
-                await self.score(eps)
             print(f"  {name}: " + ", ".join(f"{ep.condition}={ep.status}" for ep in eps), flush=True)
             return eps
 
     async def _turn(self, ep: Episode, actor: str, message: str) -> None:
         await self.binding(ep, actor, message)
         self.store.append(ep)
-
-    async def score(self, eps: list[Episode], only: set[str] | None = None) -> None:
-        """Score closed episodes (all of them, or the ep_ids in `only`, twins paired over
-        all) into the store."""
-        rows = await score_into(self.store, self.profile, self.suite, eps, self.services, len(eps) or 1, only)
-        self.counts["score_errors"] += sum("error" in row for row in rows)

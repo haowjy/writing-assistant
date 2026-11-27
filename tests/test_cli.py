@@ -259,7 +259,8 @@ def test_two_runs_rolling_out_one_checkpoint_make_two_groups_whose_members_never
 def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_its_size(bench, capsys, monkeypatch, fake_llm, killed):
     """A run killed while it plays a group leaves it short: one member closed, two open, one
     never made. The group is not settled, though the base's half is whole. The same command
-    again works the group id out again, continues the open members and makes only the
+    again works the group id out again, scores the member that had closed (play does not
+    score: the command does, after it), continues the open members and makes only the
     missing one. No judge is named for the use these rows need (`unavailable`), which the
     same profile would say again: such a row is final, and the group settles."""
     out = bench([POV_ROW], chapter("Mira turned the glove over."))
@@ -281,12 +282,13 @@ def test_a_twins_rollouts_are_in_its_bases_group_which_is_settled_when_each_has_
     twin, names = "pov-1~full_view~twin_swap", [f"pov-1~full_view~twin_swap@0.{group}.{i}" for i in range(4)]
     again = ["run", "--suite", "1a", "--endpoint", "gemma-4-26b", "--out", str(out), "--from", f"{twin}@0", "--concurrency", "1", *judges]
     killed(*again, "--rollouts", "4")
-    assert settled(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 1}, "settled": False}}
     with Store(out / "store.db", readonly=True) as stored:
+        assert stored.groups() == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 1}, "played": False}}
         assert (stored.names(closed=False), stored.rollouts(twin, 0, group)) == (names[1:3], names[:3])
     capsys.readouterr()
     cli.main([*again, "--rollouts", "4"])
-    assert "1 rollouts of pov-1~full_view~twin_swap@0 to run (1 tasks already stored, 2 open episodes to continue)" in capsys.readouterr().out
+    assert ("1 rollouts of pov-1~full_view~twin_swap@0 to run (1 tasks already stored, 2 open episodes to continue, "
+            "1 closed episodes to score first)") in capsys.readouterr().out
     assert settled(out, "none") == {group: {"size": 4, "sources": {"pov-1~full_view": 4, twin: 4}, "settled": True}}
     with Store(out / "store.db", readonly=True) as stored:
         members = [stored.load(name) for name in stored.rollouts(twin, 0)]
