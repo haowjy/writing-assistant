@@ -14,8 +14,10 @@ driver), and its name is made from them, so the same work asked for again after 
 finds the directory, the run's id and so the same groups, and plays only what is missing.
 Its store holds the situations as positions (unlisted, so nothing reads them as episodes
 this run played) and the rollouts. Each rollout is pushed to the library as it closes, and
-everything closed is pushed once more on the way out: a push cut short, or a process
-killed between a close and its push, is made good by the next call.
+the closed members of the groups asked for are pushed once more on the way out: a push
+cut short, or a process killed between a close and its push, is made good by the next
+call for the same work. The directory is the call's alone while it runs (`run.lock` held
+exclusively), so a second call for the same world and identity is refused.
 """
 
 from __future__ import annotations
@@ -82,13 +84,10 @@ async def play_groups(lib: Library, work: list[Work], settings: Settings) -> dic
     services = services_for(settings.models, "none")
     try:
         cast = cast_from(services.llm.config, settings.cast) if settings.cast else {}
-        splits = {w.name: w.split for w in lib.worlds()}
         groups: dict[Work, str] = {}
         # A world's situations may be of several suites; a run directory plays one.
         by_run: dict[tuple[str, str], dict[Work, Episode]] = {}
         for world in sorted({w.world for w in work}):
-            if world not in splits:
-                raise Refused(f"{lib.root}: no world named {world!r}; it has {sorted(splits)}")
             with lib.open(world) as home, home.reading():
                 for w in work:
                     if w.world != world:
@@ -99,8 +98,11 @@ async def play_groups(lib: Library, work: list[Work], settings: Settings) -> dic
                                       "`wa-bench situate`); only a situation's rollouts are a group")
                     by_run.setdefault((world, source.suite), {})[w] = source
         for (world, suite), sources in by_run.items():
-            groups |= await _play(lib, world, suite, splits[world], sources, cast, services, settings)
+            split = next(iter(sources.values())).split  # the world's: every segment in it has its root's
+            groups |= await _play(lib, world, suite, split, sources, cast, services, settings)
         return groups
+    except LookupError as e:  # no such world, no such situation
+        raise Refused(str(e)) from None
     finally:
         await services.llm.aclose()
 
@@ -111,15 +113,13 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
     ident = identity(services, suite=suite, driver=settings.driver, endpoint=settings.endpoint, split=split,
                      max_tokens=settings.max_tokens, cast=cast, world=world)
     run_dir = settings.runs / f"{world}-{suite}-{hashlib.sha256(json.dumps(ident, sort_keys=True).encode()).hexdigest()[:10]}"
-    opened = open_run(run_dir, ident, held_out_test=settings.held_out_test, note={"work": len(sources)})
+    # Alone for the whole call: the open rollouts in the directory are then this call's to continue.
+    opened = open_run(run_dir, ident, held_out_test=settings.held_out_test, note={"work": len(sources)}, exclusive=True)
     groups = {w: group_id(opened.run_id, w.round, source, 0) for w, source in sources.items()}
     slots = asyncio.Semaphore(settings.concurrency)  # over every round's runner together
     short: dict[Work, list[Episode]] = {}
     store = opened.store
     try:
-        if not opened.alone:
-            raise Refused(f"{run_dir}: another run is alive here, playing {world} with this endpoint and cast; its open "
-                          "rollouts are its own, so this work waits for it to finish")
         with run_info(run_dir) as info:
             info.setdefault("invocations", []).append({"at": now(), "code": code_version(), "work": len(sources)})
         lib.checkout(world, sorted({w.source for w in sources}), store)
@@ -154,9 +154,12 @@ async def _play(lib: Library, world: str, suite: str, split: str, sources: dict[
                 raise stopped.exceptions[0] from None
     finally:
         try:
-            if opened.alone:
-                lib.push(store, scores=False)
-                record_usage(run_dir, services)
+            # Once more, for a member closed and not pushed (this call's or a killed one's), and only
+            # this call's groups: the directory keeps every rollout it ever played.
+            if closed := [name for w, source in sources.items() for name in store.rollouts(source.ep_id, 0, groups[w])
+                          if store.is_closed(name)]:
+                lib.push(store, closed, scores=False)
+            record_usage(run_dir, services)
         finally:
             store.db.close()
             opened.lock.close()

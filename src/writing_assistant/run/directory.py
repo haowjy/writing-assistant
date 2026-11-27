@@ -64,8 +64,9 @@ def identity(services: Services, *, suite: str, driver: str, endpoint: str, spli
 @dataclass
 class Opened:
     """A claimed run directory: the run's id, its store (open for writing), and whether no
-    other run was alive in it when it was opened. `lock` is `run.lock`, held shared for as
-    long as this object lives (the kernel drops it when the process dies)."""
+    other run was alive in it when it was opened. `lock` is `run.lock`, held (shared, or
+    exclusively when asked) for as long as this object lives; the kernel drops it when the
+    process dies."""
 
     run_id: str
     store: Store
@@ -73,11 +74,16 @@ class Opened:
     lock: IO[str]
 
 
-def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = False, note: dict[str, Any] | None = None) -> Opened:
+def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = False, note: dict[str, Any] | None = None,
+             exclusive: bool = False) -> Opened:
     """Claim `run_dir` for the run `identity` describes, or find it already that run's, and
     open its store. Of two first invocations one claims the identity and the other is held
     to it; a store this build does not write is refused with run.json unchanged. `note` is
-    added to the line a `test` run leaves in the log of the held-out split's uses."""
+    added to the line a `test` run leaves in the log of the held-out split's uses.
+
+    `exclusive`: the directory is this run's alone for as long as the result lives. Another
+    run alive in it is refused, and none can start. Without it several runs may share a
+    directory (`alone` says whether one was there), each holding the lock shared."""
     if identity["split"] == "test" and not held_out_test:
         raise Refused("this run plays the held-out test split, which is never used to choose anything; pass "
                       f"--held-out-test to run it, and the run is logged in {TEST_USES}")
@@ -98,7 +104,12 @@ def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = F
         alone = True
     except BlockingIOError:
         alone = False
-    fcntl.flock(lock, fcntl.LOCK_SH)
+    if exclusive and not alone:
+        store.db.close()
+        lock.close()
+        raise Refused(f"{run_dir}: another run is alive here; its open episodes are its own, so this one waits for it to end")
+    if not exclusive:  # the change to shared is not atomic (flock(2)), which is why a run that must be alone keeps it
+        fcntl.flock(lock, fcntl.LOCK_SH)
     return Opened(run_id, store, alone, lock)
 
 

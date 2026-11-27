@@ -47,10 +47,11 @@ group's id once every group is played in the library and raises `Unplayed`, nami
 short groups and their open members, otherwise. It keeps a run directory per world, suite
 and run identity under `Settings.runs`, named from them, so the same work asked for again
 after a kill finds the run's id, the same groups and what is open, and plays only what is
-missing. It checks the situations out unlisted, pushes each rollout as it closes and
-everything closed once more on the way out, and makes one second pass (with the store
-reopened) over what a first pass left unplayed. It never mints a round. A second call for
-the same world and identity while one is alive is refused. Its pushes read no score row
+missing. It checks the situations out unlisted, pushes each rollout as it closes and the
+closed members of the groups asked for once more on the way out, and makes one second pass
+(with the store reopened) over what a first pass left unplayed. It never mints a round. It
+holds `run.lock` exclusively for the whole call (`open_run(..., exclusive=True)`), so a
+second call for the same world and identity while one is alive is refused. Its pushes read no score row
 (`Library.push(..., scores=False)`) and its `Services` are on the `none` judge profile.
 Losing a controller run directory loses the run's id: the same work then plays as new
 groups (the world keeps the old ones).
