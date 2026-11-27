@@ -107,7 +107,7 @@ def open_run(run_dir: Path, identity: dict[str, Any], *, held_out_test: bool = F
     if exclusive and not alone:
         store.db.close()
         lock.close()
-        raise Refused(f"{run_dir}: another run is alive here; its open episodes are its own, so this one waits for it to end")
+        raise Refused(f"{run_dir}: another run is alive here, and its open episodes are its own. Run this again when that one ends")
     if not exclusive:  # the change to shared is not atomic (flock(2)), which is why a run that must be alone keeps it
         fcntl.flock(lock, fcntl.LOCK_SH)
     return Opened(run_id, store, alone, lock)
