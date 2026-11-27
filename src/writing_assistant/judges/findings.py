@@ -81,8 +81,9 @@ def render(ev: RolloutEvidence, turn: int | None = None) -> str:
     record stops after that turn, which is named as the target, and the end files are left
     out; without, the files as the rollout ended close it. It is a function of the stored
     rollout alone, so the record a stored finding was made from can be built again."""
-    task = {k: v for k, v in ev.task.items() if k in ("task_id", "kind")} | {
-        k: v for k, v in ev.task.get("payload", {}).items() if k not in ("seats", "script", "rubrics")}
+    # Named keys only: a field a later task kind adds to its payload reaches no judge by default.
+    task = {k: ev.task[k] for k in ("task_id", "kind") if k in ev.task} | {
+        k: ev.task["payload"][k] for k in ("request", "opening", "to", "max_turns") if k in ev.task.get("payload", {})}
     out = ["# Task", json.dumps(task, ensure_ascii=False, indent=1), f"# Seat under judgment: {ev.seat}"]
     if turn is not None:
         out.append(f"Target: turn {turn} of this seat. The record below ends with it.")
