@@ -146,8 +146,12 @@ uv run wa-bench situate --run runs/<id> --at '<closed ep_id>' --row task.json [-
 uv run wa-bench score --run runs/<id> --judges eval|train [--all|--pending]   # score what no row stands for; --all: everything again; --pending: only where the scorer raised
 uv run wa-bench report --run runs/<id> [--group-by kind,condition] [--baseline runs/<base>]
 uv run wa-bench guardrails --endpoint gemma-4-26b [--run runs/<id>]  # IFEval, HumanEval+, BFCL; docker; hours locally (scripts/guardrails/.context)
-uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges
+uv run wa-bench view [--run runs/<id> runs/<id2> ...] [--world NAME ...] [--port 8766]  # read-only page: task rows, scores, episodes, judges; a world's situations, rollouts and findings
 ```
+
+`run --suite` on task rows and `run --from` on a run directory are the older flow, and
+still the way suites 1a and 3 are run. A task set up on a world's files (the practice run,
+the situations suite) is played in a library world: "The library" below walks through it.
 
 `view`'s page is a React app in `viewer/` (Bun, Vite, TypeScript, shadcn/ui on Tailwind).
 Build it once, and after changing it, before `wa-bench view`:
@@ -173,6 +177,12 @@ nothing, so its episodes, twin swaps, delivered messages and the payload fields 
 model are what a run would make; held-out `test` rows appear only behind the page's switch,
 `local_dev` rows never. Adding a shadcn component with `bunx shadcn add` imports `cn` from an
 npm package named `cn`; point it back at `@/lib/utils` and `bun remove cn`.
+A library world has one screen of its own, `/world/<name>` (`view --world NAME`): its
+situations, each one's groups of rollouts with what every rubric scored, and one rollout
+(`?ep=<name>`) with the conversation in order, each seat's calls and thinking, the files it
+changed and every rubric's findings (`cli/view.py` `World`, `viewer/src/screens/world.tsx`).
+It loads every rollout of the world to list them: built for a world a person reads, not
+for a hundred thousand rollouts.
 It writes nothing, fetches one task at a time and re-reads a run whose files change. An
 open page keeps what it fetched for 30 seconds and does not poll, and between a task's
 episodes closing and their scores being written its report shows them as unscored.
@@ -250,7 +260,8 @@ the model and the rules, `design/branch-store.md` and `design/buildout.md` in th
   the run's task episodes: no group, metric, episode list or sample includes one, and `report`
   prints them after the run's groups, per checkpoint and group, saying which groups are settled. The lines at the head of `report`
   (spend, served, played by code, task errors) are per directory and do include them, and
-  the page has no screen for rollouts yet (its API lists them under `rollouts`, each with its `group`). A rollout stores no task, so a
+  the page lists a run directory's rollouts on no screen (its API has them under `rollouts`, each with its
+  `group`); a world's are read with `view --world`. A rollout stores no task, so a
   directory holding only rollouts of a task has not played it.
 - A **start** is an episode stored once and never played in place (`Store.add_starts`: saved,
   closed and marked `episodes.start` in one transaction). A **situation** is a start with a
@@ -303,7 +314,44 @@ registry: `Library.worlds()` reads the files. `wa-bench library create NAME --fi
 row grants it with `reads`), `situate --world NAME --at POS --row FILE` sets a task up at a
 position inside it, `run --world NAME --endpoint E [--cast C] --rollouts N [--round R]
 [--where ...]` hands a group of each situation to the controller and scores nothing, and
-`score --world NAME --judges P [--rubric R] [--pending]` is the judging pass.
+`score --world NAME --judges P [--rubric R] [--pending]` is the judging pass, and
+`report --world NAME --judges P [--rubric R]` and `view --world NAME` read the result.
+
+**From nothing to a read result**, as the practice run is done. Every command reads
+`WA_LIBRARY`; unset, it is the real library. `--out` is where `run --world` keeps its run
+directories (default `runs/` in the working directory): keep it, since a killed run resumes
+from it and a restore pushes from it again.
+
+```
+export WA_LIBRARY=/cold/<scratch>/library
+uv run wa-bench library create alder-quay --files pack/world/base --closed kb/private-gate.md   # the world: its root holds the folder's files
+uv run wa-bench situate --world alder-quay --at alder-quay --row pack/tasks/advance-scene.json   # a task on the root's files; prints its name
+uv run wa-bench situate --world alder-quay --at alder-quay --row pack/tasks/repair.json --files pack/world/sprawling   # a start that adds or replaces files
+uv run wa-bench library list                                                   # name, split, situations, played episodes, groups
+llmpick start gemma-4-26b-qat                                                  # serve the subject
+uv run wa-bench run --world alder-quay --endpoint gemma-4-26b --rollouts 3 --out runs/practice [--where task_id=alder-quay/advance-scene]
+uv run wa-bench score --world alder-quay --judges practice                     # each rollout under the rubrics its row lists
+uv run wa-bench report --world alder-quay --judges practice [--rubric world_coherence]
+uv run wa-bench view --world alder-quay                                        # the page: situations, rollouts, findings
+```
+
+- `--at` is the name of a closed episode of the world: the world's own name (its root), a
+  situation, or a played rollout. `--files DIR` lays a folder over that position's files
+  in the new situation. A row can list the paths its task needs (`payload.requires`:
+  `["outline/act-two.md"]`); situating it where one is missing is refused. A row without
+  the list is set up on whatever the position holds, so a row that depends on added files
+  should carry it.
+- A row lists its rubrics in `payload.rubrics`. `counts` needs no judge. `world_coherence`,
+  `character_voice_consistency` and `thinking_about_prose` each need a judge: the profile
+  passed as `--judges` must name an endpoint for the use of the same name
+  (`[judges.practice] world_coherence = "<endpoint>"` in `models.toml`), or `score` refuses
+  before writing a row. No profile in the checkout's `models.toml` names them yet;
+  `--rubric counts` scores under any profile.
+- Asked again, `run --world` plays only what is missing of the same groups (`--round R`
+  makes new ones) and `score --world` scores only what no row stands for; each says so
+  when there is nothing to do.
+- `report --run` on the run directory under `--out` shows those rollouts unscored: the
+  rows are in the world.
 
 - **In and out.** `checkout` copies chains into a worker's store unlisted and without score
   rows, so a position is never read there as an episode that run played. `push` adds closed
